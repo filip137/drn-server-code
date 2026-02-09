@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.pyc
+
+# Editors
+.vscode/
+
+# TensorBoard / logs
+events.out.tfevents*
+
+# Experiment DBs / checkpoints
+*.db
+*.pth
+model.pt
+
+# Data / outputs (keep code clean)
+papers/
+simulation_results*/
+simulations_results*/
+simulation_results_vr/
+labs/cases/
+papers/events_files/
+labs/paper_post_processing_outputs/
+
+# Local configs (only commit if you really want them)
+labs/debug.json
+
+# Downloaded datasets (do not commit)
+labs/mnist_pytorch/
+**/MNIST/raw/
+*.ubyte
+*.ubyte.gz
+
+# Images (generated outputs)
+*.png
+
+# Data / reports
+*.pdf
+*.csv
+*.pkl
+
+# External/vendor code
+labs/Equilibrium-Propagation/
+
+# Local environments / large data
+py309/
+labs/experiments/
