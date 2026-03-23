@@ -1,0 +1,185 @@
+{
+  "sources": [
+    "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/cpu_timing/combined_latest_by_hidden.csv",
+    "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/cpu_timing/combined_latest_by_hidden.csv",
+    "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/cpu_timing/combined_latest_by_hidden.csv"
+  ],
+  "explicitly_skipped": [
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 256,
+      "reason": "user requested skip for now"
+    }
+  ],
+  "table1_rows": 34,
+  "table2_rows": 34,
+  "skipped_missing": [
+    {
+      "nonlinearity": "experimental",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "experimental",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "reason": "missing SPICE timing"
+    },
+    {
+      "nonlinearity": "experimental",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "experimental",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "reason": "missing SPICE timing"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "reason": "missing SPICE timing"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "reason": "missing SPICE timing"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 512,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 512,
+      "reason": "missing SPICE timing"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "reason": "missing SPICE timing"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "reason": "missing error summary"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "reason": "missing SPICE timing"
+    }
+  ],
+  "table3_rows": 8,
+  "table3_name": "table3_cpu_only_runs",
+  "table3_description": "CPU-only validation runs without SPICE timings",
+  "table3_rows_detail": [
+    {
+      "nonlinearity": "double_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 86.11
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 91.94
+    },
+    {
+      "nonlinearity": "experimental",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 86.11
+    },
+    {
+      "nonlinearity": "experimental",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 91.94
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 512,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 83.61
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 2,
+      "hidden_size": 1024,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 93.06
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 256,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 84.44,
+      "source_run_dir": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_3/single_diode_exponential/hidden_256/validation/from_20260318-115323_model/20260320-184350_single_diode_exponential"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 512,
+      "device": "CPU",
+      "batch_size": 1,
+      "validation_accuracy_pct": 83.06
+    }
+  ],
+  "table3_overrides": [
+    {
+      "nonlinearity": "single_diode_exponential",
+      "hidden_layers": 3,
+      "hidden_size": 256,
+      "source_run_dir": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_3/single_diode_exponential/hidden_256/validation/from_20260318-115323_model/20260320-184350_single_diode_exponential",
+      "validation_accuracy_pct": 84.44,
+      "cd_runtime_s": 77.134,
+      "avg_outer_iterations": 67.85,
+      "reason": "user requested alternative CPU validation run from simulation_results"
+    }
+  ]
+}
