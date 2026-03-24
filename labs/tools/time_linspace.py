@@ -19,7 +19,7 @@ for path in (PROJECT_ROOT, LABS_DIR):
 from labs.datasets import LinSpaceDataset  # noqa: E402
 from model.resistive.network import DeepResistiveEnergy  # noqa: E402
 from model.function.network import Network  # noqa: E402
-from model.resistive.minimizer import QuadraticMinimizer  # noqa: E402
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer  # noqa: E402
 
 
 def _set_seed(seed: int | None) -> None:

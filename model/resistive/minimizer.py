@@ -10,11 +10,19 @@ _HOSTNAME = socket.gethostname()
 
 
 def _load_lambertw():
+    if hasattr(torch, "special") and hasattr(torch.special, "lambertw"):
+        return torch.special.lambertw
     try:
         import torchlambertw.special as tw_special
         return tw_special.lambertw
     except Exception as e:
-        raise ImportError("Lambertw not available; install torchlambertw") from e
+        def _missing_lambertw(*args, **kwargs):
+            raise ImportError(
+                "Lambertw backend unavailable; install torchlambertw or use a PyTorch build "
+                "with torch.special.lambertw."
+            ) from e
+
+        return _missing_lambertw
 
 
 lambertw = _load_lambertw()
@@ -77,7 +85,9 @@ class AdaptiveQuadraticUpdater(QuadraticUpdater):
     We assume the function E to minimize is a quadractic function of the layer z,
     E(z) = a z^2 + b z + c, for some coefficients a, b and c. Furthermore we assume that the coefficient a is positive.
     A `quadratic update' sets the layer's pre-activation to - b/2a, 
-    In this case the diode has a finite conductance when it conducts
+    In this case the diode has a finite conductance when it conducts. An optional
+    off-region (deadband) can be provided via diode_params["v_off"] to avoid
+    penalties for small voltages around 0.
 
     Methods
     -------
@@ -88,10 +98,18 @@ class AdaptiveQuadraticUpdater(QuadraticUpdater):
     def __init__(self, layer, fn, diode_params):
         super().__init__(layer, fn)
         self._diode_conductance = diode_params["diode_conductance"]
+        # Optional off region (deadband) around 0V where no penalty is applied.
+        self._v_off = float(diode_params.get("v_off", 0.0))
+        b_clip_env = os.environ.get("DRN_B_CLAMP")
+        self._b_clip = float(b_clip_env) if b_clip_env is not None else None
     
     def pre_activate(self):
         b = self._b()
+        if self._b_clip is not None:
+            b = b.clamp(min=-self._b_clip, max=self._b_clip)
         a = self._a()
+        if torch.is_tensor(a):
+            a = a.expand_as(b)
         
         # Check if this is a NonlinearResistiveLayer
         if isinstance(self._layer, NonlinearResistiveLayer):
@@ -107,32 +125,47 @@ class AdaptiveQuadraticUpdater(QuadraticUpdater):
             excitatory_pre = preamp_voltage[:, :dimension]
             inhibitory_pre = preamp_voltage[:, dimension:]
             
-            # Check constraint violations
-            excitatory_violations = excitatory_pre > 0   # Excitatory should be ≤ 0
-            inhibitory_violations = inhibitory_pre < 0   # Inhibitory should be ≥ 0
+            # Check constraint violations (with optional off region)
+            v_off = self._v_off
+            excitatory_violations = excitatory_pre > v_off   # Excitatory should be ≤ v_off
+            inhibitory_violations = inhibitory_pre < -v_off  # Inhibitory should be ≥ -v_off
             
             # If violations exist, apply penalties and recalculate
             if excitatory_violations.any() or inhibitory_violations.any():
-                # Create penalty tensor
-                penalty = torch.zeros_like(a_pre)
-                
-                # Apply diode conductance penalty where excitatory > 0
+                a_add = torch.zeros_like(a_pre)
+                b_sub = torch.zeros_like(b_pre)
+
+                # Apply diode conductance penalty where excitatory > v_off
                 if excitatory_violations.any():
-                    penalty[:, :dimension] = torch.where(excitatory_violations, 
-                                                        torch.full_like(penalty[:, :dimension], self._diode_conductance),
-                                                        penalty[:, :dimension])
-                
-                # Apply diode conductance penalty where inhibitory < 0
+                    a_add[:, :dimension] = torch.where(
+                        excitatory_violations,
+                        a_add[:, :dimension] + 0.5 * self._diode_conductance,
+                        a_add[:, :dimension],
+                    )
+                    b_sub[:, :dimension] = torch.where(
+                        excitatory_violations,
+                        b_sub[:, :dimension] - self._diode_conductance * v_off,
+                        b_sub[:, :dimension],
+                    )
+
+                # Apply diode conductance penalty where inhibitory < -v_off
                 if inhibitory_violations.any():
-                    penalty[:, dimension:] = torch.where(inhibitory_violations,
-                                                        torch.full_like(penalty[:, dimension:], self._diode_conductance),
-                                                        penalty[:, dimension:])
-                
-                # Apply penalty to a coefficient
-                a_penalized = a_pre + penalty
-                
-                # Recalculate pre_activate with penalized a
-                penalized_preamp = -b_pre / (2. * a_penalized)
+                    a_add[:, dimension:] = torch.where(
+                        inhibitory_violations,
+                        a_add[:, dimension:] + 0.5 * self._diode_conductance,
+                        a_add[:, dimension:],
+                    )
+                    b_sub[:, dimension:] = torch.where(
+                        inhibitory_violations,
+                        b_sub[:, dimension:] + self._diode_conductance * v_off,
+                        b_sub[:, dimension:],
+                    )
+
+                a_penalized = a_pre + a_add
+                b_penalized = b_pre + b_sub
+
+                # Recalculate pre_activate with penalized a and b
+                penalized_preamp = -b_penalized / (2. * a_penalized)
                 return self.voltage_amp * penalized_preamp
 
             return preamp_voltage
@@ -243,6 +276,8 @@ class ExponentialExactDoubleDiodeUpdater(QuadraticUpdater):
         self._Is = diode_params["I_s"]
         self._Vt = diode_params["V_t"]
         self._v_off = diode_params["V_off"]
+        b_clip_env = os.environ.get("DRN_B_CLAMP")
+        self._b_clip = float(b_clip_env) if b_clip_env is not None else None
 
     def pre_activate(self):
         b = self._b()
@@ -439,6 +474,8 @@ class ExponentialDoubleDiodeUpdater(QuadraticUpdater):
         b_pre = b
         a64     = a_pre.to(torch.float64)
         b64     = b_pre.to(torch.float64)
+        if self._b_clip is not None:
+            b64 = b64.clamp(min=-self._b_clip, max=self._b_clip)
         I_s64   = torch.as_tensor(I_s,   dtype=torch.float64, device=device)
         vt64    = torch.as_tensor(vt,    dtype=torch.float64, device=device)
         v_off64 = torch.as_tensor(v_off, dtype=torch.float64, device=device)
@@ -475,6 +512,9 @@ class ExponentialDoubleDiodeUpdater(QuadraticUpdater):
 
     # back-substitute (vt64, A are already float64)        
         x = torch.where(b64 > 0, vt64 * W0 - A, -vt64 * W0 - A)
+        if torch.isnan(x).any():
+            print("NaNs detected; continuing")
+
 
 
         # optional Newton polish
@@ -564,6 +604,8 @@ class ExponentialSingleDiodeUpdater(QuadraticUpdater):
             f"device={tensor.device} finite_min={finite_min} "
             f"finite_max={finite_max} finite_mean={finite_mean}"
         )
+        if os.environ.get("DRN_DEBUG_BREAK_ON_ERROR") == "1":
+            breakpoint()
 
     def pre_activate(self):
         b = self._b()                     # [N, M]
@@ -610,9 +652,9 @@ class ExponentialSingleDiodeUpdater(QuadraticUpdater):
     # 2 a v + b + I_s (exp((v - v_off)/vT) - 1) = 0
     def lambert_single_forward(
         self, a, b, I_s, v_off, vT,
-        z_thresh=1e10, polish=False,
-        abs_tol=1e-6, rel_tol=1e-6,
-        exp_clip=80.0, a_min=1e-30, max_inner_iter=8
+        z_thresh=1e10, polish=True,
+        abs_tol=1e-10, rel_tol=1e-10,
+        exp_clip=10000.0, a_min=1e-30, max_inner_iter=32
     ):
         out_dtype = a.dtype
         device = a.device
@@ -681,9 +723,9 @@ class ExponentialSingleDiodeUpdater(QuadraticUpdater):
     # <=> 2 a v + (b + I_s) - I_s exp(-(v + v_off)/vT) = 0
     def lambert_single_reverse(
         self, a, b, I_s, v_off, vT,
-        z_thresh=1e10, polish=False,
+        z_thresh=1e10, polish=True,
         abs_tol=1e-10, rel_tol=1e-10,
-        exp_clip=80.0, a_min=1e-30, max_inner_iter=8
+        exp_clip=10000.0, a_min=1e-30, max_inner_iter=32
     ):
         out_dtype = a.dtype
         device = a.device
@@ -892,8 +934,11 @@ class QuadraticMinimizer(Minimizer):
         if self._non_linearity == 'perfect_diode':
             return 'Quadratic minimizer (perfect diode) -- mode={}, num_iterations={}'.format(self._mode, self._num_iterations)
         if self._non_linearity == 'lpw_diode':
-            return 'Quadratic minimizer (LPW diode, conductance={}) -- mode={}, num_iterations={}'.format(
-                self._quadratic_params["diode_conductance"], self._mode, self._num_iterations)
+            return 'Quadratic minimizer (LPW diode, conductance={}, v_off={}) -- mode={}, num_iterations={}'.format(
+                self._quadratic_params["diode_conductance"],
+                self._quadratic_params.get("v_off", 0.0),
+                self._mode,
+                self._num_iterations)
         if self._non_linearity == 'double_diode_quadratic':
             return 'Quadratic minimizer (double diode quadratic, conductance={}) -- mode={}, num_iterations={}'.format(
                 self._quadratic_params["diode_conductance"], self._mode, self._num_iterations)

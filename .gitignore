@@ -18,12 +18,26 @@ model.pt
 
 # Data / outputs (keep code clean)
 papers/
+cases/
 simulation_results*/
 simulations_results*/
 simulation_results_vr/
 labs/cases/
+labs/debug_files/
 papers/events_files/
 labs/paper_post_processing_outputs/
+labs/my_paper_tex/
+labs/my_paper_tex_local_backup/
+labs/my_paper_tex_overleaf_backup/
+labs/paper_figures_moons/
+labs/spice_data/
+labs/figures_for_paper_digits/error_vs_iter/
+labs/figures_for_paper_digits/error_vs_vol_tol/
+labs/figures_for_paper_digits/float32_vs_float64/
+labs/figures_for_paper_digits/inner_outer_iter/
+labs/figures_for_paper_digits/num_of_iterations_over_dataset/
+labs/figures_for_paper_digits/timings/
+labs/i_v_npz/*_points.npz
 
 # Local configs (only commit if you really want them)
 labs/debug.json

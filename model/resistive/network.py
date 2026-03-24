@@ -13,6 +13,7 @@ from model.function.interaction import (
     DoubleQuadraticNonLinearInteraction,
     DoubleExponentialNonLinearInteraction,
     SingleExponentialNonLinearInteraction,
+    LpwNonLinearInteraction,
 )
 POOLING_INTERACTIONS = {
     "max": MaxPoolResistive,
@@ -214,6 +215,17 @@ class DeepResistiveEnergy(SumSeparableFunction):
 
         if non_linearity == "perfect_diode":
             non_linear_interaction = []
+
+        elif non_linearity == "lpw_diode":
+            non_linear_interaction = [
+                LpwNonLinearInteraction(
+                    layer,
+                    quadratic_diode_param,
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
+                )
+                for layer in non_linear_layers
+            ]
 
         elif non_linearity == "hard_sigmoid":
             non_linear_interaction = [HardSigmoidNonLinearInteraction(layer, hard_sigmoid_param, voltage_amp=self._voltage_amp, current_amp = self._current_amp)

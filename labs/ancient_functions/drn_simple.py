@@ -19,7 +19,7 @@ from tests.network import DeepResistiveEnergy
 from model.function.network import Network
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs
 from model.variable.parameter import DenseWeight
-from model.resistive.minimizer import QuadraticMinimizer
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
 from training.sgd import EquilibriumProp, Backprop, AugmentedFunction
 from training.epoch import Trainer, Evaluator
 from training.monitor import Monitor, Optimizer

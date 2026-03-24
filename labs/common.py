@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -88,6 +89,7 @@ class CustomTrainer(Trainer):
         super().__init__(network, cost_fn, params, dataloader, differentiator, optimizer, energy_minimizer)
         self.record_statistics = tuple(record_statistics) if record_statistics is not None else ()
         self.res_currents = {}
+        self.layer_states = {}
 
 
 
@@ -124,30 +126,39 @@ class CustomTrainer(Trainer):
         self.res_currents = {}
         max_pooling_dict = {}
         winners_dict = {}
+        debug = bool(os.environ.get("DRN_DEBUG_DIODE"))
+        store_states = "store_states" in self.record_statistics
+        if store_states:
+            self.layer_states = {layer.name: [] for layer in self._network.layers()}
+        else:
+            self.layer_states = {}
         for x, y in self._dataloader:
             self._network.set_input(x, reset=False)
             self._energy_minimizer.compute_equilibrium()
             fn = self._network._function
-            for layer in fn.layers():
-                contribs = []
-                for j, inter in enumerate(fn._interactions):
-                    if layer not in inter.layers():
-                        continue
-                    grad = inter.grad_layer_fn(layer)()           # this interaction’s dE/dz for this layer
-                    if isinstance(inter, BasePoolResistive):
-                        analytical_grad = inter.analytical_grad_layer_fn(layer)
-                        diff = analytical_grad() - grad
-                    contribs.append((j, inter.__class__.__name__, grad))
+            if debug:
+                for layer in fn.layers():
+                    contribs = []
+                    for j, inter in enumerate(fn._interactions):
+                        if layer not in inter.layers():
+                            continue
+                        grad = inter.grad_layer_fn(layer)()           # this interaction’s dE/dz for this layer
+                        if isinstance(inter, BasePoolResistive):
+                            analytical_grad = inter.analytical_grad_layer_fn(layer)
+                            diff = analytical_grad() - grad
+                        contribs.append((j, inter.__class__.__name__, grad))
 
-                # Example: print norms per interaction and the total
-                total = sum(g for *_, g in contribs)
-                print(f"[{layer.name}] total ||grad||={torch.norm(total):.4e}")
-                for j, name, g in contribs:
-                    print(f"  {j}:{name} ||grad||={torch.norm(g):.4e}")
+                    # Example: print norms per interaction and the total
+                    total = sum(g for *_, g in contribs)
+                    print(f"[{layer.name}] total ||grad||={torch.norm(total):.4e}")
+                    for j, name, g in contribs:
+                        print(f"  {j}:{name} ||grad||={torch.norm(g):.4e}")
             if "calc_residual_current" in self.record_statistics:
                 fn = self._network._function
                 for layer in fn.layers():
-                    res = torch.max(torch.norm(fn.grad_layer_fn(layer)(), p=float("inf")))                        
+                    grad = fn.grad_layer_fn(layer)()
+                    # Residual current = ||dE/dz||_inf
+                    res = grad.abs().max()
                     self.res_currents.setdefault(layer.name, []).append(float(res.item()))
                     if layer.name == "Layer_1" or layer.name == "Layer_3":
                         x = layer.state
@@ -165,10 +176,33 @@ class CustomTrainer(Trainer):
 
             grads = self._differentiator.compute_gradient()
             for param, grad in zip(self._params, grads):
+                if not torch.isfinite(grad).all():
+                    if store_states and debug:
+                        for i, layer in enumerate(self._network.layers()):
+                            state = layer.state
+                            if torch.isfinite(state).all():
+                                continue
+                            nan_count = torch.isnan(state).sum().item()
+                            inf_count = torch.isinf(state).sum().item()
+                            name = getattr(layer, "name", f"layer_{i}")
+                            print(
+                                f"[state-check] non-finite state in {name}: nan={nan_count} inf={inf_count} "
+                                f"shape={tuple(state.shape)} dtype={state.dtype} device={state.device}"
+                            )
+                    nan_count = torch.isnan(grad).sum().item()
+                    inf_count = torch.isinf(grad).sum().item()
+                    name = getattr(param, "name", param.__class__.__name__)
+                    import pdb
+                    pdb.set_trace()
+                    raise RuntimeError(
+                        f"[grad-check] non-finite gradient for {name}: nan={nan_count} inf={inf_count} "
+                        f"shape={tuple(grad.shape)} dtype={grad.dtype} device={grad.device}"
+                    )
+            for param, grad in zip(self._params, grads):
                 param.state.grad = grad
             self._do_measurements(1)
 
-            self.track_gradient_and_update_sizes(grads, verbose=True)
+            self.track_gradient_and_update_sizes(grads, verbose=debug)
             for param in self._params:
                 param.clamp_()
 
@@ -176,7 +210,7 @@ class CustomTrainer(Trainer):
                 print(f"\r{self}", end="", flush=True)
 
         if verbose:
-            print(f"\r{self}")
+            print(f"\r{self}", end="", flush=True)
 
 
 class CustomEvaluator(Evaluator):
@@ -187,6 +221,37 @@ class CustomEvaluator(Evaluator):
         self.layer_states = {}
         self.res_currents = {}
         self.record_statistics = record_statistics
+
+    def run(self, verbose: bool = False):
+        self._reset()
+        store_states = "store_states" in self.record_statistics
+        if store_states:
+            self.layer_states = {layer.name: [] for layer in self._network.layers()}
+        else:
+            self.layer_states = {}
+
+        for x, y, idx in self._dataloader:
+            self._network.set_input(x, reset=True)
+            self._energy_minimizer.compute_equilibrium()
+
+            if store_states:
+                for i, layer in enumerate(self._network.layers()):
+                    name = getattr(layer, "name", f"layer_{i}")
+                    self.layer_states[name].append(layer.state.detach().cpu().clone())
+
+            self._idx = idx
+            self._cost_fn.set_target(y)
+            self._do_measurements()
+
+            if verbose:
+                sys.stdout.write("\r")
+                sys.stdout.write(str(self))
+                sys.stdout.flush()
+
+        if verbose:
+            sys.stdout.write("\r")
+            sys.stdout.write(str(self))
+            sys.stdout.flush()
 
 
 def _extract_batch_input(batch):
@@ -225,7 +290,7 @@ class LayerStateEvaluator(Evaluator):
                 print(f"\r{self}", end="", flush=True)
 
         if verbose:
-            print(f"\r{self}")
+            print(f"\r{self}", end="", flush=True)
 
 
 class ResidualCurrentEvaluator(Evaluator):
@@ -247,18 +312,18 @@ class ResidualCurrentEvaluator(Evaluator):
             self._network.set_input(x, reset=True)
             self._energy_minimizer.compute_equilibrium()
 
-            # Record per-layer residual current (L2 normalized by sqrt(numel))
+            # Record per-layer residual current (infinity norm)
             for layer in self._network._function.layers():
                 grad_fn = self._network._function.grad_layer_fn(layer)
                 grad = grad_fn()
-                res_current = torch.norm(grad, p=2) / (grad.numel() ** 0.5)
+                res_current = grad.abs().max()
                 self.res_currents[layer.name].append(float(res_current.item()))
 
             if verbose:
                 print(f"\r{self}", end="", flush=True)
 
         if verbose:
-            print(f"\r{self}")
+            print(f"\r{self}", end="", flush=True)
 
 
 def export_pt_to_npz(pt_path, npz_path: Optional[Path] = None, param_names=None):

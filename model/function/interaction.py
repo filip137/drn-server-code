@@ -519,6 +519,53 @@ class HardSigmoidNonLinearInteraction(Function):
         return lambda: torch.zeros_like(self._layer.state)
 
 
+class LpwNonLinearInteraction(Function):
+    """LPW diode interaction: quadratic penalty for sign-violations beyond v_off."""
+
+    def __init__(self, layer, params, voltage_amp, current_amp):
+        self._layer = layer
+        layer_index = int(layer._name[-1])
+        scale = (current_amp / voltage_amp) ** (layer_index - 1)
+        self._g = params.get("diode_conductance") * scale
+        self._v_off = params.get("v_off", 0.0)
+        self._voltage_amp = voltage_amp
+
+        Function.__init__(self, [layer], [])
+
+    def _split(self, v):
+        dim = v.shape[1] // 2
+        return v[:, :dim], v[:, dim:]
+
+    def eval(self):
+        v = self._layer.state
+        exc, inh = self._split(v)
+        exc_excess = torch.clamp(exc - self._v_off, min=0.0)
+        inh_excess = torch.clamp(-inh - self._v_off, min=0.0)
+        energy = 0.5 * self._g * (exc_excess ** 2)
+        energy = energy + 0.5 * self._g * (inh_excess ** 2)
+        return energy.flatten(start_dim=1).sum(dim=1)
+
+    def grad_layer_fn(self, layer):
+        if layer is not self._layer:
+            raise ValueError("Requested gradient for an unmanaged layer.")
+        return self._grad_layer
+
+    def _grad_layer(self):
+        v = self._layer.state
+        exc, inh = self._split(v)
+        exc_excess = torch.clamp(exc - self._v_off, min=0.0)
+        inh_excess = torch.clamp(-inh - self._v_off, min=0.0)
+        grad_exc = self._g * exc_excess
+        grad_inh = -self._g * inh_excess
+        return torch.cat((grad_exc, grad_inh), dim=1)
+
+    def a_coef_fn(self, layer):
+        return lambda: torch.zeros_like(self._layer.state)
+
+    def b_coef_fn(self, layer):
+        return lambda: torch.zeros_like(self._layer.state)
+
+
 class DoubleQuadraticNonLinearInteraction(Function):
     """Interaction with the quadrati dissipative non-linearity
 

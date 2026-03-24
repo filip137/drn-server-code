@@ -18,7 +18,7 @@ for path in (PROJECT_ROOT, LABS_DIR):
 from labs.datasets import MoonsDataset  # noqa: E402
 from model.resistive.network import DeepResistiveEnergy  # noqa: E402
 from model.function.network import Network  # noqa: E402
-from model.resistive.minimizer import QuadraticMinimizer  # noqa: E402
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer  # noqa: E402
 from training.epoch import Trainer  # noqa: E402
 from training.monitor import Optimizer  # noqa: E402
 from training.sgd import AugmentedFunction, EquilibriumProp  # noqa: E402

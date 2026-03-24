@@ -41,22 +41,29 @@ _append_sys_path(MODEL_ROOT)
 
 from model.function.cost import SquaredErrorPairedOutputs
 from model.function.network import Network
-from model.resistive.minimizer import QuadraticMinimizer
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
 from model.function.interaction import (
-    DoubleExponentialNonLinearInteraction, 
+    BiasInteraction,
+    DoubleExponentialNonLinearInteraction,
     DoubleQuadraticNonLinearInteraction,
+    HardSigmoidNonLinearInteraction,
     SumSeparableFunction,
     Function,
-    QFunction
+    QFunction,
 )
-from model.resistive.interaction import DenseResistive
-from model.resistive.layer import NonlinearResistiveLayer
+from model.resistive.interaction import AveragePoolResistive, DenseResistive, MaxPoolResistive
+from model.resistive.layer import NonlinearResistiveLayer, PoolLayer
 from model.variable.layer import InputLayer, LinearLayer
-from model.variable.parameter import DenseWeight, ConvWeight
+from model.variable.parameter import Bias, ConvWeight, DenseWeight, PoolWeight
 from training.sgd import Nudging
 
 import torch
 import torch.nn.functional as F
+
+POOLING_INTERACTIONS = {
+    "avg": AveragePoolResistive,
+    "max": MaxPoolResistive,
+}
 
 
 class TrackingQuadraticMinimizer(QuadraticMinimizer):
@@ -269,12 +276,14 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
         non_linearity,
         exponential_diode_param,
         quadratic_diode_param,
-        voltage_amp,
-        current_amp,
+        hard_sigmoid_param=None,
+        voltage_amp=1.0,
+        current_amp=1.0,
         weight_min=None,
         weight_max=None,
         input_mode="train",
         conv_pipeline=None,
+        pooling_mode="avg",
     ):
         self._input_amplifier = input_gain
         self._voltage_amp = voltage_amp
@@ -286,6 +295,12 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
         self._weight_min = weight_min
         self._weight_max = weight_max
         self._conv_pipeline = list(conv_pipeline or [])
+        has_pooling_stage = any(
+            conf.get("mode", "convolution") == "pooling" for conf in self._conv_pipeline
+        )
+        self._pooling_mode = pooling_mode if has_pooling_stage else None
+        if has_pooling_stage and self._pooling_mode is None:
+            self._pooling_mode = "avg"
 
         num_conv_stages = len(self._conv_pipeline)
         if num_conv_stages and len(layer_shapes) < num_conv_stages + 2:
@@ -302,24 +317,46 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
             input_shape, gain=input_gain, device=None, default_mode=input_mode
         )
 
-        conv_layers = [
-            ConvLayer(shape, device=None, non_linearity=non_linearity) for shape in conv_stage_shapes
-        ]
+        convpool_layers = []
+        convpool_modes = []
+        pool_interaction_cls = None
+        if self._conv_pipeline:
+            if has_pooling_stage and self._pooling_mode not in POOLING_INTERACTIONS:
+                raise ValueError(
+                    f"Unknown pooling_mode '{self._pooling_mode}', "
+                    f"expected one of {tuple(POOLING_INTERACTIONS.keys())}"
+                )
+            if has_pooling_stage:
+                pool_interaction_cls = POOLING_INTERACTIONS[self._pooling_mode]
+            for conf, shape in zip(self._conv_pipeline, conv_stage_shapes):
+                mode = conf.get("mode", "convolution")
+                if mode == "convolution":
+                    stage_layer = ConvLayer(shape, device=None, non_linearity=non_linearity)
+                elif mode == "pooling":
+                    stage_layer = PoolLayer(shape, device=None)
+                else:
+                    raise ValueError(f"Unknown conv_pipeline mode '{mode}'")
+                convpool_layers.append(stage_layer)
+                convpool_modes.append(mode)
+
         hidden_layers = [
             NonlinearResistiveLayer(shape, non_linearity=non_linearity)
             for shape in hidden_shapes
         ]
         output_layer = LinearLayer(output_shape, device=None)
-        layers = [input_layer] + conv_layers + hidden_layers + [output_layer]
+        layers = [input_layer] + convpool_layers + hidden_layers + [output_layer]
+        free_layers = [
+            layer for layer, mode in zip(convpool_layers, convpool_modes) if mode != "pooling"
+        ] + hidden_layers
 
         ### CONV / POOLING PARAMETERS
         conv_specs = []
         if self._conv_pipeline:
-            if len(conv_layers) != len(self._conv_pipeline):
+            if len(convpool_layers) != len(self._conv_pipeline):
                 raise ValueError("conv_pipeline length must match conv stage shapes.")
 
             prev_layer = input_layer
-            for conf, layer in zip(self._conv_pipeline, conv_layers):
+            for conf, layer in zip(self._conv_pipeline, convpool_layers):
                 kernel = tuple(conf["kernel"])
                 stride = conf.get("stride", 1)
                 padding = conf.get("padding", 0)
@@ -345,41 +382,66 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
             )
 
         conv_weight_gains = weight_gains[: len(conv_specs)]
-        conv_weights = []
+        convpool_weights = []
         for spec, gain in zip(conv_specs, conv_weight_gains):
             out_channels = spec["post"]._shape[0]
             in_channels = spec["pre"]._shape[0]
             kh, kw = spec["kernel"]
-            conv_weight = ConvWeight(
-                shape=(out_channels, in_channels, kh, kw),
-                gain=gain,
-                device=None,
-                clamp=True,
-                clamp_min=weight_min,
-                clamp_max=weight_max,
-            )
-            if spec["mode"] == "pooling":
-                torch.nn.init.ones_(conv_weight.state)
-                conv_weight.state.mul_(gain)
-                conv_weight.state.requires_grad = False
-            conv_weights.append(conv_weight)
+            if spec["mode"] == "convolution":
+                stage_weight = ConvWeight(
+                    shape=(out_channels, in_channels, kh, kw),
+                    gain=gain,
+                    device=None,
+                    clamp=True,
+                    clamp_min=weight_min,
+                    clamp_max=weight_max,
+                )
+            elif spec["mode"] == "pooling":
+                stage_weight = PoolWeight(
+                    shape=(out_channels, in_channels, kh, kw),
+                    gain=gain,
+                    device=None,
+                    clamp=True,
+                    clamp_min=weight_min,
+                    clamp_max=weight_max,
+                )
+            else:
+                raise ValueError(f"Unknown conv_pipeline mode '{spec['mode']}'")
+            convpool_weights.append(stage_weight)
 
-        conv_interactions = []
-        for spec, conv_weight in zip(conv_specs, conv_weights):
-            interaction = ConvResistive(
-                spec["pre"],
-                spec["post"],
-                conv_weight,
-                padding=spec["padding"],
-                stride=spec["stride"],
-                dilation=1,
-                voltage_amp=voltage_amp,
-                current_amp=current_amp
-            )
-            interaction._voltage_amp = self._voltage_amp
-            conv_interactions.append(interaction)
+        convpool_interactions = []
+        for spec, stage_weight in zip(conv_specs, convpool_weights):
+            if spec["mode"] == "convolution":
+                interaction = ConvResistive(
+                    spec["pre"],
+                    spec["post"],
+                    stage_weight,
+                    padding=spec["padding"],
+                    stride=spec["stride"],
+                    dilation=1,
+                    voltage_amp=voltage_amp,
+                    current_amp=current_amp,
+                )
+                interaction._voltage_amp = self._voltage_amp
+            elif spec["mode"] == "pooling":
+                if pool_interaction_cls is None:
+                    raise ValueError(
+                        "pooling_mode must be one of {'max', 'avg'} when "
+                        "conv_pipeline contains pooling stages."
+                    )
+                interaction = pool_interaction_cls(
+                    spec["pre"],
+                    spec["post"],
+                    stage_weight,
+                    stride=spec["stride"],
+                    voltage_amp=voltage_amp,
+                    current_amp=current_amp,
+                )
+            else:
+                raise ValueError(f"Unknown conv_pipeline mode '{spec['mode']}'")
+            convpool_interactions.append(interaction)
 
-        dense_source = conv_layers[-1] if conv_layers else input_layer
+        dense_source = convpool_layers[-1] if convpool_layers else input_layer
         downstream_layers = [dense_source] + hidden_layers + [output_layer]
         dense_pairs = list(zip(downstream_layers[:-1], downstream_layers[1:]))
         dense_weight_gains = weight_gains[len(conv_specs):]
@@ -404,6 +466,9 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
             for (layer_pre, layer_post), gain in zip(dense_pairs, dense_weight_gains)
         ]
 
+        biases = [Bias(layer._shape, 0.0, device=None) for layer in free_layers]
+        bias_interactions = [BiasInteraction(layer, bias) for layer, bias in zip(free_layers, biases)]
+
         weight_interactions = [
             DenseResistive(layer_pre, layer_post, weight, self._voltage_amp, self._current_amp)
             for (layer_pre, layer_post), weight in zip(dense_pairs, dense_weights)
@@ -411,12 +476,25 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
 
         if non_linearity == "perfect_diode":
             non_linear_interaction = []
+        elif non_linearity == "hard_sigmoid":
+            non_linear_interaction = [
+                HardSigmoidNonLinearInteraction(
+                    layer,
+                    hard_sigmoid_param or {},
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
+                )
+                for layer in free_layers
+            ]
         elif non_linearity == "double_diode_quadratic":
             non_linear_interaction = [
                 DoubleQuadraticNonLinearInteraction(
-                    layer, quadratic_diode_param, voltage_amp=self._voltage_amp
+                    layer,
+                    quadratic_diode_param,
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
                 )
-                for layer in hidden_layers
+                for layer in free_layers
             ]
         elif non_linearity == "double_diode_exponential":
             non_linear_interaction = [
@@ -426,21 +504,25 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
                     voltage_amp=self._voltage_amp,
                     current_amp=self._current_amp,
                 )
-                for layer in hidden_layers
+                for layer in free_layers
             ]
         else:
             non_linear_interaction = []
             #raise ValueError(f"Unknown non-linearity: {non_linearity}")
 
-        params = conv_weights + dense_weights
+        self._all_params = convpool_weights + dense_weights + biases
+        self._trainable_params = [
+            param for param in self._all_params if not isinstance(param, PoolWeight)
+        ]
 
         interactions = (
-            conv_interactions
+            bias_interactions
             + weight_interactions
             + non_linear_interaction
+            + convpool_interactions
         )
 
-        DetailedSumSeparableFunction.__init__(self, layers, params, interactions)
+        DetailedSumSeparableFunction.__init__(self, layers, self._all_params, interactions)
 
     def set_input_mode(self, mode: str) -> None:
         input_layer = self.layers()[0]
@@ -448,6 +530,9 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
             input_layer.set_mode(mode)
         else:
             raise TypeError("Input layer is not FlexibleResistiveInputLayer")
+
+    def params(self):
+        return self._trainable_params
 
     @staticmethod
     def _calc_spatial(shape, kernel_size, stride, padding, dilation=1):
@@ -521,17 +606,17 @@ class ConvResistive(QFunction):
         if self._layer_pre.name != 'Layer_0':
             layer_pre = layer_pre * self._voltage_amp
         layer_post = self._layer_post.state  # / self._layer_post.gain
-        layer_post = layer_post
+        layer_post_scaled = layer_post * self._current_amp
 
 
         cols = F.unfold(layer_pre, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
-        N, C_out, H_out, W_out = layer_post.shape
+        N, C_out, H_out, W_out = layer_post_scaled.shape
         K = C_in * Kh * Kw
         L = H_out * W_out
 
         patches = cols.transpose(1, 2).unsqueeze(2)
         kernels = weight.view(1, 1, C_out, K)
-        targets = layer_post.view(N, C_out, L).transpose(1, 2).unsqueeze(-1)
+        targets = layer_post_scaled.view(N, C_out, L).transpose(1, 2).unsqueeze(-1)
 
         diff2 = (patches - targets).pow(2)
         weighted = diff2 * kernels
@@ -633,7 +718,8 @@ class ConvResistive(QFunction):
         x = self._layer_pre.state
         if self._layer_pre.name != 'Layer_0':
             x = x * self._voltage_amp
-        y = self._layer_post.state
+        y = self._layer_post.state.clone()
+        y_rescaled = y * self._current_amp
 
         cols = F.unfold(x, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
         N, C_out, H_out, W_out = y.shape
@@ -641,7 +727,7 @@ class ConvResistive(QFunction):
         L = H_out * W_out
 
         patches = cols.transpose(1, 2).unsqueeze(2)
-        targets = y.reshape(N, C_out, L).transpose(1, 2).unsqueeze(-1)
+        targets = y_rescaled.reshape(N, C_out, L).transpose(1, 2).unsqueeze(-1)
         diff2 = (patches - targets).pow(2)
         grad_weight = 0.5 * diff2.sum(dim=1).mean(dim=0)
 

@@ -614,11 +614,19 @@ def write_npz_error_summary(
     return summary_path
 
 
+DEFAULT_REL_PERCENTILES = (50, 60, 70, 80, 90, 95, 99)
+
+
+def _relative_percentile_summary(rel_err, percentiles=DEFAULT_REL_PERCENTILES):
+    return {f"p{int(p)}": float(np.percentile(rel_err, p)) for p in percentiles}
+
+
 def summarize_errors(rel_err, mae, ref_mean_abs):
     return {
         "mean_rel_l1": float(np.mean(rel_err)),
         "median_rel_l1": float(np.median(rel_err)),
         "max_rel_l1": float(np.max(rel_err)),
+        "rel_l1_percentiles": _relative_percentile_summary(rel_err),
         "mean_mae": float(np.mean(mae)),
         "max_mae": float(np.max(mae)),
         "mean_abs_spice": float(np.mean(ref_mean_abs)),

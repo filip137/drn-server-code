@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Optional
 import numpy as np
+from sympy.core.kind import RaiseNotImplementedError
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -23,7 +24,8 @@ for path in (LABS_DIR, PROJECT_ROOT):
 from training.epoch import BetaSize
 from model.resistive.network import DeepResistiveEnergy  # noqa: E402
 from model.function.network import Network  # noqa: E402
-from labs.custom_minimizer import CustomQuadraticMinimizer  # noqa: E402
+from labs.custom_minimizer import CustomQuadraticMinimizer, MinimizerSettings  # noqa: E402
+from model.resistive.minimizer import QuadraticMinimizer  # noqa: E402
 from training.sgd import AugmentedFunction, EquilibriumProp  # noqa: E402
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
 from labs.common import (
@@ -66,6 +68,67 @@ def load_json_config(config_path):
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
     return json.loads(path.read_text())
+
+
+def _truncate_batch(batch, n: int):
+    if batch is None:
+        return None
+    if torch.is_tensor(batch):
+        return batch[:n]
+    if isinstance(batch, (list, tuple)):
+        return type(batch)(_truncate_batch(x, n) for x in batch)
+    return batch
+
+
+def _subset_loader(loader: DataLoader, num_samples: Optional[int]):
+    """Return a loader over the first num_samples items plus the actual sample count."""
+    if num_samples is None:
+        dataset_len = None
+        if hasattr(loader, "dataset"):
+            try:
+                dataset_len = len(loader.dataset)
+            except TypeError:
+                dataset_len = None
+        return loader, dataset_len
+
+    if hasattr(loader, "dataset"):
+        try:
+            dataset_len = len(loader.dataset)
+        except TypeError:
+            dataset_len = None
+        if dataset_len is not None and num_samples >= dataset_len:
+            return loader, dataset_len
+        if dataset_len is not None:
+            subset = torch.utils.data.Subset(loader.dataset, list(range(num_samples)))
+            subset_loader = DataLoader(
+                subset,
+                batch_size=getattr(loader, "batch_size", None),
+                shuffle=False,
+                num_workers=getattr(loader, "num_workers", 0),
+                pin_memory=getattr(loader, "pin_memory", False),
+                drop_last=False,
+                collate_fn=getattr(loader, "collate_fn", None),
+            )
+            return subset_loader, num_samples
+
+    # Fallback for iterable datasets: truncate at batch level.
+    batches = []
+    count = 0
+    for batch in loader:
+        if count >= num_samples:
+            break
+        if torch.is_tensor(batch):
+            batch_size = batch.size(0)
+        elif isinstance(batch, (list, tuple)) and batch:
+            batch_size = batch[0].size(0) if torch.is_tensor(batch[0]) else len(batch[0])
+        else:
+            batch_size = 0
+        take = min(num_samples - count, batch_size)
+        batches.append(_truncate_batch(batch, take))
+        count += take
+        if count >= num_samples:
+            break
+    return batches, count
 
 
 def _load_project_datasets_module():
@@ -236,8 +299,75 @@ def prepare_mnist(
     )
 
 
-def _build_minimizer(parts: MnistParts, num_iterations: int, *, fn=None):
+def _resolve_double_diode_runtime(double_diode_runtime: str) -> tuple[str, bool]:
+    if double_diode_runtime == "float64_fixed":
+        return "float64_timed", False
+    if double_diode_runtime == "float64_experimental":
+        return "float64_experimental", False
+    if double_diode_runtime == "float32_adaptive":
+        return "float32", True
+    if double_diode_runtime == "float32_overrelaxed":
+        return "overrelaxed", True
+    raise ValueError(
+        "double_diode_runtime must be one of: float32_adaptive, float64_fixed, "
+        "float64_experimental, float32_overrelaxed."
+    )
+
+
+def _build_minimizer(
+    parts: MnistParts,
+    num_iterations: int,
+    *,
+    fn=None,
+    overrides: Optional[dict] = None,
+    double_diode_runtime: Optional[str] = None,
+):
     energy_fn = parts.energy_fn if fn is None else fn
+    minimizer_cfg = dict(parts.training_cfg.get("energy_minimizer", {}))
+    if double_diode_runtime:
+        dd_updater, adaptive_equilibrium = _resolve_double_diode_runtime(double_diode_runtime)
+        minimizer_cfg["double_diode_updater"] = dd_updater
+        minimizer_cfg["adaptive_equilibrium"] = adaptive_equilibrium
+    if overrides:
+        minimizer_cfg.update(overrides)
+    adaptive_equilibrium = minimizer_cfg.get("adaptive_equilibrium", True)
+    rel_tol = minimizer_cfg.get("rel_tol", 1e-5)
+    vn_tol = minimizer_cfg.get("vn_tol", 1e-6)
+    use_polish = minimizer_cfg.get("use_polish", True)
+    max_newton_iters = minimizer_cfg.get("max_newton_iters", 32)
+    z_thresh = minimizer_cfg.get("z_thresh", 1e10)
+    dynamic_polish = minimizer_cfg.get("dynamic_polish", True)
+    overrelaxation_reject_steps = minimizer_cfg.get("overrelaxation_reject_steps", False)
+    overrelaxation_reject_max_tries = minimizer_cfg.get("overrelaxation_reject_max_tries", 3)
+    overrelaxation_reject_shrink = minimizer_cfg.get("overrelaxation_reject_shrink", 0.5)
+    overrelaxation_reject_eps = minimizer_cfg.get("overrelaxation_reject_eps", 0.0)
+    double_diode_updater = minimizer_cfg.get("double_diode_updater", "CustomExponentialDoubleDiodeUpdater")
+    overrelaxation_factor = minimizer_cfg.get("overrelaxation_factor", 1.1)
+    single_diode_updater = minimizer_cfg.get("single_diode_updater", "custom")
+    iv_data = minimizer_cfg.get("iv_data")
+    iv_data_path = minimizer_cfg.get("iv_data_path")
+    exp_clip_default = 100000.0
+    if parts.model_cfg.get("non_linearity") == "double_diode_exponential":
+        if double_diode_updater in ("float32", "overrelaxed"):
+            exp_clip_default = 80.0
+        elif double_diode_updater in ("float64_timed", "TimedExponentialDOubleDiodeUpdater"):
+            exp_clip_default = 10000.0
+        else:
+            exp_clip_default = 100000.0
+    exp_clip = minimizer_cfg.get("exp_clip", exp_clip_default)
+    minimizer_settings = MinimizerSettings(
+        rel_tol=rel_tol,
+        vn_tol=vn_tol,
+        use_polish=use_polish,
+        max_newton_iters=max_newton_iters,
+        z_thresh=z_thresh,
+        exp_clip=exp_clip,
+        dynamic_polish=dynamic_polish,
+        overrelaxation_reject_steps=overrelaxation_reject_steps,
+        overrelaxation_reject_max_tries=overrelaxation_reject_max_tries,
+        overrelaxation_reject_shrink=overrelaxation_reject_shrink,
+        overrelaxation_reject_eps=overrelaxation_reject_eps,
+    )
     return CustomQuadraticMinimizer(
         fn=energy_fn,
         free_layers=parts.free_layers,
@@ -249,7 +379,214 @@ def _build_minimizer(parts: MnistParts, num_iterations: int, *, fn=None):
         hard_sigmoid_param=parts.model_cfg.get("hard_sigmoid_param", {}),
         voltage_amp=energy_fn._voltage_amp,
         current_amp=energy_fn._current_amp,
+        iv_data=iv_data,
+        iv_data_path=iv_data_path,
+        double_diode_updater=double_diode_updater,
+        adaptive_equilibrium=adaptive_equilibrium,
+        overrelaxation_factor=overrelaxation_factor,
+        single_diode_updater=single_diode_updater,
+        minimizer_settings=minimizer_settings,
     )
+
+
+def _build_classic_minimizer(parts: MnistParts, num_iterations: int, *, fn=None):
+    energy_fn = parts.energy_fn if fn is None else fn
+    return QuadraticMinimizer(
+        fn=energy_fn,
+        free_layers=parts.free_layers,
+        num_iterations=num_iterations,
+        mode=parts.minimizer_mode,
+        non_linearity=parts.model_cfg["non_linearity"],
+        quadratic_diode_param=parts.model_cfg.get("quadratic_diode_param", {}),
+        exponential_diode_param=parts.model_cfg.get("exponential_diode_param", {}),
+        hard_sigmoid_param=parts.model_cfg.get("hard_sigmoid_param", {}),
+        voltage_amp=energy_fn._voltage_amp,
+        current_amp=energy_fn._current_amp,
+    )
+
+def validate_mnist(
+    parts: MnistParts,
+    num_iterations: int,
+    *,
+    num_samples: int = 1000,
+    weights_path: Optional[str] = None,
+    output_dir: Optional[Path] = None,
+    output_name: str = "validation_layer_states.npz",
+    verbose: bool = False,
+    show_running_accuracy: bool = True,
+    build_minimizer_fn=None,
+):
+    """
+    Evaluate the first N samples from the MNIST test loader and save layer states.
+    """
+    energy_fn = parts.energy_fn
+    network = parts.network
+    cost_fn = parts.cost_fn
+    load_path = weights_path or parts.weights_path
+    if load_path:
+        energy_fn.load(load_path)
+
+    test_loader = parts.test_loader
+    if isinstance(test_loader, DataLoader) and getattr(test_loader, "num_workers", 0):
+        test_loader = DataLoader(
+            test_loader.dataset,
+            batch_size=getattr(test_loader, "batch_size", None),
+            shuffle=False,
+            num_workers=0,
+            pin_memory=getattr(test_loader, "pin_memory", False),
+            drop_last=False,
+            collate_fn=getattr(test_loader, "collate_fn", None),
+        )
+    test_loader, actual_count = _subset_loader(test_loader, num_samples)
+    if build_minimizer_fn is None:
+        build_minimizer_fn = _build_minimizer
+    minimizer = build_minimizer_fn(parts, int(num_iterations))
+
+    layer_states = {}
+    correct = 0
+    total = 0
+    for batch in test_loader:
+        if isinstance(batch, (list, tuple)):
+            x = batch[0] if len(batch) > 0 else None
+            y = batch[1] if len(batch) > 1 else None
+        else:
+            x = batch
+            y = None
+        if x is None:
+            continue
+
+        network.set_input(x, reset=True)
+        minimizer.compute_equilibrium()
+
+        if y is not None:
+            cost_fn.set_target(y)
+            errors = cost_fn.error_fn()
+            correct += int((~errors).sum().item())
+            total += int(errors.numel())
+            if show_running_accuracy and total > 0:
+                acc = correct / total
+                print(
+                    f"\r[validate_mnist] {total}/{actual_count} accuracy={acc:.4f}",
+                    end="",
+                    flush=True,
+                )
+
+        for i, layer in enumerate(network.layers()):
+            name = getattr(layer, "name", f"layer_{i}")
+            layer_states.setdefault(name, []).append(layer.state.detach().cpu().clone())
+
+        if verbose:
+            print(f"\r[validate_mnist] processed {total}/{actual_count}", end="", flush=True)
+
+    if show_running_accuracy and total > 0:
+        print()
+    elif verbose:
+        print()
+
+    arrays = {}
+    for name, values in layer_states.items():
+        if values:
+            arrays[name] = torch.cat(values, dim=0).detach().cpu().numpy()
+
+    output_root = Path(output_dir) if output_dir is not None else Path.cwd()
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_path = output_root / output_name
+    np.savez(output_path, **arrays)
+
+    return {
+        "num_samples": actual_count,
+        "output_path": str(output_path),
+        "layer_states": list(arrays.keys()),
+        "accuracy": (correct / total) if total > 0 else None,
+    }
+
+
+def validate_mnist_float64_fixed(
+    parts: MnistParts,
+    num_iterations: int,
+    *,
+    num_samples: int = 1000,
+    weights_path: Optional[str] = None,
+    output_dir: Optional[Path] = None,
+    output_name: str = "validation_layer_states_float64_fixed.npz",
+    verbose: bool = False,
+    show_running_accuracy: bool = True,
+):
+    """Validate MNIST with float64_fixed runtime and adaptive equilibrium disabled."""
+    def _build_fixed(parts_in: MnistParts, num_iter: int):
+        return _build_minimizer(
+            parts_in,
+            num_iter,
+            double_diode_runtime="float64_fixed",
+            overrides={"adaptive_equilibrium": False},
+        )
+
+    return validate_mnist(
+        parts,
+        num_iterations,
+        num_samples=num_samples,
+        weights_path=weights_path,
+        output_dir=output_dir,
+        output_name=output_name,
+        verbose=verbose,
+        show_running_accuracy=show_running_accuracy,
+        build_minimizer_fn=_build_fixed,
+    )
+
+
+def validate_mnist_classic(
+    parts: MnistParts,
+    num_iterations: int,
+    *,
+    num_samples: int = 1000,
+    weights_path: Optional[str] = None,
+    output_dir: Optional[Path] = None,
+    output_name: str = "validation_layer_states_classic.npz",
+    verbose: bool = False,
+    show_running_accuracy: bool = True,
+):
+    """Validate MNIST with the classic QuadraticMinimizer."""
+    return validate_mnist(
+        parts,
+        num_iterations,
+        num_samples=num_samples,
+        weights_path=weights_path,
+        output_dir=output_dir,
+        output_name=output_name,
+        verbose=verbose,
+        show_running_accuracy=show_running_accuracy,
+        build_minimizer_fn=_build_classic_minimizer,
+    )
+
+
+def validate_spice_results(spice_npz_file, test_dataloader):
+    spice_npz = Path(spice_npz_file)
+    with np.load(spice_npz) as data:
+
+        if 'Layer_2' in data.files:
+            results = data['Layer_2']
+        else:
+            raise ValueError("Layer_2 does not exist")
+    preds = []
+    for result in results:
+        even_values = result[0::2]
+        odd_values = result[1::2]
+        prediction = np.argmax(even_values-odd_values)
+        preds.append(prediction)
+
+    preds = np.array(preds)
+    labels = []
+    for batch in test_dataloader:
+        if len(batch) == 3:
+            _, y, _ = batch
+        else:
+            _, y = batch
+
+        labels.append(y.numpy())
+    labels = np.concatenate(labels)
+
+    accuracy = (preds == labels[:len(preds)]).mean()
+    print(accuracy)
 
 
 def _compute_beta_summary(
@@ -594,6 +931,38 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Optional JSON path to write residual currents (if omitted, prints a short summary).",
     )
 
+    validate_fixed = sub.add_parser(
+        "validate-fixed64",
+        help="Run MNIST validation with float64_fixed runtime (adaptive equilibrium disabled).",
+    )
+    validate_fixed.add_argument(
+        "--num-samples",
+        type=int,
+        default=1000,
+        help="Number of MNIST test samples to evaluate.",
+    )
+    validate_fixed.add_argument(
+        "--output-name",
+        default="validation_layer_states_float64_fixed.npz",
+        help="Filename for saved layer states.",
+    )
+
+    validate_classic = sub.add_parser(
+        "validate-classic",
+        help="Run MNIST validation with the classic QuadraticMinimizer.",
+    )
+    validate_classic.add_argument(
+        "--num-samples",
+        type=int,
+        default=1000,
+        help="Number of MNIST test samples to evaluate.",
+    )
+    validate_classic.add_argument(
+        "--output-name",
+        default="validation_layer_states_classic.npz",
+        help="Filename for saved layer states.",
+    )
+
     sub.add_parser(
         "pca-sweep",
         help="Run inference over a PCA grid and save layer states/residual currents.",
@@ -680,6 +1049,56 @@ def main(argv: Optional[list[str]] = None) -> int:
         train_layers = len(res_currents.get("train", {}))
         test_layers = len(res_currents.get("test", {}))
         print(f"Wrote residual currents to {out_path} (train layers={train_layers}, test layers={test_layers}).")
+        return 0
+
+    if args.cmd == "validate-fixed64":
+        parts = prepare_mnist(
+            config_path=args.config,
+            model_key=args.model_key,
+            voltage_amp=args.voltage_amp,
+            current_amp=args.current_amp,
+            weights_path=args.weights,
+            seed=args.seed,
+            verbose=args.verbose,
+        )
+        result = validate_mnist_float64_fixed(
+            parts,
+            num_iterations=args.num_iterations,
+            num_samples=args.num_samples,
+            weights_path=args.weights,
+            output_dir=run_dir,
+            output_name=args.output_name,
+            verbose=args.verbose,
+            show_running_accuracy=True,
+        )
+        print(f"[validate-fixed64] wrote {result['output_path']}")
+        if result.get("accuracy") is not None:
+            print(f"[validate-fixed64] accuracy={result['accuracy']:.4f}")
+        return 0
+
+    if args.cmd == "validate-classic":
+        parts = prepare_mnist(
+            config_path=args.config,
+            model_key=args.model_key,
+            voltage_amp=args.voltage_amp,
+            current_amp=args.current_amp,
+            weights_path=args.weights,
+            seed=args.seed,
+            verbose=args.verbose,
+        )
+        result = validate_mnist_classic(
+            parts,
+            num_iterations=args.num_iterations,
+            num_samples=args.num_samples,
+            weights_path=args.weights,
+            output_dir=run_dir,
+            output_name=args.output_name,
+            verbose=args.verbose,
+            show_running_accuracy=True,
+        )
+        print(f"[validate-classic] wrote {result['output_path']}")
+        if result.get("accuracy") is not None:
+            print(f"[validate-classic] accuracy={result['accuracy']:.4f}")
         return 0
 
     if args.cmd == "pca-sweep":

@@ -1,6 +1,8 @@
 import argparse
+from datetime import datetime
 import json
 import os
+import socket
 import sys
 from importlib import import_module
 import importlib.util
@@ -8,10 +10,16 @@ from pathlib import Path
 
 import torch
 
+try:  # Optional TensorBoard support
+    from torch.utils.tensorboard import SummaryWriter
+except Exception:
+    SummaryWriter = None
+
 
 # Ensure project modules are importable
 LABS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = LABS_DIR.parent / "energy-based-learning"
+DEFAULT_IMAGE_RUNS_BASE = LABS_DIR.parent / "simulation_results" / "experiments_labs"
 
 for path in (LABS_DIR, PROJECT_ROOT):
     if str(path) not in sys.path:
@@ -25,7 +33,7 @@ from custom_classes import (
     FlexibleDeepResistiveEnergy,
     TrackingQuadraticMinimizer,
 )  # noqa: E402
-from model.resistive.minimizer import QuadraticMinimizer  # noqa: E402
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer, MinimizerSettings  # noqa: E402
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
 from model.function.network import Network  # noqa: E402
 from model.variable.parameter import ConvWeight  # noqa: E402
@@ -39,6 +47,56 @@ def _default_quadratic_params():
 
 def _default_exponential_params():
     return {"I_s": 1e-6, "V_t": 0.025, "V_off": 0.0}
+
+
+def _default_minimizer_settings(non_linearity, double_diode_updater):
+    exp_clip = 100000.0
+    if non_linearity == "double_diode_exponential":
+        if double_diode_updater in ("float32", "overrelaxed"):
+            exp_clip = 80.0
+        elif double_diode_updater in ("float64_timed", "TimedExponentialDOubleDiodeUpdater"):
+            exp_clip = 10000.0
+    return MinimizerSettings(
+        rel_tol=1e-5,
+        vn_tol=1e-6,
+        use_polish=True,
+        max_newton_iters=32,
+        z_thresh=1e10,
+        exp_clip=exp_clip,
+        dynamic_polish=True,
+        overrelaxation_reject_steps=False,
+        overrelaxation_reject_max_tries=3,
+        overrelaxation_reject_shrink=0.5,
+        overrelaxation_reject_eps=0.0,
+    )
+
+
+def _build_tracking_minimizer(fn, free_layers, model_cfg, mode, *, num_iterations, voltage_amp, current_amp):
+    minimizer_cfg = model_cfg.get("minimizer", {})
+    double_diode_updater = minimizer_cfg.get(
+        "double_diode_updater", "CustomExponentialDoubleDiodeUpdater"
+    )
+    return TrackingQuadraticMinimizer(
+        fn=fn,
+        free_layers=free_layers,
+        num_iterations=num_iterations,
+        mode=mode,
+        non_linearity=model_cfg["non_linearity"],
+        quadratic_diode_param=model_cfg.get("quadratic_diode_param", {}),
+        exponential_diode_param=model_cfg.get("exponential_diode_param", {}),
+        hard_sigmoid_param=model_cfg.get("hard_sigmoid_param", {}),
+        voltage_amp=voltage_amp,
+        current_amp=current_amp,
+        iv_data=minimizer_cfg.get("iv_data"),
+        iv_data_path=minimizer_cfg.get("iv_data_path"),
+        double_diode_updater=double_diode_updater,
+        adaptive_equilibrium=minimizer_cfg.get("adaptive_equilibrium", True),
+        overrelaxation_factor=minimizer_cfg.get("overrelaxation_factor", 1.1),
+        single_diode_updater=minimizer_cfg.get("single_diode_updater", "custom"),
+        minimizer_settings=_default_minimizer_settings(
+            model_cfg["non_linearity"], double_diode_updater
+        ),
+    )
 
 
 def _single_conv_gradient_check(device):
@@ -90,6 +148,14 @@ def _single_conv_gradient_check(device):
         exponential_diode_param=_default_exponential_params(),
         voltage_amp=1.0,
         current_amp=1.0,
+        hard_sigmoid_param={},
+        iv_data=None,
+        iv_data_path=None,
+        double_diode_updater="CustomExponentialDoubleDiodeUpdater",
+        adaptive_equilibrium=True,
+        overrelaxation_factor=1.1,
+        single_diode_updater="custom",
+        minimizer_settings=_default_minimizer_settings("linear", "CustomExponentialDoubleDiodeUpdater"),
     )
 
     grad_fn = energy_fn.grad_layer_fn(output_layer)
@@ -106,6 +172,47 @@ def load_config(config_path):
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
     return json.loads(config_path.read_text())
+
+
+def _normalize_dataset_key(dataset_key):
+    if dataset_key is None:
+        return "mnist"
+    normalized = str(dataset_key).strip().lower().replace("-", "_")
+    if normalized == "fashion_mnist":
+        return "fmnist"
+    return normalized
+
+
+def _resolve_dataset_config(config, dataset_key):
+    normalized = _normalize_dataset_key(dataset_key)
+    datasets_cfg = config.get("datasets", {})
+
+    if normalized in datasets_cfg:
+        return normalized, json.loads(json.dumps(datasets_cfg[normalized]))
+
+    if normalized == "fmnist":
+        base_cfg = datasets_cfg.get("mnist")
+        if base_cfg is None:
+            raise KeyError(
+                "Config does not define datasets['mnist']; cannot derive Fashion-MNIST dataset settings."
+            )
+
+        dataset_cfg = json.loads(json.dumps(base_cfg))
+        dataset_cfg["factory"] = "labs.datasets.FashionMnistDataset"
+
+        params = dict(dataset_cfg.get("params", {}))
+        params["name"] = "fmnist"
+        root = params.get("root")
+        if root is None or Path(str(root)).name == "mnist":
+            params["root"] = "~/datasets/fashion_mnist"
+        params.setdefault("download", True)
+        params.setdefault("normalize", True)
+        params.setdefault("normalize_mean", 0.286)
+        params.setdefault("normalize_std", 0.353)
+        dataset_cfg["params"] = params
+        return normalized, dataset_cfg
+
+    raise KeyError(f"Unsupported dataset key {dataset_key!r}.")
 
 
 def _resolve_callable(import_path):
@@ -131,6 +238,19 @@ def _resolve_callable(import_path):
     return getattr(module, attr)
 
 
+def _resolve_run_dir(config_path: Path, output_dir: str | None) -> tuple[Path, str, str]:
+    host = socket.gethostname().split(".")[0]
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    if output_dir:
+        run_dir = Path(output_dir).expanduser().resolve()
+    elif config_path.parent.name.startswith("trial_"):
+        run_dir = config_path.parent
+    else:
+        run_dir = DEFAULT_IMAGE_RUNS_BASE / f"{config_path.stem}_{host}_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir, host, timestamp
+
+
 def _train_image_task(
     config_path,
     epochs,
@@ -141,16 +261,29 @@ def _train_image_task(
     dataset_key,
     model_key,
     image_shape,
+    device=None,
     sanity_check=False,
     epoch_callback=None,
+    output_dir=None,
 ):
+    config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
+    dataset_key = _normalize_dataset_key(dataset_key)
+    run_dir, host, timestamp = _resolve_run_dir(config_path, output_dir)
+    config_snapshot_path = run_dir / "config.used.json"
+    config_snapshot_path.write_text(json.dumps(config, indent=2))
 
     project_root = PROJECT_ROOT
     if str(project_root) not in sys.path:
         sys.path.append(str(project_root))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    requested_device = device if device is not None else config.get("device")
+    if requested_device is not None:
+        device = torch.device(requested_device)
+        if device.type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(f"Requested CUDA device {requested_device!r}, but CUDA is not available.")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if sanity_check:
         grad_before, grad_after = _single_conv_gradient_check(device)
@@ -162,8 +295,24 @@ def _train_image_task(
                 "Single conv sanity check failed: gradients did not decrease sufficiently."
             )
 
-    model_cfg = {**config["model_base"], **config["model_overrides"][model_key]}
-    dataset_cfg = config["datasets"][dataset_key]
+    model_overrides = config["model_overrides"]
+    resolved_model_key = model_key
+    if resolved_model_key not in model_overrides:
+        lab_model_key = config.get("lab", {}).get("model_key")
+        if lab_model_key in model_overrides:
+            resolved_model_key = lab_model_key
+        elif dataset_key in model_overrides:
+            resolved_model_key = dataset_key
+        elif len(model_overrides) == 1:
+            resolved_model_key = next(iter(model_overrides))
+        else:
+            available = ", ".join(sorted(model_overrides))
+            raise KeyError(
+                f"Unknown model_key {model_key!r}; available model_overrides keys: {available}"
+            )
+
+    model_cfg = {**config["model_base"], **model_overrides[resolved_model_key]}
+    dataset_key, dataset_cfg = _resolve_dataset_config(config, dataset_key)
     beta_value = beta
     if beta_value is None:
         beta_value = config.get("beta")
@@ -201,7 +350,7 @@ def _train_image_task(
     num_classes = 10
 
     print(
-        f"Training model '{model_key}' | layer_shapes={layer_shapes} "
+        f"Training model '{model_key}' on dataset '{dataset_key}' | layer_shapes={layer_shapes} "
         f"| num_classes={num_classes} | non_linearity={model_cfg['non_linearity']} "
         f"| beta={beta_value}"
     )
@@ -209,11 +358,13 @@ def _train_image_task(
     energy_fn = FlexibleDeepResistiveEnergy(
         layer_shapes=layer_shapes,
         conv_pipeline=conv_pipeline,
+        pooling_mode=model_cfg.get("pooling_mode"),
         weight_gains=model_cfg["weight_gains"],
         input_gain=model_cfg["input_gain"],
         non_linearity=model_cfg["non_linearity"],
         exponential_diode_param=model_cfg["exponential_diode_param"],
         quadratic_diode_param=model_cfg["quadratic_diode_param"],
+        hard_sigmoid_param=model_cfg.get("hard_sigmoid_param", {}),
         voltage_amp=model_cfg["voltage_amp"],
         current_amp=model_cfg["current_amp"],
         weight_min=model_cfg["weight_min"],
@@ -242,27 +393,26 @@ def _train_image_task(
     
     augmented_fn = AugmentedFunction(energy_fn, cost_fn)
 
-    minimizer_training = TrackingQuadraticMinimizer(
+    training_iterations = int(
+        model_cfg.get("num_iterations_training", model_cfg["num_iterations_inference"])
+    )
+    inference_iterations = int(model_cfg["num_iterations_inference"])
+    minimizer_training = _build_tracking_minimizer(
         augmented_fn,
         free_layers,
-        num_iterations=model_cfg["num_iterations_inference"],
-        mode=config["energy_minimizer"]["mode"],
-        non_linearity=model_cfg["non_linearity"],
-        exponential_diode_param=model_cfg["exponential_diode_param"],
-        quadratic_diode_param=model_cfg["quadratic_diode_param"],
+        model_cfg,
+        config["energy_minimizer"]["mode"],
+        num_iterations=training_iterations,
         voltage_amp=energy_fn._voltage_amp,
         current_amp=energy_fn._current_amp,
     )
 
-
-    minimizer_inference= TrackingQuadraticMinimizer(
+    minimizer_inference = _build_tracking_minimizer(
         energy_fn,
         free_layers,
-        num_iterations=model_cfg["num_iterations_inference"],
-        mode=config["energy_minimizer"]["mode"],
-        non_linearity=model_cfg["non_linearity"],
-        exponential_diode_param=model_cfg["exponential_diode_param"],
-        quadratic_diode_param=model_cfg["quadratic_diode_param"],
+        model_cfg,
+        config["energy_minimizer"]["mode"],
+        num_iterations=inference_iterations,
         voltage_amp=energy_fn._voltage_amp,
         current_amp=energy_fn._current_amp,
     )
@@ -310,6 +460,11 @@ def _train_image_task(
         "test_loss": [],
         "test_accuracy": [],
     }
+    writer = SummaryWriter(str(run_dir)) if SummaryWriter is not None else None
+    if writer is None:
+        print("[mnist_train] TensorBoard unavailable; proceeding without event files.")
+    else:
+        print(f"[mnist_train] Writing TensorBoard events to {run_dir}")
 
     stop_training = False
     for epoch in range(epochs):
@@ -398,6 +553,16 @@ def _train_image_task(
 
         print()
 
+        if writer is not None:
+            writer.add_scalar("train/loss", epoch_train_loss, epoch + 1)
+            writer.add_scalar("train/accuracy", epoch_train_acc, epoch + 1)
+            if epoch_test_loss is not None:
+                writer.add_scalar("test/loss", epoch_test_loss, epoch + 1)
+            if epoch_test_acc is not None:
+                writer.add_scalar("test/accuracy", epoch_test_acc, epoch + 1)
+                writer.add_scalar("test/error", 1.0 - epoch_test_acc, epoch + 1)
+            writer.flush()
+
         if epoch_callback:
             epoch_info = {
                 "epoch": epoch + 1,
@@ -430,7 +595,36 @@ def _train_image_task(
     else:
         summary["test_error"] = 1.0 - summary["final_train_accuracy"]
 
+    if writer is not None:
+        writer.close()
+
+    event_files = sorted(str(path) for path in run_dir.glob("events.out.tfevents.*"))
+    metadata = {
+        "config_path": str(config_path),
+        "config_used_path": str(config_snapshot_path),
+        "run_dir": str(run_dir),
+        "event_files": event_files,
+        "epochs": int(epochs),
+        "lr": list(lr) if isinstance(lr, (list, tuple)) else float(lr),
+        "beta": beta_value,
+        "dataset_key": dataset_key,
+        "model_key": model_key,
+        "dataset_factory": dataset_cfg["factory"],
+        "device": str(device),
+        "host": host,
+        "timestamp": timestamp,
+        "summary": summary,
+    }
+    metadata_path = run_dir / "run_metadata.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2))
+
+    summary["run_dir"] = str(run_dir)
+    summary["event_files"] = event_files
+    summary["config_used_path"] = str(config_snapshot_path)
+    summary["run_metadata_path"] = str(metadata_path)
     history["summary"] = summary
+    history["run_dir"] = str(run_dir)
+    history["event_files"] = event_files
     return history
 
 
@@ -444,7 +638,12 @@ def train_mnist_conv(
     beta,
     log_interval,
     max_batches,
+    device=None,
+    sanity_check=False,
     epoch_callback=None,
+    dataset_key="mnist",
+    output_dir=None,
+    model_key="mnist",
 ):
     return _train_image_task(
         config_path=config_path,
@@ -453,10 +652,13 @@ def train_mnist_conv(
         beta=beta,
         log_interval=log_interval,
         max_batches=max_batches,
-        dataset_key="mnist",
-        model_key="mnist",
+        dataset_key=dataset_key,
+        model_key=model_key,
         image_shape=(28, 28),
+        device=device,
+        sanity_check=sanity_check,
         epoch_callback=epoch_callback,
+        output_dir=output_dir,
     )
 
 
@@ -467,7 +669,10 @@ def train_tiny_grid(
     beta,
     log_interval,
     max_batches,
+    device=None,
+    sanity_check=False,
     epoch_callback=None,
+    output_dir=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -479,7 +684,10 @@ def train_tiny_grid(
         dataset_key="tiny3x3",
         model_key="tiny3x3",
         image_shape=(3, 3),
+        device=device,
+        sanity_check=sanity_check,
         epoch_callback=epoch_callback,
+        output_dir=output_dir,
     )
 
 
@@ -512,6 +720,11 @@ def main():
         help="Optional cap on number of batches per epoch. Overrides config if provided.",
     )
     parser.add_argument(
+        "--device",
+        type=str,
+        help="Torch device string to use, e.g. 'cpu', 'cuda', or 'cuda:0'. Overrides config if provided.",
+    )
+    parser.add_argument(
         "--sanity-check",
         action="store_true",
         help="Run internal single-conv gradient sanity check before training.",
@@ -521,6 +734,18 @@ def main():
         type=str,
         default=None,
         help="Optional path to write a JSON summary (e.g., for Optuna sweeps).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Optional directory for run artifacts such as config.used.json, run_metadata.json, and TensorBoard events.",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Dataset override for MNIST-style image runs. Use 'mnist' or 'fmnist'.",
     )
 
     args = parser.parse_args()
@@ -559,20 +784,42 @@ def main():
         max_batches = int(max_batches)
 
     model_key = lab_cfg.get("model_key", "mnist")
+    default_dataset_key = lab_cfg.get("dataset_key")
+    if default_dataset_key is None:
+        default_dataset_key = "tiny3x3" if model_key == "tiny3x3" else "mnist"
+    dataset_key = _normalize_dataset_key(
+        args.dataset if args.dataset is not None else default_dataset_key
+    )
 
     if model_key == "tiny3x3":
         train_fn = train_tiny_grid
+        if dataset_key != "tiny3x3":
+            raise ValueError(
+                f"Model {model_key!r} only supports dataset 'tiny3x3', got {dataset_key!r}."
+            )
     else:
         train_fn = train_mnist_conv
+        if dataset_key not in ("mnist", "fmnist"):
+            raise ValueError(
+                f"Unsupported dataset {dataset_key!r}. Use 'mnist' or 'fmnist'."
+            )
 
-    history = train_fn(
+    train_kwargs = dict(
         config_path=args.config,
         epochs=epochs,
         lr=learning_rate_cfg,
         beta=beta,
         log_interval=log_interval,
         max_batches=max_batches,
+        device=args.device,
+        sanity_check=args.sanity_check,
+        output_dir=args.output_dir,
     )
+    if model_key != "tiny3x3":
+        train_kwargs["dataset_key"] = dataset_key
+        train_kwargs["model_key"] = model_key
+
+    history = train_fn(**train_kwargs)
     print("Training history:", history)
 
     summary = history.get("summary", {})
@@ -585,10 +832,13 @@ def main():
             "learning_rate": learning_rate_cfg,
             "beta": beta,
             "model_key": lab_cfg.get("model_key", "mnist"),
+            "dataset_key": dataset_key,
             "test_error": summary.get("test_error"),
             "final_train_accuracy": summary.get("final_train_accuracy"),
             "final_test_accuracy": summary.get("final_test_accuracy"),
             "best_test_accuracy": summary.get("best_test_accuracy"),
+            "run_dir": summary.get("run_dir"),
+            "event_files": summary.get("event_files"),
         }
         result_path = Path(args.result_json)
         result_path.parent.mkdir(parents=True, exist_ok=True)

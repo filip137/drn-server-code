@@ -1,7 +1,7 @@
 import torch
 
 from custom_classes import ConvLayer, ConvResistive, DetailedSumSeparableFunction
-from model.resistive.minimizer import QuadraticMinimizer
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
 from model.variable.parameter import ConvWeight
 
 

@@ -8,9 +8,10 @@ import matplotlib.pyplot as plt
 
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'labs'))
 
 from model.resistive.network import DeepResistiveEnergy
-from model.resistive.minimizer import QuadraticMinimizer
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
 from training.sgd import EquilibriumProp, AugmentedFunction
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs
 from training.monitor import Optimizer
