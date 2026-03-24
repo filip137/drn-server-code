@@ -28,9 +28,11 @@ def parse_rel_tol(item: dict) -> float:
 
 
 def display_label(hidden_key: str) -> str:
-    if hidden_key == "hidden_3_amp_4":
-        return "hidden_3/amp_4"
-    return hidden_key
+    if hidden_key.startswith("hidden_"):
+        parts = hidden_key.split("_")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return f"Hidden {parts[1]}"
+    return hidden_key.replace("_", " ").title()
 
 
 def load_avg_iterations(row: dict) -> float:
@@ -76,8 +78,9 @@ def build_series(summary_json: Path) -> tuple[dict, str]:
 
 def plot_summary(summary_json: Path, output_png: Path, output_svg: Path | None = None, metadata_json: Path | None = None) -> dict:
     series, title = build_series(summary_json)
+    plot_title = f"{title}: p90 relative error and average outer sweeps vs voltage tolerance"
 
-    fig, ax1 = plt.subplots(figsize=(6.8, 4.8))
+    fig, ax1 = plt.subplots(figsize=(7.4, 5.4))
     ax2 = ax1.twinx()
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
@@ -118,18 +121,32 @@ def plot_summary(summary_json: Path, output_png: Path, output_svg: Path | None =
     ax1.set_xlabel("Relative voltage tolerance")
     ax1.set_ylabel("P90 relative error")
     ax2.set_ylabel("Average outer sweeps")
-    ax1.set_title(f"P90 error and average sweeps of {title}")
+    ax1.set_title(plot_title)
     ax1.grid(True, which="both", linestyle="--", linewidth=0.6, alpha=0.5)
 
-    hidden_legend = ax1.legend(hidden_handles, hidden_labels, title="Configuration", frameon=False, loc="upper left")
-    ax1.add_artist(hidden_legend)
+    hidden_legend = fig.legend(
+        hidden_handles,
+        hidden_labels,
+        title="Configuration",
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.995),
+        ncol=max(1, len(hidden_labels)),
+    )
+    fig.add_artist(hidden_legend)
     metric_handles = [
         Line2D([0], [0], color="black", marker="o", linewidth=1.8, linestyle="-", label="P90 error"),
         Line2D([0], [0], color="black", marker="s", linewidth=1.5, linestyle="--", label="Avg. outer sweeps"),
     ]
-    ax1.legend(handles=metric_handles, frameon=False, loc="lower right")
+    fig.legend(
+        handles=metric_handles,
+        frameon=False,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.01),
+        ncol=2,
+    )
 
-    fig.tight_layout()
+    fig.tight_layout(rect=(0.0, 0.08, 1.0, 0.92))
     output_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_png, dpi=300)
     if output_svg is not None:
@@ -141,7 +158,8 @@ def plot_summary(summary_json: Path, output_png: Path, output_svg: Path | None =
         "summary_json": str(summary_json),
         "output_png": str(output_png),
         "output_svg": str(output_svg) if output_svg is not None else None,
-        "title": title,
+        "title": plot_title,
+        "family_title": title,
         "hidden": series,
         "matplotlib_version": matplotlib.__version__,
     }

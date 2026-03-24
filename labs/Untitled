@@ -1,1 +1,45 @@
-V_IN_0_1569
+# hidden_512
+
+python /home/filip/server_code/labs/small_network.py \
+
+  --mode train \
+
+  --dataset digits \
+
+  --config /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_512/training/small_network_double_diode_exponential1h_hidden512.json \
+
+  --output-dir /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_512/training \
+
+  --num-epochs 100
+
+
+
+# hidden_256
+
+python /home/filip/server_code/labs/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_256/training/small_network_double_diode_exponential1h_hidden256.json \
+
+  --mode train \
+
+  --dataset digits \
+
+  --config /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_256/training/small_network_double_diode_exponential1h_hidden256.json \
+
+  --output-dir /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_256/training \
+
+  --num-epochs 100
+
+
+
+# hidden_64
+
+python /home/filip/server_code/labs/small_network.py \
+
+  --mode train \
+
+  --dataset digits \
+
+  --config /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_64/training/small_network_double_diode_exponential1h_hidden64.json \
+
+  --output-dir /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/double_diode_exponential/hidden_64/training \
+
+  --num-epochs 100

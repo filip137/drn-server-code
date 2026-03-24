@@ -11,12 +11,15 @@ from sklearn.datasets import make_moons
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms
 PROJECT_ROOT = Path(__file__).resolve().parent / "energy-based-learning"
+LABS_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
+if str(LABS_ROOT) not in sys.path:
+    sys.path.append(str(LABS_ROOT))
 
 from model.function.cost import SquaredErrorPairedOutputs
 from model.function.network import Network
-from model.resistive.minimizer import QuadraticMinimizer
+from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
 from model.function.interaction import (
     BiasInteraction,
     DoubleExponentialNonLinearInteraction,
