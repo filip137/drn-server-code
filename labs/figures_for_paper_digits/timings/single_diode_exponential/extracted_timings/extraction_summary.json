@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-03-17T17:11:35",
+  "base_path": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential",
+  "included_hidden_dirs": [
+    "hidden_1",
+    "hidden_2"
+  ],
+  "selection_rule": "latest direct child run directory matching timestamp prefix and containing time_digits_validate_with_residual.log",
+  "counts": {
+    "coordinate_descent_logs_found": 16,
+    "coordinate_descent_unique_hidden_pairs": 10,
+    "spice_timing_json_found": 8,
+    "spice_unique_hidden_pairs": 8,
+    "combined_unique_hidden_pairs": 10
+  },
+  "output_files": {
+    "coordinate_descent_user_times_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/extracted_timings/coordinate_descent_user_times.csv",
+    "spice_timings_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/extracted_timings/spice_timings.csv",
+    "combined_latest_by_hidden_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/extracted_timings/combined_latest_by_hidden.csv"
+  },
+  "missing_spice_pairs": [
+    {
+      "depth": 2,
+      "width": 512
+    },
+    {
+      "depth": 2,
+      "width": 1024
+    }
+  ],
+  "missing_coordinate_descent_pairs": []
+}

@@ -1,0 +1,15 @@
+{
+  "percentile": 99.0,
+  "cd_file": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/hidden_1/hidden_256/20260311-170349_single_diode_exponential/validation_states.npz",
+  "spice_file": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/hidden_1/hidden_256/validation_states_spice_layers.npz",
+  "layers": {
+    "Layer_1": {
+      "rel_l1": 1.7009798137993555e-05,
+      "mae": 2.165977632156896e-05
+    },
+    "Layer_2": {
+      "rel_l1": 3.388296120723004e-05,
+      "mae": 5.440499713259926e-06
+    }
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161053_double_diode_exponential",
+  "non_linearity": "double_diode_exponential",
+  "dataset": "digits",
+  "device": "cpu",
+  "dims": [
+    128,
+    256,
+    256,
+    256,
+    20
+  ],
+  "batch_size": 1,
+  "num_epochs": 50,
+  "num_iterations": 512,
+  "rel_tol": 1e-05,
+  "vn_tol": 1e-06,
+  "use_polish": true,
+  "max_newton_iters": 9,
+  "z_thresh": 10000000000.0,
+  "dynamic_polish": false,
+  "linspace_min": -10.0,
+  "linspace_max": 10.0,
+  "linspace_samples": 30,
+  "num_samples": 360,
+  "weights_path": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_3/double_diode_exponential/hidden_256/training/20260317-115432_hard_sigmoid/model_best.pt",
+  "validation_inputs": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161053_double_diode_exponential/validation_inputs.npz",
+  "validation_states": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161053_double_diode_exponential/validation_states.npz",
+  "validation_residual_currents": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161053_double_diode_exponential/validation_residual_currents.npz",
+  "residual_current_stats": {
+    "Layer_1": {
+      "count": 360,
+      "max": 3.4332275390625e-05,
+      "mean": 9.339163755662918e-06,
+      "p50": 8.060011168709025e-06,
+      "p90": 1.4846194608253428e-05,
+      "p99": 2.793951087369354e-05
+    },
+    "Layer_2": {
+      "count": 360,
+      "max": 4.334081495471764e-06,
+      "mean": 2.4700003750568713e-06,
+      "p50": 2.4357589154533343e-06,
+      "p90": 3.3337727927573725e-06,
+      "p99": 3.986411857113129e-06
+    },
+    "Layer_3": {
+      "count": 360,
+      "max": 1.3589859008789062e-05,
+      "mean": 4.702966867221726e-06,
+      "p50": 4.06801700592041e-06,
+      "p90": 8.404254913330078e-06,
+      "p99": 1.2550354003906274e-05
+    },
+    "Layer_4": {
+      "count": 360,
+      "max": 1.1628580978140235e-06,
+      "mean": 6.754111761135088e-07,
+      "p50": 6.600857886951417e-07,
+      "p90": 9.824158041737975e-07,
+      "p99": 1.1219204498047475e-06
+    }
+  },
+  "residual_current_overall": {
+    "count": 1440,
+    "max": 3.4332275390625e-05,
+    "mean": 4.296885543513756e-06,
+    "p50": 2.819196993186779e-06,
+    "p90": 9.261345257982624e-06,
+    "p99": 2.0909453942294886e-05
+  },
+  "residual_comparison_skipped_layers": [
+    "Layer_0"
+  ],
+  "validation_accuracy": 0.9,
+  "validation_correct": 324,
+  "validation_total": 360,
+  "double_diode_updater": "float64_timed_overrelaxed",
+  "adaptive_equilibrium": true,
+  "overrelaxation_factor": 1.4,
+  "overrelaxation_reject_steps": false,
+  "overrelaxation_reject_max_tries": 3,
+  "overrelaxation_reject_shrink": 0.5,
+  "overrelaxation_reject_eps": 0.0,
+  "minimizer_impl": "custom",
+  "double_diode_runtime": "float64_fixed",
+  "damping": 0.5,
+  "experimental_newton_max_steps": 100,
+  "experimental_exponential_newton_tol_progressive": true,
+  "experimental_exponential_newton_tol_start": 1e-05,
+  "experimental_exponential_newton_tol_end": 1e-05,
+  "experimental_exponential_newton_tol_switch_hi": 0.01,
+  "experimental_exponential_newton_tol_switch_lo": 0.0005,
+  "exp_clip": 100000.0,
+  "single_diode_updater": "custom",
+  "iv_data_path": null,
+  "LABS_IV_CURVE_PATH": null,
+  "validation_total_seconds": 10.014894017018378,
+  "validation_iteration_counts": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161053_double_diode_exponential/validation_iteration_counts.npz",
+  "equilibrium_iterations": {
+    "calls": 360,
+    "avg_iterations": 16.42222222222222,
+    "last_iterations": 16,
+    "max_iterations": 512
+  },
+  "overrelaxation_reject_stats": {
+    "enabled": false,
+    "steps_checked": 0,
+    "accepted_first_try": 0,
+    "accepted_after_backtrack": 0,
+    "fallback_plain_steps": 0,
+    "backtracks_total": 0,
+    "avg_backtracks_per_step": 0.0,
+    "last_backtracks": 0,
+    "last_accepted_omega": 1.0,
+    "reject_max_tries": 3,
+    "reject_shrink": 0.5,
+    "reject_eps": 0.0
+  },
+  "newton_iteration_stats": {
+    "total_iters": 22849,
+    "calls": 17736,
+    "avg_iters_per_call": 1.2882837167343257
+  },
+  "double_diode_timing_stats": {
+    "calls": 23648,
+    "totals_seconds": {
+      "total_pre_activate": 8.676522610709071,
+      "b_coef": 1.0813125418499112,
+      "a_coef": 0.7104505896568298,
+      "lambert_hidden": 6.733086070045829,
+      "lambert_w": 2.8566728783771396,
+      "newton_polish": 2.3525868467986584
+    },
+    "call_counts": {
+      "total_pre_activate": 23648,
+      "b_coef": 23648,
+      "a_coef": 23648,
+      "lambert_hidden": 17736,
+      "lambert_w": 17736,
+      "newton_polish": 17736
+    }
+  },
+  "cli_command": "/home/filip/miniconda3/envs/py312/bin/python /home/filip/server_code/labs/small_network.py --mode digits_validate --dataset digits --config /tmp/dde_float64_overrelaxed_configs/dde_h3_w256_float64_overrelaxed.json --weights /home/filip/server_code/simulation_results/digits_medium_network/hidden_3/double_diode_exponential/hidden_256/training/20260317-115432_hard_sigmoid/model_best.pt --output-dir /home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential --run-subdir codex_cpu_rerun_float64_overrelaxed --device cpu"
+}

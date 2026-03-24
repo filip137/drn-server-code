@@ -1,0 +1,36 @@
+{
+  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental/validation_states.npz",
+  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation_states_spice_layers.npz",
+  "num_layers": 4,
+  "layers": [
+    "Layer_1",
+    "Layer_2",
+    "Layer_3",
+    "Layer_4"
+  ],
+  "percentiles": [
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99
+  ],
+  "total_nodes": 404,
+  "node_counts": {
+    "Layer_1": 128,
+    "Layer_2": 128,
+    "Layer_3": 128,
+    "Layer_4": 20
+  },
+  "node_weighted_rel_l1_percentiles": {
+    "p50": 1.2196267469925223e-05,
+    "p60": 1.2542505731089481e-05,
+    "p70": 1.302076953395734e-05,
+    "p80": 1.3731303601409866e-05,
+    "p90": 1.4852313428213184e-05,
+    "p95": 1.5886981772113015e-05,
+    "p99": 2.0645893117111696e-05
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/hidden_1/hidden_1024/20260311-170419_single_diode_exponential/codex_cpu_rerun/20260319-151941_single_diode_exponential/validation_states.npz",
+  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/single_diode_exponential/hidden_1/hidden_1024/validation_states_spice_layers.npz",
+  "num_layers": 2,
+  "layers": [
+    "Layer_1",
+    "Layer_2"
+  ],
+  "percentiles": [
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99
+  ],
+  "total_nodes": 1034,
+  "node_counts": {
+    "Layer_1": 1024,
+    "Layer_2": 10
+  },
+  "node_weighted_rel_l1_percentiles": {
+    "p50": 1.0753133923032163e-05,
+    "p60": 1.0888674494251845e-05,
+    "p70": 1.1004490123058428e-05,
+    "p80": 1.1158117391488197e-05,
+    "p90": 1.137923162770414e-05,
+    "p95": 1.1516348897856133e-05,
+    "p99": 1.2079560140850979e-05
+  }
+}

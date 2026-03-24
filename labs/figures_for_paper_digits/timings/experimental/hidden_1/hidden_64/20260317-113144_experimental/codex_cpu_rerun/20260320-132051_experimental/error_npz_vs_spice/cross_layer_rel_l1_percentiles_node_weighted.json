@@ -1,0 +1,32 @@
+{
+  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_64/20260317-113144_experimental/codex_cpu_rerun/20260320-132051_experimental/validation_states.npz",
+  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_64/spice_validation/validation_states_spice_layers.npz",
+  "num_layers": 2,
+  "layers": [
+    "Layer_1",
+    "Layer_2"
+  ],
+  "percentiles": [
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99
+  ],
+  "total_nodes": 84,
+  "node_counts": {
+    "Layer_1": 64,
+    "Layer_2": 20
+  },
+  "node_weighted_rel_l1_percentiles": {
+    "p50": 1.3718252538941466e-05,
+    "p60": 1.4160686451754436e-05,
+    "p70": 1.4574680621977933e-05,
+    "p80": 1.5123405981874159e-05,
+    "p90": 1.5793165090031604e-05,
+    "p95": 1.6461343033319022e-05,
+    "p99": 1.74064423813336e-05
+  }
+}

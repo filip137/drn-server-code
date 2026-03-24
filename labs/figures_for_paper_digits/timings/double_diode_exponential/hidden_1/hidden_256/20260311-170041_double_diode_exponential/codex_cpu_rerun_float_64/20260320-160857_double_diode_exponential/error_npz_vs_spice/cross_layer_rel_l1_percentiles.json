@@ -1,0 +1,47 @@
+{
+  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_1/hidden_256/20260311-170041_double_diode_exponential/codex_cpu_rerun_float_64/20260320-160857_double_diode_exponential/validation_states.npz",
+  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_1/hidden_256/validation/validation_states_spice_layers.npz",
+  "num_layers": 2,
+  "layers": [
+    "Layer_1",
+    "Layer_2"
+  ],
+  "percentiles": [
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99
+  ],
+  "average_rel_l1_percentiles_across_layers": {
+    "p50": 9.712102039974792e-06,
+    "p60": 1.0142857874721322e-05,
+    "p70": 1.0542742435665387e-05,
+    "p80": 1.110112447367607e-05,
+    "p90": 1.2080008014354496e-05,
+    "p95": 1.315563679942926e-05,
+    "p99": 1.4569188052024506e-05
+  },
+  "per_layer_rel_l1_percentiles": {
+    "Layer_1": {
+      "p50": 1.1475106970077623e-05,
+      "p60": 1.1706464899991933e-05,
+      "p70": 1.1947159794782193e-05,
+      "p80": 1.2188716577779547e-05,
+      "p90": 1.276662395856101e-05,
+      "p95": 1.2935776461112837e-05,
+      "p99": 1.3425851259932652e-05
+    },
+    "Layer_2": {
+      "p50": 7.94909710987196e-06,
+      "p60": 8.579250849450712e-06,
+      "p70": 9.138325076548582e-06,
+      "p80": 1.0013532369572593e-05,
+      "p90": 1.139339207014798e-05,
+      "p95": 1.3375497137745681e-05,
+      "p99": 1.571252484411636e-05
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "created_at": "2026-03-24T09:59:55.896162+00:00",
+  "summary_json": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/single_diode_exponential/amp_4_plots_data/vol_tol_summary_hidden1_hidden2_hidden3_amp4.json",
+  "output_png": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/single_diode_exponential/amp_4_plots_data/p90_vs_rel_tol_all_hidden.png",
+  "output_svg": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/single_diode_exponential/amp_4_plots_data/p90_vs_rel_tol_all_hidden.svg",
+  "title": "Single diode: p90 relative error and average outer sweeps vs voltage tolerance",
+  "family_title": "Single diode",
+  "hidden": {
+    "hidden_1": {
+      "label": "Hidden 1",
+      "rel_tol": [
+        1e-07,
+        1e-06,
+        1e-05,
+        0.0001,
+        0.001
+      ],
+      "p90": [
+        1.614559852504281e-05,
+        1.6149677921709496e-05,
+        1.6143896162207425e-05,
+        1.9542496335719222e-05,
+        6.822887935244714e-05
+      ],
+      "avg_outer_iterations": [
+        10.852777777777778,
+        10.002777777777778,
+        9.0,
+        7.308333333333334,
+        6.0
+      ]
+    },
+    "hidden_2": {
+      "label": "Hidden 2",
+      "rel_tol": [
+        1e-07,
+        1e-06,
+        1e-05,
+        0.0001,
+        0.001
+      ],
+      "p90": [
+        1.027055866739041e-05,
+        1.0308539674842433e-05,
+        1.0791214442159763e-05,
+        2.648513780095204e-05,
+        0.00034497393596249614
+      ],
+      "avg_outer_iterations": [
+        18.766666666666666,
+        17.141666666666666,
+        14.866666666666667,
+        12.347222222222221,
+        9.791666666666666
+      ]
+    },
+    "hidden_3_amp_4": {
+      "label": "Hidden 3",
+      "rel_tol": [
+        1e-07,
+        1e-06,
+        1e-05,
+        0.0001,
+        0.001
+      ],
+      "p90": [
+        1.534595284528177e-05,
+        1.5358312880091103e-05,
+        1.5532453496738832e-05,
+        1.9363251881057055e-05,
+        9.684858885300626e-05
+      ],
+      "avg_outer_iterations": [
+        18.997222222222224,
+        18.86111111111111,
+        17.65277777777778,
+        15.241666666666667,
+        12.822222222222223
+      ]
+    }
+  },
+  "matplotlib_version": "3.10.6"
+}

@@ -1,0 +1,145 @@
+{
+  "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161107_double_diode_exponential",
+  "non_linearity": "double_diode_exponential",
+  "dataset": "digits",
+  "device": "cpu",
+  "dims": [
+    128,
+    512,
+    512,
+    512,
+    20
+  ],
+  "batch_size": 1,
+  "num_epochs": 50,
+  "num_iterations": 512,
+  "rel_tol": 1e-05,
+  "vn_tol": 1e-06,
+  "use_polish": true,
+  "max_newton_iters": 9,
+  "z_thresh": 10000000000.0,
+  "dynamic_polish": false,
+  "linspace_min": -10.0,
+  "linspace_max": 10.0,
+  "linspace_samples": 30,
+  "num_samples": 360,
+  "weights_path": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_3/double_diode_exponential/hidden_512/validation/model_best.pt",
+  "validation_inputs": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161107_double_diode_exponential/validation_inputs.npz",
+  "validation_states": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161107_double_diode_exponential/validation_states.npz",
+  "validation_residual_currents": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161107_double_diode_exponential/validation_residual_currents.npz",
+  "residual_current_stats": {
+    "Layer_1": {
+      "count": 360,
+      "max": 2.0958281311322935e-05,
+      "mean": 8.290043590224942e-06,
+      "p50": 7.58324586058734e-06,
+      "p90": 1.2415990204317495e-05,
+      "p99": 1.9198460940970127e-05
+    },
+    "Layer_2": {
+      "count": 360,
+      "max": 1.501697283856629e-06,
+      "mean": 1.049369171823855e-06,
+      "p50": 1.0397614005341893e-06,
+      "p90": 1.2334763937360548e-06,
+      "p99": 1.428426797929206e-06
+    },
+    "Layer_3": {
+      "count": 360,
+      "max": 5.028128384765296e-07,
+      "mean": 3.903294563419498e-07,
+      "p50": 3.926257363673358e-07,
+      "p90": 4.3740370188061205e-07,
+      "p99": 4.824891357202434e-07
+    },
+    "Layer_4": {
+      "count": 360,
+      "max": 1.387670636177063e-07,
+      "mean": 1.0662653140671965e-07,
+      "p50": 1.0830990504473448e-07,
+      "p90": 1.1872180039063096e-07,
+      "p99": 1.3081938959658146e-07
+    }
+  },
+  "residual_current_overall": {
+    "count": 1440,
+    "max": 2.0958281311322935e-05,
+    "mean": 2.459092187449367e-06,
+    "p50": 5.179674076316587e-07,
+    "p90": 7.675596953049535e-06,
+    "p99": 1.525809302620473e-05
+  },
+  "residual_comparison_skipped_layers": [
+    "Layer_0"
+  ],
+  "validation_accuracy": 0.9194444444444444,
+  "validation_correct": 331,
+  "validation_total": 360,
+  "double_diode_updater": "float64_timed_overrelaxed",
+  "adaptive_equilibrium": true,
+  "overrelaxation_factor": 1.4,
+  "overrelaxation_reject_steps": false,
+  "overrelaxation_reject_max_tries": 3,
+  "overrelaxation_reject_shrink": 0.5,
+  "overrelaxation_reject_eps": 0.0,
+  "minimizer_impl": "custom",
+  "double_diode_runtime": "float64_fixed",
+  "damping": 0.5,
+  "experimental_newton_max_steps": 100,
+  "experimental_exponential_newton_tol_progressive": true,
+  "experimental_exponential_newton_tol_start": 1e-05,
+  "experimental_exponential_newton_tol_end": 1e-05,
+  "experimental_exponential_newton_tol_switch_hi": 0.01,
+  "experimental_exponential_newton_tol_switch_lo": 0.0005,
+  "exp_clip": 100000.0,
+  "single_diode_updater": "custom",
+  "iv_data_path": null,
+  "LABS_IV_CURVE_PATH": null,
+  "validation_total_seconds": 34.21636902727187,
+  "validation_iteration_counts": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/codex_cpu_rerun_float64_overrelaxed/20260320-161107_double_diode_exponential/validation_iteration_counts.npz",
+  "equilibrium_iterations": {
+    "calls": 360,
+    "avg_iterations": 51.925,
+    "last_iterations": 58,
+    "max_iterations": 512
+  },
+  "overrelaxation_reject_stats": {
+    "enabled": false,
+    "steps_checked": 0,
+    "accepted_first_try": 0,
+    "accepted_after_backtrack": 0,
+    "fallback_plain_steps": 0,
+    "backtracks_total": 0,
+    "avg_backtracks_per_step": 0.0,
+    "last_backtracks": 0,
+    "last_accepted_omega": 1.0,
+    "reject_max_tries": 3,
+    "reject_shrink": 0.5,
+    "reject_eps": 0.0
+  },
+  "newton_iteration_stats": {
+    "total_iters": 56079,
+    "calls": 56079,
+    "avg_iters_per_call": 1.0
+  },
+  "double_diode_timing_stats": {
+    "calls": 74772,
+    "totals_seconds": {
+      "total_pre_activate": 30.761645663529634,
+      "b_coef": 4.549629653804004,
+      "a_coef": 3.4652946731075644,
+      "lambert_hidden": 22.27199679147452,
+      "lambert_w": 8.323008949868381,
+      "newton_polish": 8.78322068694979
+    },
+    "call_counts": {
+      "total_pre_activate": 74772,
+      "b_coef": 74772,
+      "a_coef": 74772,
+      "lambert_hidden": 56079,
+      "lambert_w": 56079,
+      "newton_polish": 56079
+    }
+  },
+  "cli_command": "/home/filip/miniconda3/envs/py312/bin/python /home/filip/server_code/labs/small_network.py --mode digits_validate --dataset digits --config /tmp/dde_float64_overrelaxed_configs/dde_h3_w512_float64_overrelaxed.json --weights /home/filip/server_code/simulation_results/digits_medium_network/hidden_3/double_diode_exponential/hidden_512/validation/model_best.pt --output-dir /home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential --run-subdir codex_cpu_rerun_float64_overrelaxed --device cpu"
+}

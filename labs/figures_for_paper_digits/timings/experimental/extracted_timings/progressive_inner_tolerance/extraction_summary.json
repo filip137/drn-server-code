@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-03-17T11:41:57",
+  "base_path": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental",
+  "roots_scanned": [
+    "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1",
+    "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2",
+    "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3"
+  ],
+  "counts": {
+    "coordinate_descent_logs_found": 14,
+    "spice_timing_json_found": 11,
+    "combined_unique_hidden_pairs": 14
+  },
+  "output_files": {
+    "coordinate_descent_user_times_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/extracted_timings/progressive_inner_tolerance/coordinate_descent_user_times.csv",
+    "spice_timings_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/extracted_timings/progressive_inner_tolerance/spice_timings.csv",
+    "combined_latest_by_hidden_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/extracted_timings/progressive_inner_tolerance/combined_latest_by_hidden.csv"
+  },
+  "issues": [
+    {
+      "type": "missing_spice_timing",
+      "depth": 2,
+      "width": 512
+    },
+    {
+      "type": "missing_spice_timing",
+      "depth": 2,
+      "width": 1024
+    },
+    {
+      "type": "missing_spice_timing",
+      "depth": 3,
+      "width": 512
+    }
+  ]
+}

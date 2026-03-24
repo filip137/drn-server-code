@@ -1,0 +1,19 @@
+{
+  "percentile": 50.0,
+  "cd_file": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_128/20260313-150244_experimental/validation_states.npz",
+  "spice_file": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_128/super_high_accuracy/validation_states_spice_layers.npz",
+  "layers": {
+    "Layer_1": {
+      "rel_l1": 6.454819703528056e-06,
+      "mae": 2.4923712718291603e-06
+    },
+    "Layer_2": {
+      "rel_l1": 1.7807764279290795e-05,
+      "mae": 2.4471575841306797e-05
+    },
+    "Layer_3": {
+      "rel_l1": 5.320300812178672e-06,
+      "mae": 2.918535232545594e-05
+    }
+  }
+}

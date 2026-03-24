@@ -62,3 +62,15 @@ labs/Equilibrium-Propagation/
 # Local environments / large data
 py309/
 labs/experiments/
+
+# Track paper figures/data in git
+!labs/figures_for_paper_digits/
+!labs/figures_for_paper_digits/error_vs_iter/
+!labs/figures_for_paper_digits/error_vs_vol_tol/
+!labs/figures_for_paper_digits/float32_vs_float64/
+!labs/figures_for_paper_digits/inner_outer_iter/
+!labs/figures_for_paper_digits/num_of_iterations_over_dataset/
+!labs/figures_for_paper_digits/tables/
+!labs/figures_for_paper_digits/timings/
+!labs/figures_for_paper_digits/**/
+!labs/figures_for_paper_digits/**

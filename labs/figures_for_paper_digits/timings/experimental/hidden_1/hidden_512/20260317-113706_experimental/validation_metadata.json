@@ -1,0 +1,107 @@
+{
+  "run_dir": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/rerun_progressive_tol_maxnewton100/20260317-113706_experimental",
+  "non_linearity": "experimental",
+  "dataset": "digits",
+  "dims": [
+    128,
+    512,
+    20
+  ],
+  "batch_size": 1,
+  "num_epochs": 15,
+  "num_iterations": 512,
+  "rel_tol": 1e-05,
+  "vn_tol": 1e-06,
+  "use_polish": false,
+  "max_newton_iters": 8,
+  "z_thresh": 10000000000.0,
+  "dynamic_polish": false,
+  "linspace_min": -10.0,
+  "linspace_max": 10.0,
+  "linspace_samples": 30,
+  "num_samples": 360,
+  "weights_path": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/model_best.pt",
+  "validation_inputs": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/rerun_progressive_tol_maxnewton100/20260317-113706_experimental/validation_inputs.npz",
+  "validation_states": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/rerun_progressive_tol_maxnewton100/20260317-113706_experimental/validation_states.npz",
+  "validation_residual_currents": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/rerun_progressive_tol_maxnewton100/20260317-113706_experimental/validation_residual_currents.npz",
+  "residual_current_stats": {
+    "Layer_1": {
+      "count": 360,
+      "max": 8.186341285705566,
+      "mean": 4.1019189397494,
+      "p50": 4.0684144496917725,
+      "p90": 5.167462396621704,
+      "p99": 6.841777768135076
+    },
+    "Layer_2": {
+      "count": 360,
+      "max": 1.3783574104309082e-06,
+      "mean": 4.885550070967939e-07,
+      "p50": 4.637986421585083e-07,
+      "p90": 7.078051567077637e-07,
+      "p99": 1.1149048805236824e-06
+    }
+  },
+  "residual_current_overall": {
+    "count": 720,
+    "max": 8.186341285705566,
+    "mean": 2.0509597141522034,
+    "p50": 1.0226487852633,
+    "p90": 4.8337553024292,
+    "p99": 6.0691039943695
+  },
+  "residual_comparison_skipped_layers": [
+    "Layer_0"
+  ],
+  "validation_accuracy": 0.9611111111111111,
+  "validation_correct": 346,
+  "validation_total": 360,
+  "double_diode_updater": "overrelaxed",
+  "adaptive_equilibrium": true,
+  "overrelaxation_factor": 1.0,
+  "overrelaxation_reject_steps": true,
+  "overrelaxation_reject_max_tries": 2,
+  "overrelaxation_reject_shrink": 0.5,
+  "overrelaxation_reject_eps": 0.0,
+  "minimizer_impl": "custom",
+  "double_diode_runtime": null,
+  "damping": 1.0,
+  "experimental_newton_max_steps": 100,
+  "experimental_exponential_newton_tol_progressive": true,
+  "experimental_exponential_newton_tol_start": 0.01,
+  "experimental_exponential_newton_tol_end": 1e-05,
+  "experimental_exponential_newton_tol_switch_hi": 0.01,
+  "experimental_exponential_newton_tol_switch_lo": 0.001,
+  "exp_clip": 100,
+  "single_diode_updater": "custom",
+  "iv_data_path": "/home/filip/server_code/labs/i_v_npz/experimental_curve_voff_0.8_200_points.npz",
+  "LABS_IV_CURVE_PATH": "/home/filip/server_code/labs/i_v_npz/experimental_curve_voff_0.8_200_points.npz",
+  "validation_total_seconds": 3.8487885165959597,
+  "validation_iteration_counts": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/rerun_progressive_tol_maxnewton100/20260317-113706_experimental/validation_iteration_counts.npz",
+  "equilibrium_iterations": {
+    "calls": 360,
+    "avg_iterations": 7.233333333333333,
+    "last_iterations": 7,
+    "max_iterations": 512
+  },
+  "overrelaxation_reject_stats": {
+    "enabled": true,
+    "steps_checked": 0,
+    "accepted_first_try": 0,
+    "accepted_after_backtrack": 0,
+    "fallback_plain_steps": 0,
+    "backtracks_total": 0,
+    "avg_backtracks_per_step": 0.0,
+    "last_backtracks": 0,
+    "last_accepted_omega": 1.0,
+    "reject_max_tries": 2,
+    "reject_shrink": 0.5,
+    "reject_eps": 0.0
+  },
+  "newton_iteration_stats": {
+    "total_iters": 54898,
+    "calls": 2604,
+    "avg_iters_per_call": 21.082181259600613
+  },
+  "cli_command": "/home/filip/miniconda3/envs/py312/bin/python /home/filip/server_code/labs/small_network.py --mode digits_validate --dataset digits --config /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/rerun_progressive_tol_maxnewton100/config_hidden512_omega1_maxnewton100.json --weights /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation/model_best.pt --output-dir /home/filip/server_code/simulation_results/digits_medium_network/hidden_1/experimental_double_diode_exponential/hidden_512/validation --run-subdir rerun_progressive_tol_maxnewton100"
+}

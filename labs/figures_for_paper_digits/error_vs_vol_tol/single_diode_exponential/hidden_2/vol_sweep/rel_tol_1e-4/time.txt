@@ -1,0 +1,5 @@
+rel_tol=1e-4
+real=19.72
+user=18.79
+sys=0.69
+

@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-03-13T15:19:19",
+  "base_path": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental",
+  "issues": [
+    {
+      "type": "missing_spice_timing",
+      "depth": 2,
+      "width": 512
+    },
+    {
+      "type": "missing_spice_timing",
+      "depth": 2,
+      "width": 1024
+    },
+    {
+      "type": "missing_spice_timing",
+      "depth": 3,
+      "width": 512
+    }
+  ]
+}

@@ -1,0 +1,741 @@
+{
+  "generated_at": "2026-03-13T17:48:49.150030",
+  "timing_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/extracted_timings/progressive_inner_tolerance/combined_latest_by_hidden.csv",
+  "rows_total": 14,
+  "rows_ok_with_error": 11,
+  "rows_missing": 3,
+  "missing_rows": [
+    {
+      "depth": 2,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_512/20260313-150320_experimental",
+      "coord_user_time_seconds": 22.35,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": false,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_npz"
+    },
+    {
+      "depth": 2,
+      "width": 1024,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_1024/20260313-150347_experimental",
+      "coord_user_time_seconds": 25.94,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_1024/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": false,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_npz"
+    },
+    {
+      "depth": 3,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_512/validation/20260313-171929_experimental",
+      "coord_user_time_seconds": 36.27,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": false,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_npz"
+    }
+  ],
+  "correlations": {
+    "residual_mean_vs_error_mae": {
+      "linear": {
+        "n": 11,
+        "pearson": -0.3272801334013428,
+        "spearman": 0.29999999999999993
+      },
+      "log10": {
+        "n": 11,
+        "pearson": 0.1273538911189748,
+        "spearman": 0.29999999999999993
+      }
+    },
+    "residual_p90_vs_error_mae": {
+      "linear": {
+        "n": 11,
+        "pearson": -0.28835013059327175,
+        "spearman": 0.29999999999999993
+      },
+      "log10": {
+        "n": 11,
+        "pearson": 0.16642677519276272,
+        "spearman": 0.29999999999999993
+      }
+    },
+    "residual_max_vs_error_max_abs": {
+      "linear": {
+        "n": 11,
+        "pearson": -0.18817015738485143,
+        "spearman": 0.27272727272727265
+      },
+      "log10": {
+        "n": 11,
+        "pearson": 0.1603205120844779,
+        "spearman": 0.27272727272727265
+      }
+    },
+    "equilibrium_avg_iters_vs_error_mae": {
+      "linear": {
+        "n": 11,
+        "pearson": -0.10442817294075996,
+        "spearman": -0.06363636363636363
+      },
+      "log10": {
+        "n": 11,
+        "pearson": -0.023886976747870724,
+        "spearman": -0.06363636363636363
+      }
+    },
+    "newton_avg_iters_vs_error_mae": {
+      "linear": {
+        "n": 11,
+        "pearson": -0.2526581461288307,
+        "spearman": 0.03644656380625642
+      },
+      "log10": {
+        "n": 11,
+        "pearson": -0.04436456415381874,
+        "spearman": 0.03644656380625642
+      }
+    }
+  },
+  "rows": [
+    {
+      "depth": 1,
+      "width": 64,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_64/20260313-144600_experimental",
+      "coord_user_time_seconds": 17.35,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_64/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "state_error_mae": 9.933298049940588e-06,
+      "state_error_rmse": 1.6856189034025994e-05,
+      "state_error_max_abs": 6.439743041974921e-05,
+      "residual_current_mean": 2.9222576403414777,
+      "residual_current_p90": 7.525581979751588,
+      "residual_current_p99": 10.6620228099823,
+      "residual_current_max": 11.864075660705566,
+      "equilibrium_avg_iterations": 8.886111111111111,
+      "newton_avg_iters_per_call": 20.07336742722266,
+      "newton_calls": 5084,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            64
+          ],
+          "mae": 6.781948203548523e-06,
+          "rmse": 1.2987935327744012e-05,
+          "max_abs": 5.3787040710462364e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 2.0017617558395187e-05,
+          "rmse": 2.556470167447532e-05,
+          "max_abs": 6.439743041974921e-05
+        }
+      }
+    },
+    {
+      "depth": 1,
+      "width": 128,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_128/20260313-144733_experimental",
+      "coord_user_time_seconds": 3.43,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_128/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "state_error_mae": 2.9605895811513337e-06,
+      "state_error_rmse": 3.7854628265226503e-06,
+      "state_error_max_abs": 5.00040054320916e-05,
+      "residual_current_mean": 3.679565925267525e-05,
+      "residual_current_p90": 9.610876441001896e-06,
+      "residual_current_p99": 9.967088699340814e-05,
+      "residual_current_max": 0.018756866455078125,
+      "equilibrium_avg_iterations": 14.136111111111111,
+      "newton_avg_iters_per_call": 1.0235802711731186,
+      "newton_calls": 5089,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            128
+          ],
+          "mae": 2.4310116435519225e-06,
+          "rmse": 3.0036923906608706e-06,
+          "max_abs": 5.00040054320916e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 6.349888381787566e-06,
+          "rmse": 6.949684751405505e-06,
+          "max_abs": 1.6661663055417275e-05
+        }
+      }
+    },
+    {
+      "depth": 1,
+      "width": 256,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_256/20260313-144757_experimental",
+      "coord_user_time_seconds": 10.11,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_256/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "state_error_mae": 6.52574536609012e-06,
+      "state_error_rmse": 1.2669802956699384e-05,
+      "state_error_max_abs": 5.3734970092866874e-05,
+      "residual_current_mean": 2.2823715846442307,
+      "residual_current_p90": 5.732611894607545,
+      "residual_current_p99": 7.533361616134638,
+      "residual_current_max": 8.925808906555176,
+      "equilibrium_avg_iterations": 8.05,
+      "newton_avg_iters_per_call": 20.8743961352657,
+      "newton_calls": 2898,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            256
+          ],
+          "mae": 6.768264722770578e-06,
+          "rmse": 1.308878610752079e-05,
+          "max_abs": 5.3734970092866874e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 3.42149760058026e-06,
+          "rmse": 4.730855888105945e-06,
+          "max_abs": 4.611358642581109e-05
+        }
+      }
+    },
+    {
+      "depth": 1,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_512/20260313-144824_experimental",
+      "coord_user_time_seconds": 9.26,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "state_error_mae": 6.902318186770363e-06,
+      "state_error_rmse": 1.326603684066799e-05,
+      "state_error_max_abs": 5.37136077880529e-05,
+      "residual_current_mean": 2.050959550990309,
+      "residual_current_p90": 4.833755493164063,
+      "residual_current_p99": 6.0691039943695,
+      "residual_current_max": 8.186341285705566,
+      "equilibrium_avg_iterations": 7.236111111111111,
+      "newton_avg_iters_per_call": 21.081381957773512,
+      "newton_calls": 2605,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            512
+          ],
+          "mae": 7.059531694430677e-06,
+          "rmse": 1.350218055828625e-05,
+          "max_abs": 5.37136077880529e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 2.8776523906663264e-06,
+          "rmse": 3.7638260281961443e-06,
+          "max_abs": 4.864482879640697e-05
+        }
+      }
+    },
+    {
+      "depth": 1,
+      "width": 1024,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/20260313-145623_experimental",
+      "coord_user_time_seconds": 8.26,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "state_error_mae": 7.870101969693881e-06,
+      "state_error_rmse": 1.456855401599557e-05,
+      "state_error_max_abs": 5.386466979984128e-05,
+      "residual_current_mean": 2.2675809119698696,
+      "residual_current_p90": 5.171628570556641,
+      "residual_current_p99": 6.042149229049682,
+      "residual_current_max": 7.569141387939453,
+      "equilibrium_avg_iterations": 5.758333333333334,
+      "newton_avg_iters_per_call": 24.47515677761698,
+      "newton_calls": 2073,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            1024
+          ],
+          "mae": 7.983275827250601e-06,
+          "rmse": 1.4705625932321581e-05,
+          "max_abs": 5.386466979984128e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 2.0756004627897683e-06,
+          "rmse": 2.6065623653193584e-06,
+          "max_abs": 7.74343490606011e-06
+        }
+      }
+    },
+    {
+      "depth": 2,
+      "width": 64,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_64/20260313-150228_experimental",
+      "coord_user_time_seconds": 12.45,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_64/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3"
+      ],
+      "num_common_layers": 3,
+      "state_error_mae": 9.118499364620147e-06,
+      "state_error_rmse": 1.4310694993458107e-05,
+      "state_error_max_abs": 5.396162986756603e-05,
+      "residual_current_mean": 1.6998535270600029e-06,
+      "residual_current_p90": 4.76837158203125e-06,
+      "residual_current_p99": 5.7220458984375e-06,
+      "residual_current_max": 6.318092346191406e-06,
+      "equilibrium_avg_iterations": 33.38333333333333,
+      "newton_avg_iters_per_call": 1.0,
+      "newton_calls": 24036,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            64
+          ],
+          "mae": 2.408605172437721e-06,
+          "rmse": 2.9044270792677384e-06,
+          "max_abs": 7.0972299575922104e-06
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            64
+          ],
+          "mae": 7.546427787651425e-06,
+          "rmse": 7.788695387031028e-06,
+          "max_abs": 1.5111832618708299e-05
+        },
+        "Layer_3": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 3.562078982590382e-05,
+          "rmse": 3.5977382101515506e-05,
+          "max_abs": 5.396162986756603e-05
+        }
+      }
+    },
+    {
+      "depth": 2,
+      "width": 128,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_128/20260313-150244_experimental",
+      "coord_user_time_seconds": 14.69,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_128/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3"
+      ],
+      "num_common_layers": 3,
+      "state_error_mae": 1.4834493242362072e-05,
+      "state_error_rmse": 2.2309035225001124e-05,
+      "state_error_max_abs": 0.00018022994995092745,
+      "residual_current_mean": 0.15591046715871926,
+      "residual_current_p90": 0.5354513227939606,
+      "residual_current_p99": 0.7654657030105592,
+      "residual_current_max": 0.9578897953033447,
+      "equilibrium_avg_iterations": 21.241666666666667,
+      "newton_avg_iters_per_call": 3.956061200470773,
+      "newton_calls": 15294,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            128
+          ],
+          "mae": 2.572901638953814e-06,
+          "rmse": 3.581720283170536e-06,
+          "max_abs": 5.0950622558554315e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            128
+          ],
+          "mae": 2.4440806869624368e-05,
+          "rmse": 2.8595841530806695e-05,
+          "max_abs": 7.117938995371276e-05
+        },
+        "Layer_3": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 3.18282722896962e-05,
+          "rmse": 3.940353460519304e-05,
+          "max_abs": 0.00018022994995092745
+        }
+      }
+    },
+    {
+      "depth": 2,
+      "width": 256,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_256/20260313-150302_experimental",
+      "coord_user_time_seconds": 14.37,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_256/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3"
+      ],
+      "num_common_layers": 3,
+      "state_error_mae": 6.169970603590183e-06,
+      "state_error_rmse": 9.064451378993356e-06,
+      "state_error_max_abs": 5.614389181136936e-05,
+      "residual_current_mean": 2.59040973981394e-06,
+      "residual_current_p90": 7.152557373046875e-06,
+      "residual_current_p99": 8.58306884765625e-06,
+      "residual_current_max": 1.0013580322265625e-05,
+      "equilibrium_avg_iterations": 39.91111111111111,
+      "newton_avg_iters_per_call": 1.0,
+      "newton_calls": 28736,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            256
+          ],
+          "mae": 2.374668408157172e-06,
+          "rmse": 2.811108098589806e-06,
+          "max_abs": 7.681589126562471e-06
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            256
+          ],
+          "mae": 7.651109294838286e-06,
+          "rmse": 7.811873744476632e-06,
+          "max_abs": 1.5886809825893522e-05
+        },
+        "Layer_3": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 3.5791263457157e-05,
+          "rmse": 3.6101180788504574e-05,
+          "max_abs": 5.614389181136936e-05
+        }
+      }
+    },
+    {
+      "depth": 2,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_512/20260313-150320_experimental",
+      "coord_user_time_seconds": 22.35,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": false,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_npz"
+    },
+    {
+      "depth": 2,
+      "width": 1024,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_1024/20260313-150347_experimental",
+      "coord_user_time_seconds": 25.94,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_1024/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": false,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_npz"
+    },
+    {
+      "depth": 3,
+      "width": 64,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_64/validation/20260313-151007_experimental",
+      "coord_user_time_seconds": 23.85,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_64/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3",
+        "Layer_4"
+      ],
+      "num_common_layers": 4,
+      "state_error_mae": 2.1291063803155586e-05,
+      "state_error_rmse": 2.6648205649884816e-05,
+      "state_error_max_abs": 6.702957153326139e-05,
+      "residual_current_mean": 3.3338709541342033,
+      "residual_current_p90": 12.684559249877932,
+      "residual_current_p99": 15.841280641555786,
+      "residual_current_max": 18.54886245727539,
+      "equilibrium_avg_iterations": 7.425,
+      "newton_avg_iters_per_call": 15.819802967951116,
+      "newton_calls": 8019,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            64
+          ],
+          "mae": 1.6933762985637685e-05,
+          "rmse": 2.3229895410699455e-05,
+          "max_abs": 5.443897247303653e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            64
+          ],
+          "mae": 1.9974723306489853e-05,
+          "rmse": 2.5450569845927137e-05,
+          "max_abs": 5.3555488586320976e-05
+        },
+        "Layer_3": {
+          "shape": [
+            360,
+            64
+          ],
+          "mae": 2.5282168967855935e-05,
+          "rmse": 2.9207675882254556e-05,
+          "max_abs": 5.4366111755355107e-05
+        },
+        "Layer_4": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 2.6675179481502083e-05,
+          "rmse": 3.1589738155061494e-05,
+          "max_abs": 6.702957153326139e-05
+        }
+      }
+    },
+    {
+      "depth": 3,
+      "width": 128,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental",
+      "coord_user_time_seconds": 41.67,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3",
+        "Layer_4"
+      ],
+      "num_common_layers": 4,
+      "state_error_mae": 1.250347707676856e-05,
+      "state_error_rmse": 2.0959900530812884e-05,
+      "state_error_max_abs": 0.00035324935913116917,
+      "residual_current_mean": 2.0587457758181262,
+      "residual_current_p90": 5.147022151947031,
+      "residual_current_p99": 40.02205314636229,
+      "residual_current_max": 50.496856689453125,
+      "equilibrium_avg_iterations": 26.219444444444445,
+      "newton_avg_iters_per_call": 6.90447434403362,
+      "newton_calls": 28317,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            128
+          ],
+          "mae": 4.312665498006831e-06,
+          "rmse": 9.2092801620396e-06,
+          "max_abs": 5.3152465820272e-05
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            128
+          ],
+          "mae": 3.3643191816419105e-06,
+          "rmse": 4.705058779662543e-06,
+          "max_abs": 5.022468566884264e-05
+        },
+        "Layer_3": {
+          "shape": [
+            360,
+            128
+          ],
+          "mae": 2.6213437125262756e-05,
+          "rmse": 3.067749775811021e-05,
+          "max_abs": 0.00013750801086431785
+        },
+        "Layer_4": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 3.5671537399291325e-05,
+          "rmse": 4.6547238893233314e-05,
+          "max_abs": 0.00035324935913116917
+        }
+      }
+    },
+    {
+      "depth": 3,
+      "width": 256,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_256/validation/20260313-151121_experimental",
+      "coord_user_time_seconds": 14.11,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_256/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": true,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3",
+        "Layer_4"
+      ],
+      "num_common_layers": 4,
+      "state_error_mae": 0.025053965458401987,
+      "state_error_rmse": 0.0430865421545379,
+      "state_error_max_abs": 0.394788653831482,
+      "residual_current_mean": 0.06379106943731029,
+      "residual_current_p90": 0.23817484229803096,
+      "residual_current_p99": 0.3374827566742896,
+      "residual_current_max": 1.408334732055664,
+      "equilibrium_avg_iterations": 13.161111111111111,
+      "newton_avg_iters_per_call": 3.642254115660616,
+      "newton_calls": 14214,
+      "per_layer_error": {
+        "Layer_1": {
+          "shape": [
+            360,
+            256
+          ],
+          "mae": 0.05253560711610405,
+          "rmse": 0.0705099620066207,
+          "max_abs": 0.394788653831482
+        },
+        "Layer_2": {
+          "shape": [
+            360,
+            256
+          ],
+          "mae": 0.018864493773729025,
+          "rmse": 0.026129288385108272,
+          "max_abs": 0.19475376329422
+        },
+        "Layer_3": {
+          "shape": [
+            360,
+            256
+          ],
+          "mae": 0.004650335437748581,
+          "rmse": 0.005854794001303913,
+          "max_abs": 0.045757374763488734
+        },
+        "Layer_4": {
+          "shape": [
+            360,
+            20
+          ],
+          "mae": 0.013680654067993162,
+          "rmse": 0.0181416447292583,
+          "max_abs": 0.11743884353637668
+        }
+      }
+    },
+    {
+      "depth": 3,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_512/validation/20260313-171929_experimental",
+      "coord_user_time_seconds": 36.27,
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "spice_available": false,
+      "coord_npz_available": true,
+      "metadata_available": true,
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_npz"
+    }
+  ]
+}

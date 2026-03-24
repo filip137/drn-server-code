@@ -1,0 +1,271 @@
+{
+  "generated_at": "2026-03-17T17:20:56",
+  "output_csv": "/home/filip/server_code/labs/figures_for_paper_digits/timings/timing_plot_run_metrics.csv",
+  "row_count": 65,
+  "missing_error_rows": [
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "all_hidden_newton",
+      "depth": 2,
+      "width": 512,
+      "coord_source_rel_path": "hidden_2/hidden_512/20260311-170652_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_2/hidden_512/20260311-170652_double_diode_exponential/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "all_hidden_newton",
+      "depth": 2,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_2/hidden_1024/20260311-170758_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "all_hidden_newton",
+      "depth": 3,
+      "width": 64,
+      "coord_source_rel_path": "hidden_3/hidden_64/20260311-185700_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_3/hidden_64/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "all_hidden_newton",
+      "depth": 3,
+      "width": 256,
+      "coord_source_rel_path": "hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "all_hidden_newton",
+      "depth": 3,
+      "width": 512,
+      "coord_source_rel_path": "hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "hidden_1_no_newton",
+      "depth": 2,
+      "width": 512,
+      "coord_source_rel_path": "hidden_2/hidden_512/20260311-170652_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_2/hidden_512/20260311-170652_double_diode_exponential/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "hidden_1_no_newton",
+      "depth": 2,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_2/hidden_1024/20260311-170758_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "hidden_1_no_newton",
+      "depth": 3,
+      "width": 64,
+      "coord_source_rel_path": "hidden_3/hidden_64/20260311-185700_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_3/hidden_64/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "hidden_1_no_newton",
+      "depth": 3,
+      "width": 256,
+      "coord_source_rel_path": "hidden_3/hidden_256/validation/20260317-161243_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "double_diode_exponential",
+      "plot_variant": "hidden_1_no_newton",
+      "depth": 3,
+      "width": 512,
+      "coord_source_rel_path": "hidden_3/hidden_512/validation/20260311-185941_double_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 1,
+      "width": 64,
+      "coord_source_rel_path": "hidden_1/hidden_64/20260311-172944_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_64/20260311-172944_experimental/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 1,
+      "width": 128,
+      "coord_source_rel_path": "hidden_1/hidden_128/20260312-143619_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_128/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 1,
+      "width": 256,
+      "coord_source_rel_path": "hidden_1/hidden_256/20260311-173028_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_256/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 1,
+      "width": 512,
+      "coord_source_rel_path": "hidden_1/hidden_512/20260311-173056_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_512/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 1,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_1/hidden_1024/20260311-173123_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_1024/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 2,
+      "width": 64,
+      "coord_source_rel_path": "hidden_2/hidden_64/20260311-171025_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_2/hidden_64/20260311-171025_experimental/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 2,
+      "width": 256,
+      "coord_source_rel_path": "hidden_2/hidden_256/20260311-171041_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_2/hidden_256/20260311-171041_experimental/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 2,
+      "width": 512,
+      "coord_source_rel_path": "hidden_2/hidden_512/20260311-171059_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 2,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_2/hidden_1024/20260311-171126_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "fixed_inner_tolerance",
+      "depth": 3,
+      "width": 256,
+      "coord_source_rel_path": "hidden_3/hidden_256/validation/20260313-125843_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_3/hidden_256/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 1,
+      "width": 64,
+      "coord_source_rel_path": "hidden_1/hidden_64/20260317-113144_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_64/redundant/20260311-172944_experimental/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 1,
+      "width": 128,
+      "coord_source_rel_path": "hidden_1/hidden_128/20260317-113144_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_128/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 1,
+      "width": 256,
+      "coord_source_rel_path": "hidden_1/hidden_256/20260317-113706_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_256/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 1,
+      "width": 512,
+      "coord_source_rel_path": "hidden_1/hidden_512/20260317-113706_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_512/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 1,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_1/hidden_1024/20260317-113706_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_1024/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 2,
+      "width": 64,
+      "coord_source_rel_path": "hidden_2/hidden_64/20260313-150228_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_2/hidden_64/20260311-171025_experimental/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 2,
+      "width": 256,
+      "coord_source_rel_path": "hidden_2/hidden_256/20260313-150302_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_2/hidden_256/20260311-171041_experimental/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 2,
+      "width": 512,
+      "coord_source_rel_path": "hidden_2/hidden_512/20260313-150320_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 2,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_2/hidden_1024/20260313-150347_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "experimental",
+      "plot_variant": "progressive_inner_tolerance",
+      "depth": 3,
+      "width": 512,
+      "coord_source_rel_path": "hidden_3/hidden_512/validation/20260313-171929_experimental/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "plot_variant": "main",
+      "depth": 1,
+      "width": 128,
+      "coord_source_rel_path": "hidden_1/hidden_128/20260316-172522_single_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": "hidden_1/hidden_128/validation_states_spice_layers.timing.json"
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "plot_variant": "main",
+      "depth": 2,
+      "width": 512,
+      "coord_source_rel_path": "hidden_2/hidden_512/20260317-105922_single_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    },
+    {
+      "nonlinearity": "single_diode_exponential",
+      "plot_variant": "main",
+      "depth": 2,
+      "width": 1024,
+      "coord_source_rel_path": "hidden_2/hidden_1024/20260317-110028_single_diode_exponential/time_digits_validate_with_residual.log",
+      "spice_source_rel_path": ""
+    }
+  ]
+}

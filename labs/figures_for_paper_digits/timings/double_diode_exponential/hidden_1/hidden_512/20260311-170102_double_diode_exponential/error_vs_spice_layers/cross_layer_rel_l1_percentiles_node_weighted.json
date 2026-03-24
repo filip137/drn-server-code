@@ -1,0 +1,32 @@
+{
+  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_1/hidden_512/20260311-170102_double_diode_exponential/validation_states.npz",
+  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_1/hidden_512/validation/validation_states_spice_layers.npz",
+  "num_layers": 2,
+  "layers": [
+    "Layer_1",
+    "Layer_2"
+  ],
+  "percentiles": [
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99
+  ],
+  "total_nodes": 532,
+  "node_counts": {
+    "Layer_1": 512,
+    "Layer_2": 20
+  },
+  "node_weighted_rel_l1_percentiles": {
+    "p50": 1.1605478213121212e-05,
+    "p60": 1.1751082451097456e-05,
+    "p70": 1.1905469403297435e-05,
+    "p80": 1.2166348679906562e-05,
+    "p90": 1.2464083769731423e-05,
+    "p95": 1.2645394471621077e-05,
+    "p99": 1.2991727272761079e-05
+  }
+}

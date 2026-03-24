@@ -1,0 +1,117 @@
+{
+  "created_at": "2026-03-03T13:14:50.741489+00:00",
+  "non_linearity": "experimental",
+  "hidden": {
+    "hidden_1": [
+      {
+        "rel_tol": "1e-7",
+        "rel_tol_value": 1e-07,
+        "p90": 9.770258581648592e-06,
+        "run_dir": "20260225-185032_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_1/vol_tol_sweep/rel_tol_1e-7/20260225-185032_experimental/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-6",
+        "rel_tol_value": 1e-06,
+        "p90": 9.770258581648592e-06,
+        "run_dir": "20260225-185036_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_1/vol_tol_sweep/rel_tol_1e-6/20260225-185036_experimental/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-5",
+        "rel_tol_value": 1e-05,
+        "p90": 9.789825174804784e-06,
+        "run_dir": "20260225-185040_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_1/vol_tol_sweep/rel_tol_1e-5/20260225-185040_experimental/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-4",
+        "rel_tol_value": 0.0001,
+        "p90": 1.6737720585391113e-05,
+        "run_dir": "20260225-185044_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_1/vol_tol_sweep/rel_tol_1e-4/20260225-185044_experimental/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-3",
+        "rel_tol_value": 0.001,
+        "p90": 6.97602865302332e-05,
+        "run_dir": "20260225-185048_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_1/vol_tol_sweep/rel_tol_1e-3/20260225-185048_experimental/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      }
+    ],
+    "hidden_2": [
+      {
+        "rel_tol": "1e-7",
+        "rel_tol_value": 1e-07,
+        "p90": 1.336068811733697e-05,
+        "run_dir": "20260225-191603_double_diode_exponential",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_2/vol_sweep/rel_tol_1e-7/20260225-191603_double_diode_exponential/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-6",
+        "rel_tol_value": 1e-06,
+        "p90": 1.3347094835597655e-05,
+        "run_dir": "20260225-191624_double_diode_exponential",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_2/vol_sweep/rel_tol_1e-6/20260225-191624_double_diode_exponential/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-5",
+        "rel_tol_value": 1e-05,
+        "p90": 1.299386572840797e-05,
+        "run_dir": "20260225-191645_double_diode_exponential",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_2/vol_sweep/rel_tol_1e-5/20260225-191645_double_diode_exponential/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-4",
+        "rel_tol_value": 0.0001,
+        "p90": 1.757914492725817e-05,
+        "run_dir": "20260225-191703_double_diode_exponential",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_2/vol_sweep/rel_tol_1e-4/20260225-191703_double_diode_exponential/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-3",
+        "rel_tol_value": 0.001,
+        "p90": 0.0003952533018131852,
+        "run_dir": "20260225-191719_double_diode_exponential",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_2/vol_sweep/rel_tol_1e-3/20260225-191719_double_diode_exponential/error_vs_spice_layers/cross_layer_rel_l1_percentiles_node_weighted.json"
+      }
+    ],
+    "hidden_3_amp_4": [
+      {
+        "rel_tol": "1e-7",
+        "rel_tol_value": 1e-07,
+        "p90": 1.1682315173342722e-05,
+        "run_dir": "20260302-155525_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_3/amp_4/vol_tol_sweep/rel_tol_1e-7/20260302-155525_experimental/error_npz/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-6",
+        "rel_tol_value": 1e-06,
+        "p90": 1.1742089917581712e-05,
+        "run_dir": "20260302-155702_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_3/amp_4/vol_tol_sweep/rel_tol_1e-6/20260302-155702_experimental/error_npz/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-5",
+        "rel_tol_value": 1e-05,
+        "p90": 1.4586818295788393e-05,
+        "run_dir": "20260303-094453_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_3/amp_4/vol_tol_sweep/rel_tol_1e-5/20260303-094453_experimental/error_npz/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-4",
+        "rel_tol_value": 0.0001,
+        "p90": 7.851401206693129e-05,
+        "run_dir": "20260302-160001_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_3/amp_4/vol_tol_sweep/rel_tol_1e-4/20260302-160001_experimental/error_npz/cross_layer_rel_l1_percentiles_node_weighted.json"
+      },
+      {
+        "rel_tol": "1e-3",
+        "rel_tol_value": 0.001,
+        "p90": 0.0007634119592045917,
+        "run_dir": "20260302-160118_experimental",
+        "source": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/hidden_3/amp_4/vol_tol_sweep/rel_tol_1e-3/20260302-160118_experimental/error_npz/cross_layer_rel_l1_percentiles_node_weighted.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "percentile": 99.0,
+  "cd_file": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_128/20260313-155212_double_diode_exponential/validation_states.npz",
+  "spice_file": "/home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/hidden_3/hidden_128/excellent_trained_amp4/validation_states_spice_layers.npz",
+  "layers": {
+    "Layer_1": {
+      "rel_l1": 1.4266075974599693e-05,
+      "mae": 5.969779850381939e-06
+    },
+    "Layer_2": {
+      "rel_l1": 8.544443661848916e-06,
+      "mae": 3.7350342939923233e-06
+    },
+    "Layer_3": {
+      "rel_l1": 2.0150670733677467e-05,
+      "mae": 2.7096124351016195e-05
+    },
+    "Layer_4": {
+      "rel_l1": 6.712772475885828e-06,
+      "mae": 3.823349113458414e-05
+    }
+  }
+}

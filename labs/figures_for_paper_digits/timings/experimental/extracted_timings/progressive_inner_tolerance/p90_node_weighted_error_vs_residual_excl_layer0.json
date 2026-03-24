@@ -1,0 +1,251 @@
+{
+  "rows_total": 14,
+  "rows_ok": 11,
+  "rows_missing": 3,
+  "pearson_p90_residual_vs_p90_node_weighted_error": -0.28846854944125266,
+  "pearson_log10_p90_residual_vs_log10_p90_node_weighted_error": 0.1537826574519892,
+  "rows": [
+    {
+      "depth": 1,
+      "width": 64,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_64/20260313-144600_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_64/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "samples": 360,
+      "nodes_total_over_layers": 84,
+      "p90_node_weighted_error": 1.2488548215594836e-05,
+      "p90_nodewise_abs_error": 3.446584701529698e-05,
+      "p90_residual_excl_layer0": 7.525581979751588,
+      "mean_node_weighted_error": 9.933298049940585e-06,
+      "mean_residual_excl_layer0": 2.9222576403414777
+    },
+    {
+      "depth": 1,
+      "width": 128,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_128/20260313-144733_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_128/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "samples": 360,
+      "nodes_total_over_layers": 148,
+      "p90_node_weighted_error": 3.5977953317026606e-06,
+      "p90_nodewise_abs_error": 6.098624706291077e-06,
+      "p90_residual_excl_layer0": 9.610876441001896e-06,
+      "mean_node_weighted_error": 2.9605895811513337e-06,
+      "mean_residual_excl_layer0": 3.679565925267525e-05
+    },
+    {
+      "depth": 1,
+      "width": 256,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_256/20260313-144757_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_256/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "samples": 360,
+      "nodes_total_over_layers": 276,
+      "p90_node_weighted_error": 7.377510397218864e-06,
+      "p90_nodewise_abs_error": 2.2748451232912373e-05,
+      "p90_residual_excl_layer0": 5.732611894607545,
+      "mean_node_weighted_error": 6.52574536609012e-06,
+      "mean_residual_excl_layer0": 2.2823715846442307
+    },
+    {
+      "depth": 1,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_512/20260313-144824_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "samples": 360,
+      "nodes_total_over_layers": 532,
+      "p90_node_weighted_error": 7.687047094719347e-06,
+      "p90_nodewise_abs_error": 2.5433616638181894e-05,
+      "p90_residual_excl_layer0": 4.833755493164063,
+      "mean_node_weighted_error": 6.902318186770365e-06,
+      "mean_residual_excl_layer0": 2.050959550990309
+    },
+    {
+      "depth": 1,
+      "width": 1024,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/20260313-145623_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2"
+      ],
+      "num_common_layers": 2,
+      "samples": 360,
+      "nodes_total_over_layers": 1044,
+      "p90_node_weighted_error": 8.48518074523662e-06,
+      "p90_nodewise_abs_error": 2.9877872467065643e-05,
+      "p90_residual_excl_layer0": 5.171628570556641,
+      "mean_node_weighted_error": 7.87010196969388e-06,
+      "mean_residual_excl_layer0": 2.2675809119698696
+    },
+    {
+      "depth": 2,
+      "width": 64,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_64/20260313-150228_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_64/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3"
+      ],
+      "num_common_layers": 3,
+      "samples": 360,
+      "nodes_total_over_layers": 148,
+      "p90_node_weighted_error": 1.0605166650793586e-05,
+      "p90_nodewise_abs_error": 3.271572206020312e-05,
+      "p90_residual_excl_layer0": 4.76837158203125e-06,
+      "mean_node_weighted_error": 9.118499364620147e-06,
+      "mean_residual_excl_layer0": 1.6998535270600029e-06
+    },
+    {
+      "depth": 2,
+      "width": 128,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_128/20260313-150244_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_128/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3"
+      ],
+      "num_common_layers": 3,
+      "samples": 360,
+      "nodes_total_over_layers": 276,
+      "p90_node_weighted_error": 1.5860569933383088e-05,
+      "p90_nodewise_abs_error": 4.1374950408945575e-05,
+      "p90_residual_excl_layer0": 0.5354513227939606,
+      "mean_node_weighted_error": 1.4834493242362072e-05,
+      "mean_residual_excl_layer0": 0.15591046715871926
+    },
+    {
+      "depth": 2,
+      "width": 256,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_256/20260313-150302_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_256/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3"
+      ],
+      "num_common_layers": 3,
+      "samples": 360,
+      "nodes_total_over_layers": 532,
+      "p90_node_weighted_error": 7.216012248935788e-06,
+      "p90_nodewise_abs_error": 9.186549025774933e-06,
+      "p90_residual_excl_layer0": 7.152557373046875e-06,
+      "mean_node_weighted_error": 6.169970603590182e-06,
+      "mean_residual_excl_layer0": 2.59040973981394e-06
+    },
+    {
+      "depth": 2,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_512/20260313-150320_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_validation_states"
+    },
+    {
+      "depth": 2,
+      "width": 1024,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_1024/20260313-150347_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_2/hidden_1024/spice_validation/validation_states_spice_layers.npz",
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_validation_states"
+    },
+    {
+      "depth": 3,
+      "width": 64,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_64/validation/20260313-151007_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_64/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3",
+        "Layer_4"
+      ],
+      "num_common_layers": 4,
+      "samples": 360,
+      "nodes_total_over_layers": 212,
+      "p90_node_weighted_error": 2.2612772683993353e-05,
+      "p90_nodewise_abs_error": 4.425542831412168e-05,
+      "p90_residual_excl_layer0": 12.684559249877932,
+      "mean_node_weighted_error": 2.1291063803155582e-05,
+      "mean_residual_excl_layer0": 3.3338709541342033
+    },
+    {
+      "depth": 3,
+      "width": 128,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3",
+        "Layer_4"
+      ],
+      "num_common_layers": 4,
+      "samples": 360,
+      "nodes_total_over_layers": 404,
+      "p90_node_weighted_error": 1.4139897522386662e-05,
+      "p90_nodewise_abs_error": 3.863281250009454e-05,
+      "p90_residual_excl_layer0": 5.147022151947031,
+      "mean_node_weighted_error": 1.2503477076768561e-05,
+      "mean_residual_excl_layer0": 2.0587457758181262
+    },
+    {
+      "depth": 3,
+      "width": 256,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_256/validation/20260313-151121_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_256/spice_validation/validation_states_spice_layers.npz",
+      "status": "ok",
+      "common_layers": [
+        "Layer_1",
+        "Layer_2",
+        "Layer_3",
+        "Layer_4"
+      ],
+      "num_common_layers": 4,
+      "samples": 360,
+      "nodes_total_over_layers": 788,
+      "p90_node_weighted_error": 0.03814931637668681,
+      "p90_nodewise_abs_error": 0.06737171455192568,
+      "p90_residual_excl_layer0": 0.23817484229803096,
+      "mean_node_weighted_error": 0.02505396545840199,
+      "mean_residual_excl_layer0": 0.06379106943731029
+    },
+    {
+      "depth": 3,
+      "width": 512,
+      "coord_run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_512/validation/20260313-171929_experimental",
+      "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_512/spice_validation/validation_states_spice_layers.npz",
+      "status": "missing_inputs",
+      "missing_reason": "missing_spice_validation_states"
+    }
+  ]
+}

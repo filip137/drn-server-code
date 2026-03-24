@@ -1,0 +1,126 @@
+{
+  "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental/codex_cpu_rerun/20260320-133516_experimental",
+  "non_linearity": "experimental",
+  "dataset": "digits",
+  "device": "cpu",
+  "dims": [
+    128,
+    128,
+    128,
+    128,
+    20
+  ],
+  "batch_size": 1,
+  "num_epochs": 20,
+  "num_iterations": 512,
+  "rel_tol": 1e-05,
+  "vn_tol": 1e-05,
+  "use_polish": false,
+  "max_newton_iters": 32,
+  "z_thresh": 10000000000.0,
+  "dynamic_polish": false,
+  "linspace_min": -10.0,
+  "linspace_max": 10.0,
+  "linspace_samples": 30,
+  "num_samples": 360,
+  "weights_path": "/home/filip/server_code/simulation_results/digits_medium_network/hidden_3/experimental_double_diode_exponential/hidden_128/amp_4/validation/model_best.pt",
+  "validation_inputs": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental/codex_cpu_rerun/20260320-133516_experimental/validation_inputs.npz",
+  "validation_states": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental/codex_cpu_rerun/20260320-133516_experimental/validation_states.npz",
+  "validation_residual_currents": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental/codex_cpu_rerun/20260320-133516_experimental/validation_residual_currents.npz",
+  "residual_current_stats": {
+    "Layer_1": {
+      "count": 360,
+      "max": 50.496856689453125,
+      "mean": 7.76368379857805,
+      "p50": 4.141960144042969,
+      "p90": 17.73374271392824,
+      "p99": 45.06848548889161
+    },
+    "Layer_2": {
+      "count": 360,
+      "max": 0.01278543472290039,
+      "mean": 0.00022167389591534932,
+      "p50": 8.58306884765625e-06,
+      "p90": 0.0004667282104492188,
+      "p99": 0.0034601640701294027
+    },
+    "Layer_3": {
+      "count": 360,
+      "max": 0.9277461767196655,
+      "mean": 0.4710777481396993,
+      "p50": 0.4726066291332245,
+      "p90": 0.6362783730030059,
+      "p99": 0.8127356463670745
+    },
+    "Layer_4": {
+      "count": 360,
+      "max": 3.403984010219574e-07,
+      "mean": 1.7690084253748257e-07,
+      "p50": 1.7177080735564232e-07,
+      "p90": 2.375338226556778e-07,
+      "p99": 3.260327503085138e-07
+    }
+  },
+  "residual_current_overall": {
+    "count": 1440,
+    "max": 50.496856689453125,
+    "mean": 2.058745849378627,
+    "p50": 0.018466711044311523,
+    "p90": 5.147020149230966,
+    "p99": 40.02204383850096
+  },
+  "residual_comparison_skipped_layers": [
+    "Layer_0"
+  ],
+  "validation_accuracy": 0.9611111111111111,
+  "validation_correct": 346,
+  "validation_total": 360,
+  "double_diode_updater": "overrelaxed",
+  "adaptive_equilibrium": true,
+  "overrelaxation_factor": 1,
+  "overrelaxation_reject_steps": false,
+  "overrelaxation_reject_max_tries": 2,
+  "overrelaxation_reject_shrink": 0.5,
+  "overrelaxation_reject_eps": 0.0,
+  "minimizer_impl": "custom",
+  "double_diode_runtime": null,
+  "damping": 1.0,
+  "experimental_newton_max_steps": 100,
+  "experimental_exponential_newton_tol_progressive": true,
+  "experimental_exponential_newton_tol_start": 0.01,
+  "experimental_exponential_newton_tol_end": 1e-05,
+  "experimental_exponential_newton_tol_switch_hi": 0.01,
+  "experimental_exponential_newton_tol_switch_lo": 0.001,
+  "exp_clip": 165,
+  "single_diode_updater": "custom",
+  "iv_data_path": null,
+  "LABS_IV_CURVE_PATH": "/home/filip/server_code/labs/i_v_npz/experimental_curve_voff_0.8_200_points.npz",
+  "validation_total_seconds": 12.899679130874574,
+  "validation_iteration_counts": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental/codex_cpu_rerun/20260320-133516_experimental/validation_iteration_counts.npz",
+  "equilibrium_iterations": {
+    "calls": 360,
+    "avg_iterations": 26.23611111111111,
+    "last_iterations": 24,
+    "max_iterations": 512
+  },
+  "overrelaxation_reject_stats": {
+    "enabled": false,
+    "steps_checked": 0,
+    "accepted_first_try": 0,
+    "accepted_after_backtrack": 0,
+    "fallback_plain_steps": 0,
+    "backtracks_total": 0,
+    "avg_backtracks_per_step": 0.0,
+    "last_backtracks": 0,
+    "last_accepted_omega": 1.0,
+    "reject_max_tries": 2,
+    "reject_shrink": 0.5,
+    "reject_eps": 0.0
+  },
+  "newton_iteration_stats": {
+    "total_iters": 195665,
+    "calls": 28335,
+    "avg_iters_per_call": 6.905417328392447
+  },
+  "cli_command": "/home/filip/miniconda3/envs/py312/bin/python /home/filip/server_code/labs/small_network.py --mode digits_validate --dataset digits --device cpu --config /home/filip/server_code/simulation_results/digits_medium_network/hidden_3/experimental_double_diode_exponential/hidden_128/amp_4/validation/small_network_double_diode_exponential3h_hidden128.json --weights /home/filip/server_code/simulation_results/digits_medium_network/hidden_3/experimental_double_diode_exponential/hidden_128/amp_4/validation/model_best.pt --output-dir /home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_3/hidden_128/amp_4/validation/20260313-151035_experimental --run-subdir codex_cpu_rerun"
+}

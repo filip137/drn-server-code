@@ -1,0 +1,47 @@
+{
+  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_256/20260317-113706_experimental/codex_cpu_rerun/20260320-132218_experimental/validation_states.npz",
+  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_256/spice_validation/validation_states_spice_layers.npz",
+  "num_layers": 2,
+  "layers": [
+    "Layer_1",
+    "Layer_2"
+  ],
+  "percentiles": [
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99
+  ],
+  "average_rel_l1_percentiles_across_layers": {
+    "p50": 1.2236228443282922e-05,
+    "p60": 1.3002457027195962e-05,
+    "p70": 1.3832452942216527e-05,
+    "p80": 1.5043211969760749e-05,
+    "p90": 1.6567984013644892e-05,
+    "p95": 1.781813342312544e-05,
+    "p99": 2.0562783059473604e-05
+  },
+  "per_layer_rel_l1_percentiles": {
+    "Layer_1": {
+      "p50": 1.1625664971868356e-05,
+      "p60": 1.1870184357929372e-05,
+      "p70": 1.2100452515887022e-05,
+      "p80": 1.241215706963284e-05,
+      "p90": 1.2831210131342386e-05,
+      "p95": 1.3123267942954051e-05,
+      "p99": 1.356072943435981e-05
+    },
+    "Layer_2": {
+      "p50": 1.2846791914697489e-05,
+      "p60": 1.413472969646255e-05,
+      "p70": 1.5564453368546032e-05,
+      "p80": 1.7674266869888656e-05,
+      "p90": 2.0304757895947394e-05,
+      "p95": 2.251299890329683e-05,
+      "p99": 2.75648366845874e-05
+    }
+  }
+}

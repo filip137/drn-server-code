@@ -1,0 +1,122 @@
+[
+  {
+    "depth": "1",
+    "width": "64",
+    "source_rel_path": "hidden_1/hidden_64/validation/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_1/hidden_64/validation/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.03818162903189659",
+    "simulation_seconds": "21.012701522093266",
+    "total_seconds": "22.06463937018998",
+    "timestamp": "2026-03-04 18:02:51"
+  },
+  {
+    "depth": "1",
+    "width": "128",
+    "source_rel_path": "hidden_1/hidden_128/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_1/hidden_128/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.0796945400070399",
+    "simulation_seconds": "72.5132916169241",
+    "total_seconds": "73.60776480892673",
+    "timestamp": "2026-02-23 16:40:58"
+  },
+  {
+    "depth": "1",
+    "width": "256",
+    "source_rel_path": "hidden_1/hidden_256/validation/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_1/hidden_256/validation/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.1700953480321914",
+    "simulation_seconds": "99.31486064987257",
+    "total_seconds": "100.49945606896654",
+    "timestamp": "2026-03-04 18:06:01"
+  },
+  {
+    "depth": "1",
+    "width": "512",
+    "source_rel_path": "hidden_1/hidden_512/validation/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_1/hidden_512/validation/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.30696118995547295",
+    "simulation_seconds": "308.2582849350292",
+    "total_seconds": "309.58070794213563",
+    "timestamp": "2026-03-04 18:01:04"
+  },
+  {
+    "depth": "1",
+    "width": "1024",
+    "source_rel_path": "hidden_1/hidden_1024/validation/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_1/hidden_1024/validation/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.625414727954194",
+    "simulation_seconds": "1105.7011419390328",
+    "total_seconds": "1107.3490477870218",
+    "timestamp": "2026-03-04 17:55:53"
+  },
+  {
+    "depth": "2",
+    "width": "64",
+    "source_rel_path": "hidden_2/hidden_64/validation/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_2/hidden_64/validation/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.06797531503252685",
+    "simulation_seconds": "67.3464512010105",
+    "total_seconds": "68.51403796602972",
+    "timestamp": "2026-03-04 19:52:34"
+  },
+  {
+    "depth": "2",
+    "width": "128",
+    "source_rel_path": "hidden_2/hidden_128/super_high_accuracy/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_2/hidden_128/super_high_accuracy/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.13988216302823275",
+    "simulation_seconds": "548.799074987066",
+    "total_seconds": "549.9558434470091",
+    "timestamp": "2026-02-26 18:44:33"
+  },
+  {
+    "depth": "2",
+    "width": "256",
+    "source_rel_path": "hidden_2/hidden_256/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_2/hidden_256/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.49637495703063905",
+    "simulation_seconds": "4310.639295357047",
+    "total_seconds": "4312.23443189892",
+    "timestamp": "2026-03-04 21:04:27"
+  },
+  {
+    "depth": "2",
+    "width": "512",
+    "source_rel_path": "hidden_2/hidden_512/20260311-170652_double_diode_exponential/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_2/hidden_512/20260311-170652_double_diode_exponential/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "1.648036007070914",
+    "simulation_seconds": "51765.679935642285",
+    "total_seconds": "51768.449848369",
+    "timestamp": "2026-03-13 02:53:28"
+  },
+  {
+    "depth": "3",
+    "width": "64",
+    "source_rel_path": "hidden_3/hidden_64/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_3/hidden_64/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.07111892616376281",
+    "simulation_seconds": "166.515909969341",
+    "total_seconds": "168.08995010424405",
+    "timestamp": "2026-03-16 12:12:09"
+  },
+  {
+    "depth": "3",
+    "width": "128",
+    "source_rel_path": "hidden_3/hidden_128/excellent_trained_amp4/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_3/hidden_128/excellent_trained_amp4/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.20745449303649366",
+    "simulation_seconds": "1182.2824833269697",
+    "total_seconds": "1183.5095278018853",
+    "timestamp": "2026-02-26 18:29:47"
+  },
+  {
+    "depth": "3",
+    "width": "256",
+    "source_rel_path": "hidden_3/hidden_256/validation_states_spice_layers.timing.json",
+    "copied_rel_path": "hidden_3/hidden_256/validation_states_spice_layers.timing.json",
+    "netlist_seconds": "0.6914491853676736",
+    "simulation_seconds": "14360.108733910136",
+    "total_seconds": "14361.823428260162",
+    "timestamp": "2026-03-16 16:11:32"
+  }
+]
