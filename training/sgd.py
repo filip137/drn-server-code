@@ -4,11 +4,36 @@ import torch
 
 from model.function.interaction import Function, SumSeparableFunction
 from model.minimizer.minimizer import ParamUpdater, GradientDescentUpdater
+from model.variable.layer import layer_index
+
+
+def _amplified_layer_row_scale(energy_fn, layer):
+    voltage_amp = getattr(energy_fn, "_voltage_amp", getattr(energy_fn, "voltage_amp", None))
+    current_amp = getattr(energy_fn, "_current_amp", getattr(energy_fn, "current_amp", None))
+    if voltage_amp in (None, 0.0) or current_amp is None:
+        return 1.0
+    return float(voltage_amp / current_amp) ** max(layer_index(layer) - 1, 0)
+
+
+def _resolve_current_scale(energy_fn, cost_fn, mode, current_scale):
+    if mode != "current":
+        return 1.0
+    if current_scale is None:
+        return 1.0
+    if isinstance(current_scale, str):
+        if current_scale == "auto":
+            layers = cost_fn.layers()
+            if not layers:
+                return 1.0
+            return _amplified_layer_row_scale(energy_fn, layers[-1])
+        if current_scale in ("none", "legacy"):
+            return 1.0
+    return float(current_scale)
 
 
 
 class Nudging(Function):
-    """Class to scale a function by a nudging factor
+    """Class to apply either cost-based or current-based nudging.
 
     Attributes
     ----------
@@ -18,16 +43,30 @@ class Nudging(Function):
 
     # FIXME: how to deal with the case where the class is a QFunction or LFunction?
 
-    def __init__(self, function):
+    def __init__(self, function, mode='cost', current_scale=1.0):
         """Initializes an instance of Nudging
 
         Args:
             function (Function): the function to scale by a nudging factor
         """
         self._function = function
+        self._mode = mode
         self._nudging = 0.
+        self._output_layer = function.layers()[-1] if function.layers() else None
+        self._force = None
+        self._current_scale = float(current_scale)
 
-        Function.__init__(self, function.layers(), function.params())
+        if mode not in ('cost', 'current'):
+            raise ValueError("expected nudging mode 'cost' or 'current', but got {}".format(mode))
+
+        if mode == 'cost':
+            layers = function.layers()
+            params = function.params()
+        else:
+            layers = [] if self._output_layer is None else [self._output_layer]
+            params = []
+
+        Function.__init__(self, layers, params)
 
     @property
     def nudging(self):
@@ -38,23 +77,81 @@ class Nudging(Function):
     def nudging(self, nudging):
         self._nudging = nudging
 
+    @property
+    def mode(self):
+        return self._mode
+
+    def prepare(self):
+        """Prepare the nudging term at the current free state.
+
+        In ``cost`` mode this is a no-op because the nudging term is the full
+        augmented cost ``beta * C``.
+        In ``current`` mode we freeze the output force to the free-phase cost
+        gradient so that only the linear coefficient ``b`` changes during the
+        nudged phases.
+        """
+
+        if self._mode != 'current':
+            return
+
+        if self._output_layer is None:
+            raise RuntimeError("current nudging requires a cost/output layer")
+
+        # Force-based nudging uses the free-phase output gradient as a fixed
+        # external current. The linear term is -<y, F>, so we store F = -dC/dy.
+        self._force = - self._function._grad(self._output_layer, mean=False).detach().clone()
+
+    def _force_state(self):
+        if self._output_layer is None:
+            raise RuntimeError("nudging has no managed output layer")
+        if self._force is None or self._force.shape != self._output_layer.state.shape:
+            return torch.zeros_like(self._output_layer.state)
+        return self._force
+
     def eval(self):
         """Value of the nudging function. This is the function's value times the nudging value.
 
         Returns:
             Vector of size (batch_size,) and of type float32. Each value is the value of an example in the current mini-batch
         """
-        return self._nudging * self._function.eval()
+        if self._mode == 'cost':
+            return self._nudging * self._function.eval()
+
+        force = self._force_state()
+        return - self._current_scale * self._nudging * self._output_layer.state.mul(force).flatten(start_dim=1).sum(dim=1)
+
+    def grad_layer_fn(self, layer):
+        if self._mode == 'cost':
+            grad_layer_fn = self._function.grad_layer_fn(layer)
+            return lambda: self._nudging * grad_layer_fn()
+
+        dictionary = {self._output_layer: self._b_coef_output}
+        return dictionary[layer]
+
+    def grad_param_fn(self, param):
+        if self._mode == 'cost':
+            grad_param_fn = self._function.grad_param_fn(param)
+            return lambda: self._nudging * grad_param_fn()
+
+        return lambda: torch.zeros_like(param.state)
 
     def a_coef_fn(self, layer):
         """Returns the function that computes the coefficient a for a given layer"""
-        a_coef_fn = self._function.a_coef_fn(layer)
-        return lambda: self._nudging * a_coef_fn()
+        if self._mode == 'cost':
+            a_coef_fn = self._function.a_coef_fn(layer)
+            return lambda: self._nudging * a_coef_fn()
+        return lambda: 0.
 
     def b_coef_fn(self, layer):
         """Returns the function that computes the coefficient b for a given layer"""
-        b_coef_fn = self._function.b_coef_fn(layer)
-        return lambda: self._nudging * b_coef_fn()
+        if self._mode == 'cost':
+            b_coef_fn = self._function.b_coef_fn(layer)
+            return lambda: self._nudging * b_coef_fn()
+        dictionary = {self._output_layer: self._b_coef_output}
+        return dictionary[layer]
+
+    def _b_coef_output(self):
+        return - self._current_scale * self._nudging * self._force_state()
 
 
 
@@ -72,18 +169,29 @@ class AugmentedFunction(SumSeparableFunction):
         Returns the value of the augmented function (for the current configuration)
     """
 
-    def __init__(self, energy_fn, cost_fn):
+    def __init__(self, energy_fn, cost_fn, nudging_mode='cost', current_scale='auto'):
         """Creates an instance of AugmentedFunction"""
 
         layers = energy_fn.layers()
         params = energy_fn.params()
 
-        nudging = Nudging(cost_fn)
+        resolved_current_scale = _resolve_current_scale(
+            energy_fn,
+            cost_fn,
+            nudging_mode,
+            current_scale,
+        )
+        nudging = Nudging(cost_fn, mode=nudging_mode, current_scale=resolved_current_scale)
         interactions = [energy_fn, nudging]
 
         SumSeparableFunction.__init__(self, layers, params, interactions)
         self._nudging = nudging
         self._energy_fn = energy_fn
+        self._nudging_mode = nudging_mode
+        self._current_scale = resolved_current_scale
+        self._amplified_current_correction_enabled = (
+            nudging_mode == 'current' and resolved_current_scale != 1.0
+        )
 
         # FIXME: what if the cost function does not have the same layers and/or params as the energy function?
 
@@ -96,6 +204,17 @@ class AugmentedFunction(SumSeparableFunction):
     @nudging.setter
     def nudging(self, nudging):
         self._nudging.nudging = nudging
+
+    @property
+    def nudging_mode(self):
+        return self._nudging_mode
+
+    @property
+    def amplified_current_correction_enabled(self):
+        return self._amplified_current_correction_enabled
+
+    def prepare_nudging(self):
+        self._nudging.prepare()
 
     def eval(self):
         """Returns the value of the augmented function for the current configuration.
@@ -259,6 +378,8 @@ class EquilibriumProp(GradientEstimator):
         
         # First phase: compute the first equilibrium state of the layers
         layers_free = [layer.state for layer in self._layers]  # hack: we store the `free state' (i.e. the equilibrium state of the layers with nudging=0)
+        if hasattr(self._augmented_fn, "prepare_nudging"):
+            self._augmented_fn.prepare_nudging()
         self._augmented_fn.nudging = self._first_nudging
         layers_first = self._energy_minimizer.compute_equilibrium()
         
@@ -272,6 +393,7 @@ class EquilibriumProp(GradientEstimator):
             param_grads = self._alternative_param_grads(layers_free, layers_first, layers_second)
         else:
             param_grads = self._standard_param_grads(layers_first, layers_second)
+        param_grads = self._apply_amplified_current_bias_gradient_scale(param_grads)
 
         return param_grads + cost_grads
 
@@ -292,6 +414,8 @@ class EquilibriumProp(GradientEstimator):
 
         # First phase: compute the first equilibrium state of the layers
         layers_free = {layer.name: layer.state.clone() for layer in all_layers }  # hack: we store the `free state' (i.e. the equilibrium state of the layers with nudging=0)
+        if hasattr(self._augmented_fn, "prepare_nudging"):
+            self._augmented_fn.prepare_nudging()
         self._augmented_fn.nudging = self._first_nudging
         layers_first = self._energy_minimizer.compute_equilibrium()
         
@@ -314,6 +438,8 @@ class EquilibriumProp(GradientEstimator):
 
         # First phase: compute the layers' activations along the first trajectory
         layers_free = [layer.state for layer in self._layers]  # we store the `free state' (i.e. the equilibrium state of the layers with nudging=0)
+        if hasattr(self._augmented_fn, "prepare_nudging"):
+            self._augmented_fn.prepare_nudging()
         self._augmented_fn.nudging = self._first_nudging
         trajectory_first = self._energy_minimizer.compute_trajectory()
         
@@ -334,6 +460,10 @@ class EquilibriumProp(GradientEstimator):
         else:
             param_grads = [self._standard_param_grads(first, second) for first, second in zip(trajectory_first[1:], trajectory_second[1:])]
         param_grads = list(map(list, zip(*param_grads)))  # transpose the list of lists: transform the time-wise parameter-wise gradients into parameter-wise time-wise gradients
+        param_grads = [
+            [grad * self._amplified_current_bias_gradient_scale(param) for grad in gradients]
+            for param, gradients in zip(self._params, param_grads)
+        ]
 
         # Store the layer-wise and parameter-wise time-wise gradients in a dictionary
         grads = dict()
@@ -381,6 +511,29 @@ class EquilibriumProp(GradientEstimator):
         param_grads = [(second - first) / (self._second_nudging - self._first_nudging) for first, second in zip(grads_first, grads_second)]
 
         return param_grads
+
+    def _amplified_current_bias_gradient_scale(self, param):
+        if not getattr(self._augmented_fn, "amplified_current_correction_enabled", False):
+            return 1.0
+        energy_fn = getattr(self._augmented_fn, "_energy_fn", self._augmented_fn)
+        voltage_amp = getattr(energy_fn, "_voltage_amp", getattr(energy_fn, "voltage_amp", None))
+        current_amp = getattr(energy_fn, "_current_amp", getattr(energy_fn, "current_amp", None))
+        if voltage_amp in (None, 0.0) or current_amp is None:
+            return 1.0
+
+        for interaction in getattr(energy_fn, "_interactions", []):
+            if getattr(interaction, "_bias", None) is param:
+                layer = getattr(interaction, "_layer", None)
+                if layer is None:
+                    return 1.0
+                return float(current_amp / voltage_amp) ** max(layer_index(layer) - 1, 0)
+        return 1.0
+
+    def _apply_amplified_current_bias_gradient_scale(self, param_grads):
+        return [
+            grad * self._amplified_current_bias_gradient_scale(param)
+            for param, grad in zip(self._params, param_grads)
+        ]
 
     def _alternative_param_grads(self, layers_free, layers_first, layers_second):
         """Compute the parameter gradients using the alternative EquilibriumProp formula
