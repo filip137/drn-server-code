@@ -59,7 +59,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         type=Path,
-        help="Perfect-diode time_series.pkl file. May be repeated.",
+        help="Perfect-diode run directory or time_series.pkl file. May be repeated.",
+    )
+    parser.add_argument(
+        "--perfect-label",
+        type=str,
+        default="Perfect diode",
+        help="Legend label for the perfect-diode aggregate.",
     )
     parser.add_argument(
         "--allow-missing",
@@ -129,13 +135,20 @@ def load_time_series_accuracy_percent(path: Path) -> np.ndarray:
     raise KeyError(f"Expected {expected} in {path}, got: {provided}")
 
 
-def load_perfect_diode(paths: list[Path], allow_missing: bool) -> AggregateSeries:
+def resolve_time_series_path(path: Path) -> Path:
+    expanded = path.expanduser()
+    if expanded.is_dir():
+        return expanded / "time_series.pkl"
+    return expanded
+
+
+def load_perfect_diode(paths: list[Path], allow_missing: bool, label: str) -> AggregateSeries:
     loaded_paths: list[Path] = []
     missing_paths: list[Path] = []
     series: list[np.ndarray] = []
 
     for path in paths:
-        resolved = path.expanduser()
+        resolved = resolve_time_series_path(path)
         if not resolved.is_file():
             if allow_missing:
                 missing_paths.append(resolved)
@@ -153,7 +166,7 @@ def load_perfect_diode(paths: list[Path], allow_missing: bool) -> AggregateSerie
         matrix[row, : values.size] = values
 
     return AggregateSeries(
-        label="Perfect diode",
+        label=label,
         color="tab:orange",
         steps=np.arange(1, max_len + 1, dtype=int),
         mean=np.nanmean(matrix, axis=0),
@@ -239,7 +252,11 @@ def write_metadata(
 def main() -> None:
     args = parse_args()
     selected = load_selected_aggregate(args.selected_json.expanduser().resolve())
-    perfect = load_perfect_diode(args.perfect_run, allow_missing=args.allow_missing)
+    perfect = load_perfect_diode(
+        args.perfect_run,
+        allow_missing=args.allow_missing,
+        label=args.perfect_label,
+    )
     output = args.output.expanduser().resolve()
     output_svg = args.output_svg.expanduser().resolve() if args.output_svg else None
 
