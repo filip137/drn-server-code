@@ -74,3 +74,24 @@ labs/experiments/
 !labs/figures_for_paper_digits/timings/
 !labs/figures_for_paper_digits/**/
 !labs/figures_for_paper_digits/**
+
+# Local run/data noise
+.codex
+.codex/
+data/
+logs/
+runs/
+*.log
+events.out.tfevents*
+
+# Generated experiment payloads inside tracked figure trees
+labs/figures_for_paper_digits/**/runs/
+labs/figures_for_paper_digits/**/error_npz*/
+labs/figures_for_paper_digits/**/spice_validation_folder/
+labs/figures_for_paper_digits/**/validation*.npz
+labs/figures_for_paper_digits/**/model*.npz
+labs/figures_for_paper_digits/**/model*.pt
+
+# Timing run bundles are large generated/input archives. Keep top-level summaries
+# visible, and force-add selected bundle files only when they are intended.
+labs/figures_for_paper_digits/timings/*/
