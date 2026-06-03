@@ -1,7 +1,0 @@
-{
-  "cd_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/20260317-113706_experimental/codex_cpu_rerun/20260320-132232_experimental/validation_states.npz",
-  "spice_npz": "/home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/spice_validation/validation_states_spice_layers.npz",
-  "keys": "Layer_2",
-  "log_scale": false,
-  "cli": "/home/filip/miniconda3/envs/py312/bin/python /home/filip/server_code/labs/tools/error_compare_npz.py /home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/20260317-113706_experimental/codex_cpu_rerun/20260320-132232_experimental/validation_states.npz /home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/spice_validation/validation_states_spice_layers.npz --all-layers --output-dir /home/filip/server_code/labs/figures_for_paper_digits/timings/experimental/hidden_1/hidden_1024/20260317-113706_experimental/codex_cpu_rerun/20260320-132232_experimental/error_npz_vs_spice"
-}
