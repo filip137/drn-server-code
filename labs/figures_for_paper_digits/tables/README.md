@@ -1,9 +1,12 @@
-# Tables
+Generated from the active May 19/20 selected paper timing bundle under
+`figures_for_paper_digits/timings/selected_for_paper/`.
 
-Generated from the current CPU timing bundles under `figures_for_paper_digits/timings/*/cpu_timing/combined_latest_by_hidden.csv`.
+- `table1_accuracy.csv` / `.md`: 42 timing-grid rows; unavailable SPICE error summaries are marked blank in CSV and `--` in generated TeX/Markdown.
+- `table2_runtime_decomposition.csv` / `.md`: 42 timing-grid rows; unavailable SPICE timings and speedups are marked blank in CSV and `--` in generated TeX/Markdown.
+- `table_timing_run_accuracies_input_gain.csv` / `.md`: validation accuracy and amplification parameters for all 42 timing-grid rows.
+- `table3_cpu_only_runs.csv` / `.md`: legacy CPU-only summary retained for reference.
 
-- `table1_accuracy.csv` / `.md`: 34 matched rows with available SPICE error summaries
-- `table2_runtime_decomposition.csv` / `.md`: 34 matched rows with available SPICE timings
-- `table3_cpu_only_runs.csv` / `.md`: 8 CPU-only rows with no SPICE timing, reporting batch size 1 validation runtime and validation accuracy
-- Explicitly skipped from the matched SPICE tables: `single_diode_exponential`, `3H/256` (included in `table3_cpu_only_runs`)
-- Rows with missing SPICE timing or missing error summaries are excluded from Tables 1 and 2 and summarized separately in Table 3 when the CPU validation run is available.
+The 2026-05-19/20 refresh supersedes the previous Apr 29/May 2 paper timing
+source. It uses corrected batch-1 CD reruns and accepted higher-accuracy
+replacement checkpoints where available. The prior selected source is archived
+under `figures_for_paper_digits/timings/old_run/selected_for_paper_20260429/`.

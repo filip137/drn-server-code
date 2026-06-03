@@ -3,99 +3,99 @@
     "hidden_1": [
       {
         "iterations": 4,
-        "p50": 0.0013572141133893249,
-        "p90": 0.001497170252350716,
-        "p95": 0.001524179509072354,
-        "p99": 0.0015774078158017992,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter4/20260225-180021_experimental"
+        "p50": 0.014055446442725737,
+        "p90": 0.02877685699010252,
+        "p95": 0.03204732532540167,
+        "p99": 0.03784304108110849,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter4/20260413-151902_experimental"
       },
       {
         "iterations": 6,
-        "p50": 6.33191071225816e-05,
-        "p90": 6.97602865302332e-05,
-        "p95": 7.181581450105017e-05,
-        "p99": 7.675929679658608e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter6/20260302-144338_experimental"
+        "p50": 0.0035619996155117815,
+        "p90": 0.0072931605154556945,
+        "p95": 0.008121657208871617,
+        "p99": 0.009591001046243887,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter6/20260413-151907_experimental"
       },
       {
         "iterations": 8,
-        "p50": 9.214307093814755e-06,
-        "p90": 1.0428760719785608e-05,
-        "p95": 1.0695930907534067e-05,
-        "p99": 1.112686158596785e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter8/20260225-180025_experimental"
+        "p50": 0.0009020459013512185,
+        "p90": 0.0018481422956060393,
+        "p95": 0.002057708172654126,
+        "p99": 0.00243056337324729,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter8/20260413-151913_experimental"
       },
       {
         "iterations": 10,
-        "p50": 8.572665919896833e-06,
-        "p90": 9.770258581648592e-06,
-        "p95": 1.0091106169548525e-05,
-        "p99": 1.0480240168536202e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter10/20260302-144342_experimental"
+        "p50": 0.00022814363407613604,
+        "p90": 0.0004683054443648897,
+        "p95": 0.0005208081585802278,
+        "p99": 0.0006157499867676632,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter10/20260413-151918_experimental"
       },
       {
         "iterations": 12,
-        "p50": 8.570688646585651e-06,
-        "p90": 9.766340355641216e-06,
-        "p95": 1.0102246242344256e-05,
-        "p99": 1.048453062691877e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter12/20260302-144346_experimental"
+        "p50": 5.804853023304484e-05,
+        "p90": 0.00011893429433068122,
+        "p95": 0.00013148951911542462,
+        "p99": 0.00015577608006686082,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter12/20260413-151924_experimental"
       },
       {
         "iterations": 14,
-        "p50": 8.574095615480878e-06,
-        "p90": 9.76481320754077e-06,
-        "p95": 1.010262275584879e-05,
-        "p99": 1.0486098846565762e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter14/20260302-144350_experimental"
+        "p50": 1.7389712387326178e-05,
+        "p90": 3.0260849503536378e-05,
+        "p95": 3.317947690962103e-05,
+        "p99": 3.919911967617699e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter14/20260413-151929_experimental"
       },
       {
         "iterations": 16,
-        "p50": 8.574123023204433e-06,
-        "p90": 9.764817009426763e-06,
-        "p95": 1.0102649865623995e-05,
-        "p99": 1.0486008429403183e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter16/20260225-180029_experimental"
+        "p50": 1.0097690098086133e-05,
+        "p90": 1.1530493791471679e-05,
+        "p95": 1.2001890526650547e-05,
+        "p99": 1.3244519920101388e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter16/20260413-151935_experimental"
       },
       {
         "iterations": 32,
-        "p50": 8.574123023204433e-06,
-        "p90": 9.764817009426763e-06,
-        "p95": 1.0102649865623995e-05,
-        "p99": 1.0486008429403183e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter32/20260225-180033_experimental"
+        "p50": 8.567043765776818e-06,
+        "p90": 9.77242941860117e-06,
+        "p95": 1.010268764883789e-05,
+        "p99": 1.0482848915201004e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter32/20260413-151940_experimental"
       },
       {
         "iterations": 64,
-        "p50": 8.574123023204433e-06,
-        "p90": 9.764817009426763e-06,
-        "p95": 1.0102649865623995e-05,
-        "p99": 1.0486008429403183e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter64/20260225-180037_experimental"
+        "p50": 8.567043765776818e-06,
+        "p90": 9.77242941860117e-06,
+        "p95": 1.010268764883789e-05,
+        "p99": 1.0482848915201004e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter64/20260413-151946_experimental"
       },
       {
         "iterations": 128,
-        "p50": 8.574123023204433e-06,
-        "p90": 9.764817009426763e-06,
-        "p95": 1.0102649865623995e-05,
-        "p99": 1.0486008429403183e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter128/20260225-180042_experimental"
+        "p50": 8.567043765776818e-06,
+        "p90": 9.77242941860117e-06,
+        "p95": 1.010268764883789e-05,
+        "p99": 1.0482848915201004e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter128/20260413-151953_experimental"
       },
       {
         "iterations": 256,
-        "p50": 8.574123023204433e-06,
-        "p90": 9.764817009426763e-06,
-        "p95": 1.0102649865623995e-05,
-        "p99": 1.0486008429403183e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter256/20260225-180048_experimental"
+        "p50": 8.567043765776818e-06,
+        "p90": 9.77242941860117e-06,
+        "p95": 1.010268764883789e-05,
+        "p99": 1.0482848915201004e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter256/20260413-152001_experimental"
       },
       {
         "iterations": 512,
-        "p50": 8.574123023204433e-06,
-        "p90": 9.764817009426763e-06,
-        "p95": 1.0102649865623995e-05,
-        "p99": 1.0486008429403183e-05,
-        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.2/iterations/iter512/20260225-180057_experimental"
+        "p50": 8.567043765776818e-06,
+        "p90": 9.77242941860117e-06,
+        "p95": 1.010268764883789e-05,
+        "p99": 1.0482848915201004e-05,
+        "run_dir": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_iter/experimental/hidden_1/overrelax1.0/iterations/iter512/20260413-152011_experimental"
       }
     ],
     "hidden_2": [

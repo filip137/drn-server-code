@@ -1,10 +1,18 @@
 {
-  "created_at": "2026-03-24T15:42:01.107859+00:00",
+  "created_at": "2026-05-15T08:17:32.127174+00:00",
   "summary_json": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/amp_4_plots_data/vol_tol_summary_hidden1_hidden2_hidden3_amp4.json",
   "output_png": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/amp_4_plots_data/p90_vs_rel_tol_all_hidden.png",
   "output_svg": "/home/filip/server_code/labs/figures_for_paper_digits/error_vs_vol_tol/experimental/amp_4_plots_data/p90_vs_rel_tol_all_hidden.svg",
-  "title": "Experimental I-V: p90 relative error and average outer sweeps vs voltage tolerance",
-  "family_title": "Experimental I-V",
+  "p90_ylim": [
+    8e-06,
+    0.002
+  ],
+  "avg_ylim": [
+    5.0,
+    31.0
+  ],
+  "title": "PWL i(v)",
+  "family_title": "PWL i(v)",
   "hidden": {
     "hidden_1": {
       "label": "Hidden 1",
@@ -16,18 +24,18 @@
         0.001
       ],
       "p90": [
-        9.770258581648592e-06,
-        9.770258581648592e-06,
-        9.789825174804784e-06,
-        1.6737720585391113e-05,
-        6.97602865302332e-05
+        9.957994833953055e-06,
+        1.0277485991567041e-05,
+        1.66878106160385e-05,
+        0.00012602804449190458,
+        0.0011627075314741369
       ],
       "avg_outer_iterations": [
-        10.0,
-        10.0,
-        9.0,
-        7.5,
-        6.0
+        17.225,
+        16.47222222222222,
+        14.136111111111111,
+        10.916666666666666,
+        7.6305555555555555
       ]
     },
     "hidden_2": {
@@ -40,18 +48,18 @@
         0.001
       ],
       "p90": [
-        1.336068811733697e-05,
-        1.3347094835597655e-05,
-        1.299386572840797e-05,
-        1.757914492725817e-05,
-        0.0003952533018131852
+        1.2395397428716551e-05,
+        1.2367317572947943e-05,
+        1.3533619079228063e-05,
+        5.6030922825346735e-05,
+        0.0005848799177163942
       ],
       "avg_outer_iterations": [
-        23.891666666666666,
-        22.855555555555554,
-        20.041666666666668,
-        16.805555555555557,
-        13.444444444444445
+        26.275,
+        24.18611111111111,
+        21.241666666666667,
+        18.127777777777776,
+        15.011111111111111
       ]
     },
     "hidden_3_amp_4": {
