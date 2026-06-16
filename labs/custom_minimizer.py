@@ -16,6 +16,7 @@ from model.resistive.minimizer import (
     ExponentialDoubleDiodeUpdater,
     ExponentialSingleDiodeUpdater,
     HardSigmoidUpdater,
+    _scale_hard_sigmoid_params_for_layer,
 )
 from model.resistive.layer import NonlinearResistiveLayer
 
@@ -2544,7 +2545,19 @@ class CustomQuadraticMinimizer(CustomMinimizer):
             if updater_cls is not None:
                 updaters = [updater_cls(layer, fn, exponential_params) for layer in free_layers]
         elif non_linearity == "hard_sigmoid":
-            updaters = [CustomHardSigmoidUpdater(layer, fn, hard_sigmoid_params) for layer in free_layers]
+            updaters = [
+                CustomHardSigmoidUpdater(
+                    layer,
+                    fn,
+                    _scale_hard_sigmoid_params_for_layer(
+                        hard_sigmoid_params,
+                        layer,
+                        voltage_amp,
+                        current_amp,
+                    ),
+                )
+                for layer in free_layers
+            ]
         elif non_linearity == "experimental":
             if iv_data is None:
                 env_path = os.environ.get("LABS_IV_CURVE_PATH")

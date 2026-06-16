@@ -653,7 +653,12 @@ class Backprop(GradientEstimator):
 
         self._energy_minimizer.compute_equilibrium()
         cost_mean = self._cost_fn.eval().mean()
-        param_grads = torch.autograd.grad(cost_mean, [param.state for param in self._params])
+        param_states = [param.state for param in self._params]
+        param_grads = torch.autograd.grad(cost_mean, param_states, allow_unused=True)
+        param_grads = [
+            torch.zeros_like(param.state) if grad is None else grad
+            for param, grad in zip(self._params, param_grads)
+        ]
 
         for param in self._params: param.state.requires_grad = False
         for layer in self._layers: layer.state = layer.state.detach()

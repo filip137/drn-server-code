@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from model.minimizer.minimizer import LayerUpdater, Minimizer
 from model.resistive.layer import NonlinearResistiveLayer, ConvLayer
+from model.variable.layer import layer_index
 import torch
 
 _HOSTNAME = socket.gethostname()
@@ -29,6 +30,15 @@ lambertw = _load_lambertw()
 
 
 _CONV_LAYER_TYPES = (ConvLayer,)
+
+
+def _scale_hard_sigmoid_params_for_layer(params, layer, voltage_amp, current_amp):
+    scaled = dict(params)
+    scale = float(current_amp / voltage_amp) ** (layer_index(layer) - 1)
+    for key in ("g_on", "g_off"):
+        if key in scaled and scaled[key] is not None:
+            scaled[key] = scaled[key] * scale
+    return scaled
 
 
 class QuadraticUpdater(LayerUpdater):
@@ -910,7 +920,19 @@ class QuadraticMinimizer(Minimizer):
         elif non_linearity == 'single_diode_exponential':
             updaters = [ExponentialSingleDiodeUpdater(layer, fn, exponential_params) for layer in free_layers]
         elif non_linearity == 'hard_sigmoid':
-            updaters = [HardSigmoidUpdater(layer, fn, hard_sigmoid_params) for layer in free_layers]
+            updaters = [
+                HardSigmoidUpdater(
+                    layer,
+                    fn,
+                    _scale_hard_sigmoid_params_for_layer(
+                        hard_sigmoid_params,
+                        layer,
+                        voltage_amp,
+                        current_amp,
+                    ),
+                )
+                for layer in free_layers
+            ]
         elif non_linearity == 'linear':
             updaters = [QuadraticUpdater(layer, fn) for layer in free_layers]
         else:

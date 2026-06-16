@@ -81,6 +81,7 @@ labs/experiments/
 data/
 logs/
 runs/
+results/
 *.log
 events.out.tfevents*
 

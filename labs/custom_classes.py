@@ -281,6 +281,7 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
         current_amp=1.0,
         weight_min=None,
         weight_max=None,
+        weight_init_mode="kaiming_uniform",
         input_mode="train",
         conv_pipeline=None,
         pooling_mode="avg",
@@ -294,6 +295,7 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
         self._weight_gains = weight_gains
         self._weight_min = weight_min
         self._weight_max = weight_max
+        self._weight_init_mode = weight_init_mode
         self._conv_pipeline = list(conv_pipeline or [])
         has_pooling_stage = any(
             conf.get("mode", "convolution") == "pooling" for conf in self._conv_pipeline
@@ -395,6 +397,7 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
                     clamp=True,
                     clamp_min=weight_min,
                     clamp_max=weight_max,
+                    init_mode=weight_init_mode,
                 )
             elif spec["mode"] == "pooling":
                 stage_weight = PoolWeight(
@@ -461,7 +464,7 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
                 clamp=True,
                 clamp_min=weight_min,
                 clamp_max=weight_max,
-                init_mode="xavier-uniform",
+                init_mode=weight_init_mode,
             )
             for (layer_pre, layer_post), gain in zip(dense_pairs, dense_weight_gains)
         ]
@@ -484,7 +487,7 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
                     voltage_amp=self._voltage_amp,
                     current_amp=self._current_amp,
                 )
-                for layer in free_layers
+                for layer in free_layers[:-1]
             ]
         elif non_linearity == "double_diode_quadratic":
             non_linear_interaction = [
@@ -577,7 +580,17 @@ class FlexibleConvWeight(ConvWeight):
 class ConvResistive(QFunction):
     """Convolutional resistive interaction mirroring DenseResistive logic in conv form."""
 
-    def __init__(self, layer_pre, layer_post, conv_weight, padding, stride, dilation, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer_pre,
+        layer_post,
+        conv_weight,
+        padding,
+        stride,
+        dilation,
+        voltage_amp=1.0,
+        current_amp=1.0,
+    ):
         self._layer_pre = layer_pre
         self._layer_post = layer_post
         self._weight = conv_weight
@@ -587,6 +600,13 @@ class ConvResistive(QFunction):
         self._D = dilation
         self._voltage_amp = voltage_amp
         self._current_amp = current_amp
+
+    def _amp_factor(self):
+        layer_pre_index = int(self._layer_pre._name[-1])
+        return (self._current_amp / self._voltage_amp) ** layer_pre_index
+
+    def _pre_scale(self):
+        return 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp
 
     def _conv_geometry(self):
         weight = self._weight.get()
@@ -620,7 +640,7 @@ class ConvResistive(QFunction):
 
         diff2 = (patches - targets).pow(2)
         weighted = diff2 * kernels
-        E_per = 0.5 * weighted.sum(dim=(1, 2, 3))
+        E_per = 0.5 * weighted.sum(dim=(1, 2, 3)) * self._amp_factor()
         return E_per if per_sample else E_per.sum()
 
     def im2col(self):
@@ -695,23 +715,24 @@ class ConvResistive(QFunction):
 
     def _b_coef_layer_pre(self):
         b_coef = -self.col2im()
-        b_coef = b_coef * self._current_amp
+        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp
         return b_coef
 
     def _b_coef_layer_post(self):
         b_coef = -self.im2col()
-        if self._layer_post.name != 'Layer_1':
-            b_coef = b_coef * self._voltage_amp
+        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp
         return b_coef
 
     def _a_coef_layer_pre(self):
         a_map = self.a_col2im()
-        a_coef = a_map * self._voltage_amp * self._current_amp
+        pre_scale = self._pre_scale()
+        a_coef = a_map * self._amp_factor() * pre_scale * pre_scale
         return 0.5 * a_coef
 
     def _a_coef_layer_post(self):
         a_map = self.a_im2col()
-        return 0.5 * a_map
+        a_coef = a_map * self._amp_factor() * self._current_amp * self._current_amp
+        return 0.5 * a_coef
 
     def _grad_weight(self):
         weight, C_out, C_in, Kh, Kw, *_ = self._conv_geometry()

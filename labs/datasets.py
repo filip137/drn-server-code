@@ -1,9 +1,20 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from sklearn.datasets import make_moons, load_digits
 from torchvision import datasets, transforms
 import torch
 from torch.utils.data import random_split, DataLoader, TensorDataset
+
+
+def _make_moons(*args, **kwargs):
+    from sklearn.datasets import make_moons
+
+    return make_moons(*args, **kwargs)
+
+
+def _load_digits(*args, **kwargs):
+    from sklearn.datasets import load_digits
+
+    return load_digits(*args, **kwargs)
 
 
 
@@ -67,7 +78,7 @@ class MoonsDataset(Datasets):
         x2 = x[:, [1]].repeat(1, half)
         return torch.cat([x1, x2], dim=1)
     def build(self):
-        x, y = make_moons(n_samples=self.num_samples, noise=self.noise, random_state=42)
+        x, y = _make_moons(n_samples=self.num_samples, noise=self.noise, random_state=42)
         # Keep features in float32 to match model weights; labels stay int for targets.
         x = torch.tensor(x, dtype=torch.float32, device=self.device)
         y = torch.tensor(y, dtype=torch.long, device=self.device)
@@ -210,7 +221,7 @@ class DigitsDataset(Datasets):
         self.seed = int(seed)
 
     def build(self):
-        digits = load_digits()
+        digits = _load_digits()
         x = digits.data  # (N, 64), values in [0, 16]
         y = digits.target
         if self.num_samples is not None and self.num_samples < x.shape[0]:
@@ -244,6 +255,7 @@ def _build_torchvision_image_loaders(
     normalize,
     normalize_mean,
     normalize_std,
+    normalize_scale=1.0,
 ):
     transforms_list = [transforms.ToTensor()]
     if normalize:
@@ -252,6 +264,9 @@ def _build_torchvision_image_loaders(
                 mean=(float(normalize_mean),), std=(float(normalize_std),)
             )
         )
+        scale = float(normalize_scale)
+        if abs(scale - 1.0) > 1e-12:
+            transforms_list.append(transforms.Lambda(lambda tensor, s=scale: tensor * s))
     transform = transforms.Compose(transforms_list)
 
     train_dataset = dataset_cls(
@@ -285,6 +300,7 @@ class MnistDataset(Datasets):
         normalize,
         normalize_std,
         normalize_mean=0.1307,
+        normalize_scale=1.0,
     ):
         super().__init__(name, batch_size, device)
         self.root = root
@@ -293,6 +309,7 @@ class MnistDataset(Datasets):
         self.normalize = normalize
         self.normalize_std = normalize_std
         self.normalize_mean = normalize_mean
+        self.normalize_scale = normalize_scale
 
     def build(self):
         return _build_torchvision_image_loaders(
@@ -303,6 +320,7 @@ class MnistDataset(Datasets):
             normalize=self.normalize,
             normalize_mean=self.normalize_mean,
             normalize_std=self.normalize_std,
+            normalize_scale=self.normalize_scale,
         )
 
 
@@ -319,6 +337,7 @@ class FashionMnistDataset(Datasets):
         normalize,
         normalize_std=0.3530,
         normalize_mean=0.2860,
+        normalize_scale=1.0,
     ):
         super().__init__(name, batch_size, device)
         self.root = root
@@ -327,6 +346,7 @@ class FashionMnistDataset(Datasets):
         self.normalize = normalize
         self.normalize_std = normalize_std
         self.normalize_mean = normalize_mean
+        self.normalize_scale = normalize_scale
 
     def build(self):
         return _build_torchvision_image_loaders(
@@ -337,6 +357,7 @@ class FashionMnistDataset(Datasets):
             normalize=self.normalize,
             normalize_mean=self.normalize_mean,
             normalize_std=self.normalize_std,
+            normalize_scale=self.normalize_scale,
         )
 
 
