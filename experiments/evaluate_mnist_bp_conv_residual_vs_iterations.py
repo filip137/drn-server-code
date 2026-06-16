@@ -26,6 +26,7 @@ from evaluate_mnist_bp_write_noise_sweep import (  # noqa: E402
     _scores,
     _select_shard,
 )
+from model.resistive.layer import NonlinearResistiveLayer  # noqa: E402
 from model.variable.layer import layer_index  # noqa: E402
 
 
@@ -57,6 +58,7 @@ RUN_LABELS = {
 RESIDUAL_COLUMNS = [
     "model_label",
     "non_linearity",
+    "residual_mode",
     "run_name",
     "seed",
     "voltage_amp",
@@ -125,7 +127,62 @@ def _layer_role(index: int, total: int) -> str:
     return f"hidden_{index}"
 
 
-def _evaluate_context(context: dict, *, max_test_samples: int | None) -> dict:
+def _perfect_diode_projected_kkt_residual(
+    layer: object,
+    grad: torch.Tensor,
+    *,
+    eps: float,
+) -> torch.Tensor:
+    state = layer.state.detach()
+    if not isinstance(layer, NonlinearResistiveLayer):
+        return grad.abs()
+    if state.ndim < 2 or state.shape[1] % 2 != 0:
+        return grad.abs()
+
+    half = state.shape[1] // 2
+    residual = torch.empty_like(grad)
+
+    exc_state = state[:, :half]
+    exc_grad = grad[:, :half]
+    exc_free = exc_state > eps
+    residual[:, :half] = torch.where(exc_free, exc_grad.abs(), torch.relu(-exc_grad))
+
+    inh_state = state[:, half:]
+    inh_grad = grad[:, half:]
+    inh_free = inh_state < -eps
+    residual[:, half:] = torch.where(inh_free, inh_grad.abs(), torch.relu(inh_grad))
+    return residual
+
+
+def _residual_tensor(
+    layer: object,
+    grad: torch.Tensor,
+    *,
+    residual_mode: str,
+    non_linearity: str,
+    eps: float,
+) -> tuple[torch.Tensor, str]:
+    if residual_mode == "auto":
+        mode = "projected_kkt" if non_linearity == "perfect_diode" else "raw"
+    else:
+        mode = residual_mode
+
+    if mode == "projected_kkt":
+        if isinstance(layer, NonlinearResistiveLayer):
+            return _perfect_diode_projected_kkt_residual(layer, grad, eps=eps), "projected_kkt"
+        return grad.abs(), "raw"
+    if mode == "raw":
+        return grad.abs(), "raw"
+    raise ValueError(f"Unknown residual mode {residual_mode!r}.")
+
+
+def _evaluate_context(
+    context: dict,
+    *,
+    max_test_samples: int | None,
+    residual_mode: str,
+    kkt_eps: float,
+) -> dict:
     network = context["network"]
     minimizer = context["minimizer"]
     fn = getattr(minimizer, "_fn", context["energy_fn"])
@@ -137,6 +194,7 @@ def _evaluate_context(context: dict, *, max_test_samples: int | None) -> dict:
     free_layers = context["free_layers"]
 
     layer_values: list[list[float]] = [[] for _ in free_layers]
+    layer_residual_modes: list[str] | None = None
     overall_values: list[float] = []
     loss_values: list[float] = []
     correct_values: list[bool] = []
@@ -158,9 +216,22 @@ def _evaluate_context(context: dict, *, max_test_samples: int | None) -> dict:
         correct = pred.eq(labels).detach()
 
         grads = [fn.grad_layer_fn(layer)().detach() for layer in free_layers]
+        residuals_and_modes = [
+            _residual_tensor(
+                layer,
+                grad,
+                residual_mode=residual_mode,
+                non_linearity=context["model_cfg"]["non_linearity"],
+                eps=kkt_eps,
+            )
+            for layer, grad in zip(free_layers, grads)
+        ]
+        if layer_residual_modes is None:
+            layer_residual_modes = [mode for _, mode in residuals_and_modes]
+        residuals = [residual for residual, _ in residuals_and_modes]
         norms = [
-            grad.reshape(grad.shape[0], -1).abs().amax(dim=1).detach()
-            for grad in grads
+            residual.reshape(residual.shape[0], -1).amax(dim=1).detach()
+            for residual in residuals
         ]
         batch_size = int(images.shape[0])
         take = batch_size
@@ -185,6 +256,7 @@ def _evaluate_context(context: dict, *, max_test_samples: int | None) -> dict:
         "accuracy": float(np.mean(np.asarray(correct_values, dtype=bool))),
         "loss": float(np.mean(np.asarray(loss_values, dtype=np.float64))),
         "layer_values": layer_values,
+        "layer_residual_modes": layer_residual_modes or [],
         "overall_values": overall_values,
     }
 
@@ -228,36 +300,52 @@ def write_summaries_and_plots(output_root: Path, *, keep_raw: bool = True) -> No
         for row in rows
         if row.get("layer_role") == "overall"
     ]
-    by_run: dict[tuple[str, int], dict[int, dict]] = defaultdict(dict)
+    by_run: dict[tuple[str, str, int], dict[int, dict]] = defaultdict(dict)
     for row in gate_rows:
-        by_run[(row["run_name"], int(row["seed"]))][int(row["iteration_count"])] = row
+        by_run[
+            (str(row.get("non_linearity", "")), row["run_name"], int(row["seed"]))
+        ][int(row["iteration_count"])] = row
 
     decisions = []
-    recommend_iterations = 6
-    for (run_name, seed), values in sorted(by_run.items()):
-        if 6 not in values or 16 not in values:
+    recommend_iterations = None
+    available_iterations = sorted(
+        {int(row["iteration_count"]) for row in gate_rows if row.get("iteration_count", "") != ""}
+    )
+    reference_iteration = max(available_iterations) if available_iterations else 16
+    candidate_iterations = [value for value in available_iterations if value <= reference_iteration]
+    for (non_linearity, run_name, seed), values in sorted(by_run.items()):
+        if reference_iteration not in values:
             continue
-        p90_6 = float(values[6]["p90"])
-        p90_16 = float(values[16]["p90"])
-        ratio = p90_6 / p90_16 if p90_16 > 0 else math.inf
-        within_20pct = bool(ratio <= 1.2)
-        if not within_20pct:
-            recommend_iterations = 16
+        reference_p90 = float(values[reference_iteration]["p90"])
+        selected = reference_iteration
+        for candidate in candidate_iterations:
+            if candidate not in values:
+                continue
+            candidate_p90 = float(values[candidate]["p90"])
+            ratio = candidate_p90 / reference_p90 if reference_p90 > 0 else math.inf
+            if ratio <= 1.2:
+                selected = candidate
+                break
+        recommend_iterations = max(recommend_iterations or selected, selected)
+        p90_6 = float(values[6]["p90"]) if 6 in values else math.nan
+        ratio_6 = p90_6 / reference_p90 if reference_p90 > 0 else math.inf
         decisions.append(
             {
                 "run_name": run_name,
+                "non_linearity": non_linearity,
                 "seed": seed,
                 "p90_at_6": p90_6,
-                "p90_at_16": p90_16,
-                "ratio_6_over_16": ratio,
-                "within_20pct": within_20pct,
+                f"p90_at_{reference_iteration}": reference_p90,
+                f"ratio_6_over_{reference_iteration}": ratio_6,
+                "selected_num_iterations": selected,
             }
         )
     _write_json(
         output_root / "gate_decision.json",
         {
             "recommended_num_iterations": recommend_iterations,
-            "rule": "keep 6 iff p90_overall(K=6) <= 1.2 * p90_overall(K=16) for every amp",
+            "reference_iteration": reference_iteration,
+            "rule": "choose the smallest K whose p90_overall is within 20% of the largest evaluated K; top-level recommendation is the max across runs",
             "decisions": decisions,
         },
     )
@@ -265,20 +353,32 @@ def write_summaries_and_plots(output_root: Path, *, keep_raw: bool = True) -> No
     overall_rows = [row for row in rows if row.get("layer_role") == "overall"]
     if overall_rows:
         fig, ax = plt.subplots(figsize=(7.2, 4.6))
-        grouped: dict[tuple[str, int], list[dict]] = defaultdict(list)
+        grouped: dict[tuple[str, str, int], list[dict]] = defaultdict(list)
         for row in overall_rows:
-            grouped[(row["run_name"], int(row["seed"]))].append(row)
-        for (run_name, seed), group in sorted(
+            grouped[
+                (str(row.get("non_linearity", "")), row["run_name"], int(row["seed"]))
+            ].append(row)
+        for (non_linearity, run_name, seed), group in sorted(
             grouped.items(),
-            key=lambda item: (RUN_ORDER.index(item[0][0]) if item[0][0] in RUN_ORDER else 999, item[0][1]),
+            key=lambda item: (
+                str(item[0][0]),
+                RUN_ORDER.index(item[0][1]) if item[0][1] in RUN_ORDER else 999,
+                item[0][2],
+            ),
         ):
             group = sorted(group, key=lambda row: int(row["iteration_count"]))
             x = [int(row["iteration_count"]) for row in group]
             y = [float(row["p90"]) for row in group]
-            ax.plot(x, y, marker="o", label=f"{RUN_LABELS.get(run_name, run_name)} seed {seed}")
+            label = f"{non_linearity} {RUN_LABELS.get(run_name, run_name)} seed {seed}"
+            ax.plot(x, y, marker="o", label=label)
         ax.set_xlabel("Inference iterations")
         ax.set_ylabel("p90 residual current, overall")
-        ax.set_title("Hard-sigmoid conv2 residual current vs iterations")
+        nonlinearities = sorted({str(row.get("non_linearity", "")) for row in overall_rows})
+        ax.set_title(
+            "Conv2 residual current vs iterations"
+            if len(nonlinearities) != 1
+            else f"{nonlinearities[0]} residual current vs iterations"
+        )
         ax.set_yscale("log")
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=8)
@@ -310,6 +410,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--iteration-counts", type=int, nargs="+", default=[1, 2, 3, 4, 5, 6, 8, 10, 12, 16])
     parser.add_argument("--eval-batch-size", type=int, default=128)
     parser.add_argument("--max-test-samples", type=int, default=1024)
+    parser.add_argument("--residual-mode", choices=("auto", "raw", "projected_kkt"), default="auto")
+    parser.add_argument("--kkt-eps", type=float, default=1.0e-8)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--num-shards", type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
@@ -361,6 +463,8 @@ def main() -> None:
         "iteration_counts": args.iteration_counts,
         "eval_batch_size": args.eval_batch_size,
         "max_test_samples": args.max_test_samples,
+        "residual_mode": args.residual_mode,
+        "kkt_eps": args.kkt_eps,
         "num_shards": args.num_shards,
         "shard_index": args.shard_index,
         "selected_runs": [f"{row.non_linearity}/{row.run_name}/seed_{row.seed}" for row in selected],
@@ -388,13 +492,19 @@ def main() -> None:
                 no_download=args.no_download,
                 inference_iterations_override=int(iteration_count),
             )
-            metrics = _evaluate_context(context, max_test_samples=args.max_test_samples)
+            metrics = _evaluate_context(
+                context,
+                max_test_samples=args.max_test_samples,
+                residual_mode=args.residual_mode,
+                kkt_eps=args.kkt_eps,
+            )
             batch_rows = []
             for index, (layer, values) in enumerate(zip(context["free_layers"], metrics["layer_values"])):
                 batch_rows.append(
                     {
                         "model_label": args.model_label,
                         "non_linearity": run.non_linearity,
+                        "residual_mode": metrics["layer_residual_modes"][index],
                         "run_name": run.run_name,
                         "seed": run.seed,
                         "voltage_amp": run.voltage_amp,
@@ -414,6 +524,7 @@ def main() -> None:
                 {
                     "model_label": args.model_label,
                     "non_linearity": run.non_linearity,
+                    "residual_mode": args.residual_mode,
                     "run_name": run.run_name,
                     "seed": run.seed,
                     "voltage_amp": run.voltage_amp,
