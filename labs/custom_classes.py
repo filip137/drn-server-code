@@ -487,7 +487,7 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
                     voltage_amp=self._voltage_amp,
                     current_amp=self._current_amp,
                 )
-                for layer in free_layers[:-1]
+                for layer in free_layers
             ]
         elif non_linearity == "double_diode_quadratic":
             non_linear_interaction = [
