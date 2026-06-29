@@ -22,6 +22,7 @@ for path in (REPO_ROOT, LABS_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+import model  # noqa: F401,E402 - anchor repo-local package before labs imports.
 from custom_classes import FlexibleDeepResistiveEnergy  # noqa: E402
 from labs.mnist_train import (  # noqa: E402
     _build_tracking_minimizer,
@@ -160,6 +161,9 @@ def _build_eval_context(
     eval_batch_size: int | None,
     no_download: bool,
     inference_iterations_override: int | None,
+    input_gain_override: float | None = None,
+    hard_sigmoid_param_override: dict | None = None,
+    dataset_root_override: str | None = None,
 ) -> dict:
     source_config_path = run.run_dir / "source_config.json"
     if not source_config_path.exists():
@@ -174,6 +178,14 @@ def _build_eval_context(
     model_key = config.get("lab", {}).get("model_key", "mnist_bp_amp")
     model_overrides = config["model_overrides"]
     model_cfg = {**config["model_base"], **model_overrides[model_key]}
+    trained_input_gain = float(model_cfg["input_gain"])
+    if input_gain_override is not None:
+        model_cfg["input_gain"] = float(input_gain_override)
+    trained_hard_sigmoid_param = dict(model_cfg.get("hard_sigmoid_param", {}))
+    if hard_sigmoid_param_override:
+        hard_sigmoid_param = dict(trained_hard_sigmoid_param)
+        hard_sigmoid_param.update(hard_sigmoid_param_override)
+        model_cfg["hard_sigmoid_param"] = hard_sigmoid_param
     dataset_key, dataset_cfg = _resolve_dataset_config(config, config.get("lab", {}).get("dataset_key", "mnist"))
 
     layer_shapes = [
@@ -234,6 +246,8 @@ def _build_eval_context(
     dataset_params["device"] = device
     if eval_batch_size is not None:
         dataset_params["batch_size"] = int(eval_batch_size)
+    if dataset_root_override is not None:
+        dataset_params["root"] = os.path.expanduser(str(dataset_root_override))
     if "root" in dataset_params:
         dataset_params["root"] = os.path.expanduser(str(dataset_params["root"]))
     if no_download:
@@ -254,6 +268,10 @@ def _build_eval_context(
     return {
         "config": config,
         "model_cfg": model_cfg,
+        "trained_input_gain": trained_input_gain,
+        "eval_input_gain": float(model_cfg["input_gain"]),
+        "trained_hard_sigmoid_param": trained_hard_sigmoid_param,
+        "eval_hard_sigmoid_param": dict(model_cfg.get("hard_sigmoid_param", {})),
         "energy_fn": energy_fn,
         "network": network,
         "free_layers": free_layers,

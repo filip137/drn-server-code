@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from itertools import accumulate
 import torch
 
-from model.function.interaction import Function, SumSeparableFunction
+from model.function.interaction import Function, SumSeparableFunction, scalar_float
 from model.minimizer.minimizer import ParamUpdater, GradientDescentUpdater
 from model.variable.layer import layer_index
 
@@ -10,7 +10,11 @@ from model.variable.layer import layer_index
 def _amplified_layer_row_scale(energy_fn, layer):
     voltage_amp = getattr(energy_fn, "_voltage_amp", getattr(energy_fn, "voltage_amp", None))
     current_amp = getattr(energy_fn, "_current_amp", getattr(energy_fn, "current_amp", None))
-    if voltage_amp in (None, 0.0) or current_amp is None:
+    if voltage_amp is None or current_amp is None:
+        return 1.0
+    voltage_amp = scalar_float(voltage_amp)
+    current_amp = scalar_float(current_amp)
+    if voltage_amp == 0.0:
         return 1.0
     return float(voltage_amp / current_amp) ** max(layer_index(layer) - 1, 0)
 
@@ -518,7 +522,11 @@ class EquilibriumProp(GradientEstimator):
         energy_fn = getattr(self._augmented_fn, "_energy_fn", self._augmented_fn)
         voltage_amp = getattr(energy_fn, "_voltage_amp", getattr(energy_fn, "voltage_amp", None))
         current_amp = getattr(energy_fn, "_current_amp", getattr(energy_fn, "current_amp", None))
-        if voltage_amp in (None, 0.0) or current_amp is None:
+        if voltage_amp is None or current_amp is None:
+            return 1.0
+        voltage_amp = scalar_float(voltage_amp)
+        current_amp = scalar_float(current_amp)
+        if voltage_amp == 0.0:
             return 1.0
 
         for interaction in getattr(energy_fn, "_interactions", []):

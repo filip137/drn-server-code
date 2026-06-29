@@ -148,6 +148,8 @@ Do not use the following as paper-facing quantitative evidence:
 
 ## Standard Paper Setup Going Forward
 
+Use `docs/conv_paper_hyperparameter_protocol.md` as the selection rule for Conv K, input gain, LR, and epoch budget.
+
 1. Dense DRN-XS perfect diode: use `legacy_preproc` for baseline/voltage/current comparison, and fixed-current reruns for current-amplification bug checks.
 2. Dense hard sigmoid: combine legacy baseline/voltage rows with fixed-current rows only when explicitly labeled; otherwise rerun all five amps in one clean fixed setup.
 3. Conv1: can be discussed as preliminary, but final figures should use a single seed protocol only if labeled as such.

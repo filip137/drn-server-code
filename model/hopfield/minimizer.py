@@ -28,7 +28,15 @@ class FixedPointMinimizer(Minimizer):
     Class for minimizing a function by a fixed point method
     """
 
-    def __init__(self, fn, free_layers, num_iterations=15, mode='asynchronous'):
+    def __init__(
+        self,
+        fn,
+        free_layers,
+        num_iterations=15,
+        mode='asynchronous',
+        voltage_amp=None,
+        current_amp=None,
+    ):
         """Creates an instance of Minimizer
 
         Args:
@@ -40,7 +48,15 @@ class FixedPointMinimizer(Minimizer):
 
         updaters = [HopfieldLayerUpdater(layer, fn) for layer in free_layers]
 
-        Minimizer.__init__(self, fn, updaters, num_iterations, mode)
+        Minimizer.__init__(
+            self,
+            fn,
+            updaters,
+            num_iterations,
+            mode,
+            voltage_amp=voltage_amp,
+            current_amp=current_amp,
+        )
 
     def __str__(self):
         return 'Fixed point minimizer -- mode={}, num_iterations={}'.format(self._mode, self._num_iterations)

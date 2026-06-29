@@ -4,7 +4,15 @@ from model.function.interaction import SumSeparableFunction
 from model.variable.layer import InputLayer, LinearLayer
 from model.hopfield.layer import HardSigmoidLayer, SigmoidLayer, SoftMaxLayer, dSiLULayer
 from model.variable.parameter import Bias, DenseWeight, ConvWeight
-from model.hopfield.interaction import BiasInteraction, DenseHopfield, ConvAvgPoolHopfield, ConvMaxPoolHopfield, ConvSoftPoolHopfield, ModernHopfield
+from model.hopfield.interaction import (
+    BiasInteraction,
+    DenseHopfield,
+    ConvAvgPoolHopfield,
+    ConvHopfieldNoPool,
+    ConvMaxPoolHopfield,
+    ConvSoftPoolHopfield,
+    ModernHopfield,
+)
 
 
 
@@ -26,7 +34,7 @@ def create_layer(shape, activation='hard-sigmoid'):
 
     return layer
 
-def create_edge(layers, interaction_type, indices, gain, shape=None, padding=0):
+def create_edge(layers, interaction_type, indices, gain, shape=None, padding=0, stride=1):
     """Adds an interaction between two layers of the network.
 
     Adding an interaction also adds the associated parameter (weight or bias)
@@ -52,18 +60,29 @@ def create_edge(layers, interaction_type, indices, gain, shape=None, padding=0):
     elif interaction_type == "conv_avg_pool":
         layer_pre = layers[indices[0]]
         layer_post = layers[indices[1]]
-        param = ConvWeight(shape, gain, device=None)
+        param = ConvWeight(shape, gain, device=None, clamp=False, clamp_min=None, clamp_max=None)
         interaction = ConvAvgPoolHopfield(layer_pre, layer_post, param, padding)
     elif interaction_type == "conv_max_pool":
         layer_pre = layers[indices[0]]
         layer_post = layers[indices[1]]
-        param = ConvWeight(shape, gain, device=None)
+        param = ConvWeight(shape, gain, device=None, clamp=False, clamp_min=None, clamp_max=None)
         interaction = ConvMaxPoolHopfield(layer_pre, layer_post, param, padding)
     elif interaction_type == "conv_soft_pool":
         layer_pre = layers[indices[0]]
         layer_post = layers[indices[1]]
-        param = ConvWeight(shape, gain, device=None)
+        param = ConvWeight(shape, gain, device=None, clamp=False, clamp_min=None, clamp_max=None)
         interaction = ConvSoftPoolHopfield(layer_pre, layer_post, param, padding)
+    elif interaction_type == "conv":
+        layer_pre = layers[indices[0]]
+        layer_post = layers[indices[1]]
+        param = ConvWeight(shape, gain, device=None, clamp=False, clamp_min=None, clamp_max=None)
+        interaction = ConvHopfieldNoPool(
+            layer_pre,
+            layer_post,
+            param,
+            padding=padding,
+            stride=stride,
+        )
     elif interaction_type == "modern_hopfield":
         layer = layers[indices[0]]
         shape = (1024,)
@@ -181,6 +200,119 @@ class ConvHopfieldEnergy28(SumSeparableFunction):
 
     def __str__(self):
         return 'ConvHopfieldEnergy28 -- size={}, activation={}, pooling={}, gains={}'.format(self._size, self._activation, self._pool_type, self._weight_gains)
+
+
+class FlexibleConvHopfieldEnergy(SumSeparableFunction):
+    """Flexible no-pooling convolutional Hopfield energy."""
+
+    def __init__(
+        self,
+        layer_shapes,
+        weight_gains,
+        conv_pipeline,
+        activation='hard-sigmoid',
+        weight_init_mode='kaiming_uniform',
+    ):
+        layer_shapes = [tuple(shape) for shape in layer_shapes]
+        conv_pipeline = list(conv_pipeline)
+        weight_gains = list(weight_gains)
+        if len(layer_shapes) < 3:
+            raise ValueError("Expected at least input, one hidden layer, and output.")
+        if len(conv_pipeline) != len(layer_shapes) - 2:
+            raise ValueError(
+                "Expected conv_pipeline length to equal the number of hidden "
+                f"conv layers ({len(layer_shapes) - 2}); got {len(conv_pipeline)}."
+            )
+        if len(weight_gains) != len(layer_shapes) - 1:
+            raise ValueError(
+                "Expected one weight gain per edge; got "
+                f"{len(weight_gains)} gains for {len(layer_shapes) - 1} edges."
+            )
+
+        self._layer_shapes = layer_shapes
+        self._conv_pipeline = conv_pipeline
+        self._weight_gains = weight_gains
+        self._activation = activation
+        self._non_linearity = 'hard_sigmoid'
+        self._weight_init_mode = weight_init_mode
+
+        activations = ['input'] + [activation] * (len(layer_shapes) - 2) + ['linear']
+        layers = [
+            create_layer(shape, layer_activation)
+            for shape, layer_activation in zip(layer_shapes, activations)
+        ]
+
+        bias_gains = []
+        for edge_index, (pre_shape, post_shape) in enumerate(zip(layer_shapes[:-1], layer_shapes[1:])):
+            if edge_index < len(conv_pipeline):
+                kernel = tuple(conv_pipeline[edge_index].get("kernel", (3, 3)))
+                fan_in = pre_shape[0] * kernel[0] * kernel[1]
+            else:
+                fan_in = 1
+                for dim in pre_shape:
+                    fan_in *= dim
+            bias_gains.append(0.5 / numpy.sqrt(fan_in))
+        biases = [
+            Bias(tuple(layer.shape), gain=gain, device=None)
+            for layer, gain in zip(layers[1:], bias_gains)
+        ]
+        bias_interactions = [
+            BiasInteraction(layer, bias) for layer, bias in zip(layers[1:], biases)
+        ]
+
+        params = list(biases)
+        interactions = list(bias_interactions)
+
+        for index, (conf, gain) in enumerate(zip(conv_pipeline, weight_gains[:-1])):
+            if conf.get("mode", "convolution") != "convolution":
+                raise ValueError(f"Expected no-pooling convolution mode, got {conf!r}.")
+            pre_shape = layer_shapes[index]
+            post_shape = layer_shapes[index + 1]
+            kernel = tuple(conf.get("kernel", (3, 3)))
+            weight_shape = (post_shape[0], pre_shape[0], kernel[0], kernel[1])
+            param = ConvWeight(
+                weight_shape,
+                gain,
+                device=None,
+                clamp=False,
+                clamp_min=None,
+                clamp_max=None,
+                init_mode=weight_init_mode,
+            )
+            interaction = ConvHopfieldNoPool(
+                layers[index],
+                layers[index + 1],
+                param,
+                padding=conf.get("padding", 0),
+                stride=conf.get("stride", 1),
+            )
+            params.append(param)
+            interactions.append(interaction)
+
+        dense_weight = DenseWeight(
+            layer_shapes[-2],
+            layer_shapes[-1],
+            weight_gains[-1],
+            device=None,
+            clamp=False,
+            init_mode=weight_init_mode,
+        )
+        dense_interaction = DenseHopfield(layers[-2], layers[-1], dense_weight)
+        params.append(dense_weight)
+        interactions.append(dense_interaction)
+
+        SumSeparableFunction.__init__(self, layers, params, interactions)
+
+    def __str__(self):
+        return (
+            "FlexibleConvHopfieldEnergy -- layer_shapes={}, conv_pipeline={}, "
+            "activation={}, gains={}"
+        ).format(
+            self._layer_shapes,
+            self._conv_pipeline,
+            self._activation,
+            self._weight_gains,
+        )
 
 
 

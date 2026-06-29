@@ -3,6 +3,117 @@ import copy
 import torch
 import torch.nn.functional as F
 
+from model.variable.layer import layer_index
+
+
+def scalar_value(value, *, like=None):
+    """Return a scalar/tensor value, preserving gradients for Parameter-backed scalars."""
+    if hasattr(value, "get"):
+        value = value.get()
+    if torch.is_tensor(value):
+        if like is not None:
+            return value.to(dtype=like.dtype, device=like.device)
+        return value
+    dtype = like.dtype if like is not None else torch.float32
+    device = like.device if like is not None else None
+    return torch.as_tensor(float(value), dtype=dtype, device=device)
+
+
+def scalar_float(value):
+    value = scalar_value(value)
+    return float(value.detach().cpu().reshape(-1)[0].item())
+
+
+def _hard_sigmoid_expected_format():
+    return (
+        "Expected hard_sigmoid_param to define either 'v_off' as a non-negative "
+        "number or list matching nonlinear hard-sigmoid layers, or both 'v_min' "
+        "and 'v_max'."
+    )
+
+
+def _hard_sigmoid_format_error(params, detail):
+    return ValueError(f"{_hard_sigmoid_expected_format()} {detail} Provided value: {params!r}.")
+
+
+def _hard_sigmoid_float(value, params, label):
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise _hard_sigmoid_format_error(
+            params,
+            f"Field '{label}' must be numeric.",
+        ) from exc
+
+
+def resolve_hard_sigmoid_params_for_layer(params, *, layer_position=None, num_layers=None):
+    """Return hard-sigmoid params with concrete per-layer v_min/v_max boundaries."""
+    resolved = dict(params or {})
+    has_v_off_param = "v_off_param" in resolved and resolved["v_off_param"] is not None
+    has_v_off = "v_off" in resolved
+    has_v_min = "v_min" in resolved
+    has_v_max = "v_max" in resolved
+
+    if has_v_off_param:
+        if has_v_off or has_v_min or has_v_max:
+            raise _hard_sigmoid_format_error(
+                params,
+                "Do not mix 'v_off_param' with static boundary fields.",
+            )
+        param = resolved["v_off_param"]
+        v_off = param.get() if hasattr(param, "get") else param
+        resolved["v_min"] = -v_off
+        resolved["v_max"] = v_off
+        return resolved
+
+    if has_v_off and (has_v_min or has_v_max):
+        raise _hard_sigmoid_format_error(
+            params,
+            "Do not mix 'v_off' with 'v_min'/'v_max'.",
+        )
+
+    if has_v_off:
+        v_off_values = resolved.pop("v_off")
+        if isinstance(v_off_values, (list, tuple)):
+            if layer_position is None or num_layers is None:
+                raise _hard_sigmoid_format_error(
+                    params,
+                    "'v_off' lists require layer_position and num_layers.",
+                )
+            expected_len = int(num_layers)
+            if len(v_off_values) != expected_len:
+                raise _hard_sigmoid_format_error(
+                    params,
+                    "Expected hard_sigmoid_param.v_off list length to match "
+                    f"the number of nonlinear hard-sigmoid layers ({expected_len}); "
+                    f"got length {len(v_off_values)}.",
+                )
+            v_off = _hard_sigmoid_float(
+                v_off_values[int(layer_position)],
+                params,
+                "v_off",
+            )
+        else:
+            v_off = _hard_sigmoid_float(v_off_values, params, "v_off")
+
+        if v_off < 0.0:
+            raise _hard_sigmoid_format_error(
+                params,
+                "'v_off' values must be non-negative.",
+            )
+        resolved["v_min"] = -v_off
+        resolved["v_max"] = v_off
+        return resolved
+
+    if not (has_v_min and has_v_max):
+        raise _hard_sigmoid_format_error(
+            params,
+            "Boundary fields are missing.",
+        )
+
+    resolved["v_min"] = _hard_sigmoid_float(resolved["v_min"], params, "v_min")
+    resolved["v_max"] = _hard_sigmoid_float(resolved["v_max"], params, "v_max")
+    return resolved
 
 
 class Function(ABC):
@@ -464,31 +575,77 @@ class ResistiveBiasInteraction(QFunction):
 class HardSigmoidNonLinearInteraction(Function):
     """Piecewise-quadratic clamp with separate on/off conductances."""
 
-    def __init__(self, layer, params, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer,
+        params,
+        voltage_amp,
+        current_amp,
+        *,
+        layer_position=None,
+        num_layers=None,
+    ):
         self._layer = layer
-        layer_index = int(layer._name[-1])
-        scale = (current_amp / voltage_amp) ** (layer_index - 1)
-        self._g_on = params.get("g_on") * scale
-        self._g_off = params.get("g_off") * scale
+        params = resolve_hard_sigmoid_params_for_layer(
+            params,
+            layer_position=layer_position,
+            num_layers=num_layers,
+        )
+        self._layer_scale_power = layer_index(layer) - 1
+        self._updater_params = dict(params)
+        self._g_on_base = params.get("g_on")
+        self._g_off_base = params.get("g_off")
         self.v_min = params.get("v_min")
         self.v_max = params.get("v_max")
         self._voltage_amp = voltage_amp
+        self._current_amp = current_amp
+        nonlinear_params = []
+        if params.get("v_off_param") is not None:
+            nonlinear_params.append(params["v_off_param"])
+        for amp in (voltage_amp, current_amp):
+            if hasattr(amp, "state") and amp not in nonlinear_params:
+                nonlinear_params.append(amp)
 
-        Function.__init__(self, [layer], [])
+        Function.__init__(self, [layer], nonlinear_params)
+
+    def hard_sigmoid_params(self):
+        """Return unscaled params for the coordinate updater."""
+        params = dict(self._updater_params)
+        if params.get("v_off_param") is not None:
+            params.pop("v_min", None)
+            params.pop("v_max", None)
+        return params
+
+    def _boundary_tensors(self):
+        v = self._layer.state
+        v_min = scalar_value(self.v_min, like=v)
+        v_max = scalar_value(self.v_max, like=v)
+        return v_min, v_max
+
+    def _conductance_tensors(self):
+        v = self._layer.state
+        voltage_amp = scalar_value(self._voltage_amp, like=v)
+        current_amp = scalar_value(self._current_amp, like=v)
+        scale = (current_amp / voltage_amp) ** self._layer_scale_power
+        g_on = scalar_value(self._g_on_base, like=v) * scale
+        g_off = scalar_value(self._g_off_base, like=v) * scale
+        return g_on, g_off
 
     def eval(self):
         """Energy term of the non-linearity."""
         v = self._layer.state
-        off_mask = (v >= self.v_min) & (v <= self.v_max)
-        pos_on_mask = v > self.v_max
-        neg_on_mask = v < self.v_min
+        v_min, v_max = self._boundary_tensors()
+        g_on, g_off = self._conductance_tensors()
+        off_mask = (v >= v_min) & (v <= v_max)
+        pos_on_mask = v > v_max
+        neg_on_mask = v < v_min
 
-        energy_off = 0.5 * self._g_off * (v ** 2) * off_mask
         energy_on = torch.zeros_like(v)
-        energy_on[pos_on_mask] = 0.5 * self._g_on * (v[pos_on_mask] - self.v_max) ** 2
-        energy_on[neg_on_mask] = 0.5 * self._g_on * (v[neg_on_mask] - self.v_min) ** 2
+        energy_off = torch.where(off_mask, 0.5 * g_off * (v ** 2), energy_on)
+        energy_pos = torch.where(pos_on_mask, 0.5 * g_on * (v - v_max) ** 2, energy_on)
+        energy_neg = torch.where(neg_on_mask, 0.5 * g_on * (v - v_min) ** 2, energy_on)
 
-        energy = energy_off + energy_on
+        energy = energy_off + energy_pos + energy_neg
         return energy.flatten(start_dim=1).sum(dim=1)
 
     def grad_layer_fn(self, layer):
@@ -500,15 +657,17 @@ class HardSigmoidNonLinearInteraction(Function):
     def _grad_layer(self):
         """Returns dE/dv for the associated non-linearity."""
         v = self._layer.state
+        v_min, v_max = self._boundary_tensors()
+        g_on, g_off = self._conductance_tensors()
         grad = torch.zeros_like(v)
 
-        off_mask = (v >= self.v_min) & (v <= self.v_max)
-        pos_on_mask = v > self.v_max
-        neg_on_mask = v < self.v_min
+        off_mask = (v >= v_min) & (v <= v_max)
+        pos_on_mask = v > v_max
+        neg_on_mask = v < v_min
 
-        grad[off_mask] = self._g_off * v[off_mask]
-        grad[pos_on_mask] = self._g_on * (v[pos_on_mask] - self.v_max)
-        grad[neg_on_mask] = self._g_on * (v[neg_on_mask] - self.v_min)
+        grad = torch.where(off_mask, g_off * v, grad)
+        grad = torch.where(pos_on_mask, g_on * (v - v_max), grad)
+        grad = torch.where(neg_on_mask, g_on * (v - v_min), grad)
 
         return grad
 

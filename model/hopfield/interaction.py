@@ -1,7 +1,16 @@
 import torch
 import torch.nn.functional as F
+from torch.nn.grad import conv2d_weight
 
 from model.function.interaction import Function 
+
+
+def _pair(value):
+    if isinstance(value, tuple):
+        return value
+    if isinstance(value, list):
+        return tuple(value)
+    return (value, value)
 
 
 
@@ -271,6 +280,95 @@ class ConvAvgPoolHopfield(Function):
         layer_post = F.interpolate(layer_post, scale_factor=2) / 4.  # unpooling operation
 
         return - F.conv2d(layer_pre.transpose(0, 1), layer_post.transpose(0, 1), padding=self._padding).transpose(0, 1) / batch_size  # we divide by batch size because we want the mean gradient over the mini-batch
+
+
+class ConvHopfieldNoPool(Function):
+    """Convolutional Hopfield interaction without pooling.
+
+    The energy term is ``-<conv2d(pre, W), post>``. This mirrors the primitive
+    used in Laborieux-style convolutional EqProp networks while allowing the
+    stride/padding geometry used by the current Conv1/Conv2/Conv3 MNIST runs.
+    """
+
+    def __init__(self, layer_pre, layer_post, conv_weight, padding=0, stride=1):
+        self._layer_pre = layer_pre
+        self._layer_post = layer_post
+        self._weight = conv_weight
+        self._padding = padding
+        self._stride = stride
+
+        Function.__init__(self, [layer_pre, layer_post], [conv_weight])
+
+    def eval(self):
+        layer_pre = self._layer_pre.state
+        layer_post = self._layer_post.state
+        conv = F.conv2d(
+            layer_pre,
+            self._weight.get(),
+            stride=self._stride,
+            padding=self._padding,
+        )
+        return - conv.mul(layer_post).sum(dim=(3, 2, 1))
+
+    def grad_layer_fn(self, layer):
+        dictionary = {
+            self._layer_pre: self._grad_pre,
+            self._layer_post: self._grad_post,
+        }
+        return dictionary[layer]
+
+    def grad_param_fn(self, param):
+        dictionary = {self._weight: self._grad_weight}
+        return dictionary[param]
+
+    def _output_padding(self):
+        input_h, input_w = self._layer_pre.state.shape[-2:]
+        post_h, post_w = self._layer_post.state.shape[-2:]
+        kernel_h, kernel_w = self._weight.get().shape[-2:]
+        stride_h, stride_w = _pair(self._stride)
+        pad_h, pad_w = _pair(self._padding)
+        base_h = (post_h - 1) * stride_h - 2 * pad_h + kernel_h
+        base_w = (post_w - 1) * stride_w - 2 * pad_w + kernel_w
+        out_pad_h = input_h - base_h
+        out_pad_w = input_w - base_w
+        if not (0 <= out_pad_h < stride_h and 0 <= out_pad_w < stride_w):
+            raise ValueError(
+                "Expected valid conv_transpose2d output_padding for Hopfield "
+                f"conv geometry; got {(out_pad_h, out_pad_w)} for input "
+                f"{(input_h, input_w)} and post {(post_h, post_w)}."
+            )
+        return out_pad_h, out_pad_w
+
+    def _grad_pre(self):
+        layer_post = self._layer_post.state
+        return - F.conv_transpose2d(
+            layer_post,
+            self._weight.get(),
+            stride=self._stride,
+            padding=self._padding,
+            output_padding=self._output_padding(),
+        )
+
+    def _grad_post(self):
+        layer_pre = self._layer_pre.state
+        return - F.conv2d(
+            layer_pre,
+            self._weight.get(),
+            stride=self._stride,
+            padding=self._padding,
+        )
+
+    def _grad_weight(self):
+        layer_pre = self._layer_pre.state
+        layer_post = self._layer_post.state
+        batch_size = layer_pre.shape[0]
+        return - conv2d_weight(
+            layer_pre,
+            self._weight.get().shape,
+            layer_post,
+            stride=self._stride,
+            padding=self._padding,
+        ) / batch_size
 
 
 class ConvMaxPoolHopfield(Function):

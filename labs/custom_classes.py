@@ -47,6 +47,8 @@ from model.function.interaction import (
     DoubleExponentialNonLinearInteraction,
     DoubleQuadraticNonLinearInteraction,
     HardSigmoidNonLinearInteraction,
+    resolve_hard_sigmoid_params_for_layer,
+    scalar_value,
     SumSeparableFunction,
     Function,
     QFunction,
@@ -54,7 +56,14 @@ from model.function.interaction import (
 from model.resistive.interaction import AveragePoolResistive, DenseResistive, MaxPoolResistive
 from model.resistive.layer import NonlinearResistiveLayer, PoolLayer
 from model.variable.layer import InputLayer, LinearLayer
-from model.variable.parameter import Bias, ConvWeight, DenseWeight, PoolWeight
+from model.variable.parameter import (
+    AmplificationParameter,
+    Bias,
+    ConvWeight,
+    DenseWeight,
+    HardSigmoidVOff,
+    PoolWeight,
+)
 from training.sgd import Nudging
 
 import torch
@@ -64,6 +73,52 @@ POOLING_INTERACTIONS = {
     "avg": AveragePoolResistive,
     "max": MaxPoolResistive,
 }
+
+
+def _hard_sigmoid_trainable_v_off_enabled(params):
+    return bool((params or {}).get("trainable_v_off", False))
+
+
+def _hard_sigmoid_initial_v_off(params, layer_position, num_layers):
+    resolved = resolve_hard_sigmoid_params_for_layer(
+        params,
+        layer_position=layer_position,
+        num_layers=num_layers,
+    )
+    v_min = float(resolved["v_min"])
+    v_max = float(resolved["v_max"])
+    if abs(v_min + v_max) > 1e-9:
+        raise ValueError(
+            "Expected trainable hard_sigmoid_param boundaries to be symmetric around "
+            f"zero for layer {layer_position}; got v_min={v_min!r}, v_max={v_max!r}."
+        )
+    return 0.5 * (v_max - v_min)
+
+
+def _hard_sigmoid_runtime_params(params, v_off_param):
+    runtime = {
+        key: value
+        for key, value in dict(params or {}).items()
+        if key
+        not in {
+            "v_off",
+            "v_min",
+            "v_max",
+            "trainable_v_off",
+            "v_off_min",
+            "v_off_max",
+        }
+    }
+    runtime["v_off_param"] = v_off_param
+    return runtime
+
+
+def _interaction_params(*params):
+    result = []
+    for param in params:
+        if hasattr(param, "state") and param not in result:
+            result.append(param)
+    return result
 
 
 class TrackingQuadraticMinimizer(QuadraticMinimizer):
@@ -285,10 +340,32 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
         input_mode="train",
         conv_pipeline=None,
         pooling_mode="avg",
+        trainable_amplification=False,
+        amplification_min=1e-6,
+        amplification_max=None,
     ):
         self._input_amplifier = input_gain
-        self._voltage_amp = voltage_amp
-        self._current_amp = current_amp
+        self._trainable_amplification = bool(trainable_amplification)
+        amp_params = []
+        if self._trainable_amplification:
+            self._voltage_amp = AmplificationParameter(
+                voltage_amp,
+                "VoltageAmp",
+                device=None,
+                min_cond=amplification_min,
+                max_cond=amplification_max,
+            )
+            self._current_amp = AmplificationParameter(
+                current_amp,
+                "CurrentAmp",
+                device=None,
+                min_cond=amplification_min,
+                max_cond=amplification_max,
+            )
+            amp_params = [self._voltage_amp, self._current_amp]
+        else:
+            self._voltage_amp = voltage_amp
+            self._current_amp = current_amp
         self._non_linearity = non_linearity
 
         self._layer_shapes = layer_shapes
@@ -350,6 +427,29 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
         free_layers = [
             layer for layer, mode in zip(convpool_layers, convpool_modes) if mode != "pooling"
         ] + hidden_layers
+        hard_sigmoid_v_off_params = []
+        hard_sigmoid_runtime_params = [hard_sigmoid_param or {} for _ in free_layers]
+        if non_linearity == "hard_sigmoid" and _hard_sigmoid_trainable_v_off_enabled(hard_sigmoid_param):
+            hard_sigmoid_params = hard_sigmoid_param or {}
+            min_cond = hard_sigmoid_params.get("v_off_min", 0.0)
+            max_cond = hard_sigmoid_params.get("v_off_max")
+            hard_sigmoid_v_off_params = [
+                HardSigmoidVOff(
+                    _hard_sigmoid_initial_v_off(
+                        hard_sigmoid_params,
+                        layer_position,
+                        len(free_layers),
+                    ),
+                    device=None,
+                    min_cond=min_cond,
+                    max_cond=max_cond,
+                )
+                for layer_position, _layer in enumerate(free_layers)
+            ]
+            hard_sigmoid_runtime_params = [
+                _hard_sigmoid_runtime_params(hard_sigmoid_params, v_off_param)
+                for v_off_param in hard_sigmoid_v_off_params
+            ]
 
         ### CONV / POOLING PARAMETERS
         conv_specs = []
@@ -483,11 +583,13 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
             non_linear_interaction = [
                 HardSigmoidNonLinearInteraction(
                     layer,
-                    hard_sigmoid_param or {},
+                    hard_sigmoid_runtime_params[layer_position],
                     voltage_amp=self._voltage_amp,
                     current_amp=self._current_amp,
+                    layer_position=layer_position,
+                    num_layers=len(free_layers),
                 )
-                for layer in free_layers
+                for layer_position, layer in enumerate(free_layers)
             ]
         elif non_linearity == "double_diode_quadratic":
             non_linear_interaction = [
@@ -513,7 +615,13 @@ class FlexibleDeepResistiveEnergy(DetailedSumSeparableFunction):
             non_linear_interaction = []
             #raise ValueError(f"Unknown non-linearity: {non_linearity}")
 
-        self._all_params = convpool_weights + dense_weights + biases
+        self._all_params = (
+            convpool_weights
+            + dense_weights
+            + biases
+            + hard_sigmoid_v_off_params
+            + amp_params
+        )
         self._trainable_params = [
             param for param in self._all_params if not isinstance(param, PoolWeight)
         ]
@@ -594,7 +702,11 @@ class ConvResistive(QFunction):
         self._layer_pre = layer_pre
         self._layer_post = layer_post
         self._weight = conv_weight
-        QFunction.__init__(self, [layer_pre, layer_post], [conv_weight])
+        QFunction.__init__(
+            self,
+            [layer_pre, layer_post],
+            [conv_weight] + _interaction_params(voltage_amp, current_amp),
+        )
         self._P = padding
         self._S = stride
         self._D = dilation
@@ -603,10 +715,19 @@ class ConvResistive(QFunction):
 
     def _amp_factor(self):
         layer_pre_index = int(self._layer_pre._name[-1])
-        return (self._current_amp / self._voltage_amp) ** layer_pre_index
+        ref = self._layer_post.state
+        return (self._current_amp_value(like=ref) / self._voltage_amp_value(like=ref)) ** layer_pre_index
 
     def _pre_scale(self):
-        return 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp
+        if self._layer_pre.name == 'Layer_0':
+            return 1.0
+        return self._voltage_amp_value(like=self._layer_pre.state)
+
+    def _voltage_amp_value(self, *, like=None):
+        return scalar_value(self._voltage_amp, like=like)
+
+    def _current_amp_value(self, *, like=None):
+        return scalar_value(self._current_amp, like=like)
 
     def _conv_geometry(self):
         weight = self._weight.get()
@@ -624,9 +745,9 @@ class ConvResistive(QFunction):
 
         layer_pre = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
-            layer_pre = layer_pre * self._voltage_amp
+            layer_pre = layer_pre * self._voltage_amp_value(like=layer_pre)
         layer_post = self._layer_post.state  # / self._layer_post.gain
-        layer_post_scaled = layer_post * self._current_amp
+        layer_post_scaled = layer_post * self._current_amp_value(like=layer_post)
 
 
         cols = F.unfold(layer_pre, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
@@ -715,12 +836,12 @@ class ConvResistive(QFunction):
 
     def _b_coef_layer_pre(self):
         b_coef = -self.col2im()
-        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp
+        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp_value(like=b_coef)
         return b_coef
 
     def _b_coef_layer_post(self):
         b_coef = -self.im2col()
-        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp
+        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp_value(like=b_coef)
         return b_coef
 
     def _a_coef_layer_pre(self):
@@ -731,16 +852,17 @@ class ConvResistive(QFunction):
 
     def _a_coef_layer_post(self):
         a_map = self.a_im2col()
-        a_coef = a_map * self._amp_factor() * self._current_amp * self._current_amp
+        current_amp = self._current_amp_value(like=a_map)
+        a_coef = a_map * self._amp_factor() * current_amp * current_amp
         return 0.5 * a_coef
 
     def _grad_weight(self):
         weight, C_out, C_in, Kh, Kw, *_ = self._conv_geometry()
         x = self._layer_pre.state
         if self._layer_pre.name != 'Layer_0':
-            x = x * self._voltage_amp
+            x = x * self._voltage_amp_value(like=x)
         y = self._layer_post.state.clone()
-        y_rescaled = y * self._current_amp
+        y_rescaled = y * self._current_amp_value(like=y)
 
         cols = F.unfold(x, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
         N, C_out, H_out, W_out = y.shape
@@ -752,11 +874,10 @@ class ConvResistive(QFunction):
         diff2 = (patches - targets).pow(2)
         grad_weight = 0.5 * diff2.sum(dim=1).mean(dim=0)
 
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp / self._voltage_amp) ** layer_pre_index
-        return grad_weight.view(C_out, C_in, Kh, Kw) * amp
+        return grad_weight.view(C_out, C_in, Kh, Kw) * self._amp_factor()
 
     def grad_param_fn(self, param):
-        dictionary = {self._weight: self._grad_weight}
-        return dictionary[param]
+        if param is self._weight:
+            return self._grad_weight
+        return Function.grad_param_fn(self, param)
     

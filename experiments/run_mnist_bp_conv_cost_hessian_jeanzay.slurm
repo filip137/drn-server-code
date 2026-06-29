@@ -79,6 +79,13 @@ if [ -n "${INFERENCE_ITERATIONS:-}" ]; then
   common_args+=(--inference-iterations "${INFERENCE_ITERATIONS}")
 fi
 
+if [ "${INCLUDE_GRADIENT_DIRECTION:-0}" = "1" ]; then
+  common_args+=(--include-gradient-direction)
+  if [ -n "${GRADIENT_EPSILONS:-}" ]; then
+    common_args+=(--gradient-epsilons ${GRADIENT_EPSILONS})
+  fi
+fi
+
 if [ "${SUMMARY_ONLY}" = "1" ]; then
   "${PYTHON}" "${SCRIPT}" "${common_args[@]}" --summary-only
   exit 0
@@ -94,4 +101,5 @@ echo "[jean-zay] cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
   "${common_args[@]}" \
   --num-shards "${NUM_SHARDS}" \
   --shard-index "${SHARD_INDEX}" \
-  --raw-results-name "raw_curvature_shard_${SHARD_INDEX}.csv"
+  --raw-results-name "raw_curvature_shard_${SHARD_INDEX}.csv" \
+  --gradient-raw-results-name "raw_gradient_curvature_shard_${SHARD_INDEX}.csv"

@@ -2,6 +2,7 @@ import os
 import socket
 import sys
 from pathlib import Path
+from model.function.interaction import resolve_hard_sigmoid_params_for_layer, scalar_value
 from model.minimizer.minimizer import LayerUpdater, Minimizer
 from model.resistive.layer import NonlinearResistiveLayer, ConvLayer
 from model.variable.layer import layer_index
@@ -32,13 +33,83 @@ lambertw = _load_lambertw()
 _CONV_LAYER_TYPES = (ConvLayer,)
 
 
-def _scale_hard_sigmoid_params_for_layer(params, layer, voltage_amp, current_amp):
-    scaled = dict(params)
-    scale = float(current_amp / voltage_amp) ** (layer_index(layer) - 1)
+def _scale_hard_sigmoid_params_for_layer(
+    params,
+    layer,
+    voltage_amp,
+    current_amp,
+    *,
+    layer_position=None,
+    num_layers=None,
+):
+    scaled = resolve_hard_sigmoid_params_for_layer(
+        params,
+        layer_position=layer_position,
+        num_layers=num_layers,
+    )
+    scale_power = layer_index(layer) - 1
+    dynamic_amp = hasattr(voltage_amp, "state") or hasattr(current_amp, "state")
+    if dynamic_amp:
+        scaled["_g_on_base"] = scaled.get("g_on")
+        scaled["_g_off_base"] = scaled.get("g_off")
+        scaled["_voltage_amp"] = voltage_amp
+        scaled["_current_amp"] = current_amp
+        scaled["_scale_power"] = scale_power
+        ref = voltage_amp.get() if hasattr(voltage_amp, "get") else None
+        if ref is not None:
+            scale = scalar_value(current_amp, like=ref) / scalar_value(voltage_amp, like=ref)
+            scale = float((scale ** scale_power).detach().cpu().reshape(-1)[0].item())
+            for key in ("g_on", "g_off"):
+                if key in scaled and scaled[key] is not None:
+                    scaled[key] = scaled[key] * scale
+        return scaled
+
+    scale = float(current_amp / voltage_amp) ** scale_power
     for key in ("g_on", "g_off"):
         if key in scaled and scaled[key] is not None:
             scaled[key] = scaled[key] * scale
     return scaled
+
+
+def _hard_sigmoid_params_for_updater(
+    fn,
+    layer,
+    default_params,
+    voltage_amp,
+    current_amp,
+    *,
+    layer_position=None,
+    num_layers=None,
+):
+    for interaction in getattr(fn, "_interactions", []):
+        if (
+            getattr(interaction, "_layer", None) is layer
+            and hasattr(interaction, "hard_sigmoid_params")
+        ):
+            return _scale_hard_sigmoid_params_for_layer(
+                interaction.hard_sigmoid_params(),
+                layer,
+                voltage_amp,
+                current_amp,
+                layer_position=layer_position,
+                num_layers=num_layers,
+            )
+    if (
+        not isinstance(layer, (NonlinearResistiveLayer,) + _CONV_LAYER_TYPES)
+        and isinstance((default_params or {}).get("v_off"), (list, tuple))
+    ):
+        default_params = dict(default_params)
+        default_params["v_off"] = default_params["v_off"][0]
+        layer_position = None
+        num_layers = None
+    return _scale_hard_sigmoid_params_for_layer(
+        default_params,
+        layer,
+        voltage_amp,
+        current_amp,
+        layer_position=layer_position,
+        num_layers=num_layers,
+    )
 
 
 class QuadraticUpdater(LayerUpdater):
@@ -814,25 +885,49 @@ class HardSigmoidUpdater(QuadraticUpdater):
         super().__init__(layer, fn)
         self.g_on = diode_params.get("g_on")
         self.g_off = diode_params.get("g_off")
+        self._g_on_base = diode_params.get("_g_on_base")
+        self._g_off_base = diode_params.get("_g_off_base")
+        self._voltage_amp = diode_params.get("_voltage_amp")
+        self._current_amp = diode_params.get("_current_amp")
+        self._scale_power = int(diode_params.get("_scale_power", 0))
 
-        self._vmin = float(diode_params["v_min"])
-        self._vmax = float(diode_params["v_max"])
+        self._vmin = diode_params["v_min"]
+        self._vmax = diode_params["v_max"]
+
+    def _boundary_tensors(self, ref):
+        vmin = scalar_value(self._vmin, like=ref)
+        vmax = scalar_value(self._vmax, like=ref)
+        return vmin, vmax
+
+    def _conductance_tensors(self, ref):
+        if self._g_on_base is None:
+            return scalar_value(self.g_on, like=ref), scalar_value(self.g_off, like=ref)
+        scale = (
+            scalar_value(self._current_amp, like=ref)
+            / scalar_value(self._voltage_amp, like=ref)
+        ) ** self._scale_power
+        return (
+            scalar_value(self._g_on_base, like=ref) * scale,
+            scalar_value(self._g_off_base, like=ref) * scale,
+        )
 
     def pre_activate(self):
         a = self._a()  # same shape as b
         b = self._b()
+        vmin, vmax = self._boundary_tensors(b)
+        g_on, g_off = self._conductance_tensors(b)
 
         if (not isinstance(self._layer, NonlinearResistiveLayer)) and (not isinstance(self._layer, _CONV_LAYER_TYPES)):
             # plain quadratic update
             return -b / (2.0 * a)
 
         # Unconstrained minimizer (no diode conduction)
-        a_off = a + self.g_off
+        a_off = a + g_off
         v_free = -b / (2.0 * a_off)
 
         # Masks for violations
-        below = v_free < self._vmin
-        above = v_free > self._vmax
+        below = v_free < vmin
+        above = v_free > vmax
 
         if not (below.any() or above.any()):
             # Inside the dead-zone: no diode conduction
@@ -845,13 +940,13 @@ class HardSigmoidUpdater(QuadraticUpdater):
 
         # Lower diode ON: add 0.5*gd to 'a' and subtract gd*vmin from 'b'
         if below.any():
-            a_add = torch.where(below, a_add + 0.5 * self.g_on, a_add)
-            b_sub = torch.where(below, b_sub - self.g_on* self._vmin, b_sub)
+            a_add = torch.where(below, a_add + 0.5 * g_on, a_add)
+            b_sub = torch.where(below, b_sub - g_on * vmin, b_sub)
 
         # Upper diode ON: add 0.5*gd to 'a' and subtract gd*vmax from 'b'
         if above.any():
-            a_add = torch.where(above, a_add + 0.5 * self.g_on, a_add)
-            b_sub = torch.where(above, b_sub - self.g_on * self._vmax, b_sub)
+            a_add = torch.where(above, a_add + 0.5 * g_on, a_add)
+            b_sub = torch.where(above, b_sub - g_on * vmax, b_sub)
 
         a_eff = a + a_add
         b_eff = b + b_sub #
@@ -904,9 +999,19 @@ class QuadraticMinimizer(Minimizer):
             hard_sigmoid_params["g_on"] = quadratic_params["diode_conductance"]
         if "g_off" not in hard_sigmoid_params and "g_on" in hard_sigmoid_params:
             hard_sigmoid_params["g_off"] = hard_sigmoid_params["g_on"]
-        if "v_min" not in hard_sigmoid_params and "v_min" in quadratic_params:
+        if (
+            "v_off" not in hard_sigmoid_params
+            and "v_off_param" not in hard_sigmoid_params
+            and "v_min" not in hard_sigmoid_params
+            and "v_min" in quadratic_params
+        ):
             hard_sigmoid_params["v_min"] = quadratic_params["v_min"]
-        if "v_max" not in hard_sigmoid_params and "v_max" in quadratic_params:
+        if (
+            "v_off" not in hard_sigmoid_params
+            and "v_off_param" not in hard_sigmoid_params
+            and "v_max" not in hard_sigmoid_params
+            and "v_max" in quadratic_params
+        ):
             hard_sigmoid_params["v_max"] = quadratic_params["v_max"]
 
         if non_linearity == 'perfect_diode':
@@ -924,14 +1029,17 @@ class QuadraticMinimizer(Minimizer):
                 HardSigmoidUpdater(
                     layer,
                     fn,
-                    _scale_hard_sigmoid_params_for_layer(
-                        hard_sigmoid_params,
+                    _hard_sigmoid_params_for_updater(
+                        fn,
                         layer,
+                        hard_sigmoid_params,
                         voltage_amp,
                         current_amp,
+                        layer_position=layer_position,
+                        num_layers=len(free_layers),
                     ),
                 )
-                for layer in free_layers
+                for layer_position, layer in enumerate(free_layers)
             ]
         elif non_linearity == 'linear':
             updaters = [QuadraticUpdater(layer, fn) for layer in free_layers]

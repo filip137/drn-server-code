@@ -37,10 +37,11 @@ from custom_classes import (
 )  # noqa: E402
 from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer, MinimizerSettings  # noqa: E402
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
+from model.function.interaction import scalar_float  # noqa: E402
 from model.function.network import Network  # noqa: E402
 from model.variable.layer import Layer  # noqa: E402
 from model.variable.parameter import ConvWeight  # noqa: E402
-from model.variable.parameter import Bias, DenseWeight, PoolWeight  # noqa: E402
+from model.variable.parameter import Bias, DenseWeight, HardSigmoidVOff, PoolWeight  # noqa: E402
 from training.monitor import Optimizer  # noqa: E402
 from training.sgd import AugmentedFunction, Backprop, EquilibriumProp  # noqa: E402
 
@@ -63,6 +64,7 @@ def _reset_name_counters():
     DenseWeight._counter = 0
     ConvWeight._counter = 0
     PoolWeight._counter = 0
+    HardSigmoidVOff._counter = 0
 
 
 def _sanitize_npz_key(name, fallback):
@@ -127,6 +129,21 @@ def _save_history_arrays(run_dir, history):
     np.save(paths["accuracy_train_path"], np.asarray(history["accuracy"], dtype=np.float64))
     np.save(paths["accuracy_test_path"], np.asarray(history["test_accuracy"], dtype=np.float64))
     return paths
+
+
+def _hard_sigmoid_v_off_values(energy_fn):
+    values = {}
+    for param in energy_fn.params():
+        if isinstance(param, HardSigmoidVOff):
+            values[param.name] = float(param.state.detach().cpu().reshape(-1)[0].item())
+    return values
+
+
+def _amplification_values(energy_fn):
+    return {
+        "voltage_amp": scalar_float(getattr(energy_fn, "_voltage_amp")),
+        "current_amp": scalar_float(getattr(energy_fn, "_current_amp")),
+    }
 
 
 def _should_log_batch(batch_idx, total_batches, log_interval):
@@ -506,6 +523,9 @@ def _train_image_task(
         weight_max=model_cfg["weight_max"],
         weight_init_mode=model_cfg.get("weight_init_mode", "kaiming_uniform"),
         input_mode=config.get("input_mode", "train"),
+        trainable_amplification=bool(model_cfg.get("trainable_amplification", False)),
+        amplification_min=model_cfg.get("amplification_min", 1e-6),
+        amplification_max=model_cfg.get("amplification_max"),
     )
     energy_fn.set_device(device)
     init_checkpoint_value = (
@@ -672,6 +692,9 @@ def _train_image_task(
         "amplification": {
             "voltage_amp": float(model_cfg["voltage_amp"]),
             "current_amp": float(model_cfg["current_amp"]),
+            "trainable": bool(model_cfg.get("trainable_amplification", False)),
+            "amplification_min": model_cfg.get("amplification_min", 1e-6),
+            "amplification_max": model_cfg.get("amplification_max"),
             "mapping": "voltage_amp=1 and current_amp=1 is the unamplified baseline.",
         },
         "bounds": {
@@ -871,6 +894,8 @@ def _train_image_task(
     _checkpoint_to_npz(final_model_path, weights_final_path, param_schema, weights_metadata)
     _checkpoint_to_npz(best_model_path, weights_best_path, param_schema, weights_metadata)
     history_paths = _save_history_arrays(run_dir, history)
+    learned_hard_sigmoid_v_off = _hard_sigmoid_v_off_values(energy_fn)
+    learned_amplification = _amplification_values(energy_fn)
 
     metrics = {
         "run_dir": str(run_dir),
@@ -894,6 +919,8 @@ def _train_image_task(
         "weights_best_path": str(weights_best_path),
         "config_path": str(config_json_path),
         "history_paths": {key: str(value) for key, value in history_paths.items()},
+        "learned_hard_sigmoid_v_off": learned_hard_sigmoid_v_off,
+        "learned_amplification": learned_amplification,
     }
     metrics_path = run_dir / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
@@ -920,6 +947,8 @@ def _train_image_task(
         "host": host,
         "timestamp": timestamp,
         "summary": summary,
+        "learned_hard_sigmoid_v_off": learned_hard_sigmoid_v_off,
+        "learned_amplification": learned_amplification,
     }
     metadata_path = run_dir / "run_metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))

@@ -2,8 +2,16 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as F
 
-from model.function.interaction import QFunction
+from model.function.interaction import Function, QFunction, scalar_value
 from model.variable.layer import LinearLayer
+
+
+def _interaction_params(*params):
+    result = []
+    for param in params:
+        if hasattr(param, "state") and param not in result:
+            result.append(param)
+    return result
 
 
 class DenseResistive(QFunction):
@@ -32,7 +40,24 @@ class DenseResistive(QFunction):
         self._voltage_amp = voltage_amp
         self._current_amp = current_amp
 
-        QFunction.__init__(self, [layer_pre, layer_post], [dense_weight])
+        QFunction.__init__(
+            self,
+            [layer_pre, layer_post],
+            [dense_weight] + _interaction_params(voltage_amp, current_amp),
+        )
+
+    def _voltage_amp_value(self, *, like=None):
+        return scalar_value(self._voltage_amp, like=like)
+
+    def _current_amp_value(self, *, like=None):
+        return scalar_value(self._current_amp, like=like)
+
+    def _amp_factor(self, *, like=None):
+        layer_pre_index = int(self._layer_pre._name[-1])
+        return (
+            self._current_amp_value(like=like)
+            / self._voltage_amp_value(like=like)
+        ) ** layer_pre_index
 
     def eval(self):
         """Computes the energy term corresponding to this weight tensor.
@@ -43,7 +68,7 @@ class DenseResistive(QFunction):
 
         layer_pre = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
-            layer_pre = layer_pre * self._voltage_amp
+            layer_pre = layer_pre * self._voltage_amp_value(like=layer_pre)
         layer_post = self._layer_post.state  # / self._layer_post.gain
         layer_post = layer_post
         dims_pre = len(self._layer_pre.shape)
@@ -51,8 +76,8 @@ class DenseResistive(QFunction):
         for _ in range(dims_post): layer_pre = layer_pre.unsqueeze(-1)  # broadcast layer_pre to (batch_size, shape_pre, shape_post)
         for _ in range(dims_pre): layer_post = layer_post.unsqueeze(1)  # broadcast layer_post to (batch_size, shape_pre, shape_post)
         weight = self._weight.get().unsqueeze(0)  # broadcast weight to (batch_size, shape_pre, shape_post)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        return 0.5 * ((layer_pre - self._current_amp*layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1) * (self._current_amp/self._voltage_amp) ** layer_pre_index 
+        current_amp = self._current_amp_value(like=layer_post)
+        return 0.5 * ((layer_pre - current_amp*layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1) * self._amp_factor(like=weight)
         #return 0.5 * ((layer_pre - layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1)
 
     def a_coef_fn(self, layer):
@@ -73,8 +98,9 @@ class DenseResistive(QFunction):
 
     def grad_param_fn(self, param):
         """Overrides the default implementation of Function"""
-        dictionary = {self._weight: self._grad_weight}
-        return dictionary[param]
+        if param is self._weight:
+            return self._grad_weight
+        return Function.grad_param_fn(self, param)
 
     def _b_coef_layer_pre(self):
         """Returns the interaction's linear influence on the pre-synaptic layer.
@@ -90,10 +116,9 @@ class DenseResistive(QFunction):
         dim_weight = len(weight.shape)
         permutation = tuple(range(dims_pre, dim_weight)) + tuple(range(dims_pre))
         b_coef = - torch.tensordot(layer_post, weight.permute(permutation), dims=dims_post)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp / self._voltage_amp) ** layer_pre_index
-        pre_scale = 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp
-        post_scale = self._current_amp
+        amp = self._amp_factor(like=weight)
+        pre_scale = 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp_value(like=weight)
+        post_scale = self._current_amp_value(like=weight)
         b_coef = b_coef * amp * pre_scale * post_scale
         return b_coef
 
@@ -107,9 +132,8 @@ class DenseResistive(QFunction):
         dims_pre = len(self._layer_pre.shape)
         a_coef = 0.5 * self._weight.get().flatten(start_dim=dims_pre).sum(dim=-1).unsqueeze(0)
 
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp / self._voltage_amp) ** layer_pre_index
-        pre_scale = 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp
+        amp = self._amp_factor(like=a_coef)
+        pre_scale = 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp_value(like=a_coef)
         a_coef = a_coef * amp * pre_scale * pre_scale
 
         return a_coef
@@ -123,12 +147,11 @@ class DenseResistive(QFunction):
 
         layer_pre = self._layer_pre.state
         if self._layer_pre.name != 'Layer_0':
-            layer_pre = layer_pre * self._voltage_amp
+            layer_pre = layer_pre * self._voltage_amp_value(like=layer_pre)
         dims_pre = len(self._layer_pre.shape)  # number of dimensions involved in the tensor product
         b_coef = - torch.tensordot(layer_pre, self._weight.get(), dims=dims_pre)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp / self._voltage_amp) ** layer_pre_index
-        b_coef = b_coef * amp * self._current_amp
+        amp = self._amp_factor(like=b_coef)
+        b_coef = b_coef * amp * self._current_amp_value(like=b_coef)
         return b_coef
 
     def _a_coef_layer_post(self):
@@ -140,9 +163,9 @@ class DenseResistive(QFunction):
 
         dims = len(self._layer_pre.shape) - 1
         a_coef = 0.5 * self._weight.get().flatten(end_dim=dims).sum(dim=0).unsqueeze(0)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp / self._voltage_amp) ** layer_pre_index
-        a_coef = a_coef * amp * self._current_amp * self._current_amp
+        amp = self._amp_factor(like=a_coef)
+        current_amp = self._current_amp_value(like=a_coef)
+        a_coef = a_coef * amp * current_amp * current_amp
 
         return a_coef
 
@@ -156,15 +179,14 @@ class DenseResistive(QFunction):
 
         layer_pre = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
-            layer_pre *= self._voltage_amp
+            layer_pre *= self._voltage_amp_value(like=layer_pre)
         layer_post = self._layer_post.state
         dims_pre = len(self._layer_pre.shape)
         dims_post = len(self._layer_post.shape)
         for _ in range(dims_post): layer_pre = layer_pre.unsqueeze(-1)
         for _ in range(dims_pre): layer_post = layer_post.unsqueeze(1)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp/self._voltage_amp) ** layer_pre_index 
-        grad_weight = 0.5 * ((layer_pre - self._current_amp*layer_post)**2).mean(dim=0) * amp
+        current_amp = self._current_amp_value(like=layer_post)
+        grad_weight = 0.5 * ((layer_pre - current_amp*layer_post)**2).mean(dim=0) * self._amp_factor(like=layer_post)
         #grad_weight = 0.5 * ((layer_pre - layer_post)**2).mean(dim=0)
         return grad_weight
 
@@ -186,7 +208,11 @@ class ConvResistive(QFunction):
         self._layer_pre = layer_pre
         self._layer_post = layer_post
         self._weight = conv_weight
-        QFunction.__init__(self, [layer_pre, layer_post], [conv_weight])
+        QFunction.__init__(
+            self,
+            [layer_pre, layer_post],
+            [conv_weight] + _interaction_params(voltage_amp, current_amp),
+        )
         self._P = padding
         self._S = stride
         self._D = dilation
@@ -195,10 +221,19 @@ class ConvResistive(QFunction):
 
     def _amp_factor(self):
         layer_pre_index = int(self._layer_pre._name[-1])
-        return (self._current_amp / self._voltage_amp) ** layer_pre_index
+        ref = self._layer_post.state
+        return (self._current_amp_value(like=ref) / self._voltage_amp_value(like=ref)) ** layer_pre_index
 
     def _pre_scale(self):
-        return 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp
+        if self._layer_pre.name == 'Layer_0':
+            return 1.0
+        return self._voltage_amp_value(like=self._layer_pre.state)
+
+    def _voltage_amp_value(self, *, like=None):
+        return scalar_value(self._voltage_amp, like=like)
+
+    def _current_amp_value(self, *, like=None):
+        return scalar_value(self._current_amp, like=like)
 
     def _conv_geometry(self):
         weight = self._weight.get()
@@ -216,9 +251,9 @@ class ConvResistive(QFunction):
 
         layer_pre = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
-            layer_pre = layer_pre * self._voltage_amp
+            layer_pre = layer_pre * self._voltage_amp_value(like=layer_pre)
         layer_post = self._layer_post.state  # / self._layer_post.gain
-        layer_post_scaled = layer_post * self._current_amp
+        layer_post_scaled = layer_post * self._current_amp_value(like=layer_post)
 
 
         cols = F.unfold(layer_pre, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
@@ -307,12 +342,12 @@ class ConvResistive(QFunction):
 
     def _b_coef_layer_pre(self):
         b_coef = -self.col2im()
-        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp
+        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp_value(like=b_coef)
         return b_coef
 
     def _b_coef_layer_post(self):
         b_coef = -self.im2col()
-        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp
+        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp_value(like=b_coef)
         return b_coef
 
     def _a_coef_layer_pre(self):
@@ -323,16 +358,17 @@ class ConvResistive(QFunction):
 
     def _a_coef_layer_post(self):
         a_map = self.a_im2col()
-        a_coef = a_map * self._amp_factor() * self._current_amp * self._current_amp
+        current_amp = self._current_amp_value(like=a_map)
+        a_coef = a_map * self._amp_factor() * current_amp * current_amp
         return 0.5 * a_coef
 
     def _grad_weight(self):
         weight, C_out, C_in, Kh, Kw, *_ = self._conv_geometry()
         x = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
-            x = x * self._voltage_amp
+            x = x * self._voltage_amp_value(like=x)
         y = self._layer_post.state.clone()
-        y_rescaled = y * self._current_amp
+        y_rescaled = y * self._current_amp_value(like=y)
 
         cols = F.unfold(x, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
         N, C_out, H_out, W_out = y.shape
@@ -344,13 +380,12 @@ class ConvResistive(QFunction):
         diff2 = (patches - targets).pow(2)
         grad_weight = 0.5 * diff2.sum(dim=1).mean(dim=0)
 
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp / self._voltage_amp) ** layer_pre_index
-        return grad_weight.view(C_out, C_in, Kh, Kw) * amp
+        return grad_weight.view(C_out, C_in, Kh, Kw) * self._amp_factor()
 
     def grad_param_fn(self, param):
-        dictionary = {self._weight: self._grad_weight}
-        return dictionary[param]
+        if param is self._weight:
+            return self._grad_weight
+        return Function.grad_param_fn(self, param)
     
 
 class BasePoolResistive(QFunction, ABC):

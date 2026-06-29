@@ -34,6 +34,10 @@ AMPLIFICATION_GRID = [
     ("mnist_bp_amp_v4_c1", 4.0, 1.0),
     ("mnist_bp_amp_v1_c2", 1.0, 2.0),
     ("mnist_bp_amp_v1_c4", 1.0, 4.0),
+    ("mnist_bp_amp_v2_c2", 2.0, 2.0),
+]
+LEGACY_AMPLIFICATION_GRID = [
+    ("mnist_bp_amp_v4_c0p25", 4.0, 0.25),
 ]
 SUMMARY_COLUMNS = [
     "non_linearity",
@@ -136,7 +140,9 @@ def _architecture(args: argparse.Namespace) -> tuple[list[list[int]], list[dict]
 
 def _num_energy_params(args: argparse.Namespace) -> int:
     # conv weights + dense readout weight + one bias per conv/free layer.
-    return args.conv_depth + 1 + args.conv_depth
+    trainable_v_off = args.conv_depth if args.trainable_hard_sigmoid_v_off else 0
+    trainable_amplification = 2 if args.trainable_amplification else 0
+    return args.conv_depth + 1 + args.conv_depth + trainable_v_off + trainable_amplification
 
 
 def _expanded_learning_rate(args: argparse.Namespace) -> list[float]:
@@ -165,11 +171,45 @@ def _expanded_weight_gains(args: argparse.Namespace) -> list[float]:
     return [float(value) for value in values]
 
 
+def _expanded_hard_sigmoid_v_off(args: argparse.Namespace) -> float | list[float]:
+    values = args.hard_sigmoid_v_off
+    if values is None:
+        if abs(args.hard_sigmoid_v_min + args.hard_sigmoid_v_max) > 1e-9:
+            raise ValueError(
+                "Expected --hard-sigmoid-v-min and --hard-sigmoid-v-max to be "
+                "symmetric when --hard-sigmoid-v-off is omitted."
+            )
+        values = [0.5 * (args.hard_sigmoid_v_max - args.hard_sigmoid_v_min)]
+    if len(values) == 1:
+        return float(values[0])
+    if len(values) != args.conv_depth:
+        raise ValueError(
+            f"Expected --hard-sigmoid-v-off to contain 1 value or {args.conv_depth} "
+            f"values for this conv depth, got {len(values)}."
+        )
+    return [float(value) for value in values]
+
+
 def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
     layer_shapes, conv_pipeline = _architecture(args)
     learning_rate = _expanded_learning_rate(args)
     weight_gains = _expanded_weight_gains(args)
     model_key = args.model_key
+    hard_sigmoid_param = {
+        "g_on": args.hard_sigmoid_g_on,
+        "g_off": args.hard_sigmoid_g_off,
+    }
+    if args.trainable_hard_sigmoid_v_off or args.hard_sigmoid_v_off is not None:
+        hard_sigmoid_param["v_off"] = _expanded_hard_sigmoid_v_off(args)
+    else:
+        hard_sigmoid_param["v_min"] = args.hard_sigmoid_v_min
+        hard_sigmoid_param["v_max"] = args.hard_sigmoid_v_max
+    if args.trainable_hard_sigmoid_v_off:
+        hard_sigmoid_param["trainable_v_off"] = True
+        hard_sigmoid_param["v_off_min"] = args.hard_sigmoid_v_off_min
+        if args.hard_sigmoid_v_off_max is not None:
+            hard_sigmoid_param["v_off_max"] = args.hard_sigmoid_v_off_max
+
     return {
         "lab": {
             "model_key": model_key,
@@ -209,18 +249,16 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
             "input_gain": args.input_gain,
             "voltage_amp": spec.voltage_amp,
             "current_amp": spec.current_amp,
+            "trainable_amplification": bool(args.trainable_amplification),
+            "amplification_min": args.amplification_min,
+            "amplification_max": args.amplification_max,
             "non_linearity": spec.non_linearity,
             "quadratic_diode_param": {
                 "diode_conductance": 1.0,
                 "v_min": -1.0e6,
                 "v_max": 1.0e6,
             },
-            "hard_sigmoid_param": {
-                "g_on": args.hard_sigmoid_g_on,
-                "g_off": args.hard_sigmoid_g_off,
-                "v_min": args.hard_sigmoid_v_min,
-                "v_max": args.hard_sigmoid_v_max,
-            },
+            "hard_sigmoid_param": hard_sigmoid_param,
             "exponential_diode_param": {
                 "I_s": 1.0e-6,
                 "V_t": 0.025,
@@ -242,10 +280,16 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
     }
 
 
-def _all_specs(non_linearities: list[str], seeds: list[int]) -> list[RunSpec]:
+def _all_specs(
+    non_linearities: list[str], seeds: list[int], *, include_legacy: bool = False
+) -> list[RunSpec]:
+    amplification_grid = list(AMPLIFICATION_GRID)
+    if include_legacy:
+        amplification_grid.extend(LEGACY_AMPLIFICATION_GRID)
+
     specs = []
     for non_linearity in non_linearities:
-        for run_name, voltage_amp, current_amp in AMPLIFICATION_GRID:
+        for run_name, voltage_amp, current_amp in amplification_grid:
             for seed in seeds:
                 specs.append(
                     RunSpec(
@@ -468,10 +512,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-max", type=float, default=100.0)
     parser.add_argument("--weight-init-mode", default="kaiming_uniform")
     parser.add_argument("--input-gain", type=float, default=100.0)
+    parser.add_argument("--trainable-amplification", action="store_true")
+    parser.add_argument("--amplification-min", type=float, default=1e-6)
+    parser.add_argument("--amplification-max", type=float, default=None)
     parser.add_argument("--hard-sigmoid-g-on", type=float, default=100.0)
     parser.add_argument("--hard-sigmoid-g-off", type=float, default=0.0)
     parser.add_argument("--hard-sigmoid-v-min", type=float, default=-1.5)
     parser.add_argument("--hard-sigmoid-v-max", type=float, default=1.5)
+    parser.add_argument("--hard-sigmoid-v-off", type=float, nargs="+", default=None)
+    parser.add_argument("--trainable-hard-sigmoid-v-off", action="store_true")
+    parser.add_argument("--hard-sigmoid-v-off-min", type=float, default=0.0)
+    parser.add_argument("--hard-sigmoid-v-off-max", type=float, default=None)
     parser.add_argument("--normalize-mean", type=float, default=0.1307)
     parser.add_argument("--normalize-std", type=float, default=0.3081)
     parser.add_argument("--normalize-scale", type=float, default=0.3)
@@ -482,8 +533,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument(
         "--run-name",
-        choices=[name for name, _, _ in AMPLIFICATION_GRID],
+        choices=[name for name, _, _ in AMPLIFICATION_GRID + LEGACY_AMPLIFICATION_GRID],
         help="Restrict the sweep to a single amplification run name.",
+    )
+    parser.add_argument(
+        "--include-legacy-amplification",
+        action="store_true",
+        help="Include the legacy A=4, B=0.25 amplification setting in full sweeps.",
     )
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument(
@@ -502,6 +558,7 @@ def parse_args() -> argparse.Namespace:
     _architecture(args)
     _expanded_learning_rate(args)
     _expanded_weight_gains(args)
+    _expanded_hard_sigmoid_v_off(args)
     if args.output_dim not in (10, 20):
         raise SystemExit("Expected --output-dim to be 10 or 20 for MNIST.")
     return args
@@ -510,7 +567,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     output_root = Path(args.output_root).expanduser().resolve()
-    all_specs = _all_specs(list(args.non_linearity), list(args.seeds))
+    legacy_run_names = {name for name, _, _ in LEGACY_AMPLIFICATION_GRID}
+    include_legacy = args.include_legacy_amplification or args.run_name in legacy_run_names
+    all_specs = _all_specs(
+        list(args.non_linearity), list(args.seeds), include_legacy=include_legacy
+    )
     if args.run_name is not None:
         all_specs = [spec for spec in all_specs if spec.run_name == args.run_name]
     selected_specs = _select_shard(all_specs, args.num_shards, args.shard_index)

@@ -95,6 +95,49 @@ class Bias(Parameter):
         torch.nn.init.uniform_(self._state, -gain, +gain)
 
 
+class HardSigmoidVOff(Parameter):
+    """Scalar trainable hard-sigmoid half-width for one nonlinear layer."""
+
+    _counter = 0
+
+    def __init__(self, value, device=None, min_cond=0.0, max_cond=None):
+        Parameter.__init__(
+            self,
+            (1,),
+            device=device,
+            non_negative=True,
+            min_cond=min_cond,
+            max_cond=max_cond,
+        )
+        self.init_state(value)
+        self.clamp_()
+        self.name = "HardSigmoidVOff_{}".format(HardSigmoidVOff._counter)
+        HardSigmoidVOff._counter += 1
+
+    def init_state(self, value):
+        torch.nn.init.constant_(self._state, float(value))
+
+
+class AmplificationParameter(Parameter):
+    """Scalar trainable amplification factor."""
+
+    def __init__(self, value, name, device=None, min_cond=1e-6, max_cond=None):
+        Parameter.__init__(
+            self,
+            (1,),
+            device=device,
+            non_negative=True,
+            min_cond=min_cond,
+            max_cond=max_cond,
+        )
+        self.init_state(value)
+        self.clamp_()
+        self.name = str(name)
+
+    def init_state(self, value):
+        torch.nn.init.constant_(self._state, float(value))
+
+
 class DenseWeight(Parameter):
     """Class for dense ('fully connected') weights
 

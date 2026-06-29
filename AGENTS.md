@@ -19,6 +19,19 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - Optuna analysis SOP: `playbooks/optuna_analysis.md`
 - Task overrides: `playbooks/AGENTS.override.md`
 
+## Experiment Launch Policy
+- For large experiment batches, first check whether local GPU tmux targets are free:
+- `tmux main`
+- `tmux akibscomputer`
+- `tmux trex`
+- If any of those targets are free and reachable, parallelize there as much as GPU memory allows.
+- Use Jean Zay for the remaining jobs or for batches that exceed the local machines.
+- Jean Zay runs default to the R3 project `fmu`; use `fmu@v100` for V100 GPU jobs and write run outputs under `/lustre/fsn1/projects/rech/fmu/$USER/server_code/results` unless the user explicitly requests another project/account. The source checkout may stay under the existing `umg` work path.
+- For MNIST Conv amplification training, prefer running Conv1 and Conv2 jobs on `tmux main` and `tmux akibscomputer`; reserve Conv3 jobs for Jean Zay and `tmux trex` unless local availability or urgency clearly argues otherwise.
+- Prefer keeping the same launcher/config contract across local tmux and Jean Zay so results can be aggregated into one summary.
+- For hard-sigmoid MNIST Conv amplification runs with a target saturation, calibrate raw `input_gain` separately for each amplification scheme using the same deterministic saturation-target procedure. Do not use a shared raw `input_gain` across amplifications for the main comparison; shared-gain runs are diagnostics only. LR sweeps and longer runs must preserve the per-amplification calibrated `input_gain` for the chosen target saturation.
+- For LR selection, do not rely on a single seed when choosing final paper settings if runtime is reasonable. Earlier Conv/DRN sweeps showed that some single-seed LR choices were undertrained or misleading, so LR sweeps should include multiple seeds before freezing the final LR.
+
 ## Timing Plot Script
 - Script: `labs/tools/plot_spice_vs_coordinate_descent_loglog.py`
 - Purpose: log-log plot with:

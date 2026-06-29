@@ -16,7 +16,7 @@ from model.resistive.minimizer import (
     ExponentialDoubleDiodeUpdater,
     ExponentialSingleDiodeUpdater,
     HardSigmoidUpdater,
-    _scale_hard_sigmoid_params_for_layer,
+    _hard_sigmoid_params_for_updater,
 )
 from model.resistive.layer import NonlinearResistiveLayer
 
@@ -2452,9 +2452,19 @@ class CustomQuadraticMinimizer(CustomMinimizer):
             hard_sigmoid_params["g_on"] = quadratic_params["diode_conductance"]
         if "g_off" not in hard_sigmoid_params and "g_on" in hard_sigmoid_params:
             hard_sigmoid_params["g_off"] = hard_sigmoid_params["g_on"]
-        if "v_min" not in hard_sigmoid_params and "v_min" in quadratic_params:
+        if (
+            "v_off" not in hard_sigmoid_params
+            and "v_off_param" not in hard_sigmoid_params
+            and "v_min" not in hard_sigmoid_params
+            and "v_min" in quadratic_params
+        ):
             hard_sigmoid_params["v_min"] = quadratic_params["v_min"]
-        if "v_max" not in hard_sigmoid_params and "v_max" in quadratic_params:
+        if (
+            "v_off" not in hard_sigmoid_params
+            and "v_off_param" not in hard_sigmoid_params
+            and "v_max" not in hard_sigmoid_params
+            and "v_max" in quadratic_params
+        ):
             hard_sigmoid_params["v_max"] = quadratic_params["v_max"]
 
         if non_linearity == "perfect_diode":
@@ -2549,14 +2559,17 @@ class CustomQuadraticMinimizer(CustomMinimizer):
                 CustomHardSigmoidUpdater(
                     layer,
                     fn,
-                    _scale_hard_sigmoid_params_for_layer(
-                        hard_sigmoid_params,
+                    _hard_sigmoid_params_for_updater(
+                        fn,
                         layer,
+                        hard_sigmoid_params,
                         voltage_amp,
                         current_amp,
+                        layer_position=layer_position,
+                        num_layers=len(free_layers),
                     ),
                 )
-                for layer in free_layers
+                for layer_position, layer in enumerate(free_layers)
             ]
         elif non_linearity == "experimental":
             if iv_data is None:

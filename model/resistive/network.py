@@ -2,10 +2,21 @@ from tokenize import Double
 import torch
 from torch.nn import Hardsigmoid
 
-from model.function.interaction import HardSigmoidNonLinearInteraction, SumSeparableFunction
+from model.function.interaction import (
+    HardSigmoidNonLinearInteraction,
+    SumSeparableFunction,
+    resolve_hard_sigmoid_params_for_layer,
+)
 from model.resistive.layer import PoolLayer, ResistiveInputLayer, NonlinearResistiveLayer, ConvLayer
 from model.variable.layer import LinearLayer
-from model.variable.parameter import Bias, DenseWeight, ConvWeight, PoolWeight
+from model.variable.parameter import (
+    AmplificationParameter,
+    Bias,
+    DenseWeight,
+    ConvWeight,
+    HardSigmoidVOff,
+    PoolWeight,
+)
 # from model.resistive.parameter import TiedDenseWeight as DenseWeight
 from model.function.interaction import BiasInteraction
 from model.resistive.interaction import BasePoolResistive, AveragePoolResistive, MaxPoolResistive, DenseResistive, ConvResistive
@@ -21,6 +32,44 @@ POOLING_INTERACTIONS = {
 }
 
 
+def _hard_sigmoid_trainable_v_off_enabled(params):
+    return bool((params or {}).get("trainable_v_off", False))
+
+
+def _hard_sigmoid_initial_v_off(params, layer_position, num_layers):
+    resolved = resolve_hard_sigmoid_params_for_layer(
+        params,
+        layer_position=layer_position,
+        num_layers=num_layers,
+    )
+    v_min = float(resolved["v_min"])
+    v_max = float(resolved["v_max"])
+    if abs(v_min + v_max) > 1e-9:
+        raise ValueError(
+            "Expected trainable hard_sigmoid_param boundaries to be symmetric around "
+            f"zero for layer {layer_position}; got v_min={v_min!r}, v_max={v_max!r}."
+        )
+    return 0.5 * (v_max - v_min)
+
+
+def _hard_sigmoid_runtime_params(params, v_off_param):
+    runtime = {
+        key: value
+        for key, value in dict(params or {}).items()
+        if key
+        not in {
+            "v_off",
+            "v_min",
+            "v_max",
+            "trainable_v_off",
+            "v_off_min",
+            "v_off_max",
+        }
+    }
+    runtime["v_off_param"] = v_off_param
+    return runtime
+
+
 
 class DeepResistiveEnergy(SumSeparableFunction):
     """Energy function (power dissipation) of a deep resistive network (DRN)
@@ -33,7 +82,8 @@ class DeepResistiveEnergy(SumSeparableFunction):
                  voltage_amp, current_amp,
                  weight_min=None, weight_max=None,
                  weight_init_mode='kaiming_uniform', conv_pipeline=None,
-                 pooling_mode="avg"):
+                 pooling_mode="avg", trainable_amplification=False,
+                 amplification_min=1e-6, amplification_max=None):
         """Creates an instance of a dense Hopfield network
 
         Args:
@@ -48,8 +98,27 @@ class DeepResistiveEnergy(SumSeparableFunction):
         """
 
         self._input_amplifier = input_gain
-        self._voltage_amp = voltage_amp
-        self._current_amp = current_amp
+        self._trainable_amplification = bool(trainable_amplification)
+        amp_params = []
+        if self._trainable_amplification:
+            self._voltage_amp = AmplificationParameter(
+                voltage_amp,
+                "VoltageAmp",
+                device=None,
+                min_cond=amplification_min,
+                max_cond=amplification_max,
+            )
+            self._current_amp = AmplificationParameter(
+                current_amp,
+                "CurrentAmp",
+                device=None,
+                min_cond=amplification_min,
+                max_cond=amplification_max,
+            )
+            amp_params = [self._voltage_amp, self._current_amp]
+        else:
+            self._voltage_amp = voltage_amp
+            self._current_amp = current_amp
         self._non_linearity = non_linearity
         # Store diode parameter dictionaries so downstream utilities (e.g., Monitor)
         # can introspect saturation bounds without threading them through manually.
@@ -173,8 +242,8 @@ class DeepResistiveEnergy(SumSeparableFunction):
                     padding=spec["padding"],
                     stride=spec["stride"],
                     dilation=1,
-                    voltage_amp=voltage_amp,
-                    current_amp=current_amp
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp
                 )
             elif spec["mode"] == "pooling":
                 if PoolInteraction is None:
@@ -184,8 +253,8 @@ class DeepResistiveEnergy(SumSeparableFunction):
                     spec["post"],
                     convpool_weight,
                     stride=spec["stride"],
-                    voltage_amp=voltage_amp,
-                    current_amp=current_amp
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp
                 )
             convpool_interactions.append(convpool_interaction)
 
@@ -194,6 +263,7 @@ class DeepResistiveEnergy(SumSeparableFunction):
         dense_pairs = list(zip(downstream_layers[:-1], downstream_layers[1:]))
         dense_weight_gains = weight_gains[len(conv_specs):]
         free_layers = [layer for layer, mode in zip(convpool_layers, convpool_modes) if mode != "pooling"] + hidden_layers
+        hard_sigmoid_v_off_params = []
 
         # build the biases
         biases = [Bias(layer._shape, 0., device=None) for layer in free_layers]
@@ -212,6 +282,28 @@ class DeepResistiveEnergy(SumSeparableFunction):
         
         # include nonlinear interactions for all nonlinear layers (conv + hidden)
         non_linear_layers = [layer for layer, mode in zip(convpool_layers, convpool_modes) if mode != "pooling"] + hidden_layers
+        hard_sigmoid_runtime_params = [hard_sigmoid_param or {} for _ in non_linear_layers]
+        if non_linearity == "hard_sigmoid" and _hard_sigmoid_trainable_v_off_enabled(hard_sigmoid_param):
+            hard_sigmoid_params = hard_sigmoid_param or {}
+            min_cond = hard_sigmoid_params.get("v_off_min", 0.0)
+            max_cond = hard_sigmoid_params.get("v_off_max")
+            hard_sigmoid_v_off_params = [
+                HardSigmoidVOff(
+                    _hard_sigmoid_initial_v_off(
+                        hard_sigmoid_params,
+                        layer_position,
+                        len(non_linear_layers),
+                    ),
+                    device=None,
+                    min_cond=min_cond,
+                    max_cond=max_cond,
+                )
+                for layer_position, _layer in enumerate(non_linear_layers)
+            ]
+            hard_sigmoid_runtime_params = [
+                _hard_sigmoid_runtime_params(hard_sigmoid_params, v_off_param)
+                for v_off_param in hard_sigmoid_v_off_params
+            ]
 
         if non_linearity == "perfect_diode":
             non_linear_interaction = []
@@ -228,8 +320,16 @@ class DeepResistiveEnergy(SumSeparableFunction):
             ]
 
         elif non_linearity == "hard_sigmoid":
-            non_linear_interaction = [HardSigmoidNonLinearInteraction(layer, hard_sigmoid_param, voltage_amp=self._voltage_amp, current_amp = self._current_amp)
-                for layer in non_linear_layers
+            non_linear_interaction = [
+                HardSigmoidNonLinearInteraction(
+                    layer,
+                    hard_sigmoid_runtime_params[layer_position],
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
+                    layer_position=layer_position,
+                    num_layers=len(non_linear_layers),
+                )
+                for layer_position, layer in enumerate(non_linear_layers)
             ]
         elif non_linearity == "double_diode_quadratic":
             non_linear_interaction = [
@@ -256,7 +356,7 @@ class DeepResistiveEnergy(SumSeparableFunction):
             print("Nonlinear interaction for this non-linearity not defined yet")
 
         # Track all params for device movement, but expose only trainable ones (exclude PoolWeight)
-        self._all_params = convpool_weights + dense_weights + biases
+        self._all_params = convpool_weights + dense_weights + biases + hard_sigmoid_v_off_params + amp_params
         self._trainable_params = [p for p in self._all_params if not isinstance(p, PoolWeight)]
         interactions = bias_interactions + weight_interactions + non_linear_interaction + convpool_interactions
 
