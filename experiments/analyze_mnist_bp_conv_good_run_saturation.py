@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import csv
 import json
 import math
@@ -65,6 +66,34 @@ OUTPUT_COLUMNS = [
     "delta_all_hidden_saturation",
 ]
 
+HISTORICAL_MINIMIZER_DEFAULTS = {
+    "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+    "adaptive_equilibrium": True,
+    "overrelaxation_factor": 1.1,
+    "single_diode_updater": "custom",
+    "iv_data_path": None,
+    "experimental_damping": 0.5,
+    "experimental_newton_max_steps": 100,
+    "settings": {
+        "rel_tol": 1e-5,
+        "vn_tol": 1e-6,
+        "use_polish": True,
+        "max_newton_iters": 32,
+        "z_thresh": 1e10,
+        "exp_clip": 100000.0,
+        "dynamic_polish": True,
+        "overrelaxation_reject_steps": False,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_eps": 0.0,
+        "experimental_exponential_newton_tol_progressive": True,
+        "experimental_exponential_newton_tol_start": 1e-5,
+        "experimental_exponential_newton_tol_end": 1e-5,
+        "experimental_exponential_newton_tol_switch_hi": 1e-2,
+        "experimental_exponential_newton_tol_switch_lo": 5e-4,
+    },
+}
+
 
 @dataclass(frozen=True)
 class RunSpec:
@@ -82,10 +111,13 @@ def _load_json(path: Path) -> dict:
 
 def _model_cfg(config: dict) -> dict:
     model_key = config.get("lab", {}).get("model_key", "mnist_bp_conv_amp")
-    return {
+    model_cfg = {
         **config.get("model_base", {}),
         **config.get("model_overrides", {}).get(model_key, {}),
     }
+    if "minimizer" not in model_cfg:
+        model_cfg["minimizer"] = deepcopy(HISTORICAL_MINIMIZER_DEFAULTS)
+    return model_cfg
 
 
 def _path_part(run_dir: Path, prefix: str) -> str:
@@ -177,6 +209,7 @@ def _build_context(
     no_download: bool,
     dataset_root: str | None,
     inference_iterations_override: int | None,
+    adaptive_equilibrium: bool | None = None,
 ) -> dict:
     config = load_config(spec.run_dir / "source_config.json")
     seed = int(config.get("seed", spec.metrics.get("seed", 0)))
@@ -243,6 +276,7 @@ def _build_context(
         num_iterations=inference_iterations,
         voltage_amp=energy_fn._voltage_amp,
         current_amp=energy_fn._current_amp,
+        adaptive_equilibrium=adaptive_equilibrium,
     )
 
     dataset_factory = _resolve_callable(dataset_cfg["factory"])

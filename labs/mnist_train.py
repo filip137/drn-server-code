@@ -183,52 +183,162 @@ def _default_exponential_params():
     return {"I_s": 1e-6, "V_t": 0.025, "V_off": 0.0}
 
 
-def _default_minimizer_settings(non_linearity, double_diode_updater):
-    exp_clip = 100000.0
-    if non_linearity == "double_diode_exponential":
-        if double_diode_updater in ("float32", "overrelaxed"):
-            exp_clip = 80.0
-        elif double_diode_updater in ("float64_timed", "TimedExponentialDOubleDiodeUpdater"):
-            exp_clip = 10000.0
+MINIMIZER_SETTINGS_FIELDS = (
+    "rel_tol",
+    "vn_tol",
+    "use_polish",
+    "max_newton_iters",
+    "z_thresh",
+    "exp_clip",
+    "dynamic_polish",
+    "overrelaxation_reject_steps",
+    "overrelaxation_reject_max_tries",
+    "overrelaxation_reject_shrink",
+    "overrelaxation_reject_eps",
+    "experimental_exponential_newton_tol_progressive",
+    "experimental_exponential_newton_tol_start",
+    "experimental_exponential_newton_tol_end",
+    "experimental_exponential_newton_tol_switch_hi",
+    "experimental_exponential_newton_tol_switch_lo",
+)
+
+MINIMIZER_CONFIG_FIELDS = (
+    "double_diode_updater",
+    "adaptive_equilibrium",
+    "overrelaxation_factor",
+    "single_diode_updater",
+    "iv_data_path",
+    "experimental_damping",
+    "experimental_newton_max_steps",
+    "settings",
+)
+
+
+def _require_mapping(config: dict, key: str, owner: str) -> dict:
+    if key not in config or not isinstance(config[key], dict):
+        raise ValueError(
+            f"Expected {owner}.{key} to be an explicit object in the config. "
+            f"Provided value: {config.get(key)!r}."
+        )
+    return config[key]
+
+
+def _require_key(config: dict, key: str, owner: str):
+    if key not in config:
+        raise ValueError(
+            f"Expected {owner}.{key} to be set explicitly in the config. "
+            f"Provided value: {config!r}."
+        )
+    return config[key]
+
+
+def _require_minimizer_config(model_cfg: dict) -> dict:
+    minimizer_cfg = _require_mapping(model_cfg, "minimizer", "model config")
+    missing = [key for key in MINIMIZER_CONFIG_FIELDS if key not in minimizer_cfg]
+    if missing:
+        raise ValueError(
+            "Expected model config minimizer to define all simulator fields: "
+            f"{list(MINIMIZER_CONFIG_FIELDS)}. Missing fields: {missing}. "
+            f"Provided value: {minimizer_cfg!r}."
+        )
+    _require_mapping(minimizer_cfg, "settings", "model config minimizer")
+    return minimizer_cfg
+
+
+def _minimizer_settings_from_config(minimizer_cfg: dict) -> MinimizerSettings:
+    settings_cfg = _require_mapping(minimizer_cfg, "settings", "model config minimizer")
+    missing = [key for key in MINIMIZER_SETTINGS_FIELDS if key not in settings_cfg]
+    if missing:
+        raise ValueError(
+            "Expected model config minimizer.settings to define all solver fields: "
+            f"{list(MINIMIZER_SETTINGS_FIELDS)}. Missing fields: {missing}. "
+            f"Provided value: {settings_cfg!r}."
+        )
+    return MinimizerSettings(
+        **{field: settings_cfg[field] for field in MINIMIZER_SETTINGS_FIELDS}
+    )
+
+
+def _validate_diode_param_config(model_cfg: dict) -> None:
+    for key in ("quadratic_diode_param", "exponential_diode_param", "hard_sigmoid_param"):
+        _require_mapping(model_cfg, key, "model config")
+    if model_cfg["non_linearity"] == "hard_sigmoid":
+        params = model_cfg["hard_sigmoid_param"]
+        missing = [key for key in ("g_on", "g_off") if key not in params]
+        if missing:
+            raise ValueError(
+                "Expected model config hard_sigmoid_param to define explicit "
+                f"'g_on' and 'g_off'. Missing fields: {missing}. Provided value: {params!r}."
+            )
+
+
+def _sanity_check_minimizer_settings() -> MinimizerSettings:
     return MinimizerSettings(
         rel_tol=1e-5,
         vn_tol=1e-6,
         use_polish=True,
         max_newton_iters=32,
         z_thresh=1e10,
-        exp_clip=exp_clip,
+        exp_clip=100000.0,
         dynamic_polish=True,
         overrelaxation_reject_steps=False,
         overrelaxation_reject_max_tries=3,
         overrelaxation_reject_shrink=0.5,
         overrelaxation_reject_eps=0.0,
+        experimental_exponential_newton_tol_progressive=True,
+        experimental_exponential_newton_tol_start=1e-5,
+        experimental_exponential_newton_tol_end=1e-5,
+        experimental_exponential_newton_tol_switch_hi=1e-2,
+        experimental_exponential_newton_tol_switch_lo=5e-4,
     )
 
 
-def _build_tracking_minimizer(fn, free_layers, model_cfg, mode, *, num_iterations, voltage_amp, current_amp):
-    minimizer_cfg = model_cfg.get("minimizer", {})
-    double_diode_updater = minimizer_cfg.get(
-        "double_diode_updater", "CustomExponentialDoubleDiodeUpdater"
+def _build_tracking_minimizer(
+    fn,
+    free_layers,
+    model_cfg,
+    mode,
+    *,
+    num_iterations,
+    voltage_amp,
+    current_amp,
+    adaptive_equilibrium=None,
+):
+    _validate_diode_param_config(model_cfg)
+    minimizer_cfg = _require_minimizer_config(model_cfg)
+    double_diode_updater = _require_key(
+        minimizer_cfg, "double_diode_updater", "model config minimizer"
     )
+    configured_adaptive_equilibrium = _require_key(
+        minimizer_cfg, "adaptive_equilibrium", "model config minimizer"
+    )
+    if adaptive_equilibrium is None:
+        adaptive_equilibrium = configured_adaptive_equilibrium
     return TrackingQuadraticMinimizer(
         fn=fn,
         free_layers=free_layers,
         num_iterations=num_iterations,
         mode=mode,
         non_linearity=model_cfg["non_linearity"],
-        quadratic_diode_param=model_cfg.get("quadratic_diode_param", {}),
-        exponential_diode_param=model_cfg.get("exponential_diode_param", {}),
-        hard_sigmoid_param=model_cfg.get("hard_sigmoid_param", {}),
+        quadratic_diode_param=model_cfg["quadratic_diode_param"],
+        exponential_diode_param=model_cfg["exponential_diode_param"],
+        hard_sigmoid_param=model_cfg["hard_sigmoid_param"],
         voltage_amp=voltage_amp,
         current_amp=current_amp,
         iv_data=minimizer_cfg.get("iv_data"),
-        iv_data_path=minimizer_cfg.get("iv_data_path"),
+        iv_data_path=_require_key(minimizer_cfg, "iv_data_path", "model config minimizer"),
         double_diode_updater=double_diode_updater,
-        adaptive_equilibrium=minimizer_cfg.get("adaptive_equilibrium", True),
-        overrelaxation_factor=minimizer_cfg.get("overrelaxation_factor", 1.1),
-        single_diode_updater=minimizer_cfg.get("single_diode_updater", "custom"),
-        minimizer_settings=_default_minimizer_settings(
-            model_cfg["non_linearity"], double_diode_updater
+        adaptive_equilibrium=adaptive_equilibrium,
+        overrelaxation_factor=_require_key(
+            minimizer_cfg, "overrelaxation_factor", "model config minimizer"
+        ),
+        single_diode_updater=_require_key(
+            minimizer_cfg, "single_diode_updater", "model config minimizer"
+        ),
+        minimizer_settings=_minimizer_settings_from_config(minimizer_cfg),
+        damping=_require_key(minimizer_cfg, "experimental_damping", "model config minimizer"),
+        experimental_newton_max_steps=_require_key(
+            minimizer_cfg, "experimental_newton_max_steps", "model config minimizer"
         ),
     )
 
@@ -289,7 +399,7 @@ def _single_conv_gradient_check(device):
         adaptive_equilibrium=True,
         overrelaxation_factor=1.1,
         single_diode_updater="custom",
-        minimizer_settings=_default_minimizer_settings("linear", "CustomExponentialDoubleDiodeUpdater"),
+        minimizer_settings=_sanity_check_minimizer_settings(),
     )
 
     grad_fn = energy_fn.grad_layer_fn(output_layer)
@@ -457,6 +567,8 @@ def _train_image_task(
             )
 
     model_cfg = {**config["model_base"], **model_overrides[resolved_model_key]}
+    _validate_diode_param_config(model_cfg)
+    _require_minimizer_config(model_cfg)
     dataset_key, dataset_cfg = _resolve_dataset_config(config, dataset_key)
     beta_value = beta
     if beta_value is None:
@@ -516,7 +628,7 @@ def _train_image_task(
         non_linearity=model_cfg["non_linearity"],
         exponential_diode_param=model_cfg["exponential_diode_param"],
         quadratic_diode_param=model_cfg["quadratic_diode_param"],
-        hard_sigmoid_param=model_cfg.get("hard_sigmoid_param", {}),
+        hard_sigmoid_param=model_cfg["hard_sigmoid_param"],
         voltage_amp=model_cfg["voltage_amp"],
         current_amp=model_cfg["current_amp"],
         weight_min=model_cfg["weight_min"],
@@ -702,9 +814,13 @@ def _train_image_task(
             "weight_max": model_cfg.get("weight_max"),
         },
         "diode_params": {
-            "quadratic_diode_param": model_cfg.get("quadratic_diode_param", {}),
-            "exponential_diode_param": model_cfg.get("exponential_diode_param", {}),
-            "hard_sigmoid_param": model_cfg.get("hard_sigmoid_param", {}),
+            "quadratic_diode_param": model_cfg["quadratic_diode_param"],
+            "exponential_diode_param": model_cfg["exponential_diode_param"],
+            "hard_sigmoid_param": model_cfg["hard_sigmoid_param"],
+        },
+        "minimizer": {
+            "mode": config["energy_minimizer"]["mode"],
+            **json.loads(json.dumps(_json_sanitize(model_cfg["minimizer"]))),
         },
     }
     config_json_path = run_dir / "config.json"

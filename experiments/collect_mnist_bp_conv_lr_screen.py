@@ -11,6 +11,11 @@ from pathlib import Path
 
 
 ROW_COLUMNS = [
+    "conv_depth",
+    "strides",
+    "paddings",
+    "lr_center",
+    "lr_factor",
     "lr_label",
     "lr",
     "non_linearity",
@@ -19,6 +24,8 @@ ROW_COLUMNS = [
     "voltage_amp",
     "current_amp",
     "input_gain",
+    "num_iterations_inference",
+    "num_iterations_training",
     "iteration_count",
     "epochs",
     "best_test_accuracy",
@@ -36,13 +43,20 @@ ROW_COLUMNS = [
 ]
 
 SELECTED_COLUMNS = [
+    "conv_depth",
+    "strides",
+    "paddings",
     "non_linearity",
     "run_name",
     "voltage_amp",
     "current_amp",
+    "selected_lr_center",
+    "selected_lr_factor",
     "selected_lr_label",
     "selected_lr",
     "input_gain",
+    "num_iterations_inference",
+    "num_iterations_training",
     "iteration_count",
     "epochs",
     "best_test_accuracy",
@@ -80,6 +94,14 @@ def _lr_label(path: Path, lr: float) -> str:
     return f"{lr:g}".replace(".", "p").replace("-", "m")
 
 
+def _path_float(path: Path, prefix: str) -> float:
+    for parent in [path, *path.parents]:
+        if parent.name.startswith(prefix):
+            value = parent.name.removeprefix(prefix).replace("p", ".").replace("m", "-")
+            return _float(value)
+    return math.nan
+
+
 def _row(metrics_path: Path, *, epoch_limited_fraction: float, unstable_gap: float) -> dict:
     run_dir = metrics_path.parent
     metrics = _read_json(metrics_path)
@@ -90,6 +112,9 @@ def _row(metrics_path: Path, *, epoch_limited_fraction: float, unstable_gap: flo
     amplification = config["amplification"]
     lr_values = optimizer.get("learning_rate", [])
     lr = float(lr_values[0] if isinstance(lr_values, list) else lr_values)
+    conv_pipeline = architecture.get("conv_pipeline", []) or []
+    strides = ",".join(str(item.get("stride", "")) for item in conv_pipeline)
+    paddings = ",".join(str(item.get("padding", "")) for item in conv_pipeline)
     epochs = int(training["epochs"])
     best_epoch = int(metrics.get("best_epoch", 0))
     best_acc = _float(metrics.get("best_test_accuracy"))
@@ -98,6 +123,11 @@ def _row(metrics_path: Path, *, epoch_limited_fraction: float, unstable_gap: flo
     unstable = math.isfinite(best_acc) and math.isfinite(final_acc) and (best_acc - final_acc) > unstable_gap
     collapsed = (not math.isfinite(best_acc)) or best_acc < 0.5
     return {
+        "conv_depth": len(conv_pipeline),
+        "strides": strides,
+        "paddings": paddings,
+        "lr_center": _path_float(run_dir, "lr_center_"),
+        "lr_factor": _path_float(run_dir, "lr_factor_"),
         "lr_label": _lr_label(run_dir, lr),
         "lr": lr,
         "non_linearity": architecture["non_linearity"],
@@ -106,6 +136,8 @@ def _row(metrics_path: Path, *, epoch_limited_fraction: float, unstable_gap: flo
         "voltage_amp": amplification["voltage_amp"],
         "current_amp": amplification["current_amp"],
         "input_gain": architecture["input_gain"],
+        "num_iterations_inference": training["num_iterations_inference"],
+        "num_iterations_training": training["num_iterations_training"],
         "iteration_count": training["num_iterations_training"],
         "epochs": epochs,
         "best_test_accuracy": metrics.get("best_test_accuracy", ""),
@@ -132,11 +164,20 @@ def _rows(root: Path, *, epoch_limited_fraction: float, unstable_gap: float) -> 
 
 
 def _selected(rows: list[dict]) -> list[dict]:
-    grouped: dict[tuple[str, str], list[dict]] = {}
+    grouped: dict[tuple[int, str, str, str, str], list[dict]] = {}
     for row in rows:
-        grouped.setdefault((row["non_linearity"], row["run_name"]), []).append(row)
+        grouped.setdefault(
+            (
+                int(row["conv_depth"]),
+                str(row["strides"]),
+                str(row["paddings"]),
+                row["non_linearity"],
+                row["run_name"],
+            ),
+            [],
+        ).append(row)
     out: list[dict] = []
-    for (non_linearity, run_name), group in sorted(grouped.items()):
+    for (conv_depth, strides, paddings, non_linearity, run_name), group in sorted(grouped.items()):
         candidates = [row for row in group if row["collapsed"] is not True] or group
 
         def score(row: dict) -> tuple[float, float, float, float]:
@@ -150,13 +191,20 @@ def _selected(rows: list[dict]) -> list[dict]:
         best = max(candidates, key=score)
         out.append(
             {
+                "conv_depth": conv_depth,
+                "strides": strides,
+                "paddings": paddings,
                 "non_linearity": non_linearity,
                 "run_name": run_name,
                 "voltage_amp": best["voltage_amp"],
                 "current_amp": best["current_amp"],
+                "selected_lr_center": best["lr_center"],
+                "selected_lr_factor": best["lr_factor"],
                 "selected_lr_label": best["lr_label"],
                 "selected_lr": best["lr"],
                 "input_gain": best["input_gain"],
+                "num_iterations_inference": best["num_iterations_inference"],
+                "num_iterations_training": best["num_iterations_training"],
                 "iteration_count": best["iteration_count"],
                 "epochs": best["epochs"],
                 "best_test_accuracy": best["best_test_accuracy"],

@@ -2444,28 +2444,6 @@ class CustomQuadraticMinimizer(CustomMinimizer):
         quadratic_params = dict(quadratic_diode_param)
         exponential_params = dict(exponential_diode_param)
         hard_sigmoid_params = dict(hard_sigmoid_param or {})
-        if not hard_sigmoid_params:
-            if "diode_conductance" in quadratic_params:
-                hard_sigmoid_params["g_on"] = quadratic_params["diode_conductance"]
-                hard_sigmoid_params["g_off"] = quadratic_params["diode_conductance"]
-        if "g_on" not in hard_sigmoid_params and "diode_conductance" in quadratic_params:
-            hard_sigmoid_params["g_on"] = quadratic_params["diode_conductance"]
-        if "g_off" not in hard_sigmoid_params and "g_on" in hard_sigmoid_params:
-            hard_sigmoid_params["g_off"] = hard_sigmoid_params["g_on"]
-        if (
-            "v_off" not in hard_sigmoid_params
-            and "v_off_param" not in hard_sigmoid_params
-            and "v_min" not in hard_sigmoid_params
-            and "v_min" in quadratic_params
-        ):
-            hard_sigmoid_params["v_min"] = quadratic_params["v_min"]
-        if (
-            "v_off" not in hard_sigmoid_params
-            and "v_off_param" not in hard_sigmoid_params
-            and "v_max" not in hard_sigmoid_params
-            and "v_max" in quadratic_params
-        ):
-            hard_sigmoid_params["v_max"] = quadratic_params["v_max"]
 
         if non_linearity == "perfect_diode":
             updaters = [CustomQuadraticUpdater(layer, fn) for layer in free_layers]

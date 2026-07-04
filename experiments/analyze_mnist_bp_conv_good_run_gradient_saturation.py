@@ -179,6 +179,7 @@ def _measure_phase(
         no_download=args.no_download,
         dataset_root=args.dataset_root,
         inference_iterations_override=args.inference_iterations,
+        adaptive_equilibrium=getattr(args, "adaptive_equilibrium", None),
     )
     params = context["energy_fn"].params()
     base_states = [param.state.detach().clone() for param in params]
@@ -202,6 +203,7 @@ def _measure_phase(
         num_iterations=training_iterations,
         voltage_amp=context["energy_fn"]._voltage_amp,
         current_amp=context["energy_fn"]._current_amp,
+        adaptive_equilibrium=getattr(args, "adaptive_equilibrium", None),
     )
     estimator = Backprop(params, context["free_layers"], context["cost_fn"], minimizer_training)
     loader = context["train_loader"] if args.split == "train" else context["test_loader"]

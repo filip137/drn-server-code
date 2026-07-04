@@ -9,10 +9,17 @@ from pathlib import Path
 
 
 COLUMNS = [
+    "conv_depth",
+    "strides",
+    "paddings",
     "non_linearity",
     "run_name",
     "input_gain",
+    "num_iterations_inference",
+    "num_iterations_training",
     "iteration_count",
+    "lr_center",
+    "lr_factor",
     "lr",
     "source_best_test_accuracy",
     "source_final_test_accuracy",
@@ -42,10 +49,17 @@ def main() -> None:
     for row in rows:
         out_rows.append(
             {
+                "conv_depth": row.get("conv_depth", ""),
+                "strides": row.get("strides", ""),
+                "paddings": row.get("paddings", ""),
                 "non_linearity": row["non_linearity"],
                 "run_name": row["run_name"],
                 "input_gain": row["input_gain"],
+                "num_iterations_inference": row.get("num_iterations_inference", ""),
+                "num_iterations_training": row.get("num_iterations_training", row.get("iteration_count", "")),
                 "iteration_count": row["iteration_count"],
+                "lr_center": row.get("selected_lr_center", ""),
+                "lr_factor": row.get("selected_lr_factor", ""),
                 "lr": row["selected_lr"],
                 "source_best_test_accuracy": row.get("best_test_accuracy", ""),
                 "source_final_test_accuracy": row.get("final_test_accuracy", ""),

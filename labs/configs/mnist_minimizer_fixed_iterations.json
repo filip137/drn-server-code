@@ -1,0 +1,27 @@
+{
+  "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+  "adaptive_equilibrium": false,
+  "overrelaxation_factor": 1.1,
+  "single_diode_updater": "custom",
+  "iv_data_path": null,
+  "experimental_damping": 0.5,
+  "experimental_newton_max_steps": 100,
+  "settings": {
+    "rel_tol": 1e-5,
+    "vn_tol": 1e-6,
+    "use_polish": true,
+    "max_newton_iters": 32,
+    "z_thresh": 1e10,
+    "exp_clip": 100000.0,
+    "dynamic_polish": true,
+    "overrelaxation_reject_steps": false,
+    "overrelaxation_reject_max_tries": 3,
+    "overrelaxation_reject_shrink": 0.5,
+    "overrelaxation_reject_eps": 0.0,
+    "experimental_exponential_newton_tol_progressive": true,
+    "experimental_exponential_newton_tol_start": 1e-5,
+    "experimental_exponential_newton_tol_end": 1e-5,
+    "experimental_exponential_newton_tol_switch_hi": 1e-2,
+    "experimental_exponential_newton_tol_switch_lo": 5e-4
+  }
+}

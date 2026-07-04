@@ -1,8 +1,8 @@
 # Conv Paper Hyperparameter Protocol
 
-Updated: 2026-06-24
+Updated: 2026-07-03
 
-This protocol defines how to choose `K`, hard-sigmoid operating point, `input_gain`, learning rate, and epoch budget for Conv DRN amplification paper runs. The goal is to avoid choosing settings that favor one amplification case by accident while still allowing each nonlinearity to use a physically sensible operating range.
+This protocol defines how to choose solver settling/unroll counts (`T` and `K`), hard-sigmoid operating point, `input_gain`, learning rate, and epoch budget for Conv DRN amplification paper runs. The goal is to avoid choosing settings that favor one amplification case by accident while still allowing each nonlinearity to use a physically sensible operating range.
 
 ## Fixed Comparison Axes
 
@@ -31,7 +31,7 @@ Current paper-facing default:
 Settings that may differ between nonlinearity families:
 
 - `input_gain`.
-- Solver iteration count `K`.
+- Solver settling/unroll counts: free-state inference iterations `T` and BP/EP unroll iterations `K`.
 - Learning-rate grid, if the nonlinearity has clearly different gradient scale.
 
 Settings that may differ between amplification schemes only after a documented sweep:
@@ -42,35 +42,52 @@ Settings that may differ between amplification schemes only after a documented s
 Settings that should not differ between amplification schemes in the final paper run:
 
 - Hard-sigmoid `v_off` and target initial saturation.
-- `K`.
+- `T` and `K`.
 - Epoch budget.
 - Preprocessing.
 - Architecture.
 
 For hard sigmoid, do not use same-raw-`input_gain` results as the main accuracy comparison. Same-raw-`input_gain` runs are diagnostics for showing how amplification shifts the operating point.
 
-## Stage 1: Choose Solver Iteration Count
+## Stage 1: Choose Solver Settling And Unroll Counts
 
-Choose `K` before choosing the hard-sigmoid operating point, perfect-diode `input_gain`, or LR.
+Choose `T` and `K` before choosing the hard-sigmoid operating point, perfect-diode `input_gain`, or LR.
+
+Here `T` is the number of free-state inference/settling iterations used before measuring loss gradients, and `K` is the number of BP/EP unroll or nudged-phase iterations used for the gradient estimate. Do not infer the `K` requirement from a sweep that ties `T=K`; tied sweeps confound settling and gradient-tail length. For `T/K` diagnostics, disable adaptive equilibrium stopping so requested counts are exact. Adaptive early stopping from an already-settled free state can stop after one odd/even sweep and make upstream conv gradients look exactly zero even when fixed-step BP and zero-order finite differences are nonzero.
+
+Simulator/minimizer settings must be explicit in every paper-facing source config. Do not rely on Python defaults for updater choice, adaptive stopping, tolerances, Newton/polish settings, clipping, overrelaxation, or experimental IV settings. For fixed-`T/K` BP/EP paper runs, `model_base.minimizer.adaptive_equilibrium` must be `false`; adaptive-equilibrium runs are diagnostics unless the table explicitly studies adaptive stopping.
+
+Required `model_base.minimizer` fields:
+
+- `double_diode_updater`, `single_diode_updater`, `adaptive_equilibrium`, `overrelaxation_factor`;
+- `iv_data_path`, `experimental_damping`, `experimental_newton_max_steps`;
+- `settings.rel_tol`, `settings.vn_tol`, `settings.use_polish`, `settings.max_newton_iters`, `settings.z_thresh`, `settings.exp_clip`, `settings.dynamic_polish`;
+- `settings.overrelaxation_reject_steps`, `settings.overrelaxation_reject_max_tries`, `settings.overrelaxation_reject_shrink`, `settings.overrelaxation_reject_eps`;
+- `settings.experimental_exponential_newton_tol_progressive`, `settings.experimental_exponential_newton_tol_start`, `settings.experimental_exponential_newton_tol_end`, `settings.experimental_exponential_newton_tol_switch_hi`, `settings.experimental_exponential_newton_tol_switch_lo`.
 
 For hard sigmoid:
 
-1. Measure raw residual current `max |dE/dz|` versus K.
-2. Measure centered-EP versus BP cosine similarity versus K.
-3. Use the same K for all amplification settings within a given architecture and nonlinearity unless one setting is clearly non-convergent and must be analyzed separately.
+1. Measure raw residual current `max |dE/dz|` versus `T`.
+2. Measure centered-EP versus BP cosine similarity on a grid of `T` and `K`.
+3. Measure per-parameter gradient norms and zero fractions on the same `T/K` grid, especially `ConvWeight_0`, `ConvWeight_1`, and any deeper conv weights. For conv layers, these are shared-kernel parameter gradients after summing over spatial uses of the same kernel entry; if spatial-copy behavior is in question, also record pre-reduction per-location contribution statistics.
+4. Check whether early-conv gradients survive at the selected `T`. Do not transfer `T/K` thresholds from another nonlinearity family without rerunning this diagnostic for hard sigmoid.
+5. Use the same `T` and `K` for all amplification settings within a given architecture and nonlinearity unless one setting is clearly non-convergent or gradient-dead and must be analyzed separately.
 
 For perfect diode:
 
 1. Use projected KKT residuals for clamped diode variables.
 2. Use raw residuals only for unconstrained layers.
 3. Also run the centered-EP versus BP cosine diagnostic, because projected residual alone does not guarantee useful training gradients.
+4. Check whether early-conv gradients survive at the selected `T`, using the same separate fixed-iteration `T/K` diagnostic as hard sigmoid. Record whether adaptive equilibrium was disabled; adaptive-stop rows are diagnostics for solver stopping behavior, not evidence that fixed-step gradients are dead.
 
-Default K selection rule:
+Default `T/K` selection rule:
 
 - Use beta `0.25` as the primary EP/BP diagnostic curve.
-- Select the smallest K whose all-parameter cosine is within `0.01` absolute cosine of the best tested K.
-- If the residual curve is still visibly decreasing at that K, pick the larger K or label the run as preliminary.
-- Record the K grid and selected K in the result directory config and summary.
+- Select the smallest `T` whose residual curve has stagnated enough for the intended protocol and whose upstream gradients are still useful.
+- After `T` is fixed, select the smallest `K` whose all-parameter cosine is within `0.01` absolute cosine of the best tested `K` at that `T`.
+- If increasing `T` kills early-conv gradients, label lower-`T` nonzero gradients as transient unless the paper explicitly studies a transient-gradient protocol.
+- If the residual curve is still visibly decreasing at the selected `T`, pick the larger `T` or label the run as preliminary.
+- Record the `T/K` grid, selected `T`, selected `K`, whether adaptive equilibrium was disabled, residuals, cosine metrics, and per-parameter gradient zero fractions in the result directory config and summary.
 
 ## Stage 2: Choose Operating Point And Input Gain
 
@@ -113,7 +130,7 @@ It is acceptable for hard sigmoid and perfect diode to use different input-drive
 Hard-sigmoid operating-point sweep:
 
 1. Use seed `0` first.
-2. Use the K selected in Stage 1.
+2. Use the `T` and `K` selected in Stage 1.
 3. Fix architecture, nonlinearity, preprocessing, batch size, initialization, and epoch budget.
 4. Run each candidate target saturation on all five amplification settings:
 
@@ -129,17 +146,17 @@ v1/c1, v2/c1, v4/c1, v1/c2, v1/c4
    - fraction above `v_max`;
    - outside-window fraction;
    - p10, p50, p90 states.
-8. Record EP/BP cosine at the same K.
+8. Record EP/BP cosine and per-parameter gradient zero fractions at the same `T/K`.
 9. Record best and final test accuracy, final train/test loss, and whether train loss is still decreasing.
 
 Perfect-diode input-gain sweep:
 
 1. Use seed `0` first.
-2. Use the K selected in Stage 1.
+2. Use the `T` and `K` selected in Stage 1.
 3. Fix architecture, nonlinearity, preprocessing, batch size, initialization, and epoch budget.
 4. Run every candidate `input_gain` on all five amplification settings.
 5. Use exactly `10` epochs for the input-gain screen.
-6. Record EP/BP cosine at the same K.
+6. Record EP/BP cosine and per-parameter gradient zero fractions at the same `T/K`.
 7. Record best and final test accuracy, final train/test loss, and whether train loss is still decreasing.
 
 Learning-rate compensation during operating-point/input-gain screens:
@@ -190,9 +207,9 @@ The chosen perfect-diode `input_gain` is then frozen before the LR sweep. The LR
 
 ## Stage 3: Choose Learning Rate
 
-After K and the operating-point/input-gain choice are fixed, choose LR.
+After `T/K` and the operating-point/input-gain choice are fixed, choose LR.
 
-The LR protocol is seed-0 only. Multiple seeds are reserved for the final frozen paper run, after K, hard-sigmoid operating point or perfect-diode `input_gain`, LR, and epoch budget have been selected.
+The LR protocol is seed-0 only. Multiple seeds are reserved for the final frozen paper run, after `T/K`, hard-sigmoid operating point or perfect-diode `input_gain`, LR, and epoch budget have been selected.
 
 Allowed LR granularity:
 
@@ -206,7 +223,7 @@ Using a per-amplification LR is acceptable because amplification changes gradien
 
 ### Stage 3a: Seed-0 LR Screen
 
-1. Use the selected K and the frozen operating-point/input-gain choice.
+1. Use the selected `T/K` and the frozen operating-point/input-gain choice.
 2. Use seed `0`.
 3. Run all five amplification settings.
 4. Start from a broad LR grid informed by previous runs.
@@ -254,7 +271,7 @@ Recommended LR grids:
 
 - If a run is stable and best epoch is late, add higher LR probes.
 - If a run peaks early and degrades, add lower LR probes.
-- If both low and high LRs fail, treat the issue as architectural, K/convergence-related, or nonlinearity-related rather than only LR-related.
+- If both low and high LRs fail, treat the issue as architectural, `T/K` convergence-related, or nonlinearity-related rather than only LR-related.
 
 Paper reporting rule:
 
@@ -268,7 +285,7 @@ Paper reporting rule:
 Final paper runs should use:
 
 - the selected architecture;
-- selected nonlinearity-specific K;
+- selected nonlinearity-specific `T` and `K`;
 - selected hard-sigmoid `v_off`, target initial saturation, and input-gain calibration rule, or selected perfect-diode `input_gain`;
 - selected LR per amplification setting or a documented shared LR if it is adequate;
 - seeds `0, 1, 2` at minimum;
@@ -293,7 +310,7 @@ Every final result directory should include:
 - `weights_final.npz`;
 - train/test loss histories;
 - train/test accuracy histories;
-- summary CSV with selected K, input gain, LR, best epoch, best accuracy, final accuracy, final train loss, and final test loss.
+- summary CSV with selected `T`, selected `K`, input gain, LR, best epoch, best accuracy, final accuracy, final train loss, and final test loss.
 - for hard sigmoid, summary CSV columns for `v_off`, target initial saturation, measured initial saturation, and calibrated raw `input_gain`.
 
 Paper tables should state:
@@ -302,7 +319,7 @@ Paper tables should state:
 - the LR-selection grid;
 - the seed list used for LR selection;
 - the final seed list;
-- the selected K and how it was chosen;
+- the selected `T/K` and how they were chosen;
 - for hard sigmoid, the selected `v_off`, target initial saturation, measured initial saturation, and input-gain calibration rule;
 - for perfect diode, the selected `input_gain` and how it was chosen.
 
@@ -343,7 +360,7 @@ Overall best-known table:
 - source protocol/root;
 - comparability note.
 
-The overall best-known table must label mixed raw-gain, saturation, K, LR, or epoch comparisons as `mixed protocol / diagnostic`. Mixed-protocol rows are useful for finding underperforming cases, but they are not main paper evidence.
+The overall best-known table must label mixed raw-gain, saturation, `T/K`, LR, or epoch comparisons as `mixed protocol / diagnostic`. Mixed-protocol rows are useful for finding underperforming cases, but they are not main paper evidence.
 
 Underperformance delta table:
 
@@ -356,10 +373,10 @@ Underperformance delta table:
 
 Before choosing final paper figures, separate candidate runs into these buckets:
 
-1. Main matched-operating-point hard-sigmoid comparison: fixed `v_off`, fixed target initial saturation, same K, same epoch budget, same LR-selection rule, final multi-seed runs.
+1. Main matched-operating-point hard-sigmoid comparison: fixed `v_off`, fixed target initial saturation, same `T/K`, same epoch budget, same LR-selection rule, final multi-seed runs.
 2. Tuned hard-sigmoid upper-envelope comparison: best over saturation and LR per amplification, clearly labeled as tuned.
 3. Same-raw-`input_gain` diagnostics: useful for operating-point-shift plots, not for the main clean-accuracy table.
-4. Preliminary or excluded runs: single-seed screens, wrong-K runs, underconverged runs, or runs with inconsistent epoch budgets.
+4. Preliminary or excluded runs: single-seed screens, wrong-`T/K` runs, underconverged runs, or runs with inconsistent epoch budgets.
 
 The main figures should prefer bucket 1. Bucket 2 can be an appendix/control if it helps show that conclusions are not an artifact of the fixed-50 operating point. Bucket 3 should only support the explanation of saturation shifts.
 
@@ -369,7 +386,7 @@ Until superseded by a completed multi-seed sweep:
 
 - Conv1 hard sigmoid: mostly done under the controlled-saturation workflow; current paper-facing operating point is `v_off=4.0` with `50%` target initial saturation.
 - Conv1 perfect diode: test `input_gain=40` against the earlier `input_gain=100` result before freezing the paper setting.
-- Conv2 hard sigmoid: currently training across saturation settings. Use the EP/BP-selected K values as diagnostics, but final paper tables should use one stable K per architecture/nonlinearity unless explicitly labeled otherwise.
-- Conv2 perfect diode: use projected KKT residual plus EP/BP cosine before freezing K.
+- Conv2 hard sigmoid: currently training across saturation settings. Use EP/BP-selected `T/K` values as diagnostics, but final paper tables should use one stable `T/K` per architecture/nonlinearity unless explicitly labeled otherwise.
+- Conv2 perfect diode: use projected KKT residual plus EP/BP cosine and a separate `T` sweep before freezing `T/K`.
 - Conv3 hard sigmoid: currently training across saturation settings. Apply the same matched-operating-point versus tuned-envelope split used for Conv1/Conv2.
 - Do not freeze final LRs from a single seed if the run is intended as paper evidence and runtime permits more seeds.

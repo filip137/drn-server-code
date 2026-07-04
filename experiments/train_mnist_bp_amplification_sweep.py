@@ -25,6 +25,10 @@ MODEL_KEY = "mnist_bp_amp"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "results" / "mnist_bp_amplification_sweep"
 DEFAULT_SEEDS = [0, 1, 2]
 DEFAULT_LEARNING_RATE = [0.1, 0.05, 0.0]
+MINIMIZER_CONFIG_HELP = (
+    "Path to a JSON object for model_base.minimizer. "
+    "Example: labs/configs/mnist_minimizer_fixed_iterations.json"
+)
 AMPLIFICATION_GRID = [
     ("mnist_bp_amp_v1_c1", 1.0, 1.0),
     ("mnist_bp_amp_v2_c1", 2.0, 1.0),
@@ -140,6 +144,7 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
             },
             "num_iterations_inference": args.num_iterations,
             "num_iterations_training": args.num_iterations,
+            "minimizer": json.loads(json.dumps(args.minimizer_config_data)),
         },
         "model_overrides": {
             model_key: {
@@ -152,6 +157,29 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
             "mode": "asynchronous",
         },
     }
+
+
+def _load_minimizer_config(path_value: str | None) -> dict:
+    if path_value is None:
+        raise SystemExit(
+            "Expected --minimizer-config to point to an explicit simulator/minimizer JSON object. "
+            "Provided value: None."
+        )
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = (REPO_ROOT / path).resolve()
+    if not path.exists():
+        raise SystemExit(
+            "Expected --minimizer-config to point to an existing JSON file. "
+            f"Provided value: {path}."
+        )
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise SystemExit(
+            "Expected --minimizer-config JSON to contain an object. "
+            f"Provided value: {data!r}."
+        )
+    return data
 
 
 def _all_specs(seeds: list[int]) -> list[RunSpec]:
@@ -300,6 +328,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--num-iterations", type=int, default=8)
+    parser.add_argument("--minimizer-config", help=MINIMIZER_CONFIG_HELP)
     parser.add_argument("--learning-rate", type=float, nargs="+", default=None)
     parser.add_argument("--beta", type=float, default=0.0)
     parser.add_argument("--lr-decay", type=float, default=1.0)
@@ -369,6 +398,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--summary-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if not args.summary_only:
+        args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
+    else:
+        args.minimizer_config_data = None
     if len(args.weight_gains) != 2:
         raise SystemExit("Expected --weight-gains to contain 2 values for [input-hidden, hidden-output].")
     learning_rate = args.learning_rate or DEFAULT_LEARNING_RATE

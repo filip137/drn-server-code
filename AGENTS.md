@@ -17,32 +17,33 @@ This repository contains code and tooling for coordinate-descent simulations of 
 
 ## Playbooks
 - Optuna analysis SOP: `playbooks/optuna_analysis.md`
+- Conv amplification paper protocol: `docs/conv_paper_hyperparameter_protocol.md`
+- Amplification result curation: `docs/amplification_experiment_curation.md`
+- Current conv paper state: `docs/current_state.md`
 - Task overrides: `playbooks/AGENTS.override.md`
 
 ## Experiment Launch Policy
 - For large experiment batches, first check whether local GPU tmux targets are free:
-- `tmux main`
-- `tmux akibscomputer`
-- `tmux trex`
+  - `tmux main`
+  - `tmux akibscomputer`
+  - `tmux trex`
 - If any of those targets are free and reachable, parallelize there as much as GPU memory allows.
 - Use Jean Zay for the remaining jobs or for batches that exceed the local machines.
 - Jean Zay runs default to the R3 project `fmu`; use `fmu@v100` for V100 GPU jobs and write run outputs under `/lustre/fsn1/projects/rech/fmu/$USER/server_code/results` unless the user explicitly requests another project/account. The source checkout may stay under the existing `umg` work path.
 - For MNIST Conv amplification training, prefer running Conv1 and Conv2 jobs on `tmux main` and `tmux akibscomputer`; reserve Conv3 jobs for Jean Zay and `tmux trex` unless local availability or urgency clearly argues otherwise.
 - Prefer keeping the same launcher/config contract across local tmux and Jean Zay so results can be aggregated into one summary.
-- For hard-sigmoid MNIST Conv amplification runs with a target saturation, calibrate raw `input_gain` separately for each amplification scheme using the same deterministic saturation-target procedure. Do not use a shared raw `input_gain` across amplifications for the main comparison; shared-gain runs are diagnostics only. LR sweeps and longer runs must preserve the per-amplification calibrated `input_gain` for the chosen target saturation.
-- For LR selection, do not rely on a single seed when choosing final paper settings if runtime is reasonable. Earlier Conv/DRN sweeps showed that some single-seed LR choices were undertrained or misleading, so LR sweeps should include multiple seeds before freezing the final LR.
 
-## Timing Plot Script
-- Script: `labs/tools/plot_spice_vs_coordinate_descent_loglog.py`
-- Purpose: log-log plot with:
-- x-axis: hidden size
-- y-axis: time (seconds)
-- series: coordinate descent and SPICE for all hidden-layer counts in one figure
-- Input: `simulation_results/.../extracted_timings/combined_latest_by_hidden.csv` (or any CSV with equivalent columns)
-- Basic usage:
-- `python /home/filip/server_code/labs/tools/plot_spice_vs_coordinate_descent_loglog.py --combined-csv /home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/extracted_timings/combined_latest_by_hidden.csv --output /home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/extracted_timings/spice_vs_coordinate_descent_loglog.png`
-- Optional SPICE field selection:
-- `--spice-time-field total` (default), `--spice-time-field simulation`, or `--spice-time-field netlist`
+## Conv Amplification Paper Work
+- Before proposing, launching, or summarizing MNIST Conv amplification runs, read `docs/conv_paper_hyperparameter_protocol.md` and use it as the source of truth for choosing solver iteration count `K`, hard-sigmoid operating point, `input_gain`, learning rate, epoch budget, and final inclusion category.
+- Use `docs/amplification_experiment_curation.md` to decide which historical runs are valid, diagnostic, excluded, or superseded. Do not use superseded rows as paper-facing quantitative evidence.
+- Keep final comparison axes fixed inside each table: architecture, preprocessing, nonlinearity family, amplification grid, seed list, batch size, epoch budget, and checkpoint rule. Label mixed-protocol rows as diagnostics.
+- For hard-sigmoid MNIST Conv amplification runs with a target saturation, calibrate raw `input_gain` separately for each amplification scheme using the same deterministic saturation-target procedure. Do not use a shared raw `input_gain` across amplifications for the main comparison; shared-gain runs are diagnostics only. LR sweeps and longer runs must preserve the per-amplification calibrated `input_gain` for the chosen target saturation.
+- For main hard-sigmoid comparisons, keep `v_off` and target initial saturation fixed across amplification schemes within an architecture/nonlinearity table. The current paper-facing default is `v_off=4.0` with `50%` target initial saturation unless a newer dated protocol update supersedes it.
+- For perfect-diode Conv runs, judge clamped hidden-layer convergence with projected KKT residuals. Raw residuals are still useful for unconstrained layers and diagnostics, but do not treat raw `|dE/dz|` on clamped variables as the convergence criterion.
+- Choose `K` before operating point, `input_gain`, or LR. The residual-vs-K gate should include the intended `K` plus larger sentinel values such as `2K` and `4K`, and final training should wait until residual stagnation and the EP/BP cosine rule pass.
+- For LR selection, follow the dated paper protocol. Seed-0 screens and seed-0 long checks may select LR candidates, but final paper claims require validating the frozen settings on multiple seeds when runtime is reasonable; do not present single-seed screens as final evidence.
+- For final paper runs, use seeds `0, 1, 2` at minimum when runtime is reasonable, report both best-checkpoint and final-epoch metrics, and keep the same epoch budget for every amplification setting in a table.
+- When updating `docs/current_state.md`, separate calibrated initial saturation from trained-checkpoint saturation. The overall best-known table must mark mixed raw-gain, saturation, `K`, LR, or epoch comparisons as `mixed protocol / diagnostic`.
 
 ## Plotting Rule
 - Use `matplotlib` for every generated plot (PNG/SVG/PDF) unless the user explicitly requests a different plotting backend.

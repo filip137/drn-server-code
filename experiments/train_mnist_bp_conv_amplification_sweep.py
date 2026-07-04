@@ -26,6 +26,10 @@ MODEL_KEY = "mnist_bp_conv_amp"
 DEFAULT_OUTPUT_ROOT = (
     REPO_ROOT / "results" / "mnist_bp_conv1_amplification_sweep_64ch_s2_valid"
 )
+MINIMIZER_CONFIG_HELP = (
+    "Path to a JSON object for model_base.minimizer. "
+    "Example: labs/configs/mnist_minimizer_fixed_iterations.json"
+)
 DEFAULT_SEEDS = [0, 1, 2]
 DEFAULT_NON_LINEARITIES = ["hard_sigmoid", "perfect_diode"]
 AMPLIFICATION_GRID = [
@@ -45,6 +49,12 @@ SUMMARY_COLUMNS = [
     "seed",
     "voltage_amp",
     "current_amp",
+    "conv_depth",
+    "conv_pipeline",
+    "input_gain",
+    "num_iterations_inference",
+    "num_iterations_training",
+    "learning_rate",
     "best_test_accuracy",
     "final_test_accuracy",
     "best_epoch",
@@ -104,6 +114,49 @@ def _conv_spatial(size: int, kernel: int, stride: int, padding: int) -> int:
     return (size + 2 * padding - (kernel - 1) - 1) // stride + 1
 
 
+def _expanded_layer_ints(
+    values: list[int] | None,
+    *,
+    fallback: int,
+    depth: int,
+    name: str,
+) -> list[int]:
+    raw = [int(fallback)] if values is None else [int(value) for value in values]
+    if len(raw) == 1:
+        return raw * depth
+    if len(raw) != depth:
+        raise ValueError(
+            f"Expected --{name} to contain 1 value or {depth} values "
+            f"for this conv depth, got {len(raw)}."
+        )
+    return raw
+
+
+def _conv_geometry(args: argparse.Namespace) -> tuple[list[int], list[int]]:
+    return (
+        _expanded_layer_ints(
+            args.strides, fallback=args.stride, depth=args.conv_depth, name="strides"
+        ),
+        _expanded_layer_ints(
+            args.paddings, fallback=args.padding, depth=args.conv_depth, name="paddings"
+        ),
+    )
+
+
+def _iteration_counts(args: argparse.Namespace) -> tuple[int, int]:
+    inference = (
+        int(args.num_iterations_inference)
+        if args.num_iterations_inference is not None
+        else int(args.num_iterations)
+    )
+    training = (
+        int(args.num_iterations_training)
+        if args.num_iterations_training is not None
+        else (inference if args.num_iterations_inference is not None else int(args.num_iterations))
+    )
+    return inference, training
+
+
 def _architecture(args: argparse.Namespace) -> tuple[list[list[int]], list[dict]]:
     channels = [int(value) for value in args.conv_channels]
     if args.conv_depth < 1:
@@ -117,9 +170,12 @@ def _architecture(args: argparse.Namespace) -> tuple[list[list[int]], list[dict]
     conv_pipeline: list[dict] = []
     height = 28
     width = 28
+    strides, paddings = _conv_geometry(args)
     for index in range(args.conv_depth):
-        height = _conv_spatial(height, args.kernel_size, args.stride, args.padding)
-        width = _conv_spatial(width, args.kernel_size, args.stride, args.padding)
+        stride = strides[index]
+        padding = paddings[index]
+        height = _conv_spatial(height, args.kernel_size, stride, padding)
+        width = _conv_spatial(width, args.kernel_size, stride, padding)
         if height <= 0 or width <= 0:
             raise ValueError(
                 "Convolution geometry produced non-positive spatial dimensions: "
@@ -129,8 +185,8 @@ def _architecture(args: argparse.Namespace) -> tuple[list[list[int]], list[dict]
         conv_pipeline.append(
             {
                 "kernel": [args.kernel_size, args.kernel_size],
-                "stride": args.stride,
-                "padding": args.padding,
+                "stride": stride,
+                "padding": padding,
                 "mode": "convolution",
             }
         )
@@ -194,6 +250,7 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
     layer_shapes, conv_pipeline = _architecture(args)
     learning_rate = _expanded_learning_rate(args)
     weight_gains = _expanded_weight_gains(args)
+    inference_iterations, training_iterations = _iteration_counts(args)
     model_key = args.model_key
     hard_sigmoid_param = {
         "g_on": args.hard_sigmoid_g_on,
@@ -264,8 +321,9 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
                 "V_t": 0.025,
                 "V_off": 0.0,
             },
-            "num_iterations_inference": args.num_iterations,
-            "num_iterations_training": args.num_iterations,
+            "num_iterations_inference": inference_iterations,
+            "num_iterations_training": training_iterations,
+            "minimizer": json.loads(json.dumps(args.minimizer_config_data)),
         },
         "model_overrides": {
             model_key: {
@@ -278,6 +336,34 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
             "mode": "asynchronous",
         },
     }
+
+
+def _load_minimizer_config(path_value: str | None) -> dict:
+    if path_value is None:
+        raise SystemExit(
+            "Expected --minimizer-config to point to an explicit simulator/minimizer JSON object. "
+            "Provided value: None."
+        )
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = (REPO_ROOT / path).resolve()
+    if not path.exists():
+        raise SystemExit(
+            "Expected --minimizer-config to point to an existing JSON file. "
+            f"Provided value: {path}."
+        )
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise SystemExit(
+            "Expected --minimizer-config JSON to contain an object. "
+            f"Provided value: {data!r}."
+        )
+    if data.get("adaptive_equilibrium") is not False:
+        raise SystemExit(
+            "Expected --minimizer-config adaptive_equilibrium to be false for fixed-step runs. "
+            f"Provided value: {data.get('adaptive_equilibrium')!r}."
+        )
+    return data
 
 
 def _all_specs(
@@ -345,12 +431,25 @@ def _summary_row(output_root: Path, spec: RunSpec) -> dict | None:
     metrics = _load_metrics(run_dir)
     if metrics is None:
         return None
+    config = _load_json_if_exists(run_dir / "config.json")
+    architecture = config.get("architecture", {})
+    training = config.get("training", {})
+    optimizer = config.get("optimizer", {})
+    learning_rate = optimizer.get("learning_rate", "")
+    if isinstance(learning_rate, list) and learning_rate:
+        learning_rate = learning_rate[0]
     return {
         "non_linearity": spec.non_linearity,
         "run_name": spec.run_name,
         "seed": spec.seed,
         "voltage_amp": spec.voltage_amp,
         "current_amp": spec.current_amp,
+        "input_gain": architecture.get("input_gain", ""),
+        "num_iterations_inference": training.get("num_iterations_inference", ""),
+        "num_iterations_training": training.get("num_iterations_training", ""),
+        "learning_rate": learning_rate,
+        "conv_depth": len(architecture.get("conv_pipeline", []) or []),
+        "conv_pipeline": json.dumps(architecture.get("conv_pipeline", [])),
         "best_test_accuracy": metrics.get("best_test_accuracy"),
         "final_test_accuracy": metrics.get("final_test_accuracy"),
         "best_epoch": metrics.get("best_epoch"),
@@ -370,6 +469,12 @@ def _write_csv_atomic(path: Path, fieldnames: list[str], rows: list[dict]) -> No
         writer.writeheader()
         writer.writerows(rows)
     tmp_path.replace(path)
+
+
+def _load_json_if_exists(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
 
 
 def write_summaries(output_root: Path, specs: list[RunSpec]) -> tuple[Path, Path, Path]:
@@ -498,6 +603,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--num-iterations", type=int, default=4)
+    parser.add_argument("--num-iterations-inference", type=int, default=None)
+    parser.add_argument("--num-iterations-training", type=int, default=None)
+    parser.add_argument("--minimizer-config", help=MINIMIZER_CONFIG_HELP)
     parser.add_argument("--learning-rate", type=float, nargs="+", default=[0.006])
     parser.add_argument("--beta", type=float, default=1.0)
     parser.add_argument("--lr-decay", type=float, default=0.99)
@@ -506,6 +614,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kernel-size", type=int, default=3)
     parser.add_argument("--stride", type=int, default=2)
     parser.add_argument("--padding", type=int, default=0)
+    parser.add_argument(
+        "--strides",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Per-convolution strides. One value broadcasts to all conv layers.",
+    )
+    parser.add_argument(
+        "--paddings",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Per-convolution paddings. One value broadcasts to all conv layers.",
+    )
     parser.add_argument("--output-dim", type=int, default=20)
     parser.add_argument("--weight-gains", type=float, nargs="+", default=[1.0])
     parser.add_argument("--weight-min", type=float, default=0.0)
@@ -556,9 +678,14 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     _architecture(args)
+    _iteration_counts(args)
     _expanded_learning_rate(args)
     _expanded_weight_gains(args)
     _expanded_hard_sigmoid_v_off(args)
+    if not args.summary_only:
+        args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
+    else:
+        args.minimizer_config_data = None
     if args.output_dim not in (10, 20):
         raise SystemExit("Expected --output-dim to be 10 or 20 for MNIST.")
     return args

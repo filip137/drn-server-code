@@ -125,11 +125,16 @@ RUN_SUMMARY_COLUMNS = [
     "run_dir",
     "checkpoint_kind",
     "checkpoint_path",
+    "non_linearity",
+    "run_name",
     "complete",
     "conv_depth",
     "padding",
+    "strides",
+    "paddings",
     "num_iterations_inference",
     "num_iterations_training",
+    "adaptive_equilibrium",
     "v_off",
     "target_label",
     "target_saturation",
@@ -333,6 +338,7 @@ def _build_init_context(
     no_download: bool,
     inference_iterations_override: int | None,
     dataset_root_override: str | None = None,
+    adaptive_equilibrium: bool = False,
 ) -> dict:
     source_config_path = run.run_dir / "source_config.json"
     if not source_config_path.exists():
@@ -404,6 +410,7 @@ def _build_init_context(
         num_iterations=inference_iterations,
         voltage_amp=energy_fn._voltage_amp,
         current_amp=energy_fn._current_amp,
+        adaptive_equilibrium=adaptive_equilibrium,
     )
 
     dataset_factory = _resolve_callable(dataset_cfg["factory"])
@@ -603,12 +610,17 @@ def _run_metadata(run: DiagnosticRun) -> dict:
     acc_train = _history_array(run.run_dir, "accuracy_train.npy")
     conv_pipeline = model_cfg.get("conv_pipeline") or []
     padding = ",".join(str(conf.get("padding", "")) for conf in conv_pipeline)
+    stride = ",".join(str(conf.get("stride", "")) for conf in conv_pipeline)
     return {
         "source_config": source_config,
         "model_cfg": model_cfg,
         "metrics": metrics,
+        "non_linearity": model_cfg.get("non_linearity", run.non_linearity),
+        "run_name": run.run_name,
         "conv_depth": len(conv_pipeline),
         "padding": padding,
+        "strides": stride,
+        "paddings": padding,
         "num_iterations_inference": int(model_cfg.get("num_iterations_inference", 0)),
         "num_iterations_training": int(
             model_cfg.get("num_iterations_training", model_cfg.get("num_iterations_inference", 0))
@@ -646,6 +658,7 @@ def _diagnose_one(
             no_download=args.no_download,
             inference_iterations_override=args.inference_iterations,
             dataset_root_override=args.dataset_root,
+            adaptive_equilibrium=args.adaptive_equilibrium,
         )
     else:
         context = _build_eval_context(
@@ -670,14 +683,31 @@ def _diagnose_one(
         num_iterations=training_iterations,
         voltage_amp=context["energy_fn"]._voltage_amp,
         current_amp=context["energy_fn"]._current_amp,
+        adaptive_equilibrium=args.adaptive_equilibrium,
     )
-    minimizer_inference = context["minimizer"]
+    inference_iterations = (
+        int(args.inference_iterations)
+        if args.inference_iterations is not None
+        else int(model_cfg["num_iterations_inference"])
+    )
+    minimizer_inference = _build_tracking_minimizer(
+        context["energy_fn"],
+        context["free_layers"],
+        model_cfg,
+        context["config"]["energy_minimizer"]["mode"],
+        num_iterations=inference_iterations,
+        voltage_amp=context["energy_fn"]._voltage_amp,
+        current_amp=context["energy_fn"]._current_amp,
+        adaptive_equilibrium=args.adaptive_equilibrium,
+    )
     estimator = Backprop(context["params"], context["free_layers"], context["cost_fn"], minimizer_training)
     loader = context["train_loader"] if args.split == "train" else context["test_loader"]
     lr_initial, lr_final = _learning_rates(context, metadata["metrics"])
     metadata["lr_initial"] = lr_initial[0] if lr_initial else math.nan
     metadata["lr_final"] = lr_final[0] if lr_final else math.nan
     metadata["num_iterations_training"] = training_iterations
+    metadata["num_iterations_inference"] = inference_iterations
+    metadata["adaptive_equilibrium"] = bool(args.adaptive_equilibrium)
 
     rows: list[dict] = []
     batch_losses: list[float] = []
@@ -879,6 +909,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-batches", type=int, default=4)
     parser.add_argument("--inference-iterations", type=int, default=None)
     parser.add_argument("--training-iterations", type=int, default=None)
+    parser.add_argument(
+        "--adaptive-equilibrium",
+        action="store_true",
+        help="Allow minimizers to stop early by residual tolerance instead of running exact iteration counts.",
+    )
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
@@ -913,6 +948,7 @@ def main() -> None:
             "max_batches": args.max_batches,
             "inference_iterations": args.inference_iterations,
             "training_iterations": args.training_iterations,
+            "adaptive_equilibrium": args.adaptive_equilibrium,
             "num_runs": len(runs),
             "runs": [str(run.run_dir) for run in runs],
         },

@@ -234,6 +234,7 @@ def _make_augmented_minimizer(context: dict, iteration_count: int):
         num_iterations=int(iteration_count),
         voltage_amp=energy_fn._voltage_amp,
         current_amp=energy_fn._current_amp,
+        adaptive_equilibrium=context["adaptive_equilibrium"],
     )
     return augmented_fn, minimizer
 
@@ -388,6 +389,7 @@ def _run_single(run, *, args: argparse.Namespace, device: torch.device, raw_path
         no_download=args.no_download,
         inference_iterations_override=max_k,
     )
+    context["adaptive_equilibrium"] = bool(args.adaptive_equilibrium)
     batches = _collect_batches(context, args.split, args.max_batches)
     params = context["params"]
 
@@ -400,6 +402,7 @@ def _run_single(run, *, args: argparse.Namespace, device: torch.device, raw_path
             num_iterations=int(iteration_count),
             voltage_amp=context["energy_fn"]._voltage_amp,
             current_amp=context["energy_fn"]._current_amp,
+            adaptive_equilibrium=context["adaptive_equilibrium"],
         )
         augmented_fn, augmented_minimizer = _make_augmented_minimizer(context, int(iteration_count))
         buffered_rows: list[dict] = []
@@ -740,6 +743,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--max-batches", type=int, default=32)
     parser.add_argument("--iteration-counts", type=int, nargs="+", default=[4, 6, 8, 12, 16, 24, 32])
+    parser.add_argument(
+        "--adaptive-equilibrium",
+        action="store_true",
+        help="Allow minimizers to stop early by residual tolerance instead of running exact iteration counts.",
+    )
     parser.add_argument("--betas", type=float, nargs="+", default=[0.1, 0.25, 0.5, 1.0])
     parser.add_argument("--primary-beta", type=float, default=0.25)
     parser.add_argument("--plateau-cosine-tolerance", type=float, default=0.01)
@@ -799,6 +807,7 @@ def main() -> None:
             "batch_size": args.batch_size,
             "max_batches": args.max_batches,
             "iteration_counts": [int(value) for value in args.iteration_counts],
+            "adaptive_equilibrium": args.adaptive_equilibrium,
             "betas": [float(value) for value in args.betas],
             "primary_beta": float(args.primary_beta),
             "plateau_cosine_tolerance": float(args.plateau_cosine_tolerance),

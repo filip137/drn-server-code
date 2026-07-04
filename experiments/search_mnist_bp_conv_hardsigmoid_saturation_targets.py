@@ -26,6 +26,25 @@ from labs.datasets import MnistDataset  # noqa: E402
 from model.function.network import Network  # noqa: E402
 
 
+MINIMIZER_SETTINGS_FIELDS = (
+    "rel_tol",
+    "vn_tol",
+    "use_polish",
+    "max_newton_iters",
+    "z_thresh",
+    "exp_clip",
+    "dynamic_polish",
+    "overrelaxation_reject_steps",
+    "overrelaxation_reject_max_tries",
+    "overrelaxation_reject_shrink",
+    "overrelaxation_reject_eps",
+    "experimental_exponential_newton_tol_progressive",
+    "experimental_exponential_newton_tol_start",
+    "experimental_exponential_newton_tol_end",
+    "experimental_exponential_newton_tol_switch_hi",
+    "experimental_exponential_newton_tol_switch_lo",
+)
+
 AMPLIFICATION_GRID = [
     ("mnist_bp_amp_v1_c1", 1.0, 1.0),
     ("mnist_bp_amp_v2_c1", 2.0, 1.0),
@@ -50,6 +69,41 @@ def _conv_spatial(size: int, kernel: int, stride: int, padding: int) -> int:
     return (size + 2 * padding - (kernel - 1) - 1) // stride + 1
 
 
+def _expanded_layer_ints(
+    values: list[int] | None,
+    *,
+    fallback: int,
+    depth: int,
+    name: str,
+) -> list[int]:
+    raw = [int(fallback)] if values is None else [int(value) for value in values]
+    if len(raw) == 1:
+        return raw * depth
+    if len(raw) != depth:
+        raise ValueError(
+            f"Expected --{name} to contain 1 value or {depth} values "
+            f"for this conv depth, got {len(raw)}."
+        )
+    return raw
+
+
+def _conv_geometry(args: argparse.Namespace) -> tuple[list[int], list[int]]:
+    return (
+        _expanded_layer_ints(
+            args.strides, fallback=args.stride, depth=args.conv_depth, name="strides"
+        ),
+        _expanded_layer_ints(
+            args.paddings, fallback=args.padding, depth=args.conv_depth, name="paddings"
+        ),
+    )
+
+
+def _inference_iterations(args: argparse.Namespace) -> int:
+    if args.num_iterations_inference is not None:
+        return int(args.num_iterations_inference)
+    return int(args.num_iterations)
+
+
 def _architecture(args: argparse.Namespace) -> tuple[list[tuple[int, ...]], list[dict]]:
     channels = [int(value) for value in args.conv_channels]
     if args.conv_depth < 1:
@@ -63,9 +117,12 @@ def _architecture(args: argparse.Namespace) -> tuple[list[tuple[int, ...]], list
     conv_pipeline: list[dict] = []
     height = 28
     width = 28
+    strides, paddings = _conv_geometry(args)
     for index in range(args.conv_depth):
-        height = _conv_spatial(height, args.kernel_size, args.stride, args.padding)
-        width = _conv_spatial(width, args.kernel_size, args.stride, args.padding)
+        stride = strides[index]
+        padding = paddings[index]
+        height = _conv_spatial(height, args.kernel_size, stride, padding)
+        width = _conv_spatial(width, args.kernel_size, stride, padding)
         if height <= 0 or width <= 0:
             raise ValueError(
                 "Convolution geometry produced non-positive spatial dimensions: "
@@ -75,8 +132,8 @@ def _architecture(args: argparse.Namespace) -> tuple[list[tuple[int, ...]], list
         conv_pipeline.append(
             {
                 "kernel": [args.kernel_size, args.kernel_size],
-                "stride": args.stride,
-                "padding": args.padding,
+                "stride": stride,
+                "padding": padding,
                 "mode": "convolution",
             }
         )
@@ -84,11 +141,57 @@ def _architecture(args: argparse.Namespace) -> tuple[list[tuple[int, ...]], list
     return layer_shapes, conv_pipeline
 
 
+def _load_minimizer_config(path_value: str | None) -> dict:
+    if path_value is None:
+        raise SystemExit(
+            "Expected --minimizer-config to point to an explicit simulator/minimizer JSON object. "
+            "Provided value: None."
+        )
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = (REPO_ROOT / path).resolve()
+    if not path.exists():
+        raise SystemExit(
+            "Expected --minimizer-config to point to an existing JSON file. "
+            f"Provided value: {path}."
+        )
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise SystemExit(
+            "Expected --minimizer-config JSON to contain an object. "
+            f"Provided value: {data!r}."
+        )
+    if data.get("adaptive_equilibrium") is not False:
+        raise SystemExit(
+            "Expected --minimizer-config adaptive_equilibrium to be false for fixed-step calibration. "
+            f"Provided value: {data.get('adaptive_equilibrium')!r}."
+        )
+    settings = data.get("settings")
+    if not isinstance(settings, dict):
+        raise SystemExit(
+            "Expected --minimizer-config settings to contain an object. "
+            f"Provided value: {settings!r}."
+        )
+    missing = [field for field in MINIMIZER_SETTINGS_FIELDS if field not in settings]
+    if missing:
+        raise SystemExit(
+            "Expected --minimizer-config settings to define all solver fields. "
+            f"Missing fields: {missing}. Provided value: {settings!r}."
+        )
+    return data
+
+
+def _settings_from_config(minimizer_cfg: dict) -> MinimizerSettings:
+    settings = minimizer_cfg["settings"]
+    return MinimizerSettings(**{field: settings[field] for field in MINIMIZER_SETTINGS_FIELDS})
+
+
 def _build_minimizer(energy_fn, free_layers, args):
+    minimizer_cfg = args.minimizer_config_data
     return CustomQuadraticMinimizer(
         fn=energy_fn,
         free_layers=free_layers,
-        num_iterations=args.num_iterations,
+        num_iterations=_inference_iterations(args),
         mode="asynchronous",
         non_linearity="hard_sigmoid",
         quadratic_diode_param={"diode_conductance": 1.0, "v_min": -1.0e6, "v_max": 1.0e6},
@@ -101,25 +204,15 @@ def _build_minimizer(energy_fn, free_layers, args):
         },
         voltage_amp=args.voltage_amp,
         current_amp=args.current_amp,
-        iv_data=None,
-        iv_data_path=None,
-        double_diode_updater="CustomExponentialDoubleDiodeUpdater",
-        adaptive_equilibrium=True,
-        overrelaxation_factor=1.1,
-        single_diode_updater="custom",
-        minimizer_settings=MinimizerSettings(
-            rel_tol=1.0e-5,
-            vn_tol=1.0e-6,
-            use_polish=True,
-            max_newton_iters=32,
-            z_thresh=1.0e10,
-            exp_clip=80.0,
-            dynamic_polish=True,
-            overrelaxation_reject_steps=False,
-            overrelaxation_reject_max_tries=3,
-            overrelaxation_reject_shrink=0.5,
-            overrelaxation_reject_eps=0.0,
-        ),
+        iv_data=minimizer_cfg.get("iv_data"),
+        iv_data_path=minimizer_cfg.get("iv_data_path"),
+        double_diode_updater=minimizer_cfg["double_diode_updater"],
+        adaptive_equilibrium=minimizer_cfg["adaptive_equilibrium"],
+        overrelaxation_factor=minimizer_cfg["overrelaxation_factor"],
+        single_diode_updater=minimizer_cfg["single_diode_updater"],
+        minimizer_settings=_settings_from_config(minimizer_cfg),
+        damping=minimizer_cfg["experimental_damping"],
+        experimental_newton_max_steps=minimizer_cfg["experimental_newton_max_steps"],
     )
 
 
@@ -269,6 +362,11 @@ def main() -> None:
     parser.add_argument("--num-samples", type=int, default=256)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-iterations", type=int, default=4)
+    parser.add_argument("--num-iterations-inference", type=int, default=None)
+    parser.add_argument(
+        "--minimizer-config",
+        help="Path to a JSON object for model_base.minimizer.",
+    )
     parser.add_argument(
         "--run-name",
         nargs="+",
@@ -286,6 +384,20 @@ def main() -> None:
     parser.add_argument("--kernel-size", type=int, default=3)
     parser.add_argument("--stride", type=int, default=2)
     parser.add_argument("--padding", type=int, default=0)
+    parser.add_argument(
+        "--strides",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Per-convolution strides. One value broadcasts to all conv layers.",
+    )
+    parser.add_argument(
+        "--paddings",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Per-convolution paddings. One value broadcasts to all conv layers.",
+    )
     parser.add_argument("--output-dim", type=int, default=20)
     parser.add_argument("--v-off", type=float, required=True)
     parser.add_argument(
@@ -312,6 +424,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _architecture(args)
+    args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
     _set_seed(args.seed)
     batches = _load_samples(args)
     run_names = [name for name, _, _ in AMPLIFICATION_GRID] if args.all_amplifications else args.run_name
@@ -341,9 +454,13 @@ def main() -> None:
                 "lr_numerator": args.lr_numerator,
                 "seed": args.seed,
                 "num_samples": args.num_samples,
-                "num_iterations": args.num_iterations,
+                "num_iterations": _inference_iterations(args),
+                "num_iterations_inference": _inference_iterations(args),
                 "conv_depth": args.conv_depth,
-                "padding": args.padding,
+                "strides": json.dumps(_conv_geometry(args)[0]),
+                "paddings": json.dumps(_conv_geometry(args)[1]),
+                "padding": ",".join(str(value) for value in _conv_geometry(args)[1]),
+                "conv_pipeline": json.dumps(_architecture(args)[1]),
                 "saturation_scope": args.saturation_scope,
             }
             rows.append(row)

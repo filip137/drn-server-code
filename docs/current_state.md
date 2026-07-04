@@ -1,6 +1,6 @@
 # Current Research State
 
-Updated: 2026-06-29 11:38 CEST
+Updated: 2026-07-03
 
 ## Problem We Are Solving
 
@@ -35,6 +35,23 @@ Notes:
 |---|---|---:|---|---|
 | `hard_sigmoid` | `mnist_bp_amp_v1_c1`, target sat30, input gain `221.068`, initial `v_off=4.0`, trainable amp, `K=6`, 30 epochs | `97.65% / 97.63%` | first hidden `30.00%`; later-layer saturation and learned amplification diagnostics pending | `/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/mnist_bp_conv2_hardsigmoid_trainable_amp_sat30_voff4_seed0_30epoch` |
 | `perfect_diode` | `mnist_bp_amp_v4_c1`, input gain `100`, 50 epochs | `98.66% / 98.64%` | hidden1 `46.94%`, hidden2 `50.57%`, all hidden `48.02%` | `/home/filip/server_code/results/mnist_bp_conv2_epbpK_large_50epoch_64_128ch_s2_valid_seed0_local_distributed` |
+
+### Conv2 T/K Gradient Diagnostic Update (2026-07-03)
+
+Separate `T/K` sweeps must disable adaptive equilibrium stopping. The corrected Conv2 sat30 `v_off=4` hard-sigmoid runs and the historical saved training configs omitted `minimizer.adaptive_equilibrium`, and the MNIST builder defaulted that value to `True`. Therefore the first separate-`T/K` hard-sigmoid tables were still adaptive-stop diagnostics, not exact fixed-step measurements.
+
+With adaptive stopping disabled, the corrected Conv2 sat30 `v_off=4` hard-sigmoid sweep used 256 train samples, batch size 32, phases `init` and `final`, `T in {6,24,48,96,256}`, and `K in {1,2,4,6,16,32,64,128,256}`. Artifacts are under `/home/filip/server_code_conv_amplification_paper/labs/cases/hard_sigmoid_tk_gradient_sweep_20260703`.
+
+| Run | Phase | T behavior | K effect | Early ConvWeight grads |
+|---|---|---|---|---:|
+| `v1/c1` | init | nonzero for all tested `T=6..256` | `K=1` zero; `K>=2` nonzero for every tested `T` | up to `~0.180` summed L2 |
+| `v1/c1` | final | nonzero for all tested `T=6..256` | `K=1` zero; `K>=2` nonzero for every tested `T` | up to `~0.371` summed L2 |
+| `v4/c1` | init | nonzero for all tested `T=6..256` | `K=1` zero; `K>=2` nonzero for every tested `T` | up to `~4.11` summed L2 |
+| `v4/c1` | final | nonzero for all tested `T=6..256` | `K=1` zero; `K>=2` nonzero for every tested `T` | up to `~1.02` summed L2 |
+
+Protocol consequence: exact `T/K` diagnostics must pass `adaptive_equilibrium=False`; otherwise an already-settled free state can stop after one odd/even sweep and make upstream conv gradients look zero. Under fixed-step hard-sigmoid Conv2 diagnostics, there is no high-`T` early-conv zero-gradient threshold. The only robust zero row is `K=1`, which does not unroll enough dynamics to propagate into the early conv weights. These ConvWeight norms are for the shared kernel parameters after summing over all spatial uses; they do not by themselves prove that every pre-reduction spatial copy has zero local contribution.
+
+Fully connected hard-sigmoid controls also have no zero-gradient T threshold under fixed-step diagnostics. Separate `T/K` sweeps over one-hidden-layer FC MNIST runs found `DenseWeight_0` and `DenseWeight_1` alive for every tested `T in {6,24,48,96,256}` and `K in {1,2,4,6,16,32,64,128,256}` at both initialization and final checkpoint. This was checked for legacy `v_off=1.5` `v1/c1` and `v4/c1` runs and for the newer dense-amp-fix `v1/c2` and `v1/c4` runs. Artifacts are under `/home/filip/server_code_conv_amplification_paper/labs/cases/dense_hard_sigmoid_tk_gradient_sweep_20260703`.
 
 Current Conv2 hard-sigmoid status:
 
