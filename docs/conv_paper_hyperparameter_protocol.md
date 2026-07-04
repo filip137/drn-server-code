@@ -82,20 +82,12 @@ For perfect diode:
 
 Default `T/K` selection rule:
 
-- Before launching a final training run, run a fixed-iteration residual-vs-K gate for the exact architecture, nonlinearity, operating point, and preprocessing that will be trained.
-- The K grid must include the intended training K and at least two larger sentinel values, for example `K`, `2K`, and `4K`; if the residual is still dropping at the largest sentinel, extend the grid before launching.
-- Disable adaptive early stopping for this gate, or record actual iterations used and treat early stopping itself as the convergence evidence. Do not infer a high-K plateau from an adaptive run that stopped early without reporting the residual trend.
-- Judge hard-sigmoid and other smooth/clipped runs with raw residual current. Judge perfect-diode hidden layers with projected KKT residuals, while still recording raw residuals so boundary multiplier current is visible.
-- Treat K as high enough only when the relevant per-layer and aggregate residual curves have stagnated: the next larger tested K changes the residual by no more than `20%` relative, or the residual is already below the run's numerical floor. If the curve is monotone decreasing by more than this threshold, increase K or label the run preliminary.
-- Also record the per-layer voltage update size versus K. A small voltage update is useful supporting evidence, but it does not replace the residual-stagnation requirement.
-- For trainable nonlinearity parameters, especially hard-sigmoid `trainable_v_off`, run this gate after checkpoint reload for resumed/final checkpoints and verify that residual interactions read the loaded parameter values rather than cached initialization-time bounds.
 - Use beta `0.25` as the primary EP/BP diagnostic curve.
 - Select the smallest `T` whose residual curve has stagnated enough for the intended protocol and whose upstream gradients are still useful.
 - After `T` is fixed, select the smallest `K` whose all-parameter cosine is within `0.01` absolute cosine of the best tested `K` at that `T`.
-- Launch final training only when both the residual-stagnation gate and the EP/BP cosine rule pass.
 - If increasing `T` kills early-conv gradients, label lower-`T` nonzero gradients as transient unless the paper explicitly studies a transient-gradient protocol.
 - If the residual curve is still visibly decreasing at the selected `T`, pick the larger `T` or label the run as preliminary.
-- Record the `T/K` grid, selected `T`, selected `K`, residual mode, residual-stagnation decision, whether adaptive equilibrium was disabled, residuals, EP/BP cosine curve, and per-parameter gradient zero fractions in the result directory config and summary.
+- Record the `T/K` grid, selected `T`, selected `K`, whether adaptive equilibrium was disabled, residuals, cosine metrics, and per-parameter gradient zero fractions in the result directory config and summary.
 
 ## Stage 2: Choose Operating Point And Input Gain
 
