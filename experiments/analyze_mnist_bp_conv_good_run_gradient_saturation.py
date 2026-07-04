@@ -40,6 +40,9 @@ OUTPUT_COLUMNS = [
     "non_linearity",
     "run_name",
     "phase",
+    "minimizer_mode",
+    "inference_iterations_used",
+    "training_iterations_used",
     "voltage_amp",
     "current_amp",
     "input_gain",
@@ -66,16 +69,27 @@ OUTPUT_COLUMNS = [
     "weight0_grad_l2",
     "weight0_relative_grad_l2",
     "weight0_relative_step_l2",
+    "weight0_logg_grad_l2",
+    "weight0_logg_grad_abs_mean",
+    "weight0_grad_zero_fraction",
     "weight1_grad_l2",
     "weight1_relative_grad_l2",
     "weight1_relative_step_l2",
+    "weight1_logg_grad_l2",
+    "weight1_logg_grad_abs_mean",
+    "weight1_grad_zero_fraction",
     "weight2_grad_l2",
     "weight2_relative_grad_l2",
     "weight2_relative_step_l2",
+    "weight2_logg_grad_l2",
+    "weight2_logg_grad_abs_mean",
+    "weight2_grad_zero_fraction",
     "bias0_grad_l2",
     "bias0_relative_grad_l2",
+    "bias0_grad_zero_fraction",
     "bias1_grad_l2",
     "bias1_relative_grad_l2",
+    "bias1_grad_zero_fraction",
     "param_summaries_json",
 ]
 
@@ -113,8 +127,13 @@ def _parameter_name(param: object, index: int) -> str:
 def _parameter_stats(param: object, grad: torch.Tensor, lr: float) -> dict:
     state = param.state.detach()
     grad = grad.detach()
+    name = _parameter_name(param, -1)
+    cls_name = param.__class__.__name__
+    is_weight = "Weight" in cls_name or "Weight" in name
+    logg_grad = state * grad if is_weight else torch.zeros_like(grad)
     param_l2 = float(torch.linalg.vector_norm(state).item())
     grad_l2 = float(torch.linalg.vector_norm(grad).item())
+    logg_grad_l2 = float(torch.linalg.vector_norm(logg_grad).item()) if is_weight else math.nan
     relative = grad_l2 / param_l2 if param_l2 > 0 else math.nan
     return {
         "param_l2": param_l2,
@@ -124,6 +143,10 @@ def _parameter_stats(param: object, grad: torch.Tensor, lr: float) -> dict:
         "grad_abs_mean": float(torch.mean(torch.abs(grad)).item()),
         "grad_abs_max": float(torch.max(torch.abs(grad)).item()),
         "grad_zero_fraction": float((grad.abs() <= 1e-12).float().mean().item()),
+        "logg_grad_l2": logg_grad_l2,
+        "logg_grad_abs_mean": (
+            float(torch.mean(torch.abs(logg_grad)).item()) if is_weight else math.nan
+        ),
     }
 
 
@@ -159,8 +182,11 @@ def _empty_param_slots() -> dict:
     for prefix in ("weight0", "weight1", "weight2", "bias0", "bias1"):
         row[f"{prefix}_grad_l2"] = math.nan
         row[f"{prefix}_relative_grad_l2"] = math.nan
+        row[f"{prefix}_grad_zero_fraction"] = math.nan
         if prefix.startswith("weight"):
             row[f"{prefix}_relative_step_l2"] = math.nan
+            row[f"{prefix}_logg_grad_l2"] = math.nan
+            row[f"{prefix}_logg_grad_abs_mean"] = math.nan
     return row
 
 
@@ -185,6 +211,12 @@ def _measure_phase(
     base_states = [param.state.detach().clone() for param in params]
     lrs = _learning_rates(spec, len(params), phase)
     lr_reference = lrs[0] if lrs else math.nan
+    source_inference_iterations = int(context["model_cfg"]["num_iterations_inference"])
+    inference_iterations = (
+        int(args.inference_iterations)
+        if args.inference_iterations is not None
+        else source_inference_iterations
+    )
     training_iterations = (
         int(args.training_iterations)
         if args.training_iterations is not None
@@ -279,6 +311,8 @@ def _measure_phase(
                 "relative_grad_l2": _mean([row["relative_grad_l2"] for row in values]),
                 "relative_step_l2": _mean([row["relative_step_l2"] for row in values]),
                 "grad_zero_fraction": _mean([row["grad_zero_fraction"] for row in values]),
+                "logg_grad_l2": _mean([row["logg_grad_l2"] for row in values]),
+                "logg_grad_abs_mean": _mean([row["logg_grad_abs_mean"] for row in values]),
             }
         )
 
@@ -300,8 +334,11 @@ def _measure_phase(
             continue
         row[f"{slot}_grad_l2"] = summary["grad_l2"]
         row[f"{slot}_relative_grad_l2"] = summary["relative_grad_l2"]
+        row[f"{slot}_grad_zero_fraction"] = summary["grad_zero_fraction"]
         if slot.startswith("weight"):
             row[f"{slot}_relative_step_l2"] = summary["relative_step_l2"]
+            row[f"{slot}_logg_grad_l2"] = summary["logg_grad_l2"]
+            row[f"{slot}_logg_grad_abs_mean"] = summary["logg_grad_abs_mean"]
 
     model_cfg = spec.model_cfg
     target_label = _path_part(spec.run_dir, "target_")
@@ -310,6 +347,9 @@ def _measure_phase(
         "non_linearity": model_cfg.get("non_linearity"),
         "run_name": spec.run_dir.parent.name,
         "phase": phase,
+        "minimizer_mode": spec.source_config["energy_minimizer"]["mode"],
+        "inference_iterations_used": inference_iterations,
+        "training_iterations_used": training_iterations,
         "voltage_amp": model_cfg.get("voltage_amp", math.nan),
         "current_amp": model_cfg.get("current_amp", math.nan),
         "input_gain": model_cfg.get("input_gain", math.nan),

@@ -34,6 +34,21 @@ class SigmoidLayer(Layer):
         return torch.sigmoid(4 * self._state - 2)
 
 
+class TanhLayer(Layer):
+    """
+    Class used to implement a layer with a hyperbolic tangent activation function
+
+    Methods
+    -------
+    activate():
+        Applies the tanh function to the layer's state and returns the result
+    """
+
+    def activate(self):
+        """Returns tanh applied to the layer's state"""
+        return torch.tanh(self._state)
+
+
 class SoftMaxLayer(Layer):
     """
     Class used to implement a layer with a `softmax' activation function

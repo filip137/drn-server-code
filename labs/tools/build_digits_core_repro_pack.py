@@ -1306,6 +1306,8 @@ def compare_npz(cd_npz: Path, reference_npz: Path, output_dir: Path, *, pack_roo
         total_ref = None
         per_layer = {}
         layer_labels = []
+        node_rel_errors = []
+        node_abs_errors = []
         for cd_layer, ref_layer in pairs:
             label = cd_layer if cd_layer == ref_layer else f"{cd_layer}->{ref_layer}"
             layer_labels.append(label)
@@ -1317,18 +1319,29 @@ def compare_npz(cd_npz: Path, reference_npz: Path, output_dir: Path, *, pack_roo
             total_nodes += node_count
             rel_l1 = np.mean(np.abs(cd - ref), axis=1) / (np.mean(np.abs(ref), axis=1) + 1e-12)
             per_layer[label] = {f"p{p}": float(np.percentile(rel_l1, p)) for p in PERCENTILES}
-            mae = np.mean(np.abs(cd - ref), axis=1)
+            abs_err = np.abs(cd - ref)
+            node_abs_errors.append(abs_err)
+            node_rel_errors.append(abs_err / (np.abs(ref) + 1e-12))
+            mae = np.mean(abs_err, axis=1)
             ref_abs = np.mean(np.abs(ref), axis=1)
             total_mae = mae * node_count if total_mae is None else total_mae + mae * node_count
             total_ref = ref_abs * node_count if total_ref is None else total_ref + ref_abs * node_count
 
     node_weighted = total_mae / (total_ref + 1e-12)
+    node_rel_p90_per_sample = np.percentile(np.concatenate(node_rel_errors, axis=1), 90, axis=1)
+    node_abs_p90_per_sample = np.percentile(np.concatenate(node_abs_errors, axis=1), 90, axis=1)
     payload = {
         "cd_npz": _display_path(cd_npz, pack_root),
         "reference_npz": _display_path(reference_npz, pack_root),
         "layers": layer_labels,
         "total_nodes": int(total_nodes),
         "node_weighted_rel_l1_percentiles": {f"p{p}": float(np.percentile(node_weighted, p)) for p in PERCENTILES},
+        "node_rel_error_p90_over_nodes_percentiles_over_samples": {
+            f"p{p}": float(np.percentile(node_rel_p90_per_sample, p)) for p in PERCENTILES
+        },
+        "node_abs_error_p90_over_nodes_percentiles_over_samples": {
+            f"p{p}": float(np.percentile(node_abs_p90_per_sample, p)) for p in PERCENTILES
+        },
         "per_layer_rel_l1_percentiles": per_layer,
     }
     path = output_dir / "cross_layer_rel_l1_percentiles_node_weighted.json"
@@ -1406,6 +1419,12 @@ def aggregate_error_vs_iter(pack_root: Path) -> Path:
             {
                 "iterations": job.num_iterations,
                 **summary["node_weighted_rel_l1_percentiles"],
+                "node_rel_error_p90_over_nodes_p90_over_samples": summary[
+                    "node_rel_error_p90_over_nodes_percentiles_over_samples"
+                ]["p90"],
+                "node_abs_error_p90_over_nodes_p90_over_samples": summary[
+                    "node_abs_error_p90_over_nodes_percentiles_over_samples"
+                ]["p90"],
                 "source": _pack_rel(job.comparison_dir(pack_root), pack_root),
             }
         )
@@ -1435,6 +1454,12 @@ def aggregate_vol_tol(pack_root: Path) -> Path:
                 "rel_tol": job.rel_tol,
                 "rel_tol_value": float(job.rel_tol),
                 "p90": summary["node_weighted_rel_l1_percentiles"]["p90"],
+                "node_rel_error_p90_over_nodes_p90_over_samples": summary[
+                    "node_rel_error_p90_over_nodes_percentiles_over_samples"
+                ]["p90"],
+                "node_abs_error_p90_over_nodes_p90_over_samples": summary[
+                    "node_abs_error_p90_over_nodes_percentiles_over_samples"
+                ]["p90"],
                 "source": _pack_rel(job.comparison_dir(pack_root), pack_root),
             }
         )

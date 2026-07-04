@@ -257,6 +257,31 @@ def test_trainable_hard_sigmoid_v_off_affects_closed_form_update_gradient():
     assert grad.abs().sum() > 0
 
 
+def test_trainable_hard_sigmoid_energy_boundaries_follow_replaced_state():
+    layer = _make_layer_2()
+    HardSigmoidVOff._counter = 0
+    v_off_param = HardSigmoidVOff(1.5, device="cpu")
+    interaction = HardSigmoidNonLinearInteraction(
+        layer,
+        {"g_on": 100.0, "g_off": 0.0, "v_off_param": v_off_param},
+        voltage_amp=1.0,
+        current_amp=1.0,
+    )
+
+    assert [float(value.item()) for value in interaction._boundary_tensors()] == pytest.approx(
+        [-1.5, 1.5]
+    )
+
+    v_off_param.state = torch.tensor([3.25])
+    assert [float(value.item()) for value in interaction._boundary_tensors()] == pytest.approx(
+        [-3.25, 3.25]
+    )
+
+    layer.state = torch.tensor([[2.0, -2.0]])
+    grad = interaction.grad_layer_fn(layer)()
+    assert torch.allclose(grad, torch.zeros_like(grad))
+
+
 def test_hard_sigmoid_updater_uses_same_amplified_conductance_as_energy():
     """Regression test for current/voltage amp on deeper hard-sigmoid layers.
 

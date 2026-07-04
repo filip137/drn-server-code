@@ -35,6 +35,10 @@ def _flatten_samples(values):
     return values.reshape(values.shape[0], -1)
 
 
+def _percentile_summary(values, percentiles):
+    return {f"p{int(p)}": float(np.percentile(values, p)) for p in percentiles}
+
+
 def _write_cross_layer_percentile_average(
     cd_npz,
     spice_npz,
@@ -90,6 +94,8 @@ def _write_node_weighted_percentile_average(
     total_nodes = 0
     total_mae = None
     total_ref = None
+    node_rel_errors = []
+    node_abs_errors = []
 
     for layer in layers:
         cd_vals = _flatten_samples(cd_data[layer])
@@ -102,6 +108,8 @@ def _write_node_weighted_percentile_average(
         node_counts[layer] = node_count
         total_nodes += node_count
         diff = np.abs(cd_vals - spice_vals)
+        node_abs_errors.append(diff)
+        node_rel_errors.append(diff / (np.abs(spice_vals) + eps))
         mae = np.mean(diff, axis=1)
         ref_mean_abs = np.mean(np.abs(spice_vals), axis=1)
         if total_mae is None:
@@ -115,6 +123,8 @@ def _write_node_weighted_percentile_average(
         raise ValueError("No nodes found when aggregating across layers.")
 
     rel_err = total_mae / (total_ref + eps)
+    node_rel_p90_per_sample = np.percentile(np.concatenate(node_rel_errors, axis=1), 90, axis=1)
+    node_abs_p90_per_sample = np.percentile(np.concatenate(node_abs_errors, axis=1), 90, axis=1)
     payload = {
         "cd_npz": str(Path(cd_npz).expanduser().resolve()),
         "spice_npz": str(Path(spice_npz).expanduser().resolve()),
@@ -123,9 +133,15 @@ def _write_node_weighted_percentile_average(
         "percentiles": pcts,
         "total_nodes": total_nodes,
         "node_counts": node_counts,
-        "node_weighted_rel_l1_percentiles": {
-            f"p{p}": float(np.percentile(rel_err, p)) for p in pcts
-        },
+        "node_weighted_rel_l1_percentiles": _percentile_summary(rel_err, pcts),
+        "node_rel_error_p90_over_nodes_percentiles_over_samples": _percentile_summary(
+            node_rel_p90_per_sample,
+            pcts,
+        ),
+        "node_abs_error_p90_over_nodes_percentiles_over_samples": _percentile_summary(
+            node_abs_p90_per_sample,
+            pcts,
+        ),
     }
     out_path = Path(output_dir) / "cross_layer_rel_l1_percentiles_node_weighted.json"
     out_path.write_text(json.dumps(payload, indent=2))

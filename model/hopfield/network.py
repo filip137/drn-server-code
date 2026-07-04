@@ -2,7 +2,7 @@ import numpy
 
 from model.function.interaction import SumSeparableFunction
 from model.variable.layer import InputLayer, LinearLayer
-from model.hopfield.layer import HardSigmoidLayer, SigmoidLayer, SoftMaxLayer, dSiLULayer
+from model.hopfield.layer import HardSigmoidLayer, SigmoidLayer, TanhLayer, SoftMaxLayer, dSiLULayer
 from model.variable.parameter import Bias, DenseWeight, ConvWeight
 from model.hopfield.interaction import (
     BiasInteraction,
@@ -21,16 +21,21 @@ def create_layer(shape, activation='hard-sigmoid'):
 
     Args:
         shape (tuple of ints): shape of the layer
-        activation (str, optional): the layer's activation function, either the identity ('linear'), the 'hard-sigmoid', or the `silu'. Default: 'hard-sigmoid'.
+        activation (str, optional): the layer's activation function, either the identity ('linear'), the 'hard-sigmoid', 'sigmoid', 'tanh', 'softmax', or the `silu'. Default: 'hard-sigmoid'.
     """
 
     if activation == 'linear': layer = LinearLayer(shape)
     elif activation == 'hard-sigmoid': layer = HardSigmoidLayer(shape)
     elif activation == 'sigmoid': layer = SigmoidLayer(shape)
+    elif activation == 'tanh': layer = TanhLayer(shape)
     elif activation == 'softmax': layer = SoftMaxLayer(shape)
     elif activation == 'silu': layer = dSiLULayer(shape)
     elif activation == 'input': layer = InputLayer(shape)
-    else: raise ValueError("expected `linear', `hard-sigmoid' or `silu' but got {}".format(activation))
+    else:
+        raise ValueError(
+            "expected `linear', `hard-sigmoid', `sigmoid', `tanh', `softmax', "
+            "`silu', or `input' but got {}".format(activation)
+        )
 
     return layer
 

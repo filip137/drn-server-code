@@ -595,6 +595,7 @@ class HardSigmoidNonLinearInteraction(Function):
         self._updater_params = dict(params)
         self._g_on_base = params.get("g_on")
         self._g_off_base = params.get("g_off")
+        self._v_off_param = params.get("v_off_param")
         self.v_min = params.get("v_min")
         self.v_max = params.get("v_max")
         self._voltage_amp = voltage_amp
@@ -618,6 +619,9 @@ class HardSigmoidNonLinearInteraction(Function):
 
     def _boundary_tensors(self):
         v = self._layer.state
+        if self._v_off_param is not None:
+            v_off = scalar_value(self._v_off_param, like=v)
+            return -v_off, v_off
         v_min = scalar_value(self.v_min, like=v)
         v_max = scalar_value(self.v_max, like=v)
         return v_min, v_max

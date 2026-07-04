@@ -14,8 +14,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms import functional as TF
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -34,11 +36,18 @@ DATASETS = {
     "mnist": datasets.MNIST,
     "fashion_mnist": datasets.FashionMNIST,
 }
+INPUT_PREPROCESSING = {
+    "identity": ((0.0,), (1.0,)),
+    "centered": ((0.5,), (0.5,)),
+}
 OUTPUT_COLUMNS = [
     "conv_depth",
     "seed",
     "run_group",
     "lr_multiplier",
+    "input_preprocessing",
+    "affine_preset",
+    "affine_enabled",
     "checkpoint_kind",
     "split",
     "num_samples",
@@ -107,21 +116,115 @@ def _discover_run_dirs(input_roots: list[str], run_dirs: list[str]) -> list[Path
     return sorted(paths)
 
 
-def _build_loader(args: argparse.Namespace, split: str) -> DataLoader:
+class DeterministicAffineDataset(Dataset):
+    def __init__(
+        self,
+        dataset: Dataset,
+        *,
+        transform,
+        affine_config: dict,
+        split: str,
+    ) -> None:
+        self.dataset = dataset
+        self.transform = transform
+        self.affine_config = affine_config
+        self.split_offset = 0 if split == "train" else 10_000_000
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, index: int):
+        image, label = self.dataset[index]
+        if bool(self.affine_config.get("enabled", False)):
+            image = self._apply_affine(image, index)
+        return self.transform(image), label
+
+    def _apply_affine(self, image, index: int):
+        seed = int(self.affine_config.get("seed", 0))
+        rng = random.Random(seed + self.split_offset + 104_729 * int(index))
+        degrees = float(self.affine_config["degrees"])
+        translate_frac = [float(value) for value in self.affine_config["translate"]]
+        scale_range = [float(value) for value in self.affine_config["scale"]]
+        shear = float(self.affine_config.get("shear", 0.0))
+
+        angle = rng.uniform(-degrees, degrees) if degrees else 0.0
+        scale = rng.uniform(scale_range[0], scale_range[1])
+        shear_x = rng.uniform(-shear, shear) if shear else 0.0
+        width, height = image.size
+        max_dx = translate_frac[0] * width
+        max_dy = translate_frac[1] * height
+        translate = (
+            int(round(rng.uniform(-max_dx, max_dx))),
+            int(round(rng.uniform(-max_dy, max_dy))),
+        )
+        return TF.affine(
+            image,
+            angle=angle,
+            translate=translate,
+            scale=scale,
+            shear=[shear_x, 0.0],
+            interpolation=InterpolationMode.BILINEAR,
+            fill=0,
+        )
+
+
+def _affine_config_from_source(source_config: dict) -> dict:
+    config = dict(
+        source_config.get(
+            "affine_transform",
+            {
+                "enabled": False,
+                "preset": "none",
+                "degrees": 0.0,
+                "translate": [0.0, 0.0],
+                "scale": [1.0, 1.0],
+                "shear": 0.0,
+                "seed": 1729,
+            },
+        )
+    )
+    config.setdefault("enabled", False)
+    config.setdefault("preset", "none")
+    config.setdefault("degrees", 0.0)
+    config.setdefault("translate", [0.0, 0.0])
+    config.setdefault("scale", [1.0, 1.0])
+    config.setdefault("shear", 0.0)
+    config.setdefault("seed", 1729)
+    return config
+
+
+def _build_loader(args: argparse.Namespace, source_config: dict, split: str) -> DataLoader:
+    input_preprocessing = source_config.get("input_preprocessing", "identity")
+    mean, std = INPUT_PREPROCESSING[input_preprocessing]
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize(mean=(0.0,), std=(1.0,)),
+            transforms.Normalize(mean=mean, std=std),
         ]
     )
+    affine_config = _affine_config_from_source(source_config)
     dataset_root = os.path.expanduser(str(args.dataset_root))
     dataset_cls = DATASETS[args.dataset]
-    dataset = dataset_cls(
-        dataset_root,
-        train=(split == "train"),
-        transform=transform,
-        download=not args.no_download,
-    )
+    if affine_config.get("enabled", False):
+        base_dataset = dataset_cls(
+            dataset_root,
+            train=(split == "train"),
+            transform=None,
+            download=not args.no_download,
+        )
+        dataset = DeterministicAffineDataset(
+            base_dataset,
+            transform=transform,
+            affine_config=affine_config,
+            split=split,
+        )
+    else:
+        dataset = dataset_cls(
+            dataset_root,
+            train=(split == "train"),
+            transform=transform,
+            download=not args.no_download,
+        )
     return DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
 
@@ -257,10 +360,11 @@ def _measure_run(
     *,
     args: argparse.Namespace,
     device: torch.device,
-    loaders: dict[str, DataLoader],
 ) -> list[dict]:
     source_config = _load_json(run_dir / "source_config.json")
     metrics = _load_json(run_dir / "metrics.json")
+    loaders = {split: _build_loader(args, source_config, split) for split in set(args.split)}
+    affine_config = _affine_config_from_source(source_config)
     rows = []
     for checkpoint_kind in args.checkpoint_kind:
         checkpoint_path = _checkpoint_path(run_dir, checkpoint_kind)
@@ -285,6 +389,9 @@ def _measure_run(
                     "seed": source_config.get("seed", metrics.get("seed", "")),
                     "run_group": source_config.get("run_group", metrics.get("run_group", "")),
                     "lr_multiplier": source_config.get("lr_multiplier", metrics.get("lr_multiplier", "")),
+                    "input_preprocessing": source_config.get("input_preprocessing", "identity"),
+                    "affine_preset": affine_config.get("preset", "none"),
+                    "affine_enabled": affine_config.get("enabled", False),
                     "checkpoint_kind": checkpoint_kind,
                     "split": split,
                     **result,
@@ -329,13 +436,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
-    loaders = {split: _build_loader(args, split) for split in set(args.split)}
     run_dirs = _discover_run_dirs(args.input_root, args.run_dir)
     rows = []
     print(f"[discover] runs={len(run_dirs)} device={device} splits={args.split}")
     for index, run_dir in enumerate(run_dirs, start=1):
         print(f"[measure] {index}/{len(run_dirs)} {run_dir}", flush=True)
-        rows.extend(_measure_run(run_dir, args=args, device=device, loaders=loaders))
+        rows.extend(_measure_run(run_dir, args=args, device=device))
     _write_csv(Path(args.output_csv), rows)
     print(f"[done] rows={len(rows)} output={args.output_csv}")
 

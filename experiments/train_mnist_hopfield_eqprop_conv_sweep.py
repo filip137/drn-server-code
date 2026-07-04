@@ -13,8 +13,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torchvision import datasets, transforms
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms import functional as TF
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +37,30 @@ DEFAULT_BASE_LRS = [5.0e-5, 1.0e-5, 8.0e-6]
 DATASETS = {
     "mnist": datasets.MNIST,
     "fashion_mnist": datasets.FashionMNIST,
+}
+INPUT_PREPROCESSING = {
+    "identity": ((0.0,), (1.0,)),
+    "centered": ((0.5,), (0.5,)),
+}
+AFFINE_PRESETS = {
+    "none": {
+        "degrees": 0.0,
+        "translate": [0.0, 0.0],
+        "scale": [1.0, 1.0],
+        "shear": 0.0,
+    },
+    "medium": {
+        "degrees": 25.0,
+        "translate": [0.20, 0.20],
+        "scale": [0.80, 1.20],
+        "shear": 0.0,
+    },
+    "mnist_affine": {
+        "degrees": 60.0,
+        "translate": [0.15, 0.15],
+        "scale": [0.80, 1.20],
+        "shear": 15.0,
+    },
 }
 SUMMARY_COLUMNS = [
     "conv_depth",
@@ -75,6 +101,25 @@ def _default_padding(conv_depth: int) -> int:
     return 1 if int(conv_depth) == 3 else 0
 
 
+def _strides_from_args(args: argparse.Namespace) -> list[int]:
+    if args.strides:
+        requested = [int(value) for value in args.strides]
+        if len(requested) < int(args.conv_depth):
+            raise ValueError(
+                f"Expected at least {args.conv_depth} --strides values, got {requested}."
+            )
+        effective = []
+        for value in requested[: int(args.conv_depth)]:
+            if value < 0:
+                raise ValueError(f"Expected non-negative --strides values, got {requested}.")
+            # In experiment labels, 0 means no downsampling in that layer.
+            effective.append(1 if value == 0 else value)
+        return effective
+    if int(args.stride) <= 0:
+        raise ValueError(f"Expected --stride > 0, got {args.stride}.")
+    return [int(args.stride)] * int(args.conv_depth)
+
+
 def architecture_from_args(args: argparse.Namespace) -> tuple[list[tuple[int, ...]], list[dict]]:
     channels = [int(value) for value in args.conv_channels]
     if args.conv_depth < 1:
@@ -84,13 +129,15 @@ def architecture_from_args(args: argparse.Namespace) -> tuple[list[tuple[int, ..
             f"Expected at least {args.conv_depth} --conv-channels values, got {channels}."
         )
     padding = _default_padding(args.conv_depth) if args.padding is None else int(args.padding)
+    strides = _strides_from_args(args)
     height = 28
     width = 28
     layer_shapes: list[tuple[int, ...]] = [(1, height, width)]
     conv_pipeline: list[dict] = []
     for index in range(args.conv_depth):
-        height = _conv_spatial(height, args.kernel_size, args.stride, padding)
-        width = _conv_spatial(width, args.kernel_size, args.stride, padding)
+        stride = strides[index]
+        height = _conv_spatial(height, args.kernel_size, stride, padding)
+        width = _conv_spatial(width, args.kernel_size, stride, padding)
         if height <= 0 or width <= 0:
             raise ValueError(
                 "Convolution geometry produced non-positive spatial dimensions: "
@@ -101,7 +148,7 @@ def architecture_from_args(args: argparse.Namespace) -> tuple[list[tuple[int, ..
             {
                 "mode": "convolution",
                 "kernel": [args.kernel_size, args.kernel_size],
-                "stride": args.stride,
+                "stride": stride,
                 "padding": padding,
             }
         )
@@ -157,6 +204,99 @@ def _make_loader(dataset, batch_size: int, shuffle: bool, seed: int) -> DataLoad
     )
 
 
+class DeterministicAffineDataset(Dataset):
+    def __init__(
+        self,
+        dataset: Dataset,
+        *,
+        transform,
+        affine_config: dict,
+        split: str,
+    ) -> None:
+        self.dataset = dataset
+        self.transform = transform
+        self.affine_config = affine_config
+        self.split_offset = 0 if split == "train" else 10_000_000
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, index: int):
+        image, label = self.dataset[index]
+        if bool(self.affine_config.get("enabled", False)):
+            image = self._apply_affine(image, index)
+        return self.transform(image), label
+
+    def _apply_affine(self, image, index: int):
+        seed = int(self.affine_config.get("seed", 0))
+        rng = random.Random(seed + self.split_offset + 104_729 * int(index))
+        degrees = float(self.affine_config["degrees"])
+        translate_frac = [float(value) for value in self.affine_config["translate"]]
+        scale_range = [float(value) for value in self.affine_config["scale"]]
+        shear = float(self.affine_config.get("shear", 0.0))
+
+        angle = rng.uniform(-degrees, degrees) if degrees else 0.0
+        scale = rng.uniform(scale_range[0], scale_range[1])
+        shear_x = rng.uniform(-shear, shear) if shear else 0.0
+        width, height = image.size
+        max_dx = translate_frac[0] * width
+        max_dy = translate_frac[1] * height
+        translate = (
+            int(round(rng.uniform(-max_dx, max_dx))),
+            int(round(rng.uniform(-max_dy, max_dy))),
+        )
+        return TF.affine(
+            image,
+            angle=angle,
+            translate=translate,
+            scale=scale,
+            shear=[shear_x, 0.0],
+            interpolation=InterpolationMode.BILINEAR,
+            fill=0,
+        )
+
+
+def affine_config_from_args(args: argparse.Namespace) -> dict:
+    config = dict(AFFINE_PRESETS[args.affine_preset])
+    if args.affine_degrees is not None:
+        config["degrees"] = float(args.affine_degrees)
+    if args.affine_translate is not None:
+        translate = [float(value) for value in args.affine_translate]
+        if len(translate) == 1:
+            translate = [translate[0], translate[0]]
+        if len(translate) != 2:
+            raise ValueError(
+                f"Expected --affine-translate to have 1 or 2 values, got {translate}."
+            )
+        config["translate"] = translate
+    if args.affine_scale is not None:
+        scale = [float(value) for value in args.affine_scale]
+        if len(scale) != 2:
+            raise ValueError(f"Expected --affine-scale to have 2 values, got {scale}.")
+        config["scale"] = scale
+    if args.affine_shear is not None:
+        config["shear"] = float(args.affine_shear)
+
+    scale_min, scale_max = [float(value) for value in config["scale"]]
+    if scale_min <= 0.0 or scale_max <= 0.0 or scale_min > scale_max:
+        raise ValueError(f"Expected positive ordered --affine-scale, got {config['scale']}.")
+    translate = [float(value) for value in config["translate"]]
+    if any(value < 0.0 for value in translate):
+        raise ValueError(f"Expected non-negative --affine-translate, got {translate}.")
+
+    enabled = (
+        abs(float(config["degrees"])) > 0.0
+        or any(abs(value) > 0.0 for value in translate)
+        or abs(scale_min - 1.0) > 0.0
+        or abs(scale_max - 1.0) > 0.0
+        or abs(float(config.get("shear", 0.0))) > 0.0
+    )
+    config["enabled"] = enabled
+    config["preset"] = args.affine_preset
+    config["seed"] = int(args.affine_seed)
+    return config
+
+
 def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader]:
     if args.synthetic_samples:
         generator = torch.Generator().manual_seed(int(args.seed))
@@ -166,22 +306,43 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader]:
         train_y = torch.randint(0, 10, (train_count,), generator=generator)
         test_x = torch.rand(test_count, 1, 28, 28, generator=generator)
         test_y = torch.randint(0, 10, (test_count,), generator=generator)
+        if args.input_preprocessing == "centered":
+            train_x = 2.0 * train_x - 1.0
+            test_x = 2.0 * test_x - 1.0
         return (
             _make_loader(TensorDataset(train_x, train_y), args.batch_size, True, args.seed),
             _make_loader(TensorDataset(test_x, test_y), args.test_batch_size, False, args.seed),
         )
 
+    mean, std = INPUT_PREPROCESSING[args.input_preprocessing]
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize(mean=(0.0,), std=(1.0,)),
+            transforms.Normalize(mean=mean, std=std),
         ]
     )
+    affine_config = affine_config_from_args(args)
     dataset_root = os.path.expanduser(str(args.dataset_root))
     download = not args.no_download
     dataset_cls = DATASETS[args.dataset]
-    train_ds = dataset_cls(dataset_root, train=True, transform=transform, download=download)
-    test_ds = dataset_cls(dataset_root, train=False, transform=transform, download=download)
+    if affine_config["enabled"]:
+        train_base = dataset_cls(dataset_root, train=True, transform=None, download=download)
+        test_base = dataset_cls(dataset_root, train=False, transform=None, download=download)
+        train_ds = DeterministicAffineDataset(
+            train_base,
+            transform=transform,
+            affine_config=affine_config,
+            split="train",
+        )
+        test_ds = DeterministicAffineDataset(
+            test_base,
+            transform=transform,
+            affine_config=affine_config,
+            split="test",
+        )
+    else:
+        train_ds = dataset_cls(dataset_root, train=True, transform=transform, download=download)
+        test_ds = dataset_cls(dataset_root, train=False, transform=transform, download=download)
     return (
         _make_loader(train_ds, args.batch_size, True, args.seed),
         _make_loader(test_ds, args.test_batch_size, False, args.seed),
@@ -207,7 +368,7 @@ def build_model(args: argparse.Namespace, device: torch.device) -> tuple[Flexibl
         layer_shapes=layer_shapes,
         weight_gains=weight_gains,
         conv_pipeline=conv_pipeline,
-        activation="hard-sigmoid",
+        activation=args.activation,
         weight_init_mode=args.weight_init_mode,
     )
     energy_fn.set_device(device)
@@ -215,10 +376,37 @@ def build_model(args: argparse.Namespace, device: torch.device) -> tuple[Flexibl
         "layer_shapes": [list(shape) for shape in layer_shapes],
         "conv_pipeline": conv_pipeline,
         "weight_gains": weight_gains,
-        "activation": "hard-sigmoid",
+        "activation": args.activation,
         "weight_init_mode": args.weight_init_mode,
     }
     return energy_fn, model_config
+
+
+def load_init_checkpoint(energy_fn: FlexibleConvHopfieldEnergy, checkpoint_path: str) -> Path:
+    path = Path(checkpoint_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Expected --init-checkpoint to exist, got {path}.")
+    try:
+        checkpoint = torch.load(
+            path,
+            map_location=torch.device(energy_fn._device),
+            weights_only=True,
+        )
+    except TypeError:
+        checkpoint = torch.load(path, map_location=torch.device(energy_fn._device))
+    params = energy_fn.params()
+    if len(checkpoint) != len(params):
+        raise ValueError(
+            f"Expected checkpoint with {len(params)} tensors, got {len(checkpoint)} at {path}."
+        )
+    for index, (param, state) in enumerate(zip(params, checkpoint)):
+        if tuple(state.shape) != tuple(param.state.shape):
+            raise ValueError(
+                "Checkpoint tensor shape mismatch at parameter "
+                f"{index}: expected {tuple(param.state.shape)}, got {tuple(state.shape)}."
+            )
+        param.state = state.detach().clone().to(device=param.state.device, dtype=param.state.dtype)
+    return path
 
 
 @torch.no_grad()
@@ -261,6 +449,11 @@ def train(args: argparse.Namespace) -> dict:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     energy_fn, model_config = build_model(args, device)
+    init_checkpoint_path = (
+        load_init_checkpoint(energy_fn, args.init_checkpoint)
+        if args.init_checkpoint
+        else None
+    )
     network = Network(energy_fn)
     output_layer = energy_fn.layers()[-1]
     cost_fn = SquaredError(output_layer)
@@ -299,6 +492,7 @@ def train(args: argparse.Namespace) -> dict:
     )
     train_loader, test_loader = build_loaders(args)
 
+    affine_config = affine_config_from_args(args)
     source_config = {
         "script": str(Path(__file__).resolve()),
         "run_group": args.run_group,
@@ -316,7 +510,12 @@ def train(args: argparse.Namespace) -> dict:
         "optimizer": "Adam",
         "dataset": args.dataset,
         "dataset_root": args.dataset_root,
+        "input_preprocessing": args.input_preprocessing,
+        "affine_transform": affine_config,
         "synthetic_samples": args.synthetic_samples,
+        "init_checkpoint": str(init_checkpoint_path) if init_checkpoint_path else None,
+        "requested_strides": [int(value) for value in args.strides] if args.strides else None,
+        "effective_strides": [int(conf["stride"]) for conf in model_config["conv_pipeline"]],
         "model": model_config,
     }
     (run_dir / "source_config.json").write_text(json.dumps(source_config, indent=2))
@@ -416,6 +615,12 @@ def train(args: argparse.Namespace) -> dict:
         "optimizer": "Adam",
         "lr_multiplier": args.lr_multiplier,
         "learning_rates": learning_rates,
+        "activation": args.activation,
+        "input_preprocessing": args.input_preprocessing,
+        "affine_transform": source_config["affine_transform"],
+        "init_checkpoint": source_config["init_checkpoint"],
+        "requested_strides": source_config["requested_strides"],
+        "effective_strides": source_config["effective_strides"],
         "best_epoch": best_epoch,
         "best_test_accuracy": best_test_accuracy,
         "final_test_accuracy": history["accuracy_test"][-1] if history["accuracy_test"] else math.nan,
@@ -447,8 +652,43 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-group", default="lr_screen")
     parser.add_argument("--conv-depth", type=int, required=True)
     parser.add_argument("--conv-channels", type=int, nargs="+", default=DEFAULT_CHANNELS)
+    parser.add_argument(
+        "--activation",
+        choices=("hard-sigmoid", "sigmoid", "tanh", "silu"),
+        default="hard-sigmoid",
+        help="Hidden-layer activation. Output layer remains linear.",
+    )
+    parser.add_argument(
+        "--input-preprocessing",
+        choices=sorted(INPUT_PREPROCESSING),
+        default="identity",
+        help="identity keeps MNIST pixels in [0,1]; centered maps pixels to [-1,1].",
+    )
+    parser.add_argument(
+        "--affine-preset",
+        choices=sorted(AFFINE_PRESETS),
+        default="none",
+        help="Deterministic per-sample affine transform preset.",
+    )
+    parser.add_argument("--affine-degrees", type=float, default=None)
+    parser.add_argument("--affine-translate", type=float, nargs="+", default=None)
+    parser.add_argument("--affine-scale", type=float, nargs=2, default=None)
+    parser.add_argument("--affine-shear", type=float, default=None)
+    parser.add_argument(
+        "--affine-seed",
+        type=int,
+        default=1729,
+        help="Dataset-transform seed shared across model seeds.",
+    )
     parser.add_argument("--kernel-size", type=int, default=3)
     parser.add_argument("--stride", type=int, default=2)
+    parser.add_argument(
+        "--strides",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional per-convolution strides. Value 0 means no downsampling and is run as stride 1.",
+    )
     parser.add_argument("--padding", type=int, default=None)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=5)
@@ -462,6 +702,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rates", type=float, nargs="+", default=None)
     parser.add_argument("--weight-gains", type=float, nargs="+", default=None)
     parser.add_argument("--weight-init-mode", default="kaiming_uniform")
+    parser.add_argument(
+        "--init-checkpoint",
+        default=None,
+        help="Optional Hopfield final_model.pt/best_model.pt to initialize parameters before training.",
+    )
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument("--max-test-batches", type=int, default=None)
     parser.add_argument("--log-interval", type=int, default=100)
@@ -471,6 +716,7 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     architecture_from_args(args)
     learning_rates_from_args(args)
+    affine_config_from_args(args)
     return args
 
 

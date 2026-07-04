@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import statistics
 import sys
@@ -558,6 +559,44 @@ def run_one(args: argparse.Namespace, output_root: Path, spec: RunSpec) -> None:
     if args.dry_run:
         return
 
+    prune_state: dict[str, object] = {"pruned": False}
+
+    def prune_callback(epoch_info: dict, history: dict) -> bool:
+        if args.prune_after_epochs is None:
+            return False
+        if int(epoch_info["epoch"]) < int(args.prune_after_epochs):
+            return False
+        test_accuracy = [
+            float(value)
+            for value in history.get("test_accuracy", [])
+            if value is not None and math.isfinite(float(value))
+        ]
+        if not test_accuracy:
+            return False
+        best_so_far = max(test_accuracy)
+        threshold = float(args.prune_min_best_test_accuracy)
+        if best_so_far >= threshold:
+            return False
+        prune_state.update(
+            {
+                "pruned": True,
+                "pruned_after_epoch": int(epoch_info["epoch"]),
+                "prune_min_best_test_accuracy": threshold,
+                "best_test_accuracy_so_far": best_so_far,
+                "current_test_accuracy": epoch_info.get("test_accuracy"),
+                "current_test_loss": epoch_info.get("test_loss"),
+            }
+        )
+        marker_path = run_dir / "pruned_after_epoch.json"
+        marker_path.write_text(json.dumps(prune_state, indent=2))
+        print(
+            "[prune] stopping after epoch "
+            f"{epoch_info['epoch']}: best_test_accuracy_so_far={best_so_far:.6f} "
+            f"< threshold={threshold:.6f}",
+            flush=True,
+        )
+        return True
+
     train_mnist_conv(
         config_path=source_config_path,
         epochs=args.epochs,
@@ -575,7 +614,14 @@ def run_one(args: argparse.Namespace, output_root: Path, spec: RunSpec) -> None:
         seed=spec.seed,
         lr_decay=args.lr_decay,
         init_checkpoint_path=init_checkpoint_path,
+        epoch_callback=prune_callback if args.prune_after_epochs is not None else None,
     )
+    if prune_state.get("pruned"):
+        metrics_path = run_dir / "metrics.json"
+        if metrics_path.exists():
+            metrics = json.loads(metrics_path.read_text())
+            metrics.update(prune_state)
+            metrics_path.write_text(json.dumps(metrics, indent=2))
 
 
 def parse_args() -> argparse.Namespace:
@@ -672,6 +718,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--init-checkpoint-name", default="final_model.pt")
+    parser.add_argument(
+        "--prune-after-epochs",
+        type=int,
+        default=None,
+        help="Stop after this epoch if best test accuracy so far is below the prune threshold.",
+    )
+    parser.add_argument(
+        "--prune-min-best-test-accuracy",
+        type=float,
+        default=None,
+        help="Minimum best test accuracy required at --prune-after-epochs.",
+    )
     parser.add_argument("--rerun-complete", action="store_true")
     parser.add_argument("--summary-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -688,6 +746,16 @@ def parse_args() -> argparse.Namespace:
         args.minimizer_config_data = None
     if args.output_dim not in (10, 20):
         raise SystemExit("Expected --output-dim to be 10 or 20 for MNIST.")
+    if (args.prune_after_epochs is None) != (args.prune_min_best_test_accuracy is None):
+        raise SystemExit(
+            "Expected --prune-after-epochs and --prune-min-best-test-accuracy "
+            "to be provided together."
+        )
+    if args.prune_after_epochs is not None:
+        if args.prune_after_epochs < 1:
+            raise SystemExit("Expected --prune-after-epochs to be >= 1.")
+        if not 0.0 <= args.prune_min_best_test_accuracy <= 1.0:
+            raise SystemExit("Expected --prune-min-best-test-accuracy to be in [0, 1].")
     return args
 
 
