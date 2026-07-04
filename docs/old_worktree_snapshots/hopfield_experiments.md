@@ -1,6 +1,6 @@
-# CONTAMINATED OLD-WORKTREE SNAPSHOT
+# OLD-WORKTREE HOPFIELD SNAPSHOT
 
-This file was copied from the old worktree snapshot `5e2d76fc`. The old worktree included simulations affected by the `adaptive_equilibrium=True` problem. Treat any result interpretation, selected protocol, or run decision here as historical context only unless revalidated with the corrected fixed-equilibrium protocol.
+This file was copied from the old worktree snapshot `5e2d76fc`. These Hopfield EqProp notes are not considered affected by the BP/DRN `adaptive_equilibrium=True` contamination issue, so they are kept outside `docs/contaminated_old_worktree/`.
 
 # Hopfield Experiments
 

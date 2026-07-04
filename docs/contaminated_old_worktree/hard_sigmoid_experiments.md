@@ -1,6 +1,6 @@
 # CONTAMINATED OLD-WORKTREE SNAPSHOT
 
-This file was copied from the old worktree snapshot `5e2d76fc`. The old worktree included simulations affected by the `adaptive_equilibrium=True` problem. Treat any result interpretation, selected protocol, or run decision here as historical context only unless revalidated with the corrected fixed-equilibrium protocol.
+This file was copied from the old worktree snapshot `5e2d76fc`. The old worktree included simulations affected by the `adaptive_equilibrium=True` problem. Useful salvage is limited to candidate learning rates, input gains, and achieved accuracies. Treat solver-dependent interpretations, residual/gradient conclusions, `T/K` choices, and run-selection claims as historical context only unless revalidated with the corrected fixed-equilibrium protocol.
 
 # Hard-Sigmoid Experiments
 
