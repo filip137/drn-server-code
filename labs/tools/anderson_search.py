@@ -124,7 +124,7 @@ def _prepare_config(
     cfg["anderson_m"] = int(m)
     cfg["anderson_omega"] = float(omega)
     cfg["anderson_reg"] = float(reg)
-    cfg.setdefault("adaptive_equilibrium", True)
+    cfg.setdefault("adaptive_equilibrium", False)
     if linspace_samples is not None:
         cfg["linspace_samples"] = int(linspace_samples)
     return cfg
