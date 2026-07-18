@@ -1,0 +1,497 @@
+#!/usr/bin/env python3
+"""Fixed-protocol Conv MNIST hard-sigmoid LR/gradient diagnostic."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import math
+import sys
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+import torch
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+LABS_DIR = REPO_ROOT / "labs"
+for path in (REPO_ROOT, LABS_DIR, Path(__file__).resolve().parent):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from diagnose_mnist_bp_conv_lr_update_ratio import (  # noqa: E402
+    DiagnosticRow,
+    _accuracy,
+    _make_context,
+    _param_group,
+    _param_name,
+    _write_csv,
+)
+from search_mnist_bp_conv_hardsigmoid_saturation_targets import (  # noqa: E402
+    _build_energy as _build_calibration_energy,
+    _build_minimizer as _build_calibration_minimizer,
+    _load_minimizer_config as _load_calibration_minimizer_config,
+    _load_samples,
+    _set_seed,
+    find_gain,
+)
+from experiments.train_mnist_bp_conv_amplification_sweep import _load_minimizer_config  # noqa: E402
+
+
+EPS = 1e-12
+RUNS = {
+    "mnist_bp_amp_v1_c1": (1.0, 1.0),
+    "mnist_bp_amp_v4_c1": (4.0, 1.0),
+    "mnist_bp_amp_v4_c0p25": (4.0, 0.25),
+}
+ARCHS = {
+    2: {
+        "strides": (2, 2),
+        "paddings": (1, 1),
+        "T": 16,
+        "K": 6,
+        "lr_multipliers": {
+            "mnist_bp_amp_v1_c1": 4.0,
+            "mnist_bp_amp_v4_c1": 0.5,
+            "mnist_bp_amp_v4_c0p25": 0.25,
+        },
+    },
+    3: {
+        "strides": (2, 2, 1),
+        "paddings": (1, 1, 1),
+        "T": 16,
+        "K": 16,
+        "lr_multipliers": {
+            "mnist_bp_amp_v1_c1": 2.0,
+            "mnist_bp_amp_v4_c1": 2.0,
+            "mnist_bp_amp_v4_c0p25": 0.5,
+        },
+    },
+}
+TARGET_Q = {
+    "global": 1.0e-2,
+    "conv0": 3.5e-3,
+    "conv_deeper": 1.0e-3,
+    "readout": 3.5e-2,
+}
+DERIVED_FACTORS = (0.03125, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0)
+PRIOR_FACTORS = (0.015625, 0.03125, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0)
+
+
+@dataclass(frozen=True)
+class FixedRow:
+    conv_depth: int
+    run_name: str
+    voltage_amp: float
+    current_amp: float
+    input_gain: float
+    measured_saturation: float
+    layer_saturations: str
+    old_center_lr: float
+    T: int
+    K: int
+    strides: tuple[int, ...]
+    paddings: tuple[int, ...]
+
+
+def _finite_float(value: object, default: float = math.nan) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _float_label(value: float) -> str:
+    return f"{float(value):.12g}".replace("-", "m").replace(".", "p")
+
+
+def _selected_depths(raw: list[int] | None) -> list[int]:
+    depths = sorted(ARCHS) if raw is None else sorted({int(value) for value in raw})
+    bad = [value for value in depths if value not in ARCHS]
+    if bad:
+        raise ValueError(f"Expected conv depths from {sorted(ARCHS)}, got {bad}.")
+    return depths
+
+
+def _selected_runs(raw: list[str] | None) -> list[str]:
+    if raw is None:
+        return list(RUNS)
+    bad = sorted(set(raw) - set(RUNS))
+    if bad:
+        raise ValueError(f"Unknown run names: {bad}.")
+    return [name for name in RUNS if name in set(raw)]
+
+
+def _calibration_namespace(args: argparse.Namespace, conv_depth: int, run_name: str) -> argparse.Namespace:
+    voltage_amp, current_amp = RUNS[run_name]
+    arch = ARCHS[conv_depth]
+    return argparse.Namespace(
+        dataset_root=args.dataset_root,
+        output_csv="",
+        device=args.calibration_device or args.device,
+        seed=args.seed,
+        num_samples=args.num_calibration_samples,
+        batch_size=args.calibration_batch_size,
+        num_iterations=arch["T"],
+        num_iterations_inference=arch["T"],
+        minimizer_config=args.minimizer_config,
+        minimizer_config_data=args.calibration_minimizer_config_data,
+        run_name=[],
+        all_amplifications=False,
+        conv_depth=conv_depth,
+        conv_channels=[64, 128, 256],
+        kernel_size=3,
+        stride=2,
+        padding=1,
+        strides=list(arch["strides"]),
+        paddings=list(arch["paddings"]),
+        output_dim=20,
+        v_off=args.hard_sigmoid_v_off,
+        saturation_scope=args.saturation_scope,
+        g_on=args.hard_sigmoid_g_on,
+        g_off=args.hard_sigmoid_g_off,
+        normalize_mean=0.1307,
+        normalize_std=0.3081,
+        normalize_scale=0.3,
+        targets=[args.target_saturation],
+        initial_hi=args.calibration_initial_hi,
+        max_gain=args.calibration_max_gain,
+        search_steps=args.calibration_search_steps,
+        lr_numerator=args.lr_numerator,
+        voltage_amp=voltage_amp,
+        current_amp=current_amp,
+    )
+
+
+def _build_rows(args: argparse.Namespace) -> tuple[list[FixedRow], list[dict]]:
+    rows: list[FixedRow] = []
+    calibration_rows: list[dict] = []
+    for conv_depth in _selected_depths(args.conv_depth):
+        arch = ARCHS[conv_depth]
+        for run_name in _selected_runs(args.run_name):
+            voltage_amp, current_amp = RUNS[run_name]
+            cal_args = _calibration_namespace(args, conv_depth, run_name)
+            _set_seed(args.seed)
+            batches = _load_samples(cal_args)
+            _set_seed(args.seed)
+            energy_fn = _build_calibration_energy(cal_args)
+            network = __import__("model.function.network", fromlist=["Network"]).Network(energy_fn)
+            minimizer = _build_calibration_minimizer(energy_fn, network.free_layers(), cal_args)
+            gain, measured, layer_saturations = find_gain(
+                args.target_saturation,
+                energy_fn,
+                network,
+                minimizer,
+                batches,
+                cal_args,
+            )
+            calibration = {
+                "conv_depth": conv_depth,
+                "run_name": run_name,
+                "voltage_amp": voltage_amp,
+                "current_amp": current_amp,
+                "target_saturation": args.target_saturation,
+                "input_gain": float(gain),
+                "measured_saturation": float(measured),
+                "layer_saturations": json.dumps(layer_saturations),
+                "v_off": args.hard_sigmoid_v_off,
+            }
+            calibration_rows.append(calibration)
+            input_gain = float(calibration["input_gain"])
+            old_center = args.lr_numerator / input_gain * arch["lr_multipliers"][run_name]
+            rows.append(
+                FixedRow(
+                    conv_depth=conv_depth,
+                    run_name=run_name,
+                    voltage_amp=voltage_amp,
+                    current_amp=current_amp,
+                    input_gain=input_gain,
+                    measured_saturation=float(calibration["measured_saturation"]),
+                    layer_saturations=str(calibration.get("layer_saturations", "")),
+                    old_center_lr=old_center,
+                    T=arch["T"],
+                    K=arch["K"],
+                    strides=tuple(arch["strides"]),
+                    paddings=tuple(arch["paddings"]),
+                )
+            )
+    return rows, calibration_rows
+
+
+def _diagnostic_row(row: FixedRow, learning_rate: float) -> DiagnosticRow:
+    return DiagnosticRow(
+        label=f"conv{row.conv_depth}_{row.run_name}",
+        conv_depth=row.conv_depth,
+        non_linearity="hard_sigmoid",
+        run_name=row.run_name,
+        voltage_amp=row.voltage_amp,
+        current_amp=row.current_amp,
+        input_gain=row.input_gain,
+        T=row.T,
+        K=row.K,
+        learning_rate=learning_rate,
+        strides=row.strides,
+        paddings=row.paddings,
+    )
+
+
+def _stats(param: object, grad: torch.Tensor) -> dict:
+    state = param.state.detach()
+    grad = grad.detach()
+    param_l2 = float(torch.linalg.vector_norm(state).item())
+    grad_l2 = float(torch.linalg.vector_norm(grad).item())
+    return {
+        "param_l2": param_l2,
+        "grad_l2": grad_l2,
+        "relative_grad": grad_l2 / (param_l2 + EPS),
+        "zero_fraction": float((grad.abs() <= 1e-12).float().mean().item()),
+    }
+
+
+def _candidate_lrs(old_center: float, implied: dict[str, float]) -> list[tuple[str, float]]:
+    candidates: list[tuple[str, float]] = []
+    finite = [value for value in implied.values() if math.isfinite(value) and value > 0]
+    if finite:
+        sorted_vals = sorted(finite)
+        mid = len(sorted_vals) // 2
+        median = sorted_vals[mid] if len(sorted_vals) % 2 else 0.5 * (sorted_vals[mid - 1] + sorted_vals[mid])
+        for factor in DERIVED_FACTORS:
+            candidates.append((f"derived_x{factor:g}", median * factor))
+    for factor in PRIOR_FACTORS:
+        candidates.append((f"old_x{factor:g}", old_center * factor))
+    out: list[tuple[str, float]] = []
+    seen: set[float] = set()
+    for label, lr in sorted(candidates, key=lambda item: item[1]):
+        if not math.isfinite(lr) or lr <= 0:
+            continue
+        key = round(float(lr), 14)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((label, float(lr)))
+    return out
+
+
+def _diagnose_one(row: FixedRow, args: argparse.Namespace, device: torch.device) -> tuple[list[dict], list[dict], dict]:
+    context = _make_context(_diagnostic_row(row, row.old_center_lr), args, device)
+    params = context["params"]
+    images, labels = next(iter(context["train_loader"]))
+    images = images[: args.batch_size].to(device)
+    labels = labels[: args.batch_size].to(device)
+    context["network"].set_input(images, reset=True)
+    context["minimizer_inference"].compute_equilibrium()
+    context["cost_fn"].set_target(labels)
+    base_loss = float(context["cost_fn"].eval().mean().item())
+    base_accuracy = _accuracy(context["cost_fn"])
+    estimator = __import__("training.sgd", fromlist=["Backprop"]).Backprop(
+        params,
+        context["free_layers"],
+        context["cost_fn"],
+        context["minimizer_training"],
+    )
+    grads = estimator.compute_gradient()[: len(params)]
+    base_states = [param.state.detach().clone() for param in params]
+
+    param_rows: list[dict] = []
+    weight_param_sq = 0.0
+    weight_grad_sq = 0.0
+    implied: dict[str, float] = {}
+    conv_seen = 0
+    for index, (param, grad) in enumerate(zip(params, grads)):
+        stats = _stats(param, grad)
+        group = _param_group(param)
+        name = _param_name(param, index)
+        target_q = math.nan
+        metric_key = ""
+        if group == "conv_weight":
+            metric_key = f"conv{conv_seen}"
+            target_q = TARGET_Q["conv0"] if conv_seen == 0 else TARGET_Q["conv_deeper"]
+            conv_seen += 1
+        elif group == "readout_weight":
+            metric_key = "readout"
+            target_q = TARGET_Q["readout"]
+        if group in {"conv_weight", "readout_weight"}:
+            weight_param_sq += stats["param_l2"] ** 2
+            weight_grad_sq += stats["grad_l2"] ** 2
+        implied_lr = target_q / stats["relative_grad"] if stats["relative_grad"] > 0 and math.isfinite(target_q) else math.nan
+        if metric_key:
+            implied[metric_key] = implied_lr
+        param_rows.append(
+            {
+                "conv_depth": row.conv_depth,
+                "run_name": row.run_name,
+                "voltage_amp": row.voltage_amp,
+                "current_amp": row.current_amp,
+                "target_saturation": args.target_saturation,
+                "measured_saturation": row.measured_saturation,
+                "input_gain": row.input_gain,
+                "T": row.T,
+                "K": row.K,
+                "old_center_lr": row.old_center_lr,
+                "param_index": index,
+                "param_name": name,
+                "param_class": param.__class__.__name__,
+                "group": group,
+                "target_q": target_q,
+                "implied_lr": implied_lr,
+                "old_center_q": row.old_center_lr * stats["relative_grad"],
+                **stats,
+            }
+        )
+    global_rel = math.sqrt(weight_grad_sq) / (math.sqrt(weight_param_sq) + EPS)
+    implied["global"] = TARGET_Q["global"] / global_rel if global_rel > 0 else math.nan
+    candidates = _candidate_lrs(row.old_center_lr, implied)
+
+    line_rows: list[dict] = []
+    for lr_label, lr in candidates:
+        for param, base, grad in zip(params, base_states, grads):
+            param.state = base - lr * grad.detach()
+        for param in params:
+            if hasattr(param, "clamp_"):
+                param.clamp_()
+        context["network"].set_input(images, reset=True)
+        try:
+            context["minimizer_inference"].compute_equilibrium()
+            context["cost_fn"].set_target(labels)
+            loss = float(context["cost_fn"].eval().mean().item())
+            acc = _accuracy(context["cost_fn"])
+            status = "ok"
+        except Exception as exc:  # noqa: BLE001 - diagnostic records failures.
+            loss = math.nan
+            acc = math.nan
+            status = f"failed:{type(exc).__name__}:{exc}"
+        line_rows.append(
+            {
+                "conv_depth": row.conv_depth,
+                "run_name": row.run_name,
+                "voltage_amp": row.voltage_amp,
+                "current_amp": row.current_amp,
+                "input_gain": row.input_gain,
+                "T": row.T,
+                "K": row.K,
+                "target_saturation": args.target_saturation,
+                "measured_saturation": row.measured_saturation,
+                "lr_label": lr_label,
+                "learning_rate": lr,
+                "base_loss": base_loss,
+                "loss": loss,
+                "loss_delta": loss - base_loss if math.isfinite(loss) else math.nan,
+                "base_accuracy": base_accuracy,
+                "accuracy": acc,
+                "status": status,
+            }
+        )
+    for param, base in zip(params, base_states):
+        param.state = base
+
+    finite_lines = [line for line in line_rows if math.isfinite(_finite_float(line["loss"]))]
+    best_line = min(finite_lines, key=lambda line: line["loss"]) if finite_lines else {}
+    summary = {
+        "conv_depth": row.conv_depth,
+        "run_name": row.run_name,
+        "voltage_amp": row.voltage_amp,
+        "current_amp": row.current_amp,
+        "target_saturation": args.target_saturation,
+        "measured_saturation": row.measured_saturation,
+        "layer_saturations": row.layer_saturations,
+        "input_gain": row.input_gain,
+        "T": row.T,
+        "K": row.K,
+        "strides": ",".join(str(value) for value in row.strides),
+        "paddings": ",".join(str(value) for value in row.paddings),
+        "old_center_lr": row.old_center_lr,
+        "base_loss": base_loss,
+        "base_accuracy": base_accuracy,
+        "global_relative_grad": global_rel,
+        "old_center_global_q": row.old_center_lr * global_rel,
+        "implied_lr_global": implied.get("global", math.nan),
+        "implied_lr_conv0": implied.get("conv0", math.nan),
+        "implied_lr_conv1": implied.get("conv1", math.nan),
+        "implied_lr_conv2": implied.get("conv2", math.nan),
+        "implied_lr_readout": implied.get("readout", math.nan),
+        "best_line_label": best_line.get("lr_label", ""),
+        "best_line_lr": best_line.get("learning_rate", math.nan),
+        "best_line_loss_delta": best_line.get("loss_delta", math.nan),
+        "loss_delta_old_center": next(
+            (line["loss_delta"] for line in line_rows if line["lr_label"] == "old_x1"),
+            math.nan,
+        ),
+    }
+    return param_rows, line_rows, summary
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", default=str(REPO_ROOT / "results" / "mnist_bp_conv_hs_fixed_lr_diagnostic"))
+    parser.add_argument("--dataset-root", default=str(REPO_ROOT / "data"))
+    parser.add_argument("--device", default=None)
+    parser.add_argument("--calibration-device", default=None)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--conv-depth", type=int, nargs="+", default=None)
+    parser.add_argument("--run-name", nargs="+", default=None)
+    parser.add_argument("--target-saturation", type=float, default=0.50)
+    parser.add_argument("--saturation-scope", choices=("first_hidden", "all_hidden"), default="first_hidden")
+    parser.add_argument("--hard-sigmoid-v-off", type=float, default=4.0)
+    parser.add_argument("--hard-sigmoid-g-on", type=float, default=100.0)
+    parser.add_argument("--hard-sigmoid-g-off", type=float, default=0.0)
+    parser.add_argument("--lr-numerator", type=float, default=1.44)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--num-calibration-samples", type=int, default=256)
+    parser.add_argument("--calibration-batch-size", type=int, default=64)
+    parser.add_argument("--calibration-initial-hi", type=float, default=64.0)
+    parser.add_argument("--calibration-max-gain", type=float, default=8192.0)
+    parser.add_argument("--calibration-search-steps", type=int, default=24)
+    parser.add_argument("--minimizer-config", default=str(REPO_ROOT / "labs" / "configs" / "mnist_minimizer_fixed_iterations.json"))
+    parser.add_argument("--no-download", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    args.dataset_root = str(Path(args.dataset_root).expanduser())
+    args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
+    args.calibration_minimizer_config_data = _load_calibration_minimizer_config(args.minimizer_config)
+    if args.minimizer_config_data.get("adaptive_equilibrium") is not False:
+        raise SystemExit("Expected minimizer adaptive_equilibrium=false.")
+    output_root = Path(args.output_root).expanduser().resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    rows, calibration_rows = _build_rows(args)
+    (output_root / "fixed_rows.json").write_text(json.dumps([asdict(row) for row in rows], indent=2) + "\n")
+    _write_csv(output_root / "calibration.csv", calibration_rows)
+    print(f"[fixed-lr] rows={len(rows)} device={device} output={output_root}", flush=True)
+    if args.dry_run:
+        for row in rows:
+            print(f"[dry-run] {row}", flush=True)
+        return
+    param_rows: list[dict] = []
+    line_rows: list[dict] = []
+    summary_rows: list[dict] = []
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"[row] {index}/{len(rows)} conv{row.conv_depth} {row.run_name} "
+            f"gain={row.input_gain:.6g} old_lr={row.old_center_lr:.6g}",
+            flush=True,
+        )
+        p_rows, l_rows, summary = _diagnose_one(row, args, device)
+        param_rows.extend(p_rows)
+        line_rows.extend(l_rows)
+        summary_rows.append(summary)
+        _write_csv(output_root / "param_update_ratios.csv", param_rows)
+        _write_csv(output_root / "line_scan.csv", line_rows)
+        _write_csv(output_root / "summary.csv", summary_rows)
+        print(
+            f"[summary] conv{row.conv_depth} {row.run_name} old_global_q="
+            f"{summary['old_center_global_q']:.3g} implied_global="
+            f"{summary['implied_lr_global']:.3g} best_line={summary['best_line_lr']:.3g} "
+            f"loss_delta_old={summary['loss_delta_old_center']:.3g}",
+            flush=True,
+        )
+    print(f"[done] wrote {output_root}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

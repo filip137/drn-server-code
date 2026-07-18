@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 import json
+import math
 import os
 import random
 import socket
@@ -37,7 +38,7 @@ from custom_classes import (
 )  # noqa: E402
 from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer, MinimizerSettings  # noqa: E402
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
-from model.function.interaction import scalar_float  # noqa: E402
+from model.function.interaction import load_function_checkpoint_states, scalar_float  # noqa: E402
 from model.function.network import Network  # noqa: E402
 from model.variable.layer import Layer  # noqa: E402
 from model.variable.parameter import ConvWeight  # noqa: E402
@@ -89,13 +90,12 @@ def _param_schema(params):
 
 
 def _checkpoint_to_npz(checkpoint_path, npz_path, param_schema, metadata):
-    tensors = torch.load(checkpoint_path, map_location="cpu")
-    if not isinstance(tensors, (list, tuple)):
-        raise ValueError(f"Expected checkpoint to contain a list/tuple of tensors: {checkpoint_path}")
-    if len(tensors) != len(param_schema):
-        raise ValueError(
-            f"Expected {len(param_schema)} tensors in checkpoint {checkpoint_path}; got {len(tensors)}."
-        )
+    params = [param for _, param in param_schema]
+    tensors, checkpoint_source_format = load_function_checkpoint_states(
+        checkpoint_path,
+        params,
+        map_location="cpu",
+    )
 
     arrays = {}
     names = []
@@ -109,8 +109,9 @@ def _checkpoint_to_npz(checkpoint_path, npz_path, param_schema, metadata):
 
     arrays["param_names"] = np.asarray(names)
     arrays["param_types"] = np.asarray(types)
-    arrays["param_shapes_json"] = np.asarray(json.dumps(shapes))
-    arrays["metadata_json"] = np.asarray(json.dumps(metadata, sort_keys=True))
+    arrays["param_shapes_json"] = np.asarray(json.dumps(shapes, allow_nan=False))
+    metadata = {**metadata, "checkpoint_source_format": checkpoint_source_format}
+    arrays["metadata_json"] = np.asarray(json.dumps(metadata, sort_keys=True, allow_nan=False))
     target = Path(npz_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     np.savez(target, **arrays)
@@ -173,6 +174,231 @@ def _json_sanitize(value):
     if isinstance(value, (list, tuple)):
         return [_json_sanitize(item) for item in value]
     return value
+
+
+class NonFiniteTrainingError(FloatingPointError):
+    """Raised as soon as a non-finite training value is observed."""
+
+
+BATCH_STATE_POLICIES = ("reset_each_batch", "carry_within_epoch")
+
+
+def _resolve_batch_state_policy(config, explicit_policy=None):
+    training_cfg = config.get("training", {})
+    configured_policy = training_cfg.get("batch_state_policy") if isinstance(training_cfg, dict) else None
+    policy = explicit_policy
+    if policy is None:
+        policy = config.get("batch_state_policy")
+    if policy is None:
+        policy = configured_policy
+    if policy is None:
+        policy = "reset_each_batch"
+    policy = str(policy).strip().lower()
+    if policy not in BATCH_STATE_POLICIES:
+        raise ValueError(
+            f"Expected batch_state_policy to be one of {BATCH_STATE_POLICIES}. "
+            f"Provided value: {policy!r}."
+        )
+    return policy
+
+
+def _batch_reset_flag(batch_state_policy, batch_index):
+    return batch_state_policy == "reset_each_batch" or int(batch_index) == 0
+
+
+def _resolve_optimizer_settings(config, *, optimizer_name=None, momentum=None, weight_decay=None):
+    """Resolve explicit optimizer science and reject argument/config drift."""
+
+    optimizer_cfg = config.get("optimizer")
+    if optimizer_cfg is None:
+        optimizer_cfg = {}
+    if not isinstance(optimizer_cfg, dict):
+        raise ValueError(
+            "Expected config['optimizer'] to be an object with explicit name, momentum, and "
+            f"weight_decay fields. Provided value: {optimizer_cfg!r}."
+        )
+
+    configured_name = optimizer_cfg.get("name")
+    if optimizer_name is None:
+        optimizer_name = configured_name
+    elif configured_name is not None and optimizer_name != configured_name:
+        raise ValueError(
+            "Expected optimizer_name to equal config['optimizer']['name']. "
+            f"Provided values: optimizer_name={optimizer_name!r}, configured={configured_name!r}."
+        )
+    if optimizer_name != "SGD":
+        raise ValueError(
+            "Expected optimizer name to be exactly 'SGD' for this training backend. "
+            f"Provided value: {optimizer_name!r}."
+        )
+
+    resolved = {}
+    for field, explicit in (("momentum", momentum), ("weight_decay", weight_decay)):
+        configured = optimizer_cfg.get(field)
+        if explicit is None:
+            explicit = configured
+        elif configured is not None:
+            configured_value = _require_finite_scalar(configured, f"configured optimizer {field}")
+            explicit_value = _require_finite_scalar(explicit, f"optimizer {field}")
+            if explicit_value != configured_value:
+                raise ValueError(
+                    f"Expected {field} to equal config['optimizer'][{field!r}]. "
+                    f"Provided values: argument={explicit_value!r}, configured={configured_value!r}."
+                )
+        if explicit is None:
+            raise ValueError(
+                f"Expected optimizer {field} to be supplied explicitly or in config['optimizer']. "
+                f"Provided value: {explicit!r}."
+            )
+        resolved[field] = _require_finite_scalar(explicit, f"optimizer {field}")
+
+    if not 0.0 <= resolved["momentum"] < 1.0:
+        raise ValueError(
+            "Expected optimizer momentum to be in [0, 1). "
+            f"Provided value: {resolved['momentum']!r}."
+        )
+    if resolved["weight_decay"] < 0.0:
+        raise ValueError(
+            "Expected optimizer weight_decay to be non-negative. "
+            f"Provided value: {resolved['weight_decay']!r}."
+        )
+    return "SGD", resolved["momentum"], resolved["weight_decay"]
+
+
+def _validate_optimizer_rate_consistency(config, learning_rates, lr_decay):
+    """Ensure canonical arguments and generated optimizer config agree exactly."""
+
+    optimizer_cfg = config.get("optimizer", {})
+    configured_rates = optimizer_cfg.get("learning_rate") if isinstance(optimizer_cfg, dict) else None
+    if configured_rates is not None:
+        if not isinstance(configured_rates, (list, tuple)):
+            raise ValueError(
+                "Expected config['optimizer']['learning_rate'] to be an explicit vector. "
+                f"Provided value: {configured_rates!r}."
+            )
+        normalized = [
+            _require_finite_scalar(value, f"configured learning rate {index}")
+            for index, value in enumerate(configured_rates)
+        ]
+        if normalized != list(learning_rates):
+            raise ValueError(
+                "Expected supplied learning rates to equal config['optimizer']['learning_rate']. "
+                f"Provided values: supplied={list(learning_rates)!r}, configured={normalized!r}."
+            )
+    configured_decay = optimizer_cfg.get("lr_decay") if isinstance(optimizer_cfg, dict) else None
+    if configured_decay is not None:
+        configured_decay = _require_finite_scalar(configured_decay, "configured optimizer lr_decay")
+        if configured_decay != lr_decay:
+            raise ValueError(
+                "Expected supplied lr_decay to equal config['optimizer']['lr_decay']. "
+                f"Provided values: supplied={lr_decay!r}, configured={configured_decay!r}."
+            )
+
+
+def _require_finite_tensor(value, label, *, epoch=None, batch=None):
+    location = []
+    if epoch is not None:
+        location.append(f"epoch={epoch}")
+    if batch is not None:
+        location.append(f"batch={batch}")
+    where = f" at {', '.join(location)}" if location else ""
+    if not torch.is_tensor(value):
+        raise TypeError(
+            f"Expected {label} to be a torch.Tensor{where}. "
+            f"Provided value: {type(value).__name__}."
+        )
+    if not bool(torch.isfinite(value).all().item()):
+        nonfinite = int((~torch.isfinite(value)).sum().item())
+        raise NonFiniteTrainingError(
+            f"Expected {label} to contain only finite values{where}. "
+            f"Provided value: tensor with {nonfinite} non-finite element(s)."
+        )
+
+
+def _require_finite_scalar(value, label, *, epoch=None, batch=None):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Expected {label} to be numeric. Provided value: {value!r}."
+        ) from exc
+    if not math.isfinite(numeric):
+        location = []
+        if epoch is not None:
+            location.append(f"epoch={epoch}")
+        if batch is not None:
+            location.append(f"batch={batch}")
+        where = f" at {', '.join(location)}" if location else ""
+        raise NonFiniteTrainingError(
+            f"Expected {label} to be finite{where}. Provided value: {value!r}."
+        )
+    return numeric
+
+
+def _require_finite_variables(variables, label, *, epoch=None, batch=None):
+    for index, variable in enumerate(variables):
+        name = getattr(variable, "name", index)
+        _require_finite_tensor(
+            variable.state,
+            f"{label} {name!r}",
+            epoch=epoch,
+            batch=batch,
+        )
+
+
+def _write_json(path, payload):
+    serialized = json.dumps(_json_sanitize(payload), indent=2, allow_nan=False)
+    Path(path).write_text(serialized)
+
+
+def _checkpoint_best_then_callback(
+    *,
+    energy_fn,
+    best_model_path,
+    epoch,
+    train_loss,
+    train_accuracy,
+    test_loss,
+    test_accuracy,
+    best_accuracy,
+    best_epoch,
+    optimizer,
+    history,
+    epoch_callback,
+):
+    """Persist a new best epoch before exposing that epoch to a callback."""
+    candidate = test_accuracy if test_accuracy is not None else train_accuracy
+    is_best = candidate > best_accuracy
+    if is_best:
+        best_accuracy = float(candidate)
+        best_epoch = int(epoch)
+        energy_fn.save(best_model_path)
+        checkpoint_params = getattr(energy_fn, "_params", None)
+        if checkpoint_params is None:
+            checkpoint_params = energy_fn.params()
+        load_function_checkpoint_states(
+            best_model_path,
+            checkpoint_params,
+            map_location="cpu",
+        )
+
+    history["learning_rate"].append(
+        [float(group["lr"]) for group in optimizer.param_groups]
+    )
+    should_stop = False
+    if epoch_callback:
+        epoch_info = {
+            "epoch": int(epoch),
+            "train_loss": train_loss,
+            "train_accuracy": train_accuracy,
+            "test_loss": test_loss,
+            "test_accuracy": test_accuracy,
+            "is_best": is_best,
+            "best_epoch": best_epoch,
+            "best_accuracy": best_accuracy,
+        }
+        should_stop = bool(epoch_callback(epoch_info, history))
+    return best_accuracy, best_epoch, should_stop
 
 
 def _default_quadratic_params():
@@ -396,7 +622,7 @@ def _single_conv_gradient_check(device):
         iv_data=None,
         iv_data_path=None,
         double_diode_updater="CustomExponentialDoubleDiodeUpdater",
-        adaptive_equilibrium=True,
+        adaptive_equilibrium=False,
         overrelaxation_factor=1.1,
         single_diode_updater="custom",
         minimizer_settings=_sanity_check_minimizer_settings(),
@@ -451,8 +677,10 @@ def _resolve_dataset_config(config, dataset_key):
             params["root"] = "~/datasets/fashion_mnist"
         params.setdefault("download", True)
         params.setdefault("normalize", True)
-        params.setdefault("normalize_mean", 0.286)
-        params.setdefault("normalize_std", 0.353)
+        # MNIST's inherited statistics are invalid for Fashion-MNIST. A
+        # dataset-specific entry above can still explicitly override these.
+        params["normalize_mean"] = 0.2860
+        params["normalize_std"] = 0.3530
         dataset_cfg["params"] = params
         return normalized, dataset_cfg
 
@@ -514,6 +742,10 @@ def _train_image_task(
     lr_decay=None,
     init_checkpoint_path=None,
     max_test_batches=None,
+    batch_state_policy=None,
+    optimizer_name=None,
+    momentum=None,
+    weight_decay=None,
 ):
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
@@ -523,9 +755,19 @@ def _train_image_task(
     dataset_key = _normalize_dataset_key(dataset_key)
     run_dir, host, timestamp = _resolve_run_dir(config_path, output_dir)
     config_snapshot_path = run_dir / "config.used.json"
-    config_snapshot_path.write_text(json.dumps(config, indent=2))
+    _write_json(config_snapshot_path, config)
+    batch_state_policy = _resolve_batch_state_policy(config, batch_state_policy)
+    epochs = int(epochs)
+    if epochs <= 0:
+        raise ValueError(f"Expected epochs to be a positive integer. Provided value: {epochs!r}.")
     training_algorithm = _normalize_training_algorithm(
         training_algorithm if training_algorithm is not None else config.get("training_algorithm")
+    )
+    optimizer_name_value, momentum_value, weight_decay_value = _resolve_optimizer_settings(
+        config,
+        optimizer_name=optimizer_name,
+        momentum=momentum,
+        weight_decay=weight_decay,
     )
 
     project_root = PROJECT_ROOT
@@ -575,12 +817,36 @@ def _train_image_task(
         beta_value = config.get("beta")
         if beta_value is None:
             beta_value = max(model_cfg.get("nudging", 0.0), 1e-3)
-    beta_value = float(beta_value)
+    beta_value = _require_finite_scalar(beta_value, "beta")
+    optimizer_cfg = config.get("optimizer", {})
+    optimizer_lr_decay = optimizer_cfg.get("lr_decay") if isinstance(optimizer_cfg, dict) else None
+    top_level_lr_decay = config.get("lr_decay")
+    if optimizer_lr_decay is not None and top_level_lr_decay is not None:
+        if _require_finite_scalar(optimizer_lr_decay, "configured optimizer lr_decay") != _require_finite_scalar(
+            top_level_lr_decay, "configured top-level lr_decay"
+        ):
+            raise ValueError(
+                "Expected config['optimizer']['lr_decay'] to equal config['lr_decay']. "
+                f"Provided values: optimizer={optimizer_lr_decay!r}, top-level={top_level_lr_decay!r}."
+            )
     lr_decay_value = lr_decay
     if lr_decay_value is None:
-        optimizer_cfg = config.get("optimizer", {})
-        lr_decay_value = optimizer_cfg.get("lr_decay", config.get("lr_decay", 1.0))
-    lr_decay_value = 1.0 if lr_decay_value is None else float(lr_decay_value)
+        lr_decay_value = optimizer_lr_decay
+    if lr_decay_value is None:
+        lr_decay_value = top_level_lr_decay
+    lr_decay_value = 1.0 if lr_decay_value is None else _require_finite_scalar(
+        lr_decay_value,
+        "lr_decay",
+    )
+    for source, configured in (
+        ("config['optimizer']['lr_decay']", optimizer_lr_decay),
+        ("config['lr_decay']", top_level_lr_decay),
+    ):
+        if configured is not None and _require_finite_scalar(configured, source) != lr_decay_value:
+            raise ValueError(
+                f"Expected supplied lr_decay to equal {source}. "
+                f"Provided values: supplied={lr_decay_value!r}, configured={configured!r}."
+            )
     if lr_decay_value <= 0.0:
         raise ValueError(f"Expected positive lr_decay, got {lr_decay_value}.")
 
@@ -640,6 +906,8 @@ def _train_image_task(
         amplification_max=model_cfg.get("amplification_max"),
     )
     energy_fn.set_device(device)
+    _require_finite_scalar(scalar_float(energy_fn._voltage_amp), "initial voltage amplification")
+    _require_finite_scalar(scalar_float(energy_fn._current_amp), "initial current amplification")
     init_checkpoint_value = (
         init_checkpoint_path
         if init_checkpoint_path is not None
@@ -657,6 +925,7 @@ def _train_image_task(
         init_checkpoint_path = None
     checkpoint_params = getattr(energy_fn, "_params", energy_fn.params())
     param_schema = _param_schema(checkpoint_params)
+    _require_finite_variables(checkpoint_params, "initial parameter")
 
     network = Network(energy_fn)
     free_layers = network.free_layers()
@@ -739,10 +1008,21 @@ def _train_image_task(
             raise ValueError(
                 f"Expected {len(energy_params) + len(cost_params)} learning rates, got {len(lr)}."
             )
-        learning_rates = list(lr)
+        learning_rates = [
+            _require_finite_scalar(value, f"learning rate {index}")
+            for index, value in enumerate(lr)
+        ]
     else:
-        learning_rates = [lr] * (len(energy_params) + len(cost_params))
-    optimizer = Optimizer(energy_fn, cost_fn, learning_rates, momentum=0.0, weight_decay=0.0)
+        learning_rate = _require_finite_scalar(lr, "learning rate")
+        learning_rates = [learning_rate] * (len(energy_params) + len(cost_params))
+    _validate_optimizer_rate_consistency(config, learning_rates, lr_decay_value)
+    optimizer = Optimizer(
+        energy_fn,
+        cost_fn,
+        learning_rates,
+        momentum=momentum_value,
+        weight_decay=weight_decay_value,
+    )
 
     history = {
         "loss": [],
@@ -786,17 +1066,18 @@ def _train_image_task(
             "num_classes": num_classes,
         },
         "optimizer": {
-            "name": "SGD",
+            "name": optimizer_name_value,
             "learning_rate": list(learning_rates),
             "lr_decay": lr_decay_value,
-            "momentum": 0.0,
-            "weight_decay": 0.0,
+            "momentum": momentum_value,
+            "weight_decay": weight_decay_value,
         },
         "training": {
             "epochs": int(epochs),
             "batch_size": int(dataset_params.get("batch_size")),
             "max_batches": max_batches,
             "max_test_batches": max_test_batches,
+            "batch_state_policy": batch_state_policy,
             "num_iterations_training": training_iterations,
             "num_iterations_inference": inference_iterations,
             "beta": beta_value,
@@ -824,7 +1105,7 @@ def _train_image_task(
         },
     }
     config_json_path = run_dir / "config.json"
-    config_json_path.write_text(json.dumps(_json_sanitize(resolved_run_config), indent=2))
+    _write_json(config_json_path, resolved_run_config)
 
     best_test_accuracy = float("-inf")
     best_epoch = None
@@ -834,7 +1115,6 @@ def _train_image_task(
         running_loss = 0.0
         running_correct = 0
         seen = 0
-        reset_flag = True
         train_total_batches = len(train_loader)
         train_batches_this_epoch = (
             min(train_total_batches, int(max_batches))
@@ -848,13 +1128,39 @@ def _train_image_task(
             optimizer.zero_grad()
             images = images.to(device)
             labels = labels.to(device)
+            _require_finite_tensor(
+                images,
+                "training input",
+                epoch=epoch + 1,
+                batch=batch_idx + 1,
+            )
 
-            network.set_input(images, reset=reset_flag)
-            reset_flag = False
+            network.set_input(
+                images,
+                reset=_batch_reset_flag(batch_state_policy, batch_idx),
+            )
             minimizer_inference.compute_equilibrium()
+            _require_finite_variables(
+                free_layers,
+                "inference layer",
+                epoch=epoch + 1,
+                batch=batch_idx + 1,
+            )
             cost_fn.set_target(labels)
 
-            batch_loss = cost_fn.eval().mean().item()
+            batch_cost = cost_fn.eval()
+            _require_finite_tensor(
+                batch_cost,
+                "training cost",
+                epoch=epoch + 1,
+                batch=batch_idx + 1,
+            )
+            batch_loss = _require_finite_scalar(
+                batch_cost.mean().item(),
+                "training batch loss",
+                epoch=epoch + 1,
+                batch=batch_idx + 1,
+            )
             errors = cost_fn.error_fn()
             batch_correct = int((~errors).sum().item())
 
@@ -863,11 +1169,40 @@ def _train_image_task(
             seen += images.size(0)
 
             grads = estimator.compute_gradient()
-            for param, grad in zip(params, grads[:len(params)]):
+            if len(grads) < len(params):
+                raise RuntimeError(
+                    f"Expected at least {len(params)} parameter gradients at epoch={epoch + 1}, "
+                    f"batch={batch_idx + 1}. Provided value: {len(grads)}."
+                )
+            for param_index, (param, grad) in enumerate(zip(params, grads[:len(params)])):
+                _require_finite_tensor(
+                    grad,
+                    f"gradient {getattr(param, 'name', param_index)!r}",
+                    epoch=epoch + 1,
+                    batch=batch_idx + 1,
+                )
+                if tuple(grad.shape) != tuple(param.state.shape):
+                    raise RuntimeError(
+                        f"Expected gradient {param_index} to have shape {tuple(param.state.shape)} "
+                        f"at epoch={epoch + 1}, batch={batch_idx + 1}. "
+                        f"Provided value: {tuple(grad.shape)}."
+                    )
                 param.state.grad = grad
             optimizer.step()
+            _require_finite_variables(
+                energy_params + cost_params,
+                "optimizer-updated parameter",
+                epoch=epoch + 1,
+                batch=batch_idx + 1,
+            )
             for param in energy_params:
                 param.clamp_()
+            _require_finite_variables(
+                energy_params + cost_params,
+                "clamped parameter",
+                epoch=epoch + 1,
+                batch=batch_idx + 1,
+            )
 
             acc = running_correct / seen
             avg_loss = running_loss / seen
@@ -878,12 +1213,21 @@ def _train_image_task(
                     flush=True,
                 )
 
-        if seen:
-            epoch_train_loss = running_loss / seen
-            epoch_train_acc = running_correct / seen
-        else:
-            epoch_train_loss = float("nan")
-            epoch_train_acc = float("nan")
+        if not seen:
+            raise RuntimeError(
+                f"Expected the training loader to yield at least one example in epoch {epoch + 1}. "
+                "Provided value: 0 examples."
+            )
+        epoch_train_loss = _require_finite_scalar(
+            running_loss / seen,
+            "epoch training loss",
+            epoch=epoch + 1,
+        )
+        epoch_train_acc = _require_finite_scalar(
+            running_correct / seen,
+            "epoch training accuracy",
+            epoch=epoch + 1,
+        )
         history["loss"].append(epoch_train_loss)
         history["accuracy"].append(epoch_train_acc)
 
@@ -903,10 +1247,34 @@ def _train_image_task(
                     break
                 images = images.to(device)
                 labels = labels.to(device)
+                _require_finite_tensor(
+                    images,
+                    "test input",
+                    epoch=epoch + 1,
+                    batch=test_batch_idx + 1,
+                )
                 network.set_input(images, reset=True)
                 minimizer_inference.compute_equilibrium()
+                _require_finite_variables(
+                    free_layers,
+                    "test inference layer",
+                    epoch=epoch + 1,
+                    batch=test_batch_idx + 1,
+                )
                 cost_fn.set_target(labels)
-                batch_loss = cost_fn.eval().mean().item()
+                batch_cost = cost_fn.eval()
+                _require_finite_tensor(
+                    batch_cost,
+                    "test cost",
+                    epoch=epoch + 1,
+                    batch=test_batch_idx + 1,
+                )
+                batch_loss = _require_finite_scalar(
+                    batch_cost.mean().item(),
+                    "test batch loss",
+                    epoch=epoch + 1,
+                    batch=test_batch_idx + 1,
+                )
                 errors = cost_fn.error_fn()
                 batch_correct = int((~errors).sum().item())
                 test_running_loss += batch_loss * images.size(0)
@@ -920,8 +1288,21 @@ def _train_image_task(
                         f"[Test] Epoch {epoch+1}/{epochs} | Batch {test_batch_idx+1}/{test_total_batches} | running loss={avg_loss:.4f} acc={acc*100:.2f}%",
                         flush=True,
                     )
-            epoch_test_loss = test_running_loss / test_seen if test_seen else float("nan")
-            epoch_test_acc = test_correct / test_seen if test_seen else float("nan")
+            if not test_seen:
+                raise RuntimeError(
+                    f"Expected the test loader to yield at least one example in epoch {epoch + 1}. "
+                    "Provided value: 0 examples."
+                )
+            epoch_test_loss = _require_finite_scalar(
+                test_running_loss / test_seen,
+                "epoch test loss",
+                epoch=epoch + 1,
+            )
+            epoch_test_acc = _require_finite_scalar(
+                test_correct / test_seen,
+                "epoch test accuracy",
+                epoch=epoch + 1,
+            )
             history["test_loss"].append(epoch_test_loss)
             history["test_accuracy"].append(epoch_test_acc)
         else:
@@ -940,26 +1321,24 @@ def _train_image_task(
                 writer.add_scalar("test/error", 1.0 - epoch_test_acc, epoch + 1)
             writer.flush()
 
-        if epoch_callback:
-            epoch_info = {
-                "epoch": epoch + 1,
-                "train_loss": epoch_train_loss,
-                "train_accuracy": epoch_train_acc,
-                "test_loss": epoch_test_loss,
-                "test_accuracy": epoch_test_acc,
-            }
-            should_stop = epoch_callback(epoch_info, history)
-            if should_stop:
-                stop_training = True
-                break
+        best_test_accuracy, best_epoch, should_stop = _checkpoint_best_then_callback(
+            energy_fn=energy_fn,
+            best_model_path=best_model_path,
+            epoch=epoch + 1,
+            train_loss=epoch_train_loss,
+            train_accuracy=epoch_train_acc,
+            test_loss=epoch_test_loss,
+            test_accuracy=epoch_test_acc,
+            best_accuracy=best_test_accuracy,
+            best_epoch=best_epoch,
+            optimizer=optimizer,
+            history=history,
+            epoch_callback=epoch_callback,
+        )
+        if should_stop:
+            stop_training = True
+            break
 
-        best_candidate = epoch_test_acc if epoch_test_acc is not None else epoch_train_acc
-        if best_candidate is not None and np.isfinite(best_candidate) and best_candidate > best_test_accuracy:
-            best_test_accuracy = float(best_candidate)
-            best_epoch = epoch + 1
-            energy_fn.save(best_model_path)
-
-        history["learning_rate"].append([float(group["lr"]) for group in optimizer.param_groups])
         if lr_decay_value != 1.0 and epoch + 1 < epochs:
             for group in optimizer.param_groups:
                 group["lr"] *= lr_decay_value
@@ -977,19 +1356,25 @@ def _train_image_task(
     }
     if history["test_accuracy"]:
         summary["final_test_accuracy"] = history["test_accuracy"][-1]
-        summary["best_test_accuracy"] = max(history["test_accuracy"])
-        summary["best_epoch"] = int(np.argmax(history["test_accuracy"]) + 1)
+        summary["best_test_accuracy"] = best_test_accuracy
+        summary["best_epoch"] = best_epoch
         summary["final_test_loss"] = history["test_loss"][-1]
         summary["test_error"] = 1.0 - summary["final_test_accuracy"]
     else:
         summary["best_epoch"] = best_epoch
         summary["test_error"] = 1.0 - summary["final_train_accuracy"]
 
+    _require_finite_variables(energy_params + cost_params, "final parameter")
     final_model_path = run_dir / "final_model.pt"
     energy_fn.save(final_model_path)
     if not best_model_path.exists():
         best_model_path = run_dir / "best_model.pt"
         energy_fn.save(best_model_path)
+        load_function_checkpoint_states(
+            best_model_path,
+            checkpoint_params,
+            map_location="cpu",
+        )
         best_epoch = len(history["accuracy"]) if history["accuracy"] else None
         if history["test_accuracy"]:
             best_test_accuracy = history["test_accuracy"][-1]
@@ -1003,7 +1388,8 @@ def _train_image_task(
         "layer_shapes": [list(shape) for shape in layer_shapes],
         "non_linearity": model_cfg["non_linearity"],
         "training_algorithm": training_algorithm,
-        "checkpoint_format": "torch list of DRN parameter tensors in param_names order",
+        "checkpoint_format": "versioned DRN function checkpoint with exact ordered parameter schema",
+        "batch_state_policy": batch_state_policy,
     }
     weights_final_path = run_dir / "weights_final.npz"
     weights_best_path = run_dir / "weights_best.npz"
@@ -1012,11 +1398,16 @@ def _train_image_task(
     history_paths = _save_history_arrays(run_dir, history)
     learned_hard_sigmoid_v_off = _hard_sigmoid_v_off_values(energy_fn)
     learned_amplification = _amplification_values(energy_fn)
+    for name, value in learned_hard_sigmoid_v_off.items():
+        _require_finite_scalar(value, f"learned hard-sigmoid parameter {name!r}")
+    for name, value in learned_amplification.items():
+        _require_finite_scalar(value, f"learned amplification {name!r}")
 
     metrics = {
         "run_dir": str(run_dir),
         "training_algorithm": training_algorithm,
         "seed": seed_value,
+        "batch_state_policy": batch_state_policy,
         "voltage_amp": float(model_cfg["voltage_amp"]),
         "current_amp": float(model_cfg["current_amp"]),
         "best_epoch": summary.get("best_epoch", best_epoch),
@@ -1028,6 +1419,11 @@ def _train_image_task(
         "final_test_loss": summary.get("final_test_loss"),
         "test_error": summary.get("test_error"),
         "lr_decay": lr_decay_value,
+        "optimizer": {
+            "name": optimizer_name_value,
+            "momentum": momentum_value,
+            "weight_decay": weight_decay_value,
+        },
         "final_learning_rate": [float(group["lr"]) for group in optimizer.param_groups],
         "checkpoint_path": str(final_model_path),
         "best_checkpoint_path": str(best_model_path),
@@ -1039,7 +1435,7 @@ def _train_image_task(
         "learned_amplification": learned_amplification,
     }
     metrics_path = run_dir / "metrics.json"
-    metrics_path.write_text(json.dumps(metrics, indent=2))
+    _write_json(metrics_path, metrics)
 
     if writer is not None:
         writer.close()
@@ -1053,8 +1449,14 @@ def _train_image_task(
         "epochs": int(epochs),
         "lr": list(lr) if isinstance(lr, (list, tuple)) else float(lr),
         "lr_decay": lr_decay_value,
+        "optimizer": {
+            "name": optimizer_name_value,
+            "momentum": momentum_value,
+            "weight_decay": weight_decay_value,
+        },
         "beta": beta_value,
         "training_algorithm": training_algorithm,
+        "batch_state_policy": batch_state_policy,
         "seed": seed_value,
         "dataset_key": dataset_key,
         "model_key": model_key,
@@ -1067,7 +1469,7 @@ def _train_image_task(
         "learned_amplification": learned_amplification,
     }
     metadata_path = run_dir / "run_metadata.json"
-    metadata_path.write_text(json.dumps(metadata, indent=2))
+    _write_json(metadata_path, metadata)
 
     summary["run_dir"] = str(run_dir)
     summary["event_files"] = event_files
@@ -1105,6 +1507,10 @@ def train_mnist_conv(
     seed=None,
     lr_decay=None,
     init_checkpoint_path=None,
+    batch_state_policy=None,
+    optimizer_name=None,
+    momentum=None,
+    weight_decay=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1125,6 +1531,10 @@ def train_mnist_conv(
         seed=seed,
         lr_decay=lr_decay,
         init_checkpoint_path=init_checkpoint_path,
+        batch_state_policy=batch_state_policy,
+        optimizer_name=optimizer_name,
+        momentum=momentum,
+        weight_decay=weight_decay,
     )
 
 
@@ -1143,6 +1553,7 @@ def train_tiny_grid(
     seed=None,
     lr_decay=None,
     init_checkpoint_path=None,
+    batch_state_policy=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1162,6 +1573,7 @@ def train_tiny_grid(
         seed=seed,
         lr_decay=lr_decay,
         init_checkpoint_path=init_checkpoint_path,
+        batch_state_policy=batch_state_policy,
     )
 
 
@@ -1350,7 +1762,7 @@ def main():
         }
         result_path = Path(args.result_json)
         result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(json.dumps(result_payload, indent=2))
+        _write_json(result_path, result_payload)
         print(f"Wrote Optuna summary to {result_path}")
 
 

@@ -8,6 +8,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+from model.function.interaction import load_function_checkpoint_artifact
 from model.resistive.interaction import BasePoolResistive
 from training.epoch import Trainer, Evaluator
 from training.statistics import (
@@ -327,17 +328,21 @@ class ResidualCurrentEvaluator(Evaluator):
 
 
 def export_pt_to_npz(pt_path, npz_path: Optional[Path] = None, param_names=None):
-    """Convert a saved model.pt (list of tensors) into a NumPy .npz bundle."""
+    """Convert a validated versioned or historical model checkpoint to NumPy."""
     import numpy as np
 
     pt_path = Path(pt_path)
-    tensors = torch.load(pt_path, map_location="cpu")
-    if not isinstance(tensors, (list, tuple)):
-        raise ValueError(f"Expected list/tuple of tensors in {pt_path}, got {type(tensors)}")
+    tensors, schema, _ = load_function_checkpoint_artifact(pt_path, map_location="cpu")
+    schema_names = [entry["name"] for entry in schema] if schema is not None else None
 
     arrays = {}
     for i, tensor in enumerate(tensors):
-        name = param_names[i] if param_names and i < len(param_names) else f"param_{i}"
+        if param_names and i < len(param_names):
+            name = param_names[i]
+        elif schema_names is not None:
+            name = schema_names[i]
+        else:
+            name = f"param_{i}"
         arrays[name] = tensor.detach().cpu().numpy()
 
     target = pt_path.with_suffix(".npz") if npz_path is None else Path(npz_path)

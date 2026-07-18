@@ -6,6 +6,193 @@ import torch.nn.functional as F
 from model.variable.layer import layer_index
 
 
+FUNCTION_CHECKPOINT_FORMAT = "drn.function.parameters"
+FUNCTION_CHECKPOINT_VERSION = 1
+
+
+def _checkpoint_parameter_schema(params):
+    schema = []
+    for index, param in enumerate(params):
+        state = param.state
+        schema.append(
+            {
+                "name": str(getattr(param, "name", f"param_{index}")),
+                "type": f"{param.__class__.__module__}.{param.__class__.__qualname__}",
+                "shape": [int(size) for size in state.shape],
+                "dtype": str(state.dtype),
+            }
+        )
+    return schema
+
+
+def _checkpoint_value_error(path, expected, provided):
+    return ValueError(
+        f"Expected {expected} when loading function checkpoint {path!s}. "
+        f"Provided value: {provided!r}."
+    )
+
+
+def _validate_checkpoint_tensor(state, expected_state, *, path, index):
+    if not torch.is_tensor(state):
+        raise _checkpoint_value_error(
+            path,
+            f"parameter state {index} to be a torch.Tensor",
+            type(state).__name__,
+        )
+    expected_shape = tuple(expected_state.shape)
+    if tuple(state.shape) != expected_shape:
+        raise _checkpoint_value_error(
+            path,
+            f"parameter state {index} to have shape {expected_shape}",
+            tuple(state.shape),
+        )
+    if state.dtype != expected_state.dtype:
+        raise _checkpoint_value_error(
+            path,
+            f"parameter state {index} to have dtype {expected_state.dtype}",
+            state.dtype,
+        )
+    if not bool(torch.isfinite(state).all().item()):
+        raise _checkpoint_value_error(
+            path,
+            f"parameter state {index} to contain only finite values",
+            state,
+        )
+
+
+def _validate_checkpoint_schema(schema, expected_schema=None, *, path):
+    if not isinstance(schema, list):
+        raise _checkpoint_value_error(path, "the parameter schema to be a list", type(schema).__name__)
+    if expected_schema is not None and len(schema) != len(expected_schema):
+        raise _checkpoint_value_error(
+            path,
+            f"the parameter schema to contain exactly {len(expected_schema)} entries",
+            len(schema),
+        )
+    expected_keys = {"name", "type", "shape", "dtype"}
+    for index, entry in enumerate(schema):
+        if not isinstance(entry, dict) or set(entry) != expected_keys:
+            provided = list(entry) if isinstance(entry, dict) else type(entry).__name__
+            raise _checkpoint_value_error(
+                path,
+                f"parameter schema entry {index} to contain exactly {sorted(expected_keys)}",
+                provided,
+            )
+        if not isinstance(entry["name"], str):
+            raise _checkpoint_value_error(path, f"schema name {index} to be a string", entry["name"])
+        if not isinstance(entry["type"], str):
+            raise _checkpoint_value_error(path, f"schema type {index} to be a string", entry["type"])
+        if not isinstance(entry["dtype"], str):
+            raise _checkpoint_value_error(path, f"schema dtype {index} to be a string", entry["dtype"])
+        if not isinstance(entry["shape"], list) or not all(
+            type(size) is int for size in entry["shape"]
+        ):
+            raise _checkpoint_value_error(
+                path,
+                f"schema shape {index} to be a list of integers",
+                entry["shape"],
+            )
+        if expected_schema is not None and entry != expected_schema[index]:
+            raise _checkpoint_value_error(
+                path,
+                f"parameter schema entry {index} to exactly match {expected_schema[index]!r}",
+                entry,
+            )
+
+
+def decode_function_checkpoint_artifact(payload, *, path="<checkpoint>"):
+    """Validate checkpoint structure without requiring a model instance."""
+    if isinstance(payload, dict):
+        expected_keys = {"format", "version", "schema", "states"}
+        if set(payload) != expected_keys:
+            raise _checkpoint_value_error(path, f"exactly the keys {sorted(expected_keys)}", list(payload))
+        if payload["format"] != FUNCTION_CHECKPOINT_FORMAT:
+            raise _checkpoint_value_error(
+                path,
+                f"checkpoint format {FUNCTION_CHECKPOINT_FORMAT!r}",
+                payload["format"],
+            )
+        version = payload["version"]
+        if type(version) is not int or version != FUNCTION_CHECKPOINT_VERSION:
+            raise _checkpoint_value_error(path, f"checkpoint version {FUNCTION_CHECKPOINT_VERSION}", version)
+        schema = payload["schema"]
+        states = payload["states"]
+        _validate_checkpoint_schema(schema, path=path)
+        if not isinstance(states, list):
+            raise _checkpoint_value_error(path, "versioned checkpoint states to be a list", type(states).__name__)
+        if len(states) != len(schema):
+            raise _checkpoint_value_error(
+                path,
+                f"exactly {len(schema)} versioned parameter states",
+                len(states),
+            )
+        for index, (state, entry) in enumerate(zip(states, schema)):
+            if not torch.is_tensor(state):
+                raise _checkpoint_value_error(path, f"parameter state {index} to be a torch.Tensor", type(state).__name__)
+            if list(state.shape) != entry["shape"]:
+                raise _checkpoint_value_error(path, f"parameter state {index} to have shape {entry['shape']}", list(state.shape))
+            if str(state.dtype) != entry["dtype"]:
+                raise _checkpoint_value_error(path, f"parameter state {index} to have dtype {entry['dtype']}", str(state.dtype))
+            if not bool(torch.isfinite(state).all().item()):
+                raise _checkpoint_value_error(path, f"parameter state {index} to contain only finite values", state)
+        return [state.detach().clone() for state in states], copy.deepcopy(schema), "versioned"
+
+    if not isinstance(payload, (list, tuple)):
+        raise _checkpoint_value_error(
+            path,
+            "a versioned checkpoint mapping or a legacy list/tuple of tensors",
+            type(payload).__name__,
+        )
+    states = payload
+    for index, state in enumerate(states):
+        if not torch.is_tensor(state):
+            raise _checkpoint_value_error(path, f"legacy parameter state {index} to be a torch.Tensor", type(state).__name__)
+        if not bool(torch.isfinite(state).all().item()):
+            raise _checkpoint_value_error(path, f"legacy parameter state {index} to contain only finite values", state)
+    return [state.detach().clone() for state in states], None, "legacy"
+
+
+def decode_function_checkpoint(payload, expected_params, *, path="<checkpoint>"):
+    """Validate a versioned or historical function checkpoint without mutating parameters."""
+    expected_params = list(expected_params)
+    expected_schema = _checkpoint_parameter_schema(expected_params)
+    states, schema, source_format = decode_function_checkpoint_artifact(payload, path=path)
+    if schema is not None:
+        _validate_checkpoint_schema(schema, expected_schema, path=path)
+
+    if len(states) != len(expected_params):
+        raise _checkpoint_value_error(
+            path,
+            f"exactly {len(expected_params)} parameter states",
+            len(states),
+        )
+
+    validated_states = []
+    for index, (state, param) in enumerate(zip(states, expected_params)):
+        _validate_checkpoint_tensor(state, param.state, path=path, index=index)
+        validated_states.append(state.detach().clone())
+    return validated_states, source_format
+
+
+def _load_function_checkpoint_payload(path, *, map_location):
+    try:
+        return torch.load(path, map_location=map_location, weights_only=True)
+    except TypeError:  # Compatibility with older PyTorch releases.
+        return torch.load(path, map_location=map_location)
+
+
+def load_function_checkpoint_artifact(path, *, map_location="cpu"):
+    """Load a validated checkpoint for model-independent tooling."""
+    payload = _load_function_checkpoint_payload(path, map_location=map_location)
+    return decode_function_checkpoint_artifact(payload, path=path)
+
+
+def load_function_checkpoint_states(path, expected_params, *, map_location="cpu"):
+    """Load and strictly validate checkpoint states without applying them."""
+    payload = _load_function_checkpoint_payload(path, map_location=map_location)
+    return decode_function_checkpoint(payload, expected_params, path=path)
+
+
 def scalar_value(value, *, like=None):
     """Return a scalar/tensor value, preserving gradients for Parameter-backed scalars."""
     if hasattr(value, "get"):
@@ -342,8 +529,13 @@ class Function(ABC):
 
         # FIXME: the parameters of the Readout cost function won't be saved
 
-        params = [param.state for param in self._params]
-        torch.save(params, path)
+        payload = {
+            "format": FUNCTION_CHECKPOINT_FORMAT,
+            "version": FUNCTION_CHECKPOINT_VERSION,
+            "schema": _checkpoint_parameter_schema(self._params),
+            "states": [param.state.detach().cpu().clone() for param in self._params],
+        }
+        torch.save(payload, path)
 
     def load(self, path):
         """Loads the function parameters
@@ -354,8 +546,22 @@ class Function(ABC):
 
         # FIXME: the parameters of the Readout cost function won't be loaded
 
-        params = torch.load(path, map_location=torch.device(self._device))
-        for param, state in zip(self._params, params): param.state = state
+        map_location = self._device if self._device is not None else "cpu"
+        states, _ = load_function_checkpoint_states(
+            path,
+            self._params,
+            map_location=map_location,
+        )
+
+        # Validation above is deliberately complete before any parameter is
+        # changed, so a malformed checkpoint cannot partially update a model.
+        replacement_states = []
+        for param, state in zip(self._params, states):
+            replacement = state.to(device=param.state.device).detach().clone()
+            replacement.requires_grad_(param.state.requires_grad)
+            replacement_states.append(replacement)
+        for param, state in zip(self._params, replacement_states):
+            param.state = state
 
 
 

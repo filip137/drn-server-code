@@ -1,35 +1,54 @@
 #!/usr/bin/env python3
 import argparse
 from pathlib import Path
+import sys
 
 import torch
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from model.function.interaction import (
+    FUNCTION_CHECKPOINT_FORMAT,
+    FUNCTION_CHECKPOINT_VERSION,
+    load_function_checkpoint_artifact,
+)
+
 
 def zero_last_param(input_path: Path, output_path: Path) -> Path:
-    params = torch.load(input_path, map_location="cpu")
-    if not isinstance(params, (list, tuple)) or not params:
-        raise ValueError(f"Expected non-empty list/tuple in {input_path}, got {type(params)}")
-    if not torch.is_tensor(params[-1]):
-        raise ValueError(f"Last parameter is not a tensor in {input_path}")
+    params, schema, source_format = load_function_checkpoint_artifact(
+        input_path,
+        map_location="cpu",
+    )
+    if not params:
+        raise ValueError(
+            f"Expected checkpoint {input_path} to contain at least one parameter state. "
+            "Provided value: 0 parameter states."
+        )
+    params[-1] = torch.zeros_like(params[-1])
 
-    if isinstance(params, tuple):
-        params = list(params)
-        params[-1] = torch.zeros_like(params[-1])
-        params = tuple(params)
+    if source_format == "versioned":
+        output_payload = {
+            "format": FUNCTION_CHECKPOINT_FORMAT,
+            "version": FUNCTION_CHECKPOINT_VERSION,
+            "schema": schema,
+            "states": params,
+        }
     else:
-        params[-1] = torch.zeros_like(params[-1])
+        output_payload = params
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(params, output_path)
+    torch.save(output_payload, output_path)
     return output_path
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         prog="zero_last_param.py",
-        description="Zero the last tensor in a .pt parameter list and save a new file.",
+        description="Zero the last tensor in a versioned or historical parameter checkpoint.",
     )
-    p.add_argument("input_pt", help="Path to input model .pt (list/tuple of tensors).")
+    p.add_argument("input_pt", help="Path to an input model checkpoint.")
     p.add_argument(
         "--output-pt",
         default=None,

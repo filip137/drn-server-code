@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 import numpy as np
+import random
 from torchvision import datasets, transforms
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms import functional as TF
 import torch
 from torch.utils.data import random_split, DataLoader, TensorDataset
 
@@ -15,6 +18,122 @@ def _load_digits(*args, **kwargs):
     from sklearn.datasets import load_digits
 
     return load_digits(*args, **kwargs)
+
+
+AFFINE_PRESETS = {
+    "none": {
+        "degrees": 0.0,
+        "translate": [0.0, 0.0],
+        "scale": [1.0, 1.0],
+        "shear": 0.0,
+    },
+    "medium": {
+        "degrees": 25.0,
+        "translate": [0.20, 0.20],
+        "scale": [0.80, 1.20],
+        "shear": 0.0,
+    },
+    "mnist_affine": {
+        "degrees": 60.0,
+        "translate": [0.15, 0.15],
+        "scale": [0.80, 1.20],
+        "shear": 15.0,
+    },
+}
+
+
+def affine_config_from_preset(
+    preset="none",
+    *,
+    degrees=None,
+    translate=None,
+    scale=None,
+    shear=None,
+    seed=1729,
+):
+    if preset not in AFFINE_PRESETS:
+        raise ValueError(f"Expected affine preset in {sorted(AFFINE_PRESETS)}, got {preset!r}.")
+    config = dict(AFFINE_PRESETS[preset])
+    if degrees is not None:
+        config["degrees"] = float(degrees)
+    if translate is not None:
+        values = [float(value) for value in translate]
+        if len(values) == 1:
+            values = [values[0], values[0]]
+        if len(values) != 2:
+            raise ValueError(f"Expected affine translate to contain 1 or 2 values, got {values}.")
+        config["translate"] = values
+    if scale is not None:
+        values = [float(value) for value in scale]
+        if len(values) != 2:
+            raise ValueError(f"Expected affine scale to contain 2 values, got {values}.")
+        config["scale"] = values
+    if shear is not None:
+        config["shear"] = float(shear)
+
+    scale_min, scale_max = [float(value) for value in config["scale"]]
+    if scale_min <= 0.0 or scale_max <= 0.0 or scale_min > scale_max:
+        raise ValueError(f"Expected positive ordered affine scale, got {config['scale']}.")
+    translate_values = [float(value) for value in config["translate"]]
+    if any(value < 0.0 for value in translate_values):
+        raise ValueError(f"Expected non-negative affine translate, got {translate_values}.")
+
+    enabled = (
+        abs(float(config["degrees"])) > 0.0
+        or any(abs(value) > 0.0 for value in translate_values)
+        or abs(scale_min - 1.0) > 0.0
+        or abs(scale_max - 1.0) > 0.0
+        or abs(float(config.get("shear", 0.0))) > 0.0
+    )
+    config["preset"] = preset
+    config["seed"] = int(seed)
+    config["enabled"] = enabled
+    return config
+
+
+class DeterministicAffineImageDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset, *, transform, affine_config, split):
+        self.dataset = dataset
+        self.transform = transform
+        self.affine_config = dict(affine_config)
+        self.split_offset = 0 if split == "train" else 10_000_000
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        image, label = self.dataset[index]
+        if bool(self.affine_config.get("enabled", False)):
+            image = self._apply_affine(image, int(index))
+        return self.transform(image), label
+
+    def _apply_affine(self, image, index):
+        seed = int(self.affine_config.get("seed", 1729))
+        rng = random.Random(seed + self.split_offset + 104_729 * index)
+        degrees = float(self.affine_config["degrees"])
+        translate_frac = [float(value) for value in self.affine_config["translate"]]
+        scale_range = [float(value) for value in self.affine_config["scale"]]
+        shear = float(self.affine_config.get("shear", 0.0))
+
+        angle = rng.uniform(-degrees, degrees) if degrees else 0.0
+        scale = rng.uniform(scale_range[0], scale_range[1])
+        shear_x = rng.uniform(-shear, shear) if shear else 0.0
+        width, height = image.size
+        max_dx = translate_frac[0] * width
+        max_dy = translate_frac[1] * height
+        translate = (
+            int(round(rng.uniform(-max_dx, max_dx))),
+            int(round(rng.uniform(-max_dy, max_dy))),
+        )
+        return TF.affine(
+            image,
+            angle=angle,
+            translate=translate,
+            scale=scale,
+            shear=[shear_x, 0.0],
+            interpolation=InterpolationMode.BILINEAR,
+            fill=0,
+        )
 
 
 
@@ -256,6 +375,8 @@ def _build_torchvision_image_loaders(
     normalize_mean,
     normalize_std,
     normalize_scale=1.0,
+    affine_config=None,
+    shuffle_seed=None,
 ):
     transforms_list = [transforms.ToTensor()]
     if normalize:
@@ -273,16 +394,39 @@ def _build_torchvision_image_loaders(
         root=root,
         train=True,
         download=download,
-        transform=transform,
+        transform=None if affine_config is not None else transform,
     )
     test_dataset = dataset_cls(
         root=root,
         train=False,
         download=download,
-        transform=transform,
+        transform=None if affine_config is not None else transform,
     )
+    if affine_config is not None:
+        train_dataset = DeterministicAffineImageDataset(
+            train_dataset,
+            transform=transform,
+            affine_config=affine_config,
+            split="train",
+        )
+        test_dataset = DeterministicAffineImageDataset(
+            test_dataset,
+            transform=transform,
+            affine_config=affine_config,
+            split="test",
+        )
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    shuffle_generator = (
+        None
+        if shuffle_seed is None
+        else torch.Generator().manual_seed(int(shuffle_seed))
+    )
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=shuffle_generator,
+    )
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, test_loader
 
@@ -301,6 +445,8 @@ class MnistDataset(Datasets):
         normalize_std,
         normalize_mean=0.1307,
         normalize_scale=1.0,
+        affine_config=None,
+        shuffle_seed=None,
     ):
         super().__init__(name, batch_size, device)
         self.root = root
@@ -310,6 +456,8 @@ class MnistDataset(Datasets):
         self.normalize_std = normalize_std
         self.normalize_mean = normalize_mean
         self.normalize_scale = normalize_scale
+        self.affine_config = affine_config
+        self.shuffle_seed = shuffle_seed
 
     def build(self):
         return _build_torchvision_image_loaders(
@@ -321,6 +469,55 @@ class MnistDataset(Datasets):
             normalize_mean=self.normalize_mean,
             normalize_std=self.normalize_std,
             normalize_scale=self.normalize_scale,
+            affine_config=self.affine_config,
+            shuffle_seed=self.shuffle_seed,
+        )
+
+
+class AffineMnistDataset(MnistDataset):
+    def __init__(
+        self,
+        name,
+        batch_size,
+        device,
+        root,
+        train,
+        download,
+        normalize,
+        normalize_std,
+        normalize_mean=0.1307,
+        normalize_scale=1.0,
+        affine_config=None,
+        affine_preset="medium",
+        affine_seed=1729,
+        affine_degrees=None,
+        affine_translate=None,
+        affine_scale=None,
+        affine_shear=None,
+        shuffle_seed=None,
+    ):
+        if affine_config is None:
+            affine_config = affine_config_from_preset(
+                affine_preset,
+                degrees=affine_degrees,
+                translate=affine_translate,
+                scale=affine_scale,
+                shear=affine_shear,
+                seed=affine_seed,
+            )
+        super().__init__(
+            name=name,
+            batch_size=batch_size,
+            device=device,
+            root=root,
+            train=train,
+            download=download,
+            normalize=normalize,
+            normalize_std=normalize_std,
+            normalize_mean=normalize_mean,
+            normalize_scale=normalize_scale,
+            affine_config=affine_config,
+            shuffle_seed=shuffle_seed,
         )
 
 

@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-312-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      KMP_DISABLE_SHM: "1"
+      KMP_SHM_DISABLE: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.5.1 torchvision==0.20.1
+          python -m pip install \
+            matplotlib==3.9.4 numpy==1.26.4 pillow==11.3.0 pytest==8.4.2 \
+            scikit-learn==1.6.1 scipy==1.13.1 tensorboard==2.16.2
+      - name: Run tests
+        run: python -m pytest

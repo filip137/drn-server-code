@@ -1,0 +1,663 @@
+#!/usr/bin/env python3
+"""Diagnose Conv DRN learning rates using relative update size and line scans."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import math
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from types import SimpleNamespace
+
+import torch
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+LABS_DIR = REPO_ROOT / "labs"
+for path in (REPO_ROOT, LABS_DIR):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from custom_classes import FlexibleDeepResistiveEnergy  # noqa: E402
+from experiments.train_mnist_bp_conv_amplification_sweep import (  # noqa: E402
+    MODEL_KEY,
+    RunSpec,
+    _architecture,
+    _load_minimizer_config,
+)
+from labs.datasets import AFFINE_PRESETS, affine_config_from_preset  # noqa: E402
+from labs.mnist_train import (  # noqa: E402
+    _build_tracking_minimizer,
+    _reset_name_counters,
+    _resolve_callable,
+    _resolve_dataset_config,
+    _set_seed,
+)
+from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
+from model.function.network import Network  # noqa: E402
+from training.sgd import Backprop  # noqa: E402
+
+
+EPS = 1e-12
+LINE_FACTORS = (0.125, 0.25, 0.5, 1.0, 2.0, 4.0)
+
+
+@dataclass(frozen=True)
+class DiagnosticRow:
+    label: str
+    conv_depth: int
+    non_linearity: str
+    run_name: str
+    voltage_amp: float
+    current_amp: float
+    input_gain: float
+    T: int
+    K: int
+    learning_rate: float
+    strides: tuple[int, ...]
+    paddings: tuple[int, ...]
+    affine_preset: str = "none"
+    affine_seed: int = 1729
+    affine_degrees: float | None = None
+    affine_translate: tuple[float, ...] | None = None
+    affine_scale: tuple[float, ...] | None = None
+    affine_shear: float | None = None
+    affine_config: dict | None = None
+
+
+CURATED_ROWS = [
+    DiagnosticRow("conv2_hs_v1c1_lr0p05877", 2, "hard_sigmoid", "mnist_bp_amp_v1_c1", 1.0, 1.0, 245.004013062, 6, 16, 0.0587745474863, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_hs_v4c1_lr0p00205", 2, "hard_sigmoid", "mnist_bp_amp_v4_c1", 4.0, 1.0, 702.412902832, 6, 16, 0.00205007623606, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_hs_v4c0p25_trex_good", 2, "hard_sigmoid", "mnist_bp_amp_v4_c0p25", 4.0, 0.25, 643.877746582, 6, 16, 0.000069889043749, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_hs_v4c0p25_old_center", 2, "hard_sigmoid", "mnist_bp_amp_v4_c0p25", 4.0, 0.25, 643.877746582, 6, 16, 0.000559112349992, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_pd_v1c1_lr0p054", 2, "perfect_diode", "mnist_bp_amp_v1_c1", 1.0, 1.0, 100.0, 6, 4, 0.054, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_pd_v4c1_lr0p024", 2, "perfect_diode", "mnist_bp_amp_v4_c1", 4.0, 1.0, 100.0, 6, 4, 0.024, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_pd_v4c0p25_trex_good", 2, "perfect_diode", "mnist_bp_amp_v4_c0p25", 4.0, 0.25, 100.0, 6, 4, 0.0045, (2, 2), (1, 1)),
+    DiagnosticRow("conv2_pd_v4c0p25_old_center", 2, "perfect_diode", "mnist_bp_amp_v4_c0p25", 4.0, 0.25, 100.0, 6, 4, 0.012, (2, 2), (1, 1)),
+    DiagnosticRow("conv3_hs_v1c1_lr0p141", 3, "hard_sigmoid", "mnist_bp_amp_v1_c1", 1.0, 1.0, 244.281143188, 10, 16, 0.141476331529, (2, 2, 1), (1, 1, 1)),
+    DiagnosticRow("conv3_hs_v4c1_lr0p0161", 3, "hard_sigmoid", "mnist_bp_amp_v4_c1", 4.0, 1.0, 714.296936035, 10, 16, 0.0161277466258, (2, 2, 1), (1, 1, 1)),
+    DiagnosticRow("conv3_hs_v4c0p25_lr0p000553", 3, "hard_sigmoid", "mnist_bp_amp_v4_c0p25", 4.0, 0.25, 650.47052002, 10, 16, 0.000553445527385, (2, 2, 1), (1, 1, 1)),
+    DiagnosticRow("conv3_hs_v4c0p25_lr0p001107", 3, "hard_sigmoid", "mnist_bp_amp_v4_c0p25", 4.0, 0.25, 650.47052002, 10, 16, 0.00110689105477, (2, 2, 1), (1, 1, 1)),
+    DiagnosticRow("conv3_pd_v1c1_lr0p0432", 3, "perfect_diode", "mnist_bp_amp_v1_c1", 1.0, 1.0, 360.0, 10, 4, 0.0432, (2, 2, 1), (1, 1, 1)),
+    DiagnosticRow("conv3_pd_v4c1_lr0p0216", 3, "perfect_diode", "mnist_bp_amp_v4_c1", 4.0, 1.0, 360.0, 10, 4, 0.0216, (2, 2, 1), (1, 1, 1)),
+    DiagnosticRow("conv3_pd_v4c1_lr0p0864_bs16_partial", 3, "perfect_diode", "mnist_bp_amp_v4_c1", 4.0, 1.0, 360.0, 10, 4, 0.0864, (2, 2, 1), (1, 1, 1)),
+]
+
+
+def _row_args(row: DiagnosticRow, args: argparse.Namespace) -> SimpleNamespace:
+    return SimpleNamespace(
+        model_key=MODEL_KEY,
+        conv_depth=row.conv_depth,
+        conv_channels=[64, 128, 256],
+        kernel_size=3,
+        stride=2,
+        padding=1,
+        strides=list(row.strides),
+        paddings=list(row.paddings),
+        output_dim=20,
+        epochs=1,
+        batch_size=args.batch_size,
+        dataset_root=args.dataset_root,
+        no_download=args.no_download,
+        normalize_mean=0.1307,
+        normalize_std=0.3081,
+        normalize_scale=0.3,
+        input_gain=row.input_gain,
+        num_iterations=row.T,
+        num_iterations_inference=row.T,
+        num_iterations_training=row.K,
+        learning_rate=[row.learning_rate],
+        beta=1.0,
+        lr_decay=1.0,
+        log_interval=500,
+        max_batches=None,
+        max_test_batches=None,
+        weight_gains=[1.0],
+        weight_min=0.0,
+        weight_max=100.0,
+        weight_init_mode="kaiming_uniform",
+        hard_sigmoid_g_on=100.0,
+        hard_sigmoid_g_off=0.0,
+        hard_sigmoid_v_min=-4.0,
+        hard_sigmoid_v_max=4.0,
+        hard_sigmoid_v_off=None,
+        trainable_hard_sigmoid_v_off=False,
+        hard_sigmoid_v_off_min=0.0,
+        hard_sigmoid_v_off_max=None,
+        trainable_amplification=False,
+        amplification_min=1e-6,
+        amplification_max=None,
+        minimizer_config_data=args.minimizer_config_data,
+        affine_preset=row.affine_preset,
+        affine_seed=row.affine_seed,
+        affine_degrees=row.affine_degrees,
+        affine_translate=list(row.affine_translate) if row.affine_translate is not None else None,
+        affine_scale=list(row.affine_scale) if row.affine_scale is not None else None,
+        affine_shear=row.affine_shear,
+    )
+
+
+def _row_affine_config(row: DiagnosticRow) -> dict:
+    if row.affine_config is not None:
+        return dict(row.affine_config)
+    return affine_config_from_preset(
+        row.affine_preset,
+        degrees=row.affine_degrees,
+        translate=row.affine_translate,
+        scale=row.affine_scale,
+        shear=row.affine_shear,
+        seed=row.affine_seed,
+    )
+
+
+def _build_config(row: DiagnosticRow, args: argparse.Namespace) -> dict:
+    row_args = _row_args(row, args)
+    layer_shapes, conv_pipeline = _architecture(row_args)
+    affine_config = _row_affine_config(row)
+    dataset_factory = (
+        "labs.datasets.AffineMnistDataset"
+        if affine_config.get("enabled")
+        else "labs.datasets.MnistDataset"
+    )
+    dataset_params = {
+        "name": "mnist",
+        "batch_size": args.batch_size,
+        "root": args.dataset_root,
+        "train": True,
+        "download": not args.no_download,
+        "normalize": True,
+        "normalize_mean": 0.1307,
+        "normalize_std": 0.3081,
+        "normalize_scale": 0.3,
+    }
+    if affine_config.get("enabled"):
+        dataset_params["affine_config"] = affine_config
+    return {
+        "seed": args.seed,
+        "input_mode": "train",
+        "training_algorithm": "BP",
+        "datasets": {
+            "mnist": {
+                "factory": dataset_factory,
+                "params": dataset_params,
+            },
+        },
+        "model_base": {
+            "weight_min": 0.0,
+            "weight_max": 100.0,
+            "weight_init_mode": "kaiming_uniform",
+            "input_gain": row.input_gain,
+            "voltage_amp": row.voltage_amp,
+            "current_amp": row.current_amp,
+            "trainable_amplification": False,
+            "amplification_min": 1e-6,
+            "amplification_max": None,
+            "non_linearity": row.non_linearity,
+            "quadratic_diode_param": {"diode_conductance": 1.0, "v_min": -1.0e6, "v_max": 1.0e6},
+            "hard_sigmoid_param": {"g_on": 100.0, "g_off": 0.0, "v_min": -4.0, "v_max": 4.0},
+            "exponential_diode_param": {"I_s": 1.0e-6, "V_t": 0.025, "V_off": 0.0},
+            "num_iterations_inference": row.T,
+            "num_iterations_training": row.K,
+            "minimizer": args.minimizer_config_data,
+        },
+        "model_overrides": {
+            MODEL_KEY: {
+                "layer_shapes": layer_shapes,
+                "conv_pipeline": conv_pipeline,
+                "weight_gains": [1.0] * (row.conv_depth + 1),
+            },
+        },
+        "energy_minimizer": {"mode": "asynchronous"},
+    }
+
+
+def _make_context(row: DiagnosticRow, args: argparse.Namespace, device: torch.device) -> dict:
+    config = _build_config(row, args)
+    _reset_name_counters()
+    _set_seed(args.seed)
+    model_cfg = {**config["model_base"], **config["model_overrides"][MODEL_KEY]}
+    layer_shapes = [tuple(shape) for shape in model_cfg["layer_shapes"]]
+    energy_fn = FlexibleDeepResistiveEnergy(
+        layer_shapes=layer_shapes,
+        conv_pipeline=model_cfg.get("conv_pipeline") or [],
+        pooling_mode=model_cfg.get("pooling_mode"),
+        weight_gains=model_cfg["weight_gains"],
+        input_gain=model_cfg["input_gain"],
+        non_linearity=model_cfg["non_linearity"],
+        exponential_diode_param=model_cfg["exponential_diode_param"],
+        quadratic_diode_param=model_cfg["quadratic_diode_param"],
+        hard_sigmoid_param=model_cfg.get("hard_sigmoid_param", {}),
+        voltage_amp=model_cfg["voltage_amp"],
+        current_amp=model_cfg["current_amp"],
+        weight_min=model_cfg["weight_min"],
+        weight_max=model_cfg["weight_max"],
+        weight_init_mode=model_cfg.get("weight_init_mode", "kaiming_uniform"),
+        input_mode=config.get("input_mode", "train"),
+        trainable_amplification=False,
+    )
+    energy_fn.set_device(device)
+    network = Network(energy_fn)
+    output_layer = energy_fn.layers()[-1]
+    cost_fn = (
+        SquaredError(output_layer)
+        if output_layer.shape[0] == 10
+        else SquaredErrorPairedOutputs(output_layer, num_classes=10)
+    )
+    free_layers = network.free_layers()
+    minimizer_inference = _build_tracking_minimizer(
+        energy_fn,
+        free_layers,
+        model_cfg,
+        config["energy_minimizer"]["mode"],
+        num_iterations=row.T,
+        voltage_amp=energy_fn._voltage_amp,
+        current_amp=energy_fn._current_amp,
+    )
+    minimizer_training = _build_tracking_minimizer(
+        energy_fn,
+        free_layers,
+        model_cfg,
+        config["energy_minimizer"]["mode"],
+        num_iterations=row.K,
+        voltage_amp=energy_fn._voltage_amp,
+        current_amp=energy_fn._current_amp,
+    )
+    dataset_key, dataset_cfg = _resolve_dataset_config(config, "mnist")
+    del dataset_key
+    factory = _resolve_callable(dataset_cfg["factory"])
+    dataset_params = dict(dataset_cfg["params"])
+    dataset_params.setdefault("device", device)
+    train_loader, _test_loader = factory(**dataset_params).build()
+    return {
+        "energy_fn": energy_fn,
+        "network": network,
+        "free_layers": free_layers,
+        "cost_fn": cost_fn,
+        "params": energy_fn.params(),
+        "minimizer_inference": minimizer_inference,
+        "minimizer_training": minimizer_training,
+        "train_loader": train_loader,
+    }
+
+
+def _param_name(param: object, index: int) -> str:
+    return str(getattr(param, "name", f"param_{index}")).strip()
+
+
+def _param_group(param: object) -> str:
+    cls = param.__class__.__name__
+    name = str(getattr(param, "name", ""))
+    if "ConvWeight" in cls or "ConvWeight" in name:
+        return "conv_weight"
+    if "DenseWeight" in cls or "DenseWeight" in name:
+        return "readout_weight"
+    if "Bias" in cls or "Bias" in name:
+        return "bias"
+    if "Amp" in cls or "Amp" in name or "amplification" in name.lower():
+        return "amplification"
+    return "other"
+
+
+def _stats_for_param(param: object, grad: torch.Tensor, lr: float) -> dict:
+    state = param.state.detach()
+    grad = grad.detach()
+    param_l2 = float(torch.linalg.vector_norm(state).item())
+    grad_l2 = float(torch.linalg.vector_norm(grad).item())
+    rel_grad = grad_l2 / (param_l2 + EPS)
+    q_sgd = lr * rel_grad
+    adam_unit = float(torch.linalg.vector_norm(torch.sign(grad)).item()) / (param_l2 + EPS)
+    return {
+        "param_l2": param_l2,
+        "grad_l2": grad_l2,
+        "relative_grad": rel_grad,
+        "q_sgd": q_sgd,
+        "adam_unit_relative": adam_unit,
+        "adam_lr_for_same_q": q_sgd / adam_unit if adam_unit > 0 else math.nan,
+        "zero_fraction": float((grad.abs() <= 1e-12).float().mean().item()),
+    }
+
+
+def _accuracy(cost_fn) -> float:
+    return float((~cost_fn.error_fn()).float().mean().item())
+
+
+def _classify(param_rows: list[dict], line_rows: list[dict]) -> str:
+    conv_q = [row["q_sgd"] for row in param_rows if row["group"] == "conv_weight"]
+    readout_q = [row["q_sgd"] for row in param_rows if row["group"] == "readout_weight"]
+    global_q = next(row["q_sgd"] for row in param_rows if row["param_name"] == "__weights_global__")
+    max_conv = max(conv_q) if conv_q else math.nan
+    max_readout = max(readout_q) if readout_q else math.nan
+    finite_lines = [row for row in line_rows if math.isfinite(row["loss_delta"])]
+    best_line = min(finite_lines, key=lambda row: row["loss"]) if finite_lines else None
+    tiny_lines = [row for row in finite_lines if row["factor"] <= 0.5]
+    if finite_lines and all(row["loss_delta"] > 0 for row in tiny_lines):
+        return "bad_direction_or_too_large_even_at_small_eta"
+    if global_q > 3e-2 or max_readout > 5e-2 or (math.isfinite(max_conv) and max_conv > 5e-3):
+        return "too_large"
+    if best_line is not None and best_line["factor"] >= 4.0:
+        return "too_small"
+    if math.isfinite(max_conv) and max_conv < 1e-4 and max_readout < 1.5e-2:
+        return "too_small_for_conv_layers"
+    if best_line is not None and best_line["factor"] <= 0.25:
+        return "probably_too_large"
+    return "near_reasonable_band"
+
+
+def _diagnose_one(row: DiagnosticRow, args: argparse.Namespace, device: torch.device) -> tuple[list[dict], list[dict], dict]:
+    context = _make_context(row, args, device)
+    affine_preset = _row_affine_config(row).get("preset", "none")
+    params = context["params"]
+    images, labels = next(iter(context["train_loader"]))
+    images = images[: args.batch_size].to(device)
+    labels = labels[: args.batch_size].to(device)
+    context["network"].set_input(images, reset=True)
+    context["minimizer_inference"].compute_equilibrium()
+    context["cost_fn"].set_target(labels)
+    base_loss = float(context["cost_fn"].eval().mean().item())
+    base_acc = _accuracy(context["cost_fn"])
+    estimator = Backprop(params, context["free_layers"], context["cost_fn"], context["minimizer_training"])
+    grads = estimator.compute_gradient()[: len(params)]
+    base_states = [param.state.detach().clone() for param in params]
+    param_rows: list[dict] = []
+    weight_param_sq = 0.0
+    weight_grad_sq = 0.0
+    for index, (param, grad) in enumerate(zip(params, grads)):
+        stats = _stats_for_param(param, grad, row.learning_rate)
+        group = _param_group(param)
+        if "weight" in group:
+            weight_param_sq += stats["param_l2"] ** 2
+            weight_grad_sq += stats["grad_l2"] ** 2
+        param_rows.append(
+            {
+                "label": row.label,
+                "conv_depth": row.conv_depth,
+                "non_linearity": row.non_linearity,
+                "run_name": row.run_name,
+                "input_gain": row.input_gain,
+                "T": row.T,
+                "K": row.K,
+                "learning_rate": row.learning_rate,
+                "affine_preset": affine_preset,
+                "param_index": index,
+                "param_name": _param_name(param, index),
+                "param_class": param.__class__.__name__,
+                "group": group,
+                **stats,
+            }
+        )
+    global_rel = math.sqrt(weight_grad_sq) / (math.sqrt(weight_param_sq) + EPS)
+    param_rows.append(
+        {
+            "label": row.label,
+            "conv_depth": row.conv_depth,
+            "non_linearity": row.non_linearity,
+            "run_name": row.run_name,
+            "input_gain": row.input_gain,
+            "T": row.T,
+            "K": row.K,
+            "learning_rate": row.learning_rate,
+            "affine_preset": affine_preset,
+            "param_index": -1,
+            "param_name": "__weights_global__",
+            "param_class": "all_weight_params",
+            "group": "global",
+            "param_l2": math.sqrt(weight_param_sq),
+            "grad_l2": math.sqrt(weight_grad_sq),
+            "relative_grad": global_rel,
+            "q_sgd": row.learning_rate * global_rel,
+            "adam_unit_relative": math.nan,
+            "adam_lr_for_same_q": math.nan,
+            "zero_fraction": math.nan,
+        }
+    )
+    line_rows: list[dict] = []
+    for factor in LINE_FACTORS:
+        for param, base, grad in zip(params, base_states, grads):
+            param.state = base - (row.learning_rate * factor) * grad.detach()
+        for param in params:
+            if hasattr(param, "clamp_"):
+                param.clamp_()
+        context["network"].set_input(images, reset=True)
+        try:
+            context["minimizer_inference"].compute_equilibrium()
+            context["cost_fn"].set_target(labels)
+            loss = float(context["cost_fn"].eval().mean().item())
+            acc = _accuracy(context["cost_fn"])
+        except Exception as exc:  # noqa: BLE001 - diagnostic needs to record failures.
+            loss = math.nan
+            acc = math.nan
+            line_rows.append(
+                {
+                    "label": row.label,
+                    "conv_depth": row.conv_depth,
+                    "non_linearity": row.non_linearity,
+                    "run_name": row.run_name,
+                    "input_gain": row.input_gain,
+                    "T": row.T,
+                    "K": row.K,
+                    "learning_rate": row.learning_rate,
+                    "affine_preset": affine_preset,
+                    "factor": factor,
+                    "effective_lr": row.learning_rate * factor,
+                    "base_loss": base_loss,
+                    "loss": loss,
+                    "loss_delta": math.nan,
+                    "base_accuracy": base_acc,
+                    "accuracy": acc,
+                    "status": f"failed:{type(exc).__name__}:{exc}",
+                }
+            )
+            continue
+        line_rows.append(
+            {
+                "label": row.label,
+                "conv_depth": row.conv_depth,
+                "non_linearity": row.non_linearity,
+                "run_name": row.run_name,
+                "input_gain": row.input_gain,
+                "T": row.T,
+                "K": row.K,
+                "learning_rate": row.learning_rate,
+                "affine_preset": affine_preset,
+                "factor": factor,
+                "effective_lr": row.learning_rate * factor,
+                "base_loss": base_loss,
+                "loss": loss,
+                "loss_delta": loss - base_loss,
+                "base_accuracy": base_acc,
+                "accuracy": acc,
+                "status": "ok",
+            }
+        )
+    for param, base in zip(params, base_states):
+        param.state = base
+    summary = {
+        "label": row.label,
+        "conv_depth": row.conv_depth,
+        "non_linearity": row.non_linearity,
+        "run_name": row.run_name,
+        "voltage_amp": row.voltage_amp,
+        "current_amp": row.current_amp,
+        "input_gain": row.input_gain,
+        "T": row.T,
+        "K": row.K,
+        "learning_rate": row.learning_rate,
+        "affine_preset": affine_preset,
+        "base_loss": base_loss,
+        "base_accuracy": base_acc,
+        "classification": _classify(param_rows, line_rows),
+    }
+    for prefix, group in (("conv", "conv_weight"), ("readout", "readout_weight"), ("global", "global")):
+        values = [row2["q_sgd"] for row2 in param_rows if row2["group"] == group]
+        summary[f"{prefix}_q_max"] = max(values) if values else math.nan
+        summary[f"{prefix}_q_min"] = min(values) if values else math.nan
+    finite_lines = [row2 for row2 in line_rows if math.isfinite(row2["loss_delta"])]
+    if finite_lines:
+        best_line = min(finite_lines, key=lambda row2: row2["loss"])
+        summary.update(
+            {
+                "best_line_factor": best_line["factor"],
+                "best_line_loss_delta": best_line["loss_delta"],
+                "loss_delta_at_lr": next(
+                    (row2["loss_delta"] for row2 in line_rows if row2["factor"] == 1.0),
+                    math.nan,
+                ),
+            }
+        )
+    return param_rows, line_rows, summary
+
+
+def _write_csv(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        return
+    keys = []
+    seen = set()
+    for row in rows:
+        for key in row:
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=keys, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _parse_sequence(value: object, *, cast):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = [item for item in text.replace(";", ",").split(",") if item.strip()]
+    if isinstance(parsed, (int, float, str)):
+        parsed = [parsed]
+    return tuple(cast(item) for item in parsed)
+
+
+def _parse_optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return float(text)
+
+
+def _parse_optional_json_object(value: object) -> dict | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Expected affine_config to be a JSON object, got {parsed!r}.")
+    return parsed
+
+
+def _load_manifest(path_value: str) -> list[DiagnosticRow]:
+    path = Path(path_value).expanduser()
+    rows: list[DiagnosticRow] = []
+    with path.open(newline="") as handle:
+        for raw in csv.DictReader(handle):
+            affine_config = _parse_optional_json_object(raw.get("affine_config"))
+            affine_preset = str(raw.get("affine_preset") or "none")
+            if affine_preset not in AFFINE_PRESETS:
+                raise ValueError(
+                    f"Expected affine_preset in {sorted(AFFINE_PRESETS)}, got {affine_preset!r}."
+                )
+            conv_depth = int(float(raw["conv_depth"]))
+            strides = _parse_sequence(raw.get("strides"), cast=int) or tuple([2] * conv_depth)
+            paddings = _parse_sequence(raw.get("paddings"), cast=int) or tuple([1] * conv_depth)
+            rows.append(
+                DiagnosticRow(
+                    label=str(raw["label"]),
+                    conv_depth=conv_depth,
+                    non_linearity=str(raw["non_linearity"]),
+                    run_name=str(raw["run_name"]),
+                    voltage_amp=float(raw["voltage_amp"]),
+                    current_amp=float(raw["current_amp"]),
+                    input_gain=float(raw["input_gain"]),
+                    T=int(float(raw["T"])),
+                    K=int(float(raw["K"])),
+                    learning_rate=float(raw["learning_rate"]),
+                    strides=strides,
+                    paddings=paddings,
+                    affine_preset=affine_preset,
+                    affine_seed=int(float(raw.get("affine_seed") or 1729)),
+                    affine_degrees=_parse_optional_float(raw.get("affine_degrees")),
+                    affine_translate=_parse_sequence(raw.get("affine_translate"), cast=float),
+                    affine_scale=_parse_sequence(raw.get("affine_scale"), cast=float),
+                    affine_shear=_parse_optional_float(raw.get("affine_shear")),
+                    affine_config=affine_config,
+                )
+            )
+    return rows
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", default=str(REPO_ROOT / "results" / "mnist_bp_conv_lr_update_ratio_diagnostic"))
+    parser.add_argument("--dataset-root", default="~/data")
+    parser.add_argument("--device", default=None)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--minimizer-config", default=str(REPO_ROOT / "labs" / "configs" / "mnist_minimizer_fixed_iterations.json"))
+    parser.add_argument("--manifest-csv", help="CSV of DiagnosticRow definitions to run.")
+    parser.add_argument("--row-label", action="append", default=[])
+    parser.add_argument("--no-download", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    args.dataset_root = str(Path(args.dataset_root).expanduser())
+    args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
+    selected = _load_manifest(args.manifest_csv) if args.manifest_csv else CURATED_ROWS
+    if args.row_label:
+        allowed = set(args.row_label)
+        selected = [row for row in selected if row.label in allowed]
+    output_root = Path(args.output_root).expanduser().resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    (output_root / "rows.json").write_text(json.dumps([row.__dict__ for row in selected], indent=2))
+    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    print(f"[diagnostic] rows={len(selected)} device={device} output={output_root}", flush=True)
+    if args.dry_run:
+        for row in selected:
+            print(f"[dry-run] {row}", flush=True)
+        return
+    param_rows: list[dict] = []
+    line_rows: list[dict] = []
+    summary_rows: list[dict] = []
+    for index, row in enumerate(selected, start=1):
+        print(f"[row] {index}/{len(selected)} {row.label}", flush=True)
+        p_rows, l_rows, summary = _diagnose_one(row, args, device)
+        param_rows.extend(p_rows)
+        line_rows.extend(l_rows)
+        summary_rows.append(summary)
+        _write_csv(output_root / "param_update_ratios.csv", param_rows)
+        _write_csv(output_root / "line_scan.csv", line_rows)
+        _write_csv(output_root / "summary.csv", summary_rows)
+        print(
+            f"[summary] {row.label} class={summary['classification']} "
+            f"global_q={summary.get('global_q_max'):.3g} "
+            f"conv_q_max={summary.get('conv_q_max'):.3g} "
+            f"readout_q={summary.get('readout_q_max'):.3g} "
+            f"best_factor={summary.get('best_line_factor', math.nan)} "
+            f"loss_delta_at_lr={summary.get('loss_delta_at_lr', math.nan):.3g}",
+            flush=True,
+        )
+    print(f"[done] wrote {output_root}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,121 @@
+{
+  "schema_version": "mnist-conv-run/v1",
+  "label": "mnist-conv1-hs-diagnostic-example",
+  "seed": 0,
+  "replicate_id": null,
+  "protocol_id": "diagnostic-example-pending-operational-tk",
+  "category": "diagnostic",
+  "run": {
+    "dataset": {
+      "name": "mnist",
+      "input_shape": [2, 28, 28],
+      "batch_size": 64,
+      "normalization": {"mean": 0.1307, "std": 0.3081, "scale": 0.3},
+      "affine": {
+        "enabled": true,
+        "preset": "medium",
+        "degrees": 25.0,
+        "translate": [0.2, 0.2],
+        "scale": [0.8, 1.2],
+        "shear": 0.0,
+        "seed": 1729,
+        "interpolation": "bilinear",
+        "fill": 0.0
+      },
+      "max_batches": 1,
+      "max_test_batches": 1
+    },
+    "architecture": {
+      "profile": "conv1",
+      "channels": [64],
+      "kernel_sizes": [3],
+      "strides": [2],
+      "paddings": [1],
+      "output_dim": 20,
+      "pooling": {"mode": "none"}
+    },
+    "model": {
+      "type": "resistive_conv",
+      "non_linearity": "hard_sigmoid",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "input_gain": 1.0,
+      "weight_gains": [1.0, 1.0],
+      "weight_min": -1.0,
+      "weight_max": 1.0,
+      "weight_init_mode": "kaiming_uniform",
+      "quadratic_diode_param": {},
+      "exponential_diode_param": {},
+      "hard_sigmoid_param": {"g_on": 100.0, "g_off": 0.0, "v_off": 4.0},
+      "trainable_parameters": {
+        "weights": true,
+        "biases": true,
+        "amplification": false,
+        "hard_sigmoid_v_off": false
+      },
+      "amplification_min": 1e-6,
+      "amplification_max": null
+    },
+    "solver": {
+      "inference_iterations": 1,
+      "training_iterations": 1,
+      "energy_mode": "asynchronous",
+      "minimizer": {
+        "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+        "adaptive_equilibrium": false,
+        "overrelaxation_factor": 1.1,
+        "single_diode_updater": "custom",
+        "iv_data_path": null,
+        "experimental_damping": 0.5,
+        "experimental_newton_max_steps": 100,
+        "settings": {
+          "rel_tol": 1e-5,
+          "vn_tol": 1e-6,
+          "use_polish": true,
+          "max_newton_iters": 32,
+          "z_thresh": 1e10,
+          "exp_clip": 100000.0,
+          "dynamic_polish": true,
+          "overrelaxation_reject_steps": false,
+          "overrelaxation_reject_max_tries": 3,
+          "overrelaxation_reject_shrink": 0.5,
+          "overrelaxation_reject_eps": 0.0,
+          "experimental_exponential_newton_tol_progressive": true,
+          "experimental_exponential_newton_tol_start": 1e-5,
+          "experimental_exponential_newton_tol_end": 1e-5,
+          "experimental_exponential_newton_tol_switch_hi": 1e-2,
+          "experimental_exponential_newton_tol_switch_lo": 5e-4
+        }
+      }
+    },
+    "training": {
+      "algorithm": "BP",
+      "epochs": 1,
+      "optimizer": {"name": "SGD", "momentum": 0.0, "weight_decay": 0.0},
+      "learning_rate": [0.01, 0.01, 0.01],
+      "beta": 0.1,
+      "lr_decay": 1.0,
+      "checkpoint_rule": "max_test_accuracy",
+      "pruning": {"enabled": false, "after_epoch": null, "min_best_test_accuracy": null},
+      "batch_state_policy": "reset_each_batch"
+    },
+    "initialization": {"checkpoint": null},
+    "calibration": {
+      "kind": "hard_sigmoid_saturation",
+      "calibration_id": "diagnostic-example-not-a-frozen-measurement",
+      "scope": "first_hidden_layer",
+      "sample_count": 256,
+      "batch_size": 64,
+      "model_seed": 0,
+      "affine_seed": 1729,
+      "settling_iterations": 64,
+      "adaptive_equilibrium": false,
+      "v_off": 4.0,
+      "g_on": 100.0,
+      "g_off": 0.0,
+      "target_initial_saturation": 0.3,
+      "measured_initial_saturation": 0.3,
+      "layer_measurements": [{"layer_index": 1, "measured_saturation": 0.3}]
+    }
+  }
+}

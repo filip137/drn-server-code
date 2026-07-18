@@ -1,0 +1,28 @@
+{
+  "schema_version": "mnist-conv-slurm-profile/v1",
+  "name": "jeanzay-v100",
+  "executor": "slurm",
+  "concurrency": 3,
+  "worker": {
+    "account": "fmu@v100",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100-16g",
+    "time_limit": "12:00:00",
+    "cpus_per_task": 10,
+    "gpus_per_task": 1,
+    "module": "pytorch-gpu/py3/2.5.0",
+    "idrenv_project": "fmu"
+  },
+  "collector": {
+    "account": "fmu@cpu",
+    "partition": "cpu_p1",
+    "qos": "qos_cpu-t3",
+    "constraint": null,
+    "time_limit": "00:10:00",
+    "cpus_per_task": 2,
+    "gpus_per_task": 0,
+    "module": "pytorch-gpu/py3/2.5.0",
+    "idrenv_project": "fmu"
+  }
+}

@@ -582,7 +582,35 @@ class CustomMinimizer(Minimizer):
                     breakpoint()
                 raise NonFiniteDiodeError(message)
 
+    def _equilibrium_sweep_groups(self):
+        """Return the updater groups that make up one complete solver sweep."""
+        if self._mode == "forward":
+            return [[updater] for updater in self._updaters]
+        if self._mode == "backward":
+            return [[updater] for updater in reversed(self._updaters)]
+        if self._mode == "synchronous":
+            return [self._updaters]
+        if self._mode == "asynchronous":
+            return [self._updaters[::2], self._updaters[1::2]]
+        raise ValueError(
+            "Expected minimizer mode to be 'forward', 'backward', 'synchronous', "
+            f"or 'asynchronous'. Provided value: {self._mode!r}."
+        )
 
+    def _step_equilibrium_sweep(self, sweep_groups, *, iteration):
+        if self._mode == "asynchronous":
+            self._step_odd_even_with_reject_policy(
+                sweep_groups[0],
+                sweep_groups[1],
+                iteration=iteration,
+            )
+            return
+        for group_index, layer_group in enumerate(sweep_groups):
+            self._step_group_with_reject_policy(
+                layer_group,
+                label=f"{self._mode}_{group_index}",
+                iteration=iteration,
+            )
 
     def compute_equilibrium(self):
         """Compute the minimum of the function wrt the free layers
@@ -593,36 +621,25 @@ class CustomMinimizer(Minimizer):
             layers: dictionary of Tensors. The state of the layers at equilibrium
         """
 
-        max_num_of_iterations = len(self._list_layers) // 2
+        max_num_of_iterations = self._num_iterations
+        sweep_groups = self._equilibrium_sweep_groups()
         self._stored_states = {}
         iterations_used = max_num_of_iterations
 
         use_adaptive = self._adaptive_equilibrium and not self._force_fixed_iterations
         if not use_adaptive:
             # Original fixed-iteration behaviour: no tolerance-based early stop.
-            if len(self._list_layers) >= 2:
-                layer_group_odd, layer_group_even = self._list_layers[0], self._list_layers[1]
-                self._set_experimental_newton_tol(
-                    self._experimental_exponential_newton_tol_policy(float("inf"))
-                )
-                for i in range(max_num_of_iterations):
-                    self._step_odd_even_with_reject_policy(
-                        layer_group_odd,
-                        layer_group_even,
-                        iteration=i,
-                    )
-            else:
-                for idx, layer_group in enumerate(self._list_layers):
-                    self._step_group_with_reject_policy(layer_group, label=f"group_{idx}", iteration=0)
-                max_num_of_iterations = len(self._list_layers)
-                iterations_used = max_num_of_iterations
+            self._set_experimental_newton_tol(
+                self._experimental_exponential_newton_tol_policy(float("inf"))
+            )
+            for i in range(max_num_of_iterations):
+                self._step_equilibrium_sweep(sweep_groups, iteration=i)
         else:
             prev_inf_delta = float("inf")
             rtol = self._rel_tol
             vntol = self._vn_tol
 
             for i in range(max_num_of_iterations):
-                layer_group_odd, layer_group_even = self._list_layers[0], self._list_layers[1]
                 self._set_experimental_newton_tol(
                     self._experimental_exponential_newton_tol_policy(prev_inf_delta)
                 )
@@ -632,7 +649,7 @@ class CustomMinimizer(Minimizer):
                 z_thresh = self._z_thresh
                 if self._dynamic_polish:
                     use_polish, max_newton_iters, z_thresh = self._dynamic_polish_policy(prev_inf_delta)
-                    for updater in (*layer_group_odd, *layer_group_even):
+                    for updater in self._updaters:
                         set_dynamic_polish = getattr(updater, "set_dynamic_polish", None)
                         if callable(set_dynamic_polish):
                             set_dynamic_polish(
@@ -641,21 +658,13 @@ class CustomMinimizer(Minimizer):
                                 z_thresh=z_thresh,
                             )
 
-                odd_old = [u._layer.state.detach().clone() for u in layer_group_odd]
-                even_old = [u._layer.state.detach().clone() for u in layer_group_even]
+                old_states = [updater._layer.state.detach().clone() for updater in self._updaters]
 
-                self._step_odd_even_with_reject_policy(
-                    layer_group_odd,
-                    layer_group_even,
-                    iteration=i,
-                )
+                self._step_equilibrium_sweep(sweep_groups, iteration=i)
 
                 inf_delta = 0.0
                 inf_ref = 0.0
-                for updater, old_state in zip(layer_group_odd, odd_old):
-                    inf_delta = max(inf_delta, self._max_abs_delta(updater._layer.state, old_state))
-                    inf_ref = max(inf_ref, float(old_state.abs().max().item()))
-                for updater, old_state in zip(layer_group_even, even_old):
+                for updater, old_state in zip(self._updaters, old_states):
                     inf_delta = max(inf_delta, self._max_abs_delta(updater._layer.state, old_state))
                     inf_ref = max(inf_ref, float(old_state.abs().max().item()))
 

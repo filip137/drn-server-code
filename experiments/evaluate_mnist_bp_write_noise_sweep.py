@@ -146,6 +146,48 @@ def _read_summary_rows(
     return rows
 
 
+def _discover_init_rows(
+    input_root: Path,
+    *,
+    run_names: set[str] | None,
+    training_seeds: set[int] | None,
+) -> list[RunRow]:
+    rows: list[RunRow] = []
+    seen: set[Path] = set()
+    for source_config_path in sorted(input_root.expanduser().resolve().glob("**/source_config.json")):
+        run_dir = source_config_path.parent.resolve()
+        if run_dir in seen:
+            continue
+        seen.add(run_dir)
+        config = json.loads(source_config_path.read_text())
+        model_key = config.get("lab", {}).get("model_key", "mnist_bp_conv_amp")
+        model_cfg = {
+            **config.get("model_base", {}),
+            **config.get("model_overrides", {}).get(model_key, {}),
+        }
+        run_name = run_dir.parent.name
+        seed = int(config.get("seed", 0))
+        if run_names is not None and run_name not in run_names:
+            continue
+        if training_seeds is not None and seed not in training_seeds:
+            continue
+        rows.append(
+            RunRow(
+                non_linearity=str(model_cfg.get("non_linearity", "")),
+                run_name=run_name,
+                seed=seed,
+                voltage_amp=float(model_cfg.get("voltage_amp", math.nan)),
+                current_amp=float(model_cfg.get("current_amp", math.nan)),
+                checkpoint_path=source_config_path,
+                clean_accuracy=math.nan,
+                run_dir=run_dir,
+            )
+        )
+    if not rows:
+        raise ValueError("No init source_config.json runs matched the requested filters.")
+    return rows
+
+
 def _select_shard(rows: list[RunRow], num_shards: int, shard_index: int) -> list[RunRow]:
     if num_shards < 1:
         raise ValueError("--num-shards must be >= 1.")
@@ -164,11 +206,12 @@ def _build_eval_context(
     input_gain_override: float | None = None,
     hard_sigmoid_param_override: dict | None = None,
     dataset_root_override: str | None = None,
+    load_checkpoint: bool = True,
 ) -> dict:
     source_config_path = run.run_dir / "source_config.json"
     if not source_config_path.exists():
         raise FileNotFoundError(f"Expected source_config.json at {source_config_path}.")
-    if not run.checkpoint_path.exists():
+    if load_checkpoint and not run.checkpoint_path.exists():
         raise FileNotFoundError(f"Expected checkpoint at {run.checkpoint_path}.")
 
     config = load_config(source_config_path)
@@ -211,7 +254,8 @@ def _build_eval_context(
         input_mode=config.get("input_mode", "train"),
     )
     energy_fn.set_device(device)
-    energy_fn.load(run.checkpoint_path)
+    if load_checkpoint:
+        energy_fn.load(run.checkpoint_path)
 
     network = Network(energy_fn)
     free_layers = network.free_layers()
@@ -438,6 +482,49 @@ def _write_rows(path: Path, columns: list[str], rows: list[dict]) -> None:
             writer.writerow({column: _json_sanitize(row.get(column, "")) for column in columns})
 
 
+def _result_key(row: dict) -> tuple:
+    """Identify one deterministic write-noise evaluation across shards/retries."""
+    return (
+        str(row["run_name"]),
+        float(row["voltage_amp"]),
+        float(row["current_amp"]),
+        int(row["training_seed"]),
+        str(row["checkpoint_kind"]),
+        str(row["checkpoint_path"]),
+        float(row["sigma"]),
+        int(row["noise_seed"]),
+    )
+
+
+def _deduplicate_result_rows(rows: list[dict]) -> list[dict]:
+    unique: dict[tuple, dict] = {}
+    for row in rows:
+        key = _result_key(row)
+        previous = unique.get(key)
+        if previous is not None and previous != row:
+            raise ValueError(
+                "Expected duplicate write-noise rows to be identical. "
+                f"Provided conflicting key: {key!r}."
+            )
+        unique[key] = row
+    return list(unique.values())
+
+
+def _noise_cases(sigmas: list[float], noise_seeds: list[int]) -> list[tuple[float, int]]:
+    """Return unique cases; sigma zero is independent of the noise seed."""
+    cases: list[tuple[float, int]] = []
+    seen: set[tuple[float, int]] = set()
+    for sigma_value in sigmas:
+        sigma = float(sigma_value)
+        seeds = noise_seeds[:1] if sigma == 0.0 else noise_seeds
+        for noise_seed_value in seeds:
+            key = (sigma, int(noise_seed_value))
+            if key not in seen:
+                seen.add(key)
+                cases.append(key)
+    return cases
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_json_sanitize(payload), indent=2, sort_keys=True))
@@ -450,6 +537,7 @@ def write_summaries(output_root: Path) -> None:
     rows = []
     for raw_path in raw_paths:
         rows.extend(csv.DictReader(raw_path.open()))
+    rows = _deduplicate_result_rows(rows)
     grouped: dict[tuple, list[dict]] = {}
     for row in rows:
         key = (
@@ -611,8 +699,8 @@ def main() -> None:
         "input_root": str(input_root),
         "output_root": str(output_root),
         "checkpoint_kind": args.checkpoint_kind,
-        "sigmas": [float(value) for value in args.sigmas],
-        "noise_seeds": [int(value) for value in args.noise_seeds],
+        "sigmas": list(dict.fromkeys(float(value) for value in args.sigmas)),
+        "noise_seeds": list(dict.fromkeys(int(value) for value in args.noise_seeds)),
         "eval_batch_size": args.eval_batch_size,
         "inference_iterations_override": args.inference_iterations,
         "include_bias_noise": bool(args.include_bias_noise),
@@ -633,6 +721,15 @@ def main() -> None:
         return
 
     raw_rows = []
+    if raw_results_path.exists():
+        existing_rows = list(csv.DictReader(raw_results_path.open()))
+        completed_keys = {_result_key(row) for row in _deduplicate_result_rows(existing_rows)}
+    else:
+        completed_keys = set()
+    noise_cases = _noise_cases(
+        [float(value) for value in args.sigmas],
+        [int(value) for value in args.noise_seeds],
+    )
     for run in selected:
         print(f"[run] {run.run_name} seed={run.seed} checkpoint={run.checkpoint_path}")
         context = _build_eval_context(
@@ -642,47 +739,64 @@ def main() -> None:
             no_download=args.no_download,
             inference_iterations_override=args.inference_iterations,
         )
-        for sigma in args.sigmas:
-            for noise_seed in args.noise_seeds:
-                _reset_params(context)
-                noised_param_names = _apply_lognormal_write_noise(
-                    context,
-                    sigma=float(sigma),
-                    noise_seed=int(noise_seed),
-                    include_biases=args.include_bias_noise,
-                )
-                metrics = _evaluate(context, max_eval_batches=args.max_eval_batches)
-                row = {
-                    "run_name": run.run_name,
-                    "voltage_amp": run.voltage_amp,
-                    "current_amp": run.current_amp,
-                    "training_seed": run.seed,
-                    "checkpoint_kind": args.checkpoint_kind,
-                    "checkpoint_path": str(run.checkpoint_path),
-                    "sigma": float(sigma),
-                    "noise_seed": int(noise_seed),
-                    "clean_accuracy": run.clean_accuracy,
-                    "noisy_accuracy": metrics["accuracy"],
-                    "accuracy_drop": run.clean_accuracy - metrics["accuracy"],
-                    "test_loss": metrics["loss"],
-                    "mean_logit_margin": metrics["mean_logit_margin"],
-                    "solver_converged_fraction": metrics["solver_converged_fraction"],
-                    "mean_solver_iterations": metrics["mean_solver_iterations"],
-                    "mean_kcl_residual": metrics["mean_kcl_residual"],
-                    "fraction_saturated_nodes": metrics["fraction_saturated_nodes"],
-                    "noised_param_names": ";".join(noised_param_names),
-                }
-                raw_rows.append(row)
+        for sigma, noise_seed in noise_cases:
+            case_key = (
+                run.run_name,
+                float(run.voltage_amp),
+                float(run.current_amp),
+                int(run.seed),
+                args.checkpoint_kind,
+                str(run.checkpoint_path),
+                float(sigma),
+                int(noise_seed),
+            )
+            if case_key in completed_keys:
                 print(
-                    f"[result] {run.run_name} seed={run.seed} sigma={float(sigma):.4g} "
-                    f"noise_seed={int(noise_seed)} acc={metrics['accuracy']*100:.2f}% "
-                    f"drop={(run.clean_accuracy - metrics['accuracy'])*100:.2f}%"
+                    f"[skip] {run.run_name} seed={run.seed} "
+                    f"sigma={sigma:.4g} noise_seed={noise_seed}"
                 )
-                if len(raw_rows) >= 16:
-                    _write_rows(raw_results_path, RESULT_COLUMNS, raw_rows)
-                    raw_rows = []
+                continue
+            _reset_params(context)
+            noised_param_names = _apply_lognormal_write_noise(
+                context,
+                sigma=float(sigma),
+                noise_seed=int(noise_seed),
+                include_biases=args.include_bias_noise,
+            )
+            metrics = _evaluate(context, max_eval_batches=args.max_eval_batches)
+            row = {
+                "run_name": run.run_name,
+                "voltage_amp": run.voltage_amp,
+                "current_amp": run.current_amp,
+                "training_seed": run.seed,
+                "checkpoint_kind": args.checkpoint_kind,
+                "checkpoint_path": str(run.checkpoint_path),
+                "sigma": float(sigma),
+                "noise_seed": int(noise_seed),
+                "clean_accuracy": run.clean_accuracy,
+                "noisy_accuracy": metrics["accuracy"],
+                "accuracy_drop": run.clean_accuracy - metrics["accuracy"],
+                "test_loss": metrics["loss"],
+                "mean_logit_margin": metrics["mean_logit_margin"],
+                "solver_converged_fraction": metrics["solver_converged_fraction"],
+                "mean_solver_iterations": metrics["mean_solver_iterations"],
+                "mean_kcl_residual": metrics["mean_kcl_residual"],
+                "fraction_saturated_nodes": metrics["fraction_saturated_nodes"],
+                "noised_param_names": ";".join(noised_param_names),
+            }
+            raw_rows.append(row)
+            print(
+                f"[result] {run.run_name} seed={run.seed} sigma={float(sigma):.4g} "
+                f"noise_seed={int(noise_seed)} acc={metrics['accuracy']*100:.2f}% "
+                f"drop={(run.clean_accuracy - metrics['accuracy'])*100:.2f}%"
+            )
+            if len(raw_rows) >= 16:
+                _write_rows(raw_results_path, RESULT_COLUMNS, raw_rows)
+                completed_keys.update(_result_key(item) for item in raw_rows)
+                raw_rows = []
         if raw_rows:
             _write_rows(raw_results_path, RESULT_COLUMNS, raw_rows)
+            completed_keys.update(_result_key(item) for item in raw_rows)
         raw_rows = []
         write_summaries(output_root)
 

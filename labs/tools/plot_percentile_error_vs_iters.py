@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -132,18 +133,19 @@ def write_csv(series, out_csv: Path):
                 handle.write(f"{layer},{iters},{value}\n")
 
 
-def _maybe_write_png(svg_path: Path, png_path: Path) -> None:
+def _maybe_write_png(svg_path: Path, png_path: Path) -> bool:
     rsvg = _find_binary(["rsvg-convert"])
     if not rsvg:
-        return
-    subprocess.run([rsvg, "-o", str(png_path), str(svg_path)], check=False)
+        return False
+    subprocess.run([rsvg, "-o", str(png_path), str(svg_path)], check=True)
+    return png_path.is_file()
 
 
 def _find_binary(candidates):
     for candidate in candidates:
-        result = subprocess.run(["command", "-v", candidate], capture_output=True, text=True, check=False)
-        if result.returncode == 0:
-            return result.stdout.strip()
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
     return None
 
 
@@ -218,6 +220,7 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path(args.root)
+    wrote_any = False
     for percentile in args.percentiles:
         series = extract_percentile_series(root, percentile, metric=args.metric)
         if not series:
@@ -255,15 +258,25 @@ def main() -> int:
                 args.log_y,
             )
         write_csv(series, out_csv)
+        wrote_any = True
         print(f"Saved {out_svg}")
         print(f"Saved {out_csv}")
         if args.png:
             if out_png and out_png.exists():
                 print(f"Saved {out_png}")
             elif out_png:
-                _maybe_write_png(out_svg, out_png)
-                if out_png.exists():
+                if _maybe_write_png(out_svg, out_png):
                     print(f"Saved {out_png}")
+                else:
+                    raise RuntimeError(
+                        "Expected --png to produce a PNG via matplotlib or "
+                        f"rsvg-convert. Provided output path: {out_png}."
+                    )
+    if not wrote_any:
+        raise RuntimeError(
+            "Expected at least one percentile error summary to plot. "
+            f"Provided root: {root}."
+        )
     return 0
 
 

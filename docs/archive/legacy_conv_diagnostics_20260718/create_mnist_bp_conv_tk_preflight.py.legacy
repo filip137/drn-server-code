@@ -1,0 +1,411 @@
+#!/usr/bin/env python3
+"""Create init-state source configs for Conv MNIST T/K diagnostics."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import math
+import sys
+from argparse import Namespace
+from pathlib import Path
+
+import torch
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+LABS_DIR = REPO_ROOT / "labs"
+for path in (REPO_ROOT, LABS_DIR, Path(__file__).resolve().parent):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from model.function.network import Network  # noqa: E402
+from search_mnist_bp_conv_hardsigmoid_saturation_targets import (  # noqa: E402
+    _build_energy as _build_calibration_energy,
+    _build_minimizer as _build_calibration_minimizer,
+    _load_minimizer_config as _load_calibration_minimizer_config,
+    _load_samples,
+    _set_seed,
+    find_gain,
+)
+from train_mnist_bp_conv_amplification_sweep import (  # noqa: E402
+    RunSpec,
+    _build_config,
+    _load_minimizer_config,
+    _run_dir,
+)
+
+
+DEFAULT_OUTPUT_ROOT = REPO_ROOT / "results" / "mnist_bp_conv_tk_redo_init_uniform_pad1_20260705"
+RUNS = [
+    ("mnist_bp_amp_v1_c1", 1.0, 1.0),
+    ("mnist_bp_amp_v4_c1", 4.0, 1.0),
+    ("mnist_bp_amp_v4_c0p25", 4.0, 0.25),
+]
+ARCHS = {
+    1: {"channels": [64], "strides": [2], "paddings": [1], "perfect_diode_gain": 40.0},
+    2: {"channels": [64, 128], "strides": [2, 2], "paddings": [1, 1], "perfect_diode_gain": 100.0},
+    3: {
+        "channels": [64, 128, 256],
+        "strides": [2, 2, 1],
+        "paddings": [1, 1, 1],
+        "perfect_diode_gain": 360.0,
+    },
+}
+MANIFEST_COLUMNS = [
+    "conv_depth",
+    "non_linearity",
+    "run_name",
+    "seed",
+    "voltage_amp",
+    "current_amp",
+    "input_gain",
+    "learning_rate",
+    "target_saturation",
+    "measured_saturation",
+    "layer_saturations",
+    "source_config_path",
+]
+
+
+def _float_label(value: float) -> str:
+    return f"{float(value):g}".replace("-", "m").replace(".", "p")
+
+
+def _read_gain_csv(path: str | None, *, target_saturation: float, v_off: float) -> dict[tuple[int, str], dict]:
+    if path is None:
+        return {}
+    out: dict[tuple[int, str], dict] = {}
+    csv_path = Path(path).expanduser()
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Expected --hard-sigmoid-gain-csv to exist: {csv_path}")
+    with csv_path.open(newline="") as handle:
+        for row in csv.DictReader(handle):
+            try:
+                row_target = float(row.get("target_saturation", "nan"))
+                row_v_off = float(row.get("v_off", "nan"))
+                conv_depth = int(float(row.get("conv_depth", "nan")))
+            except ValueError:
+                continue
+            if abs(row_target - target_saturation) > 1e-12:
+                continue
+            if abs(row_v_off - v_off) > 1e-12:
+                continue
+            out[(conv_depth, row["run_name"])] = row
+    return out
+
+
+def _calibration_args(args: argparse.Namespace, *, conv_depth: int, voltage_amp: float, current_amp: float) -> Namespace:
+    arch = ARCHS[conv_depth]
+    return Namespace(
+        dataset_root=args.dataset_root,
+        output_csv="",
+        device=args.calibration_device or args.device,
+        seed=args.seed,
+        num_samples=args.num_calibration_samples,
+        batch_size=args.calibration_batch_size,
+        num_iterations=args.num_iterations_inference,
+        num_iterations_inference=args.num_iterations_inference,
+        minimizer_config=args.minimizer_config,
+        minimizer_config_data=args.calibration_minimizer_config_data,
+        run_name=[],
+        all_amplifications=False,
+        conv_depth=conv_depth,
+        conv_channels=arch["channels"],
+        kernel_size=args.kernel_size,
+        stride=2,
+        padding=1,
+        strides=arch["strides"],
+        paddings=arch["paddings"],
+        output_dim=args.output_dim,
+        v_off=args.hard_sigmoid_v_off,
+        saturation_scope=args.saturation_scope,
+        g_on=args.hard_sigmoid_g_on,
+        g_off=args.hard_sigmoid_g_off,
+        normalize_mean=args.normalize_mean,
+        normalize_std=args.normalize_std,
+        normalize_scale=args.normalize_scale,
+        targets=[args.target_saturation],
+        initial_hi=args.calibration_initial_hi,
+        max_gain=args.calibration_max_gain,
+        search_steps=args.calibration_search_steps,
+        lr_numerator=args.lr_numerator,
+        voltage_amp=voltage_amp,
+        current_amp=current_amp,
+    )
+
+
+def _calibrate_gain(
+    args: argparse.Namespace,
+    *,
+    conv_depth: int,
+    run_name: str,
+    voltage_amp: float,
+    current_amp: float,
+) -> dict:
+    cal_args = _calibration_args(
+        args,
+        conv_depth=conv_depth,
+        voltage_amp=voltage_amp,
+        current_amp=current_amp,
+    )
+    _set_seed(args.seed)
+    batches = _load_samples(cal_args)
+    _set_seed(args.seed)
+    energy_fn = _build_calibration_energy(cal_args)
+    network = Network(energy_fn)
+    minimizer = _build_calibration_minimizer(energy_fn, network.free_layers(), cal_args)
+    gain, measured, layer_saturations = find_gain(
+        args.target_saturation,
+        energy_fn,
+        network,
+        minimizer,
+        batches,
+        cal_args,
+    )
+    return {
+        "conv_depth": conv_depth,
+        "run_name": run_name,
+        "voltage_amp": voltage_amp,
+        "current_amp": current_amp,
+        "target_saturation": args.target_saturation,
+        "input_gain": float(gain),
+        "measured_saturation": float(measured),
+        "layer_saturations": json.dumps(layer_saturations),
+        "v_off": args.hard_sigmoid_v_off,
+    }
+
+
+def _build_train_args(
+    args: argparse.Namespace,
+    *,
+    conv_depth: int,
+    non_linearity: str,
+    input_gain: float,
+    learning_rate: float,
+) -> Namespace:
+    arch = ARCHS[conv_depth]
+    return Namespace(
+        dataset_root=args.dataset_root,
+        device=args.device,
+        model_key=args.model_key,
+        epochs=0,
+        batch_size=args.batch_size,
+        num_iterations=args.num_iterations_inference,
+        num_iterations_inference=args.num_iterations_inference,
+        num_iterations_training=args.num_iterations_training,
+        minimizer_config=args.minimizer_config,
+        minimizer_config_data=args.minimizer_config_data,
+        learning_rate=[float(learning_rate)],
+        beta=args.beta,
+        lr_decay=args.lr_decay,
+        conv_depth=conv_depth,
+        conv_channels=arch["channels"],
+        kernel_size=args.kernel_size,
+        stride=2,
+        padding=1,
+        strides=arch["strides"],
+        paddings=arch["paddings"],
+        output_dim=args.output_dim,
+        weight_gains=[1.0],
+        weight_min=0.0,
+        weight_max=100.0,
+        weight_init_mode="kaiming_uniform",
+        input_gain=float(input_gain),
+        trainable_amplification=False,
+        amplification_min=1e-6,
+        amplification_max=None,
+        hard_sigmoid_g_on=args.hard_sigmoid_g_on,
+        hard_sigmoid_g_off=args.hard_sigmoid_g_off,
+        hard_sigmoid_v_min=-args.hard_sigmoid_v_off,
+        hard_sigmoid_v_max=args.hard_sigmoid_v_off,
+        hard_sigmoid_v_off=[args.hard_sigmoid_v_off] if non_linearity == "hard_sigmoid" else None,
+        trainable_hard_sigmoid_v_off=False,
+        hard_sigmoid_v_off_min=0.0,
+        hard_sigmoid_v_off_max=None,
+        normalize_mean=args.normalize_mean,
+        normalize_std=args.normalize_std,
+        normalize_scale=args.normalize_scale,
+        no_download=True,
+        log_interval=500,
+        max_batches=None,
+        max_test_batches=None,
+        init_checkpoint_root=None,
+        init_checkpoint_name="final_model.pt",
+        prune_after_epochs=None,
+        prune_min_best_test_accuracy=None,
+    )
+
+
+def _selected_depths(raw: list[int] | None) -> list[int]:
+    depths = sorted(ARCHS) if raw is None else sorted({int(value) for value in raw})
+    unknown = [value for value in depths if value not in ARCHS]
+    if unknown:
+        raise ValueError(f"Expected conv depths from {sorted(ARCHS)}, got {unknown}.")
+    return depths
+
+
+def _selected_runs(raw: list[str] | None) -> list[tuple[str, float, float]]:
+    if raw is None:
+        return RUNS
+    wanted = set(raw)
+    by_name = {name: (name, v, c) for name, v, c in RUNS}
+    missing = sorted(wanted - set(by_name))
+    if missing:
+        raise ValueError(f"Unknown --run-name values: {missing}.")
+    return [by_name[name] for name in [name for name, _v, _c in RUNS if name in wanted]]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
+    parser.add_argument("--dataset-root", default=str(REPO_ROOT / "data"))
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--calibration-device", default=None)
+    parser.add_argument("--model-key", default="mnist_bp_conv_amp")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--conv-depth", type=int, nargs="+", default=None)
+    parser.add_argument("--non-linearity", nargs="+", choices=("hard_sigmoid", "perfect_diode"), default=["hard_sigmoid", "perfect_diode"])
+    parser.add_argument("--run-name", nargs="+", default=None)
+    parser.add_argument("--minimizer-config", default=str(REPO_ROOT / "labs" / "configs" / "mnist_minimizer_fixed_iterations.json"))
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--num-iterations-inference", type=int, default=4)
+    parser.add_argument("--num-iterations-training", type=int, default=4)
+    parser.add_argument("--kernel-size", type=int, default=3)
+    parser.add_argument("--output-dim", type=int, default=20)
+    parser.add_argument("--beta", type=float, default=1.0)
+    parser.add_argument("--lr-decay", type=float, default=0.99)
+    parser.add_argument("--hard-sigmoid-g-on", type=float, default=100.0)
+    parser.add_argument("--hard-sigmoid-g-off", type=float, default=0.0)
+    parser.add_argument("--hard-sigmoid-v-off", type=float, default=4.0)
+    parser.add_argument("--target-saturation", type=float, default=0.50)
+    parser.add_argument("--saturation-scope", choices=("first_hidden", "all_hidden"), default="first_hidden")
+    parser.add_argument("--hard-sigmoid-gain-csv", default=None)
+    parser.add_argument("--num-calibration-samples", type=int, default=256)
+    parser.add_argument("--calibration-batch-size", type=int, default=64)
+    parser.add_argument("--calibration-initial-hi", type=float, default=64.0)
+    parser.add_argument("--calibration-max-gain", type=float, default=8192.0)
+    parser.add_argument("--calibration-search-steps", type=int, default=24)
+    parser.add_argument("--lr-numerator", type=float, default=1.44)
+    parser.add_argument("--perfect-diode-learning-rate", type=float, default=0.006)
+    parser.add_argument("--normalize-mean", type=float, default=0.1307)
+    parser.add_argument("--normalize-std", type=float, default=0.3081)
+    parser.add_argument("--normalize-scale", type=float, default=0.3)
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args()
+
+    args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
+    args.calibration_minimizer_config_data = _load_calibration_minimizer_config(args.minimizer_config)
+    if args.minimizer_config_data.get("adaptive_equilibrium") is not False:
+        raise SystemExit("Expected minimizer adaptive_equilibrium=false.")
+
+    output_root = Path(args.output_root).expanduser().resolve()
+    gain_rows = _read_gain_csv(
+        args.hard_sigmoid_gain_csv,
+        target_saturation=args.target_saturation,
+        v_off=args.hard_sigmoid_v_off,
+    )
+    manifest_rows: list[dict] = []
+    calibration_rows: list[dict] = []
+    for conv_depth in _selected_depths(args.conv_depth):
+        arch_root = output_root / f"conv{conv_depth}"
+        for non_linearity in args.non_linearity:
+            for run_name, voltage_amp, current_amp in _selected_runs(args.run_name):
+                if non_linearity == "perfect_diode":
+                    input_gain = float(ARCHS[conv_depth]["perfect_diode_gain"])
+                    learning_rate = float(args.perfect_diode_learning_rate)
+                    calibration = {
+                        "target_saturation": "",
+                        "measured_saturation": "",
+                        "layer_saturations": "",
+                    }
+                else:
+                    calibration = gain_rows.get((conv_depth, run_name))
+                    if calibration is None:
+                        calibration = _calibrate_gain(
+                            args,
+                            conv_depth=conv_depth,
+                            run_name=run_name,
+                            voltage_amp=voltage_amp,
+                            current_amp=current_amp,
+                        )
+                        calibration_rows.append(calibration)
+                    input_gain = float(calibration["input_gain"])
+                    learning_rate = float(args.lr_numerator) / input_gain
+
+                train_args = _build_train_args(
+                    args,
+                    conv_depth=conv_depth,
+                    non_linearity=non_linearity,
+                    input_gain=input_gain,
+                    learning_rate=learning_rate,
+                )
+                spec = RunSpec(
+                    non_linearity=non_linearity,
+                    run_name=run_name,
+                    seed=args.seed,
+                    voltage_amp=voltage_amp,
+                    current_amp=current_amp,
+                )
+                run_dir = _run_dir(arch_root, spec)
+                config_path = run_dir / "source_config.json"
+                if config_path.exists() and not args.overwrite:
+                    raise FileExistsError(
+                        f"Refusing to overwrite existing source config: {config_path}. "
+                        "Pass --overwrite to replace it."
+                    )
+                run_dir.mkdir(parents=True, exist_ok=True)
+                config = _build_config(train_args, spec)
+                config["lab"]["epochs"] = 0
+                config["diagnostic_phase"] = "init_tk_preflight"
+                config_path.write_text(json.dumps(config, indent=2) + "\n")
+                manifest_rows.append(
+                    {
+                        "conv_depth": conv_depth,
+                        "non_linearity": non_linearity,
+                        "run_name": run_name,
+                        "seed": args.seed,
+                        "voltage_amp": voltage_amp,
+                        "current_amp": current_amp,
+                        "input_gain": input_gain,
+                        "learning_rate": learning_rate,
+                        "target_saturation": calibration.get("target_saturation", ""),
+                        "measured_saturation": calibration.get("measured_saturation", ""),
+                        "layer_saturations": calibration.get("layer_saturations", ""),
+                        "source_config_path": str(config_path),
+                    }
+                )
+                print(f"[preflight] wrote {config_path}", flush=True)
+
+    output_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = output_root / "preflight_manifest.csv"
+    with manifest_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=MANIFEST_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(manifest_rows)
+    calibration_path = output_root / "hard_sigmoid_calibration.csv"
+    if calibration_rows:
+        with calibration_path.open("w", newline="") as handle:
+            fieldnames = sorted({key for row in calibration_rows for key in row})
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(calibration_rows)
+    metadata = {
+        "output_root": str(output_root),
+        "num_rows": len(manifest_rows),
+        "conv_depths": _selected_depths(args.conv_depth),
+        "non_linearities": args.non_linearity,
+        "run_names": [name for name, _v, _c in _selected_runs(args.run_name)],
+        "geometry": {f"conv{depth}": ARCHS[depth] for depth in _selected_depths(args.conv_depth)},
+        "minimizer_config": args.minimizer_config,
+        "adaptive_equilibrium": args.minimizer_config_data.get("adaptive_equilibrium"),
+        "target_saturation": args.target_saturation,
+        "hard_sigmoid_v_off": args.hard_sigmoid_v_off,
+    }
+    (output_root / "preflight_metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    print(f"[preflight] rows={len(manifest_rows)} manifest={manifest_path}")
+
+
+if __name__ == "__main__":
+    main()

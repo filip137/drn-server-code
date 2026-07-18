@@ -2,6 +2,7 @@
 import argparse
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 import math
@@ -189,14 +190,9 @@ def _write_svg(
 
 def _find_binary(candidates: list[str]) -> str | None:
     for candidate in candidates:
-        result = subprocess.run(
-            ["command", "-v", candidate],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
     return None
 
 
@@ -204,7 +200,7 @@ def _maybe_svg_to_pdf(svg_path: Path, pdf_path: Path) -> bool:
     rsvg = _find_binary(["rsvg-convert"])
     if not rsvg:
         return False
-    subprocess.run([rsvg, "-f", "pdf", "-o", str(pdf_path), str(svg_path)], check=False)
+    subprocess.run([rsvg, "-f", "pdf", "-o", str(pdf_path), str(svg_path)], check=True)
     return pdf_path.exists()
 
 
