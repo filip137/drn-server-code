@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Train one-or-more-convolution MNIST DRNs with BP over amplification settings."""
+"""Deprecated compatibility runner for historical MNIST Conv sweeps.
+
+New paper-facing work must use ``python -m experiments.mnist_conv sweep`` with
+a complete canonical JSON specification. This file remains only to reproduce
+historical diagnostic commands while their source configs are inventoried.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +26,7 @@ for path in (REPO_ROOT, LABS_DIR):
         sys.path.insert(0, str(path))
 
 from labs.mnist_train import train_mnist_conv  # noqa: E402
+from labs.datasets import AFFINE_PRESETS, affine_config_from_preset  # noqa: E402
 
 
 MODEL_KEY = "mnist_bp_conv_amp"
@@ -158,6 +164,17 @@ def _iteration_counts(args: argparse.Namespace) -> tuple[int, int]:
     return inference, training
 
 
+def _affine_config_from_args(args: argparse.Namespace) -> dict:
+    return affine_config_from_preset(
+        args.affine_preset,
+        degrees=args.affine_degrees,
+        translate=args.affine_translate,
+        scale=args.affine_scale,
+        shear=args.affine_shear,
+        seed=args.affine_seed,
+    )
+
+
 def _architecture(args: argparse.Namespace) -> tuple[list[list[int]], list[dict]]:
     channels = [int(value) for value in args.conv_channels]
     if args.conv_depth < 1:
@@ -252,6 +269,25 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
     learning_rate = _expanded_learning_rate(args)
     weight_gains = _expanded_weight_gains(args)
     inference_iterations, training_iterations = _iteration_counts(args)
+    affine_config = _affine_config_from_args(args)
+    dataset_factory = (
+        "labs.datasets.AffineMnistDataset"
+        if affine_config.get("enabled")
+        else "labs.datasets.MnistDataset"
+    )
+    dataset_params = {
+        "name": "mnist",
+        "batch_size": args.batch_size,
+        "root": os.path.expanduser(args.dataset_root),
+        "train": True,
+        "download": not args.no_download,
+        "normalize": True,
+        "normalize_mean": args.normalize_mean,
+        "normalize_std": args.normalize_std,
+        "normalize_scale": args.normalize_scale,
+    }
+    if affine_config.get("enabled"):
+        dataset_params["affine_config"] = affine_config
     model_key = args.model_key
     hard_sigmoid_param = {
         "g_on": args.hard_sigmoid_g_on,
@@ -286,18 +322,8 @@ def _build_config(args: argparse.Namespace, spec: RunSpec) -> dict:
         "max_test_batches": args.max_test_batches,
         "datasets": {
             "mnist": {
-                "factory": "labs.datasets.MnistDataset",
-                "params": {
-                    "name": "mnist",
-                    "batch_size": args.batch_size,
-                    "root": os.path.expanduser(args.dataset_root),
-                    "train": True,
-                    "download": not args.no_download,
-                    "normalize": True,
-                    "normalize_mean": args.normalize_mean,
-                    "normalize_std": args.normalize_std,
-                    "normalize_scale": args.normalize_scale,
-                },
+                "factory": dataset_factory,
+                "params": dataset_params,
             },
         },
         "model_base": {
@@ -694,6 +720,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--normalize-mean", type=float, default=0.1307)
     parser.add_argument("--normalize-std", type=float, default=0.3081)
     parser.add_argument("--normalize-scale", type=float, default=0.3)
+    parser.add_argument(
+        "--affine-preset",
+        choices=sorted(AFFINE_PRESETS),
+        default="none",
+        help="Deterministic per-sample affine MNIST preset.",
+    )
+    parser.add_argument("--affine-degrees", type=float, default=None)
+    parser.add_argument("--affine-translate", type=float, nargs="+", default=None)
+    parser.add_argument("--affine-scale", type=float, nargs=2, default=None)
+    parser.add_argument("--affine-shear", type=float, default=None)
+    parser.add_argument("--affine-seed", type=int, default=1729)
     parser.add_argument("--log-interval", type=int, default=500)
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument("--max-test-batches", type=int, default=None)
@@ -740,6 +777,7 @@ def parse_args() -> argparse.Namespace:
     _expanded_learning_rate(args)
     _expanded_weight_gains(args)
     _expanded_hard_sigmoid_v_off(args)
+    _affine_config_from_args(args)
     if not args.summary_only:
         args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
     else:
@@ -760,6 +798,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    print(
+        "[deprecated] experiments/train_mnist_bp_conv_amplification_sweep.py is "
+        "a legacy diagnostic runner; use `python -m experiments.mnist_conv sweep` "
+        "for new work.",
+        file=sys.stderr,
+    )
     args = parse_args()
     output_root = Path(args.output_root).expanduser().resolve()
     legacy_run_names = {name for name, _, _ in LEGACY_AMPLIFICATION_GRID}
