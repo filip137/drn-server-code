@@ -1,8 +1,10 @@
 # Amplification Experiment Curation
 
-Last updated: 2026-06-16
+Last updated: 2026-07-18
 
 This note is the paper-facing cleanup layer for the MNIST amplification experiments. Raw result directories are preserved, but analysis should use the curated status below.
+
+Scope note: the evidence curated here was produced primarily with ordinary MNIST, dense models, or mixed historical Conv protocols. It remains useful as historical and diagnostic evidence, but it is not paper-facing quantitative evidence for the new deterministic medium affine MNIST Conv setup. New Conv experiments are governed by [`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md) and its linked focused protocols.
 
 ## Main Conclusions
 
@@ -11,7 +13,8 @@ This note is the paper-facing cleanup layer for the MNIST amplification experime
 3. Perfect-diode residuals must be interpreted with projected KKT residuals, not raw `|dE/dz|` on clamped variables.
 4. The useful dense result is consistent: voltage amplification increases physical/cost sharpness and write-noise fragility; current amplification lowers curvature but can hurt clean trainability/accuracy, especially `v1/c4`.
 5. Input quantization and center occlusion are negative controls. They corrupt the input channel, not the write/conductance channel, and did not expose the same amplification mechanism.
-6. Conv1 results are usable as preliminary architecture evidence. Conv2 results are not final for paper figures until rerun with the corrected iteration counts: `hard_sigmoid K=32`, `perfect_diode K=8`.
+6. Conv1 results are usable only as preliminary historical architecture evidence. The 2026-07-05 fixed `T/K` values are superseded for the deterministic medium affine MNIST setup. All nine replacement hard-sigmoid gains and row-specific `T/K` values were frozen on 2026-07-18; the perfect-diode calibration and `T/K` rule remain pending.
+7. The ordinary-MNIST hard-sigmoid gain table and the intermediate medium-affine amplified gain candidates around `165-185` are diagnostic only. The latter were contaminated by global layer-name counters advancing between sequential model builds. Use only the counter-reset, shuffle-seed-0 calibration rooted at `results/conv_hardsigmoid_gain_medium_affine_t64_deterministic_cohort_20260718` for the active hard-sigmoid setup.
 
 ## Paper-Facing Dense Runs
 
@@ -109,14 +112,9 @@ Conv2 current status:
 | hard sigmoid | 0.9512 | 0.9706 | 0.9797 | 0.8611 | 0.8254 |
 | perfect diode | 0.8830 | 0.9472 | 0.9807 | 0.7379 | 0.7079 |
 
-Do not use conv2 K=6 runs as final paper figures. The residual diagnostic shows:
+Do not use these older Conv2 K=6 roots as final paper figures; they use ordinary MNIST and are mixed with older geometry, operating-point, and T/K choices. The July 5 T/K policy is also superseded. The medium-affine hard-sigmoid gains and replacement row-specific T/K values are now frozen, but new Conv2 paper training must still wait for the later batch-size/optimizer/LR/final-training protocol.
 
-| nonlinearity | recommended uniform K |
-|---|---:|
-| hard sigmoid | 32 |
-| perfect diode | 8 |
-
-Useful conv2 diagnostic: the cost-Hessian ordering already mirrors the dense story. Voltage amplification increases curvature; current amplification lowers curvature but can undertrain or collapse, so the conv2 paper run must be rerun with correct K and tuned LR before drawing accuracy conclusions.
+Useful Conv2 diagnostic: the cost-Hessian ordering already mirrors the dense story. Voltage amplification increases curvature; current amplification lowers curvature but can undertrain or collapse. These results do not determine the paper-facing accuracy comparison under the new protocol.
 
 ## Negative Controls
 
@@ -144,16 +142,16 @@ Do not use the following as paper-facing quantitative evidence:
 | `results/mnist_bp_cost_hessian_noise_curvature_hardsigmoid_voff15_iter16` | superseded by `..._dense_amp_fix` |
 | `results/mnist_bp_residual_current_diagnostic_hardsigmoid_iter16` | invalidated by hard-sigmoid updater conductance scaling bug |
 | `results/mnist_bp_conv2_hardsigmoid_residual_vs_iterations_seed0` | superseded by corrected KKT/raw residual diagnostic |
-| conv2 K=6 training roots | preliminary only; hard sigmoid underconverged and perfect diode should use K=8 |
+| pre-2026-07-05 conv2 K=6 training roots | preliminary only; mixed older geometry/operating-point choices and not evidence for the new medium-affine protocol |
 
 ## Standard Paper Setup Going Forward
 
-Use `docs/conv_paper_hyperparameter_protocol.md` as the selection rule for Conv K, input gain, LR, and epoch budget.
+Use [`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md) as the active Conv protocol index. It freezes the experiment definition, all nine hard-sigmoid gains, and all nine hard-sigmoid operational T/K values. The perfect-diode calibration and T/K rule are pending, and batch size for training, optimizer, LR, epoch budget, and final seeds remain unresolved.
 
 1. Dense DRN-XS perfect diode: use `legacy_preproc` for baseline/voltage/current comparison, and fixed-current reruns for current-amplification bug checks.
-2. Dense hard sigmoid: combine legacy baseline/voltage rows with fixed-current rows only when explicitly labeled; otherwise rerun all five amps in one clean fixed setup.
+2. Dense hard sigmoid: combine legacy baseline/voltage rows with fixed-current rows only when explicitly labeled. These dense five-scheme comparisons do not define the active three-scheme Conv grid.
 3. Conv1: can be discussed as preliminary, but final figures should use a single seed protocol only if labeled as such.
-4. Conv2: rerun all five amps with `hard_sigmoid K=32`, `perfect_diode K=8`, tuned LR, and consistent epoch budget before paper figures.
+4. Conv1/Conv2/Conv3: use only baseline `v1/c1`, proposed/ours `v4/c1`, and legacy `v4/c0.25`; freeze each row's medium-affine input gain before running its T/K diagnostic. Do not begin LR selection or paper training until the applicable operational values are frozen.
 5. Whenever reporting residuals:
    - hard sigmoid: raw `max |dE/dz|`.
    - perfect diode: projected KKT residual for clamped diode layers plus raw residual for unconstrained output layers.

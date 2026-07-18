@@ -1,6 +1,34 @@
 # Current Research State
 
-Updated: 2026-07-03
+Updated: 2026-07-18
+
+Protocol scope warning: unless a section explicitly says otherwise, the results below are historical ordinary-MNIST or mixed-protocol evidence. They are retained as diagnostics and must not be used as paper-facing quantitative evidence for the deterministic medium affine MNIST setup defined by [`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md).
+
+## Current Protocol Reset (2026-07-18)
+
+The active paper setup now freezes the deterministic medium affine MNIST dataset, the Conv1/Conv2/Conv3 architectures, the paired 20-output objective, the three amplification schemes, and the two nonlinearity families before any calibration or training. Input gain is selected first, independently for every architecture × nonlinearity × amplification combination, with the provisional calibration settling count `T=64` and a `30%` first-hidden-layer target.
+
+The ordinary-MNIST hard-sigmoid gains and the July 5 `T/K` table recorded below are superseded diagnostics. The corrected deterministic-medium-affine hard-sigmoid gains and nine row-specific operational `T/K` values are now frozen in [`conv_paper_tk_protocol.md`](conv_paper_tk_protocol.md); the perfect-diode calibration and `T/K` rule remain pending. Hard-sigmoid paper training, LR selection, and long runs remain blocked until the later training protocol freezes batch size, optimizer, LR, epoch budget, final seeds, and checkpoint selection.
+
+## Frozen Medium-Affine Hard-Sigmoid Handoff (2026-07-18)
+
+Calibration used model seed `0`, affine seed `1729`, a dedicated train-loader shuffle seed `0`, 256 train samples, batch size 64, fixed-step `T=64`, `v_off=4`, and a 30% first-hidden target. Global layer and parameter name counters were reset before every independently calibrated model.
+
+| Architecture | Scheme | Frozen gain | Operational `T/K` |
+|---|---|---:|---:|
+| Conv1 | baseline `v1/c1` | `75.603081` | `4/4` |
+| Conv1 | proposed/ours `v4/c1` | `84.840218` | `4/4` |
+| Conv1 | legacy `v4/c0.25` | `31.818859` | `4/4` |
+| Conv2 | baseline `v1/c1` | `253.302231` | `16/6` |
+| Conv2 | proposed/ours `v4/c1` | `716.343933` | `24/6` |
+| Conv2 | legacy `v4/c0.25` | `661.436951` | `8/4` |
+| Conv3 | baseline `v1/c1` | `251.306137` | `24/8` |
+| Conv3 | proposed/ours `v4/c1` | `744.739075` | `32/8` |
+| Conv3 | legacy `v4/c0.25` | `665.030212` | `8/6` |
+
+All first-hidden calibration and independent-rebuild occupancies are 30% to search precision. All nine selected `T` values satisfy the strict per-layer p90 residual `<1e-2` gate and the `T=64` sentinel; all selected `K` values satisfy the ConvWeight norm and zero-fraction gates against `K=64`. No row selected boundary `K=64`.
+
+The active tracked handoffs are [`conv_hardsigmoid_sat30_gains_20260718.csv`](conv_hardsigmoid_sat30_gains_20260718.csv) and [`conv_hardsigmoid_tk_selection_20260718.csv`](conv_hardsigmoid_tk_selection_20260718.csv). Complete generated evidence remains locally under `results/conv_hardsigmoid_gain_medium_affine_t64_deterministic_cohort_20260718` and `results/conv_hardsigmoid_tk_medium_affine_deterministic_cohort_20260718` and is intentionally not tracked by Git.
 
 ## Problem We Are Solving
 
@@ -16,6 +44,30 @@ Additional tests currently meant to clarify this:
 Hard-sigmoid inclusion rule for this note: only list runs with `v_off=4.0` and `input_gain` chosen from a target-saturation calibration. Older `v_off=1.5` or fixed-raw-gain hard-sigmoid rows are diagnostics only and are excluded from the current-best hard-sigmoid rows below.
 
 “Initial saturation” is measured on 256 train samples at initialization and reported per hidden layer when available.
+
+## Superseded Ordinary-MNIST Hard-Sigmoid Gain Diagnostic
+
+This 2026-07-18 table used 256 ordinary standard-MNIST training samples and the now-superseded July 5 operational `T` values. It is retained only as a calibration diagnostic and historical handoff. It is not the set of 18 gains required by the active deterministic medium affine MNIST protocols. The active hard-sigmoid calibration instead uses `T=64`; perfect diode requires a separate calibration table.
+
+The historical raw calibration output is recorded in `results/mnist_bp_conv_hardsigmoid_sat30_firsthidden_fixedtk_20260718/summary.csv`. It is no longer the tracked training handoff. Its `learning_rate` field was only the bookkeeping value `1.44 / input_gain`, not a selected training LR.
+
+| Architecture | Frozen `T/K` | `v1/c1` gain (measured sat.) | `v4/c1` gain (measured sat.) | `v4/c0.25` gain (measured sat.) |
+|---|---:|---:|---:|---:|
+| Conv1 | `4/4` | `71.9070` (`30.0000%`) | `20.4517` (`30.0000%`) | `7.62445` (`30.0000%`) |
+| Conv2 | `16/6` | `244.8107` (`30.0000%`) | `174.5788` (`30.0000%`) | `162.5755` (`29.9048%`) |
+| Conv3 `[2,2,1]` | `16/16` | `244.4419` (`30.0000%`) | `178.6049` (`30.0000%`) | `162.6445` (`30.0000%`) |
+
+## Superseded July 5 T/K Policy
+
+The following values were adopted on 2026-07-05 for the previous setup. They are superseded and must not be used to launch paper training for the deterministic medium affine MNIST setup:
+
+| Architecture | `hard_sigmoid` | `perfect_diode` |
+|---|---|---|
+| Conv1 | `T=4`, `K=4` | `T=4`, `K=4` |
+| Conv2 | `T=16`, `K=6` | `T=4`, `K=4` |
+| Conv3 | `T=16`, `K=16` | `T=6`, `K=6` |
+
+This historical table follows the 2026-07-05 trex init diagnostics under `/home/filip/server_code/results/mnist_bp_conv_tk_redo_init_uniform_pad1_20260705`, with fixed-step `adaptive_equilibrium=false`, residual-current checks, and `K=64` as the high-`K` gradient reference. The historical launcher CSV is `docs/conv_fixed_tk_policy_20260705.csv`. The replacement hard-sigmoid values are frozen in [`conv_paper_tk_protocol.md`](conv_paper_tk_protocol.md).
 
 ## Conv1
 

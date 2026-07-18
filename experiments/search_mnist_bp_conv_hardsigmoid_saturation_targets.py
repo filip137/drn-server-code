@@ -22,8 +22,21 @@ for path in (REPO_ROOT, LABS_DIR):
 
 from custom_classes import FlexibleDeepResistiveEnergy  # noqa: E402
 from custom_minimizer import CustomQuadraticMinimizer, MinimizerSettings  # noqa: E402
-from labs.datasets import MnistDataset  # noqa: E402
+from labs.datasets import (  # noqa: E402
+    AFFINE_PRESETS,
+    AffineMnistDataset,
+    MnistDataset,
+    affine_config_from_preset,
+)
 from model.function.network import Network  # noqa: E402
+from model.variable.layer import Layer  # noqa: E402
+from model.variable.parameter import (  # noqa: E402
+    Bias,
+    ConvWeight,
+    DenseWeight,
+    HardSigmoidVOff,
+    PoolWeight,
+)
 
 
 MINIMIZER_SETTINGS_FIELDS = (
@@ -63,6 +76,16 @@ def _set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def _reset_name_counters() -> None:
+    """Make every independently calibrated model use the same layer indices."""
+    Layer._counter = 0
+    Bias._counter = 0
+    DenseWeight._counter = 0
+    ConvWeight._counter = 0
+    PoolWeight._counter = 0
+    HardSigmoidVOff._counter = 0
 
 
 def _conv_spatial(size: int, kernel: int, stride: int, padding: int) -> int:
@@ -245,7 +268,12 @@ def _build_energy(args):
 
 
 def _load_samples(args):
-    dataset = MnistDataset(
+    affine_config = _affine_config_from_args(args)
+    dataset_cls = AffineMnistDataset if affine_config.get("enabled") else MnistDataset
+    dataset_kwargs = {}
+    if affine_config.get("enabled"):
+        dataset_kwargs["affine_config"] = affine_config
+    dataset = dataset_cls(
         name="mnist",
         batch_size=args.batch_size,
         device=args.device,
@@ -256,6 +284,8 @@ def _load_samples(args):
         normalize_mean=args.normalize_mean,
         normalize_std=args.normalize_std,
         normalize_scale=args.normalize_scale,
+        shuffle_seed=args.seed,
+        **dataset_kwargs,
     )
     train_loader, _ = dataset.build()
     images = []
@@ -271,6 +301,17 @@ def _load_samples(args):
     return images
 
 
+def _affine_config_from_args(args: argparse.Namespace) -> dict:
+    return affine_config_from_preset(
+        args.affine_preset,
+        degrees=args.affine_degrees,
+        translate=args.affine_translate,
+        scale=args.affine_scale,
+        shear=args.affine_shear,
+        seed=args.affine_seed,
+    )
+
+
 @torch.no_grad()
 def saturation_fraction(
     gain: float,
@@ -280,6 +321,7 @@ def saturation_fraction(
     batches,
     v_off: float,
     saturation_scope: str,
+    record_all_layers: bool = False,
 ) -> tuple[float, list[float]]:
     input_layer = energy_fn.layers()[0]
     old_gain = input_layer._gain
@@ -290,15 +332,15 @@ def saturation_fraction(
         for batch in batches:
             network.set_input(batch, reset=True)
             minimizer.compute_equilibrium()
-            if saturation_scope == "first_hidden":
-                hidden_layers = energy_fn.layers()[1:2]
-            elif saturation_scope == "all_hidden":
-                hidden_layers = energy_fn.layers()[1:-1]
-            else:
+            if saturation_scope not in {"first_hidden", "all_hidden"}:
                 raise ValueError(
                     "Expected saturation_scope to be 'first_hidden' or 'all_hidden', "
                     f"got {saturation_scope!r}."
                 )
+            if saturation_scope == "first_hidden" and not record_all_layers:
+                hidden_layers = energy_fn.layers()[1:2]
+            else:
+                hidden_layers = energy_fn.layers()[1:-1]
             if not layer_totals:
                 layer_totals = [0 for _ in hidden_layers]
                 layer_saturated = [0 for _ in hidden_layers]
@@ -309,12 +351,16 @@ def saturation_fraction(
     finally:
         input_layer._gain = old_gain
 
-    total = sum(layer_totals)
-    saturated = sum(layer_saturated)
     layer_fracs = [
         sat / total_for_layer if total_for_layer else 0.0
         for sat, total_for_layer in zip(layer_saturated, layer_totals)
     ]
+    if saturation_scope == "first_hidden":
+        total = layer_totals[0]
+        saturated = layer_saturated[0]
+    else:
+        total = sum(layer_totals)
+        saturated = sum(layer_saturated)
     return saturated / total, layer_fracs
 
 
@@ -411,6 +457,17 @@ def main() -> None:
     parser.add_argument("--normalize-mean", type=float, default=0.1307)
     parser.add_argument("--normalize-std", type=float, default=0.3081)
     parser.add_argument("--normalize-scale", type=float, default=0.3)
+    parser.add_argument(
+        "--affine-preset",
+        choices=sorted(AFFINE_PRESETS),
+        default="none",
+        help="Deterministic per-sample affine MNIST preset.",
+    )
+    parser.add_argument("--affine-degrees", type=float, default=None)
+    parser.add_argument("--affine-translate", type=float, nargs="+", default=None)
+    parser.add_argument("--affine-scale", type=float, nargs=2, default=None)
+    parser.add_argument("--affine-shear", type=float, default=None)
+    parser.add_argument("--affine-seed", type=int, default=1729)
     parser.add_argument("--targets", type=float, nargs="+", default=[0.10, 0.30, 0.50, 0.70, 0.90])
     parser.add_argument("--initial-hi", type=float, default=64.0)
     parser.add_argument("--max-gain", type=float, default=8192.0)
@@ -424,6 +481,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _architecture(args)
+    affine_config = _affine_config_from_args(args)
     args.minimizer_config_data = _load_minimizer_config(args.minimizer_config)
     _set_seed(args.seed)
     batches = _load_samples(args)
@@ -434,14 +492,33 @@ def main() -> None:
         voltage_amp, current_amp = AMPLIFICATION_BY_NAME[run_name]
         args.voltage_amp = voltage_amp
         args.current_amp = current_amp
+        _reset_name_counters()
         _set_seed(args.seed)
         energy_fn = _build_energy(args)
         network = Network(energy_fn)
         minimizer = _build_minimizer(energy_fn, network.free_layers(), args)
         for target in args.targets:
-            gain, measured, layer_measured = find_gain(target, energy_fn, network, minimizer, batches, args)
+            gain, _measured, _layer_measured = find_gain(
+                target, energy_fn, network, minimizer, batches, args
+            )
+            measured, layer_measured = saturation_fraction(
+                gain,
+                energy_fn,
+                network,
+                minimizer,
+                batches,
+                args.v_off,
+                args.saturation_scope,
+                record_all_layers=True,
+            )
             lr = args.lr_numerator / gain
             row = {
+                "dataset_name": (
+                    "deterministic_medium_affine_mnist"
+                    if affine_config.get("enabled")
+                    else "ordinary_mnist"
+                ),
+                "non_linearity": "hard_sigmoid",
                 "run_name": run_name,
                 "voltage_amp": voltage_amp,
                 "current_amp": current_amp,
@@ -453,7 +530,9 @@ def main() -> None:
                 "v_off": args.v_off,
                 "lr_numerator": args.lr_numerator,
                 "seed": args.seed,
+                "shuffle_seed": args.seed,
                 "num_samples": args.num_samples,
+                "batch_size": args.batch_size,
                 "num_iterations": _inference_iterations(args),
                 "num_iterations_inference": _inference_iterations(args),
                 "conv_depth": args.conv_depth,
@@ -462,6 +541,18 @@ def main() -> None:
                 "padding": ",".join(str(value) for value in _conv_geometry(args)[1]),
                 "conv_pipeline": json.dumps(_architecture(args)[1]),
                 "saturation_scope": args.saturation_scope,
+                "affine_config": json.dumps(affine_config),
+                "normalize_mean": args.normalize_mean,
+                "normalize_std": args.normalize_std,
+                "normalize_scale": args.normalize_scale,
+                "adaptive_equilibrium": bool(
+                    args.minimizer_config_data.get("adaptive_equilibrium", False)
+                ),
+                "search_initial_hi": args.initial_hi,
+                "search_max_gain": args.max_gain,
+                "search_steps": args.search_steps,
+                "model_counter_reset_before_row": True,
+                "calibration_status": "selected",
             }
             rows.append(row)
             print(

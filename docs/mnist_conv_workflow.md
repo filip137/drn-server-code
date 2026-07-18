@@ -14,17 +14,20 @@ does not define run identities, result paths, completion, or collection.
 ## Protocol gate
 
 Read `conv_paper_hyperparameter_protocol.md` and every active protocol it links
-before preparing a run. The hard-sigmoid T/K rule is defined, but its values and
-the later training protocol are pending; the perfect-diode T/K rule also remains
-pending. Therefore no paper-facing LR screen, long check, or final training may
-be launched yet. Calibration/reference `T=64` is not automatically a training
-value. This is enforced in code: final-category JSON can be validated and
+before preparing a run. All nine hard-sigmoid input gains and row-specific T/K
+values are frozen. Perfect-diode calibration and T/K remain pending, and the
+later training protocol has not yet frozen batch size, optimizer, learning rate,
+epoch budget, final seeds, or checkpoint selection. Therefore no paper-facing LR
+screen, long check, or final training may be launched yet. Calibration/reference
+`T=64` is not automatically a training value. This is enforced in code:
+final-category JSON can be validated and
 planned for review, but execution fails before creating a result or attempt
 until its exact protocol ID is added to the reviewed approval registry.
 
 The examples below document the interface using minimal diagnostic placeholder
-values. Those values do not imply selected T/K, learning rates, epoch budgets,
-seed coverage, or other unresolved scientific settings.
+values. Those placeholders do not reproduce the frozen hard-sigmoid rows and do
+not imply learning rates, epoch budgets, seed coverage, or other unresolved
+scientific settings.
 
 ## One run
 

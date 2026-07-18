@@ -333,6 +333,8 @@ def _aggregate_summary(
     num_samples: int,
 ) -> dict:
     model_cfg = current["model_cfg"]
+    hard_sigmoid_cfg = model_cfg.get("hard_sigmoid_param", {})
+    v_off = hard_sigmoid_cfg.get("v_off", hard_sigmoid_cfg.get("v_max", math.nan))
     target_label = _path_part(spec.run_dir, "target_")
     lrs = _learning_rates(spec, len(current["params"]), phase)
     comparisons: dict[str, list[dict]] = {"all": [], "weights": [], "log_weights": []}
@@ -360,7 +362,7 @@ def _aggregate_summary(
         "num_batches": len(current["records"]),
         "num_samples": num_samples,
         "input_gain": float(model_cfg.get("input_gain", math.nan)),
-        "v_off": float(model_cfg.get("hard_sigmoid_param", {}).get("v_max", math.nan)),
+        "v_off": float(v_off),
         "target_label": target_label,
         "target_saturation": _target_from_label(target_label),
         "lr_reference": lrs[0] if lrs else math.nan,

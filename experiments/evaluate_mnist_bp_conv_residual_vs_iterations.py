@@ -10,17 +10,21 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    plt = None
 
 from evaluate_mnist_bp_write_noise_sweep import (  # noqa: E402
     RunRow,
     _build_eval_context,
+    _discover_init_rows,
     _json_sanitize,
     _read_summary_rows,
     _scores,
@@ -47,6 +51,7 @@ RUN_ORDER = [
     "mnist_bp_amp_v4_c1",
     "mnist_bp_amp_v1_c2",
     "mnist_bp_amp_v1_c4",
+    "mnist_bp_amp_v4_c0p25",
 ]
 RUN_LABELS = {
     "mnist_bp_amp_v1_c1": "v1/c1",
@@ -54,6 +59,7 @@ RUN_LABELS = {
     "mnist_bp_amp_v4_c1": "v4/c1",
     "mnist_bp_amp_v1_c2": "v1/c2",
     "mnist_bp_amp_v1_c4": "v1/c4",
+    "mnist_bp_amp_v4_c0p25": "v4/c0.25",
 }
 RESIDUAL_COLUMNS = [
     "model_label",
@@ -351,7 +357,7 @@ def write_summaries_and_plots(output_root: Path, *, keep_raw: bool = True) -> No
     )
 
     overall_rows = [row for row in rows if row.get("layer_role") == "overall"]
-    if overall_rows:
+    if overall_rows and plt is not None:
         fig, ax = plt.subplots(figsize=(7.2, 4.6))
         grouped: dict[tuple[str, str, int], list[dict]] = defaultdict(list)
         for row in overall_rows:
@@ -403,13 +409,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     parser.add_argument("--model-label", default="conv2")
     parser.add_argument("--device", default=None)
-    parser.add_argument("--checkpoint-kind", choices=("best", "final"), default="best")
+    parser.add_argument("--checkpoint-kind", choices=("init", "best", "final"), default="best")
     parser.add_argument("--run-name", action="append", choices=RUN_ORDER)
     parser.add_argument("--non-linearity", nargs="+", default=["hard_sigmoid"])
     parser.add_argument("--training-seeds", type=int, nargs="+", default=[0])
     parser.add_argument("--iteration-counts", type=int, nargs="+", default=[1, 2, 3, 4, 5, 6, 8, 10, 12, 16])
     parser.add_argument("--eval-batch-size", type=int, default=128)
     parser.add_argument("--max-test-samples", type=int, default=1024)
+    parser.add_argument("--dataset-root", default=None)
     parser.add_argument("--residual-mode", choices=("auto", "raw", "projected_kkt"), default="auto")
     parser.add_argument("--kkt-eps", type=float, default=1.0e-8)
     parser.add_argument("--no-download", action="store_true")
@@ -439,12 +446,19 @@ def main() -> None:
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    rows = _read_summary_rows(
-        input_root,
-        checkpoint_kind=args.checkpoint_kind,
-        run_names=set(args.run_name) if args.run_name else None,
-        training_seeds=set(args.training_seeds) if args.training_seeds else None,
-    )
+    if args.checkpoint_kind == "init":
+        rows = _discover_init_rows(
+            input_root,
+            run_names=set(args.run_name) if args.run_name else None,
+            training_seeds=set(args.training_seeds) if args.training_seeds else None,
+        )
+    else:
+        rows = _read_summary_rows(
+            input_root,
+            checkpoint_kind=args.checkpoint_kind,
+            run_names=set(args.run_name) if args.run_name else None,
+            training_seeds=set(args.training_seeds) if args.training_seeds else None,
+        )
     rows = _filter_rows(rows, non_linearities=set(args.non_linearity) if args.non_linearity else None)
     rows = sorted(rows, key=lambda row: (RUN_ORDER.index(row.run_name), row.seed))
     selected = _select_shard(rows, args.num_shards, args.shard_index)
@@ -463,6 +477,7 @@ def main() -> None:
         "iteration_counts": args.iteration_counts,
         "eval_batch_size": args.eval_batch_size,
         "max_test_samples": args.max_test_samples,
+        "dataset_root": args.dataset_root,
         "residual_mode": args.residual_mode,
         "kkt_eps": args.kkt_eps,
         "num_shards": args.num_shards,
@@ -491,6 +506,8 @@ def main() -> None:
                 eval_batch_size=args.eval_batch_size,
                 no_download=args.no_download,
                 inference_iterations_override=int(iteration_count),
+                dataset_root_override=args.dataset_root,
+                load_checkpoint=args.checkpoint_kind != "init",
             )
             metrics = _evaluate_context(
                 context,

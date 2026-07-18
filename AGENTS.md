@@ -17,7 +17,11 @@ This repository contains code and tooling for coordinate-descent simulations of 
 
 ## Playbooks
 - Optuna analysis SOP: `playbooks/optuna_analysis.md`
-- Conv amplification paper protocol: `docs/conv_paper_hyperparameter_protocol.md`
+- Conv amplification paper protocol index: `docs/conv_paper_hyperparameter_protocol.md`
+- Frozen Conv experiment definition: `docs/conv_paper_experiment_definition.md`
+- Hard-sigmoid input-gain protocol: `docs/conv_paper_hard_sigmoid_input_gain_protocol.md`
+- Perfect-diode input-gain protocol: `docs/conv_paper_perfect_diode_input_gain_protocol.md`
+- Operational T/K protocol: `docs/conv_paper_tk_protocol.md`
 - Amplification result curation: `docs/amplification_experiment_curation.md`
 - Current conv paper state: `docs/current_state.md`
 - Task overrides: `playbooks/AGENTS.override.md`
@@ -34,15 +38,15 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - Prefer keeping the same launcher/config contract across local tmux and Jean Zay so results can be aggregated into one summary.
 
 ## Conv Amplification Paper Work
-- Before proposing, launching, or summarizing MNIST Conv amplification runs, read `docs/conv_paper_hyperparameter_protocol.md` and use it as the source of truth for choosing solver iteration count `K`, hard-sigmoid operating point, `input_gain`, learning rate, epoch budget, and final inclusion category.
+- Before proposing, launching, or summarizing Conv amplification runs, read `docs/conv_paper_hyperparameter_protocol.md` and every active protocol it links. Use that protocol set as the source of truth.
 - Use `docs/amplification_experiment_curation.md` to decide which historical runs are valid, diagnostic, excluded, or superseded. Do not use superseded rows as paper-facing quantitative evidence.
-- Keep final comparison axes fixed inside each table: architecture, preprocessing, nonlinearity family, amplification grid, seed list, batch size, epoch budget, and checkpoint rule. Label mixed-protocol rows as diagnostics.
-- For hard-sigmoid MNIST Conv amplification runs with a target saturation, calibrate raw `input_gain` separately for each amplification scheme using the same deterministic saturation-target procedure. Do not use a shared raw `input_gain` across amplifications for the main comparison; shared-gain runs are diagnostics only. LR sweeps and longer runs must preserve the per-amplification calibrated `input_gain` for the chosen target saturation.
-- For main hard-sigmoid comparisons, keep `v_off` and target initial saturation fixed across amplification schemes within an architecture/nonlinearity table. The current paper-facing default is `v_off=4.0` with `50%` target initial saturation unless a newer dated protocol update supersedes it.
+- The active experiment uses deterministic medium affine MNIST, the frozen Conv1/Conv2/Conv3 padding-1 architectures, paired 20-output loss, and only baseline `v1/c1`, proposed/ours `v4/c1`, and legacy `v4/c0.25`. Do not substitute ordinary or pixel-permuted MNIST.
+- Choose and freeze `input_gain` before defining operational `T/K`. Calibrate raw gain separately for every architecture, nonlinearity, and amplification scheme using model seed `0`, provisional calibration `T=64`, and a `30%` first-hidden target; preserve each gain across later model seeds.
+- Reset global layer and parameter name counters before every independently built calibration model, and use a dedicated train-loader shuffle seed `0` so the 256-sample cohort is independent of model RNG consumption.
+- For hard sigmoid, use `v_off=4.0` and count states outside `[-4,4]`. For perfect diode, use the clamped-occupancy definition in its active input-gain protocol.
 - For perfect-diode Conv runs, judge clamped hidden-layer convergence with projected KKT residuals. Raw residuals are still useful for unconstrained layers and diagnostics, but do not treat raw `|dE/dz|` on clamped variables as the convergence criterion.
-- Choose `K` before operating point, `input_gain`, or LR. The residual-vs-K gate should include the intended `K` plus larger sentinel values such as `2K` and `4K`, and final training should wait until residual stagnation and the EP/BP cosine rule pass.
-- For LR selection, follow the dated paper protocol. Seed-0 screens and seed-0 long checks may select LR candidates, but final paper claims require validating the frozen settings on multiple seeds when runtime is reasonable; do not present single-seed screens as final evidence.
-- For final paper runs, use seeds `0, 1, 2` at minimum when runtime is reasonable, report both best-checkpoint and final-epoch metrics, and keep the same epoch budget for every amplification setting in a table.
+- The nine hard-sigmoid gains and row-specific operational `T/K` values are frozen in the active protocols. The perfect-diode calibration and `T/K` rule remain pending. Do not launch paper-facing LR screens, long checks, or final training until the later training protocol is frozen.
+- Training batch size, optimizer, learning-rate selection, epoch budget, final seed list, checkpoint rule, and final inclusion categories are unresolved until later active protocols define them. Historical defaults are not active decisions.
 - When updating `docs/current_state.md`, separate calibrated initial saturation from trained-checkpoint saturation. The overall best-known table must mark mixed raw-gain, saturation, `K`, LR, or epoch comparisons as `mixed protocol / diagnostic`.
 
 ## Plotting Rule

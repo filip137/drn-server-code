@@ -54,6 +54,9 @@ labs/mnist_pytorch/
 # Data / reports
 *.pdf
 *.csv
+!docs/conv_fixed_tk_policy_20260705.csv
+!docs/conv_hardsigmoid_sat30_gains_20260718.csv
+!docs/conv_hardsigmoid_tk_selection_20260718.csv
 *.pkl
 
 # External/vendor code

@@ -19,8 +19,10 @@ if TYPE_CHECKING:  # Avoid importing the schema solely to evaluate the gate.
 PROTOCOL_CONTRACT_SCHEMA_VERSION = "mnist-conv-protocol-contract/v1"
 
 
-# Intentionally empty while operational T/K and the later training protocol
-# remain pending. Each reviewed protocol id maps to the complete set of exact
+# Intentionally empty while the later training protocol remains pending. The
+# hard-sigmoid input gains and row-specific T/K values are frozen, but batch
+# size, optimizer, LR, epoch budget, final seeds, and checkpoint selection are
+# not. Each reviewed protocol id maps to the complete set of exact
 # resolved-run contract fingerprints it authorizes. This supports a multi-case,
 # multi-seed final sweep without allowing the id alone to approve config drift.
 APPROVED_FINAL_PROTOCOL_CONTRACTS: Mapping[str, frozenset[str]] = MappingProxyType({})

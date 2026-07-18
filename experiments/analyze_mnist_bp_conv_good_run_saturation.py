@@ -308,8 +308,13 @@ def _build_context(
 
 
 def _hard_sigmoid_mask(state: torch.Tensor, params: dict) -> torch.Tensor:
-    v_min = float(params.get("v_min", -math.inf))
-    v_max = float(params.get("v_max", math.inf))
+    if "v_off" in params and "v_min" not in params and "v_max" not in params:
+        v_off = float(params["v_off"])
+        v_min = -v_off
+        v_max = v_off
+    else:
+        v_min = float(params.get("v_min", -math.inf))
+        v_max = float(params.get("v_max", math.inf))
     return (state < v_min) | (state > v_max)
 
 
@@ -417,25 +422,36 @@ def _measure_spec(spec: RunSpec, args: argparse.Namespace, device: torch.device)
     )
     del init_context
 
-    final_context = _build_context(
-        spec,
-        device=device,
-        load_final=True,
-        batch_size=args.batch_size,
-        no_download=args.no_download,
-        dataset_root=args.dataset_root,
-        inference_iterations_override=args.inference_iterations,
-    )
-    final_result = _measure_context(
-        final_context,
-        split=args.split,
-        max_samples=args.max_samples,
-        perfect_eps=args.perfect_eps,
-    )
+    if args.init_only:
+        final_result = {
+            "num_samples": init_result["num_samples"],
+            "first_hidden_saturation": math.nan,
+            "all_hidden_saturation": math.nan,
+            "layer_saturations": [],
+        }
+    else:
+        final_context = _build_context(
+            spec,
+            device=device,
+            load_final=True,
+            batch_size=args.batch_size,
+            no_download=args.no_download,
+            dataset_root=args.dataset_root,
+            inference_iterations_override=args.inference_iterations,
+        )
+        final_result = _measure_context(
+            final_context,
+            split=args.split,
+            max_samples=args.max_samples,
+            perfect_eps=args.perfect_eps,
+        )
 
     model_cfg = spec.model_cfg
     target_label = _path_part(spec.run_dir, "target_")
-    v_off = float(model_cfg.get("hard_sigmoid_param", {}).get("v_max", math.nan))
+    hard_sigmoid_param = model_cfg.get("hard_sigmoid_param", {})
+    v_off = float(
+        hard_sigmoid_param.get("v_off", hard_sigmoid_param.get("v_max", math.nan))
+    )
     init_first = init_result["first_hidden_saturation"]
     init_all = init_result["all_hidden_saturation"]
     final_first = final_result["first_hidden_saturation"]
@@ -491,6 +507,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-root", default=str(REPO_ROOT / "data"))
     parser.add_argument("--device", default=None)
     parser.add_argument("--inference-iterations", type=int, default=None)
+    parser.add_argument(
+        "--init-only",
+        action="store_true",
+        help="Measure initialization only; final-checkpoint columns are written as NaN.",
+    )
     parser.add_argument("--perfect-eps", type=float, default=1e-8)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
