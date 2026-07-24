@@ -14,7 +14,7 @@ from model.resistive.network import DeepResistiveEnergy
 from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
 from training.sgd import EquilibriumProp, AugmentedFunction
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs
-from training.monitor import Optimizer
+from training.tiki_taka import build_optimizer
 from training.epoch import Trainer
 from datasets import load_dataloaders
 
@@ -112,10 +112,11 @@ def visualize_training_step(model="drn-xs", batch_idx=0, verbose=True):
     learning_rates_weights = model_cfg["learning_rates_weights"]
     learning_rates_biases = model_cfg["learning_rates_biases"]
     learning_rates = learning_rates_biases + learning_rates_weights
-    optimizer = Optimizer(
+    optimizer = build_optimizer(
         energy_fn, cost_fn, learning_rates,
-        training_cfg.get("momentum", 0.0),
-        training_cfg.get("weight_decay", 0.0)
+        update_pipeline=training_cfg.get("update_pipeline"),
+        momentum=training_cfg.get("momentum", 0.0),
+        weight_decay=training_cfg.get("weight_decay", 0.0),
     )
     
     print(f"\n=== STEP-BY-STEP TRAINING PROCESS ===")
@@ -286,10 +287,11 @@ def compare_weight_updates(model="drn-xs", num_batches=3):
     learning_rates_weights = model_cfg["learning_rates_weights"]
     learning_rates_biases = model_cfg["learning_rates_biases"]
     learning_rates = learning_rates_biases + learning_rates_weights
-    optimizer = Optimizer(
+    optimizer = build_optimizer(
         energy_fn, cost_fn, learning_rates,
-        training_cfg.get("momentum", 0.0),
-        training_cfg.get("weight_decay", 0.0)
+        update_pipeline=training_cfg.get("update_pipeline"),
+        momentum=training_cfg.get("momentum", 0.0),
+        weight_decay=training_cfg.get("weight_decay", 0.0),
     )
     
     # Store initial weights

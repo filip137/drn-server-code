@@ -28,6 +28,7 @@ from small_network_core import (  # noqa: E402
     train,
     moons_linspace,
 )
+from training.tiki_taka import parse_update_pipeline  # noqa: E402
 
 DEFAULT_NUM_POINTS = 2000
 
@@ -176,6 +177,10 @@ def main() -> None:
     num_epochs = resolve("num_epochs", args.num_epochs)
     batch_size = resolve_optional("batch_size", args.batch_size, default=1)
     learning_rate = resolve_optional("learning_rate", None, default=None)
+    try:
+        update_pipeline = parse_update_pipeline(config.get("update_pipeline"))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     nudging = resolve_optional("nudging", None, default=0.0)
     early_stop_min_epochs = resolve_optional("early_stop_min_epochs", None, default=None)
     early_stop_error_pct = resolve_optional("early_stop_error_pct", None, default=None)
@@ -491,6 +496,7 @@ def main() -> None:
         save_every_epoch=save_every_epoch,
         save_test_accuracy_threshold=save_test_accuracy_threshold,
         save_test_accuracy_thresholds=save_test_accuracy_thresholds,
+        update_pipeline=update_pipeline,
     )
     train(
         settings=train_settings,

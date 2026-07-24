@@ -4,8 +4,9 @@ from typing import Optional
 
 import torch
 
-from training.monitor import Optimizer, Monitor
+from training.monitor import Monitor
 from training.sgd import AugmentedFunction, EquilibriumProp
+from training.tiki_taka import build_optimizer
 from labs.common import MnistParts, CustomTrainer, build_evaluator
 
 
@@ -76,12 +77,13 @@ def track_training_statistics(
             f"check model_cfg learning_rates_* vs energy_fn.params() (+ cost_fn.params())"
         )
 
-    optimizer = Optimizer(
+    optimizer = build_optimizer(
         energy_fn,
         cost_fn,
         learning_rates,
-        training_cfg.get("momentum", 0.0),
-        training_cfg.get("weight_decay", 0.0),
+        update_pipeline=training_cfg.get("update_pipeline"),
+        momentum=training_cfg.get("momentum", 0.0),
+        weight_decay=training_cfg.get("weight_decay", 0.0),
     )
     scheduler_gamma = training_cfg.get("scheduler_gamma")
     if scheduler_gamma is None:

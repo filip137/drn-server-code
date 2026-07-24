@@ -27,7 +27,7 @@ from labs.custom_minimizer import (  # noqa: E402
     CustomAnderssonMinimizer,
     MinimizerSettings,
 )
-from training.monitor import Optimizer  # noqa: E402
+from training.tiki_taka import TikiTakaConfig, build_optimizer  # noqa: E402
 from training.sgd import AugmentedFunction, Backprop, EquilibriumProp  # noqa: E402
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
 from model.variable.parameter import Bias  # noqa: E402
@@ -232,6 +232,7 @@ class TrainRunSettings:
     save_every_epoch: bool = False
     save_test_accuracy_threshold: Optional[float] = None
     save_test_accuracy_thresholds: Optional[Sequence[float]] = None
+    update_pipeline: Optional[TikiTakaConfig] = None
 
 
 def _format_accuracy_tag(value: float) -> str:
@@ -709,10 +710,11 @@ def train(
     for idx, param in enumerate(params):
         if isinstance(param, Bias):
             learning_rates.insert(idx, 0.0)
-    optimizer = Optimizer(
+    optimizer = build_optimizer(
         energy_fn,
         cost_fn,
         learning_rates,
+        update_pipeline=settings.update_pipeline,
         momentum=0.0,
         weight_decay=0.0,
     )

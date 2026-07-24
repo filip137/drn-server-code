@@ -4,6 +4,20 @@ import torch
 from model.variable.variable import Variable
 
 
+def layer_index(layer):
+    """Return the integer suffix from standard layer names like ``Layer_3``."""
+    name = getattr(layer, "name", getattr(layer, "_name", None))
+    try:
+        prefix, index = str(name).rsplit("_", 1)
+        if prefix == "Layer":
+            return int(index)
+    except (TypeError, ValueError):
+        pass
+    raise ValueError(
+        "Expected layer name in format 'Layer_<int>'. "
+        f"Provided value: {name!r}."
+    )
+
 
 class Layer(Variable, ABC):
     """

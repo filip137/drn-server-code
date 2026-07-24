@@ -32,6 +32,7 @@ from small_network_core import (  # noqa: E402
     _resolve_double_diode_runtime,
     train,
 )
+from training.tiki_taka import parse_update_pipeline  # noqa: E402
 
 
 def _build_train_settings(config: dict) -> TrainRunSettings:
@@ -52,6 +53,10 @@ def _build_train_settings(config: dict) -> TrainRunSettings:
     num_epochs = _resolve_config_value("num_epochs", None, config)
     batch_size = _resolve_optional_config_value("batch_size", None, config, default=1)
     learning_rate = _resolve_optional_config_value("learning_rate", None, config, default=None)
+    try:
+        update_pipeline = parse_update_pipeline(config.get("update_pipeline"))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     nudging = _resolve_optional_config_value("nudging", None, config, default=0.0)
     early_stop_min_epochs = _resolve_optional_config_value("early_stop_min_epochs", None, config, default=None)
     early_stop_error_pct = _resolve_optional_config_value("early_stop_error_pct", None, config, default=None)
@@ -227,6 +232,7 @@ def _build_train_settings(config: dict) -> TrainRunSettings:
         early_stop_min_epochs=early_stop_min_epochs,
         early_stop_error_pct=early_stop_error_pct,
         save_epochs=save_epochs,
+        update_pipeline=update_pipeline,
     )
 
 

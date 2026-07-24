@@ -37,8 +37,8 @@ from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer, Min
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs  # noqa: E402
 from model.function.network import Network  # noqa: E402
 from model.variable.parameter import ConvWeight  # noqa: E402
-from training.monitor import Optimizer  # noqa: E402
 from training.sgd import AugmentedFunction, EquilibriumProp  # noqa: E402
+from training.tiki_taka import build_optimizer  # noqa: E402
 
 
 def _default_quadratic_params():
@@ -452,7 +452,14 @@ def _train_image_task(
         learning_rates = list(lr)
     else:
         learning_rates = [lr] * (len(energy_params) + len(cost_params))
-    optimizer = Optimizer(energy_fn, cost_fn, learning_rates, momentum=0.0, weight_decay=0.0)
+    optimizer = build_optimizer(
+        energy_fn,
+        cost_fn,
+        learning_rates,
+        update_pipeline=config.get("update_pipeline"),
+        momentum=0.0,
+        weight_decay=0.0,
+    )
 
     history = {
         "loss": [],
