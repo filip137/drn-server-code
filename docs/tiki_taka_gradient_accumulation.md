@@ -6,9 +6,11 @@ visible ("slow") parameters. The DRN still computes one complete parameter
 gradient tensor per minibatch. Tiki-Taka changes only how that tensor is
 accumulated and applied.
 
-The implementation is in `training/tiki_taka.py`. It is an ideal, tensor-level
-emulator of the two-crossbar idea in AIHWKit's `TransferCompound`, not an
-AIHWKit device simulation.
+The implementation is in `training/tiki_taka.py`. It has two backends:
+
+- the default ideal tensor emulator of the two-crossbar schedule; and
+- an optional native AIHWKit `TransferCompound` backend that performs pulsed
+  device writes and transfers, then exposes the realized slow state to the DRN.
 
 ## Selecting the update pipeline
 
@@ -61,7 +63,9 @@ Unknown keys and values of the wrong type are rejected. Tiki-Taka currently
 requires optimizer `momentum` and `weight_decay` both to be zero because their
 placement in the two-array update rule is undefined.
 
-## Exact update rule and signs
+## Exact ideal-tensor update rule and signs
+
+This section defines the default backend used when `aihwkit_preset` is null.
 
 For a parameter, let:
 
@@ -130,11 +134,10 @@ value can contribute again when its slice is selected on a later pass.
 AIHWKit supports reset only for column transfer, so configurations combining
 row transfer with a nonzero reset probability are rejected.
 
-The Tiki-Taka optimizer itself does not clamp the visible tensor. Existing DRN
-trainers call each parameter's `clamp_()` after the optimizer step, so any
-configured DRN parameter bounds are applied after the additive transfer. Fast
-array bounds are separate and are controlled only by `fast_weight_min` and
-`fast_weight_max`.
+The ideal backend does not clamp the visible tensor. Existing DRN trainers call
+each parameter's `clamp_()` after the optimizer step, so any configured DRN
+parameter bounds are applied after the additive transfer. Fast array bounds are
+separate and are controlled only by `fast_weight_min` and `fast_weight_max`.
 
 Biases use ordinary digital SGD by default:
 
@@ -231,10 +234,183 @@ The values below are the defaults used when a Tiki-Taka object omits a field.
 | `fast_weight_min` | `null` | Optional lower clamp bound for the signed fast array. |
 | `fast_weight_max` | `null` | Optional upper clamp bound for the signed fast array; when both bounds are present, min must be less than max. |
 | `accumulate_biases` | `false` | Use auxiliary arrays for biases instead of direct digital SGD. |
+| `aihwkit_preset` | `null` | Null selects the ideal backend. A supported AIHWKit Tiki-Taka preset selects native pulsed tiles. |
+| `aihwkit_conductance_min` | `null` | Optional non-negative lower DRN conductance bound for the affine device-state mapping; defaults to the parameter clamp. |
+| `aihwkit_conductance_max` | `null` | Optional upper DRN conductance bound; defaults to the finite parameter clamp and must exceed the lower bound. |
+| `aihwkit_construction_seed` | `null` | Optional positive base seed for reproducible device construction. Each tile/device receives a distinct offset; AIHWKit reserves zero for nondeterministic seeding. |
 
 These defaults define a Tiki-Taka pipeline, but they do not make it equivalent
 to direct SGD. In particular, only one logical column is transferred per
 minibatch by default, and the fast slice is not reset after transfer.
+
+## Native AIHWKit pulsed backend
+
+Set `aihwkit_preset` to route every accumulated weight through a native
+AIHWKit tile. AIHWKit is imported lazily, so direct SGD and the ideal backend
+do not require that optional package.
+
+The supported presets are:
+
+- `TikiTakaIdealizedPreset`
+- `TikiTakaReRamESPreset`
+- `TikiTakaReRamSBPreset`
+- `TikiTakaCapacitorPreset`
+- `TikiTakaEcRamPreset`
+- `TikiTakaEcRamMOPreset`
+
+The ReRAM, capacitor, and ECRAM presets include their AIHWKit device
+granularity, asymmetry, state dependence, device-to-device and cycle-to-cycle
+variation, bounds, write noise, transfer readout, and pulsed update behavior.
+The common transfer fields in `update_pipeline` override the corresponding
+fields on the selected preset.
+
+For example:
+
+```json
+{
+  "update_pipeline": {
+    "type": "tiki_taka",
+    "fast_lr": 1.0,
+    "transfer_every": 1,
+    "n_reads_per_transfer": 1,
+    "transfer_lr": 1.0,
+    "scale_transfer_lr": true,
+    "aihwkit_preset": "TikiTakaReRamESPreset",
+    "aihwkit_conductance_min": 1e-7,
+    "aihwkit_conductance_max": 1.0,
+    "aihwkit_construction_seed": 7
+  }
+}
+```
+
+AIHWKit pulsed training devices store normalized, signed device states, not raw
+siemens. The DRN, in contrast, uses non-negative conductances. For each slow
+crosspoint, the backend reads AIHWKit's realized per-cell bounds `q_min` and
+`q_max` and uses the fixed mapping
+
+```text
+G = G_min + (q - q_min) / (q_max - q_min) * (G_max - G_min).
+```
+
+The result is clipped to `[G_min, G_max]`. Unless explicitly configured,
+`G_min` and `G_max` come from the DRN parameter clamp. Consequently, the
+trainer's normal post-step `clamp_()` is a no-op and cannot desynchronize the
+tile. If the configured `G` values are expressed in siemens, this boundary map
+is also the explicit normalized-state-to-siemens calibration; AIHWKit presets
+do not supply such a calibration themselves.
+
+To preserve the existing DRN learning-rate scale, the gradient written to the
+normalized device is divided by the local mapping slope
+`dG/dq = (G_max-G_min)/(q_max-q_min)`. For a logical full gradient
+`H[out,in]`, the backend makes one native AIHWKit update call per minibatch
+with an exact rank-one batch satisfying
+
+```text
+d.T @ x = H.
+```
+
+It uses `x=I, d=H.T` or `x=H, d=I`, whichever has the smaller batch dimension.
+AIHWKit supplies the descent sign, pulse generation, fast write, transfer, and
+slow-device response. The backend also calls `post_update_step()` once per
+minibatch so configured diffusion and decay are applied.
+
+`optimizer.aihwkit_device_state(parameter.state)` returns cloned AIHWKit hidden
+parameters. `hidden_weights_0` and `hidden_weights_1` are the apparent fast and
+slow states. Presets with write noise may also expose
+`persistent_weights_0/1`, which are the underlying programmed states.
+
+The package is intentionally not added to the repository's pinned environment:
+the installed AIHWKit 1.1 package requires a newer PyTorch than the main
+environment currently pins. Use a compatible AIHWKit environment. A CPU-only
+AIHWKit build requires the DRN run itself to use `--device cpu`.
+
+### MNIST smoke test
+
+The checked-in smoke configuration uses real MNIST samples, the measured ReRAM
+ES preset, two training batches, and one test batch:
+
+```bash
+python labs/mnist_train.py \
+  --config labs/configs/mnist_tiki_taka_aihwkit_smoke.json \
+  --output-dir /tmp/mnist_tiki_taka_aihwkit_smoke
+```
+
+`max_test_batches` is separate from `max_batches`, so smoke runs do not
+silently evaluate all 10,000 test examples.
+
+For a complete one-epoch run with batch size 128, use the uncapped companion
+configuration:
+
+```bash
+python labs/mnist_train.py \
+  --config labs/configs/mnist_tiki_taka_aihwkit_epoch1_batch128.json \
+  --output-dir /tmp/mnist_tiki_taka_aihwkit_epoch1_batch128
+```
+
+### Perfect-diode reference benchmark
+
+The direct-FP32 reference configuration reproduces a previously validated
+perfect-diode MNIST operating point: one 100-unit hidden layer, 20 paired
+outputs, batch size 16, four coordinate-descent iterations, and centered
+EqProp with nudging 0.05. It intentionally does not use Tiki-Taka or AIHWKit:
+
+```bash
+python labs/mnist_tests.py \
+  --config labs/configs/mnist_perfect_diode_reference_epoch1.json \
+  --model-key drn-xs \
+  --num-iterations 4 \
+  --seed 0 \
+  --output-dir /tmp/mnist_perfect_diode_reference_epoch1_seed0 \
+  train-stats \
+  --num-epochs 1 \
+  --record-statistics
+```
+
+The empty `--record-statistics` value disables residual-current collection for
+the timing run. The historical seed-0 result was 95.40% test accuracy after
+one epoch; the reproduced fixed-four-sweep CPU run also reached 95.40%.
+
+### Initializing Tiki-Taka from direct FP32 conductances
+
+`labs/mnist_train.py` accepts a direct DRN `model.pt` through
+`--initial-weights` or the top-level `initial_weights` config field. The
+checkpoint must be a list or tuple with one floating-point tensor per DRN
+parameter. The loader validates the tensor count, shapes, finite values, and
+DRN bounds before copying any tensor in place. Loading happens after the DRN is
+moved to its target device and before the optimizer is constructed, so the
+native AIHWKit tiles are programmed from those conductances.
+
+The matched one-epoch configuration uses batch size 128, the perfect-diode
+operating point above, and the ReRAM ES Tiki-Taka preset:
+
+```bash
+python labs/mnist_train.py \
+  --config labs/configs/mnist_tiki_taka_aihwkit_from_fp32_epoch1_batch128.json \
+  --initial-weights /path/to/direct-fp32/model.pt \
+  --output-dir /tmp/mnist_tiki_taka_aihwkit_from_fp32_epoch1_batch128
+```
+
+The run metadata records the checkpoint path and SHA-256, an evaluation before
+AIHWKit programming, source-to-realized conductance errors, persistent
+programming errors when the preset exposes them, the initial fast-array
+magnitude, an evaluation immediately after programming, and the final
+one-epoch metrics. The final visible DRN tensors are saved as `model.pt`.
+
+For the reproduced 95.40% direct checkpoint (SHA-256
+`5988bdd6f2ae068da0f1bc704ae0922f822ba73d48f762fbb5d4cb272f28686f`),
+the batch-128 CPU run produced:
+
+| Stage | MNIST test accuracy |
+| --- | ---: |
+| Loaded direct FP32 conductances | 95.40% |
+| ReRAM ES apparent conductances before training | 77.04% |
+| After one Tiki-Taka epoch | 85.74% |
+
+The underlying persistent slow states reproduced the two source weight tensors
+with maximum conductance errors of `5.12e-8` and `4.47e-8`; the fast arrays
+started exactly at zero. The lower apparent accuracy is not a checkpoint
+loading error: `TikiTakaReRamESPreset` applies write noise when exposing its
+apparent slow conductances. This run took 40.21 seconds on CPU.
 
 ## Correspondence with AIHWKit
 
@@ -243,9 +419,9 @@ The design follows the pipeline described in
 
 ```text
 EqProp/DRN complete gradient tensor
-  -> ideal write to signed fast array A
+  -> ideal tensor write or native AIHWKit pulsed write to fast array A
   -> periodic logical row/column selection
-  -> ideal additive transfer
+  -> ideal additive or native pulsed transfer
   -> visible DRN parameter W
 ```
 
@@ -264,19 +440,12 @@ The correspondence to AIHWKit's `TransferCompound` is:
 | Forward/inference using only `W` | The usual two-device `gamma=0` interpretation, where the slow array is visible and the fast array remains hidden |
 
 The configuration names intentionally mirror the corresponding
-`TransferCompound` controls where practical. The schedule here is nevertheless
-defined in integer optimizer/minibatch steps and therefore requires
-`units_in_mbatch=true`. AIHWKit can also express transfer cycles in mat-vec
-units and implements the transfer through device reads and pulsed writes.
-
-Both arrays here are dimensionless signed model tensors. They are not raw
-conductances in siemens. As with a signed analog device state, a physical
-interpretation could use a differential conductance pair proportional to
-`G_plus - G_minus`, but such a pair is not represented by this implementation.
+`TransferCompound` controls. The schedule is defined in integer
+optimizer/minibatch steps and therefore requires `units_in_mbatch=true`.
 
 ## Ideal-emulator limitations
 
-This pipeline deliberately does not model:
+The default ideal backend deliberately does not model:
 
 - activation/error pulse-train generation or coincident cross-point writes;
 - finite update granularity, pulse counting, or stochastic pulse events;
@@ -295,6 +464,13 @@ floating-point tensor addition. It is therefore suitable for studying the
 algorithmic accumulation/transfer schedule, but it should not be interpreted
 as predicting a physical crossbar's write accuracy, noise, or timing.
 
+The native backend removes those ideal-device assumptions, but it still starts
+from an already materialized EqProp gradient rather than the original retained
+activation/error pair. Its exact outer-product factorization therefore does not
+reproduce pulse correlations from an ordinary backpropagation layer. It also
+uses an explicit affine conductance calibration, not an AIHWKit inference-time
+conductance converter.
+
 ## Checkpoint caveat
 
 The auxiliary tensor, per-parameter optimizer-step counter, transfer cursor,
@@ -310,7 +486,24 @@ of the interrupted Tiki-Taka run.
 
 For resumable training, save the visible model plus
 `optimizer.state_dict()`, reconstruct the optimizer with the same
-`update_pipeline` configuration, and then load its state. Also save the
-learning-rate scheduler state when one is used. Exact continuation of runs
-using random selection or probabilistic reset additionally requires preserving
-the relevant PyTorch random-number-generator state.
+`update_pipeline` configuration, parameter shapes/layouts, and conductance
+bounds, and then load its state. These structural properties and the AIHWKit
+version are checked before optimizer state is mutated. The native backend stores
+visible weights, all hidden device parameters, AIHWKit's extra transfer state,
+and the tile learning rate. For devices without persistent write noise, the
+custom restore order preserves the fast array that AIHWKit 1.1's ordinary tile
+restore would reset. Also save the learning-rate scheduler state when one is
+used.
+
+AIHWKit does not expose the native pulsed tile's internal stochastic RNG stream
+through this interface. A native checkpoint restores device values and transfer
+cursors as far as the public API permits, but the next stochastic pulse
+realization is not guaranteed to be bit-for-bit identical. The
+`TikiTakaReRamESPreset` and `TikiTakaReRamSBPreset` redraw apparent write noise
+while loading hidden parameters; AIHWKit 1.1's compound setter can therefore
+leave both their apparent and persistent values different from the snapshot.
+`load_state_dict()` rejects checkpoints for those two presets before mutating
+the optimizer rather than silently performing a lossy resume. Their saved
+visible model remains usable for inference or as a fresh-training
+initialization. The ideal backend can continue exactly when the relevant
+PyTorch random-number-generator state is also preserved.

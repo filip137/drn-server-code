@@ -178,6 +178,7 @@ def prepare_mnist(
     normalize = training_cfg["normalize"]
     normalize_std = training_cfg["normalize_std"]
     augment_32 = training_cfg["augment_32x32"]
+    data_root = str(Path(training_cfg.get("data_root", "data")).expanduser())
     if verbose:
         print(
             f"[prepare_mnist] model={model_key} data_mode={data_mode} "
@@ -193,6 +194,7 @@ def prepare_mnist(
             augment_32x32=augment_32,
             normalize=normalize,
             normalize_std=normalize_std,
+            data_root=data_root,
         )
     train_loader = default_train_loader if train_loader_override is None else train_loader_override
     test_loader = default_test_loader if test_loader_override is None else test_loader_override
@@ -296,6 +298,7 @@ def prepare_mnist(
         voltage_amp=voltage_amp,
         current_amp=current_amp,
         weights_path=weights_path,
+        energy_minimizer_cfg=dict(config["energy_minimizer"]),
     )
 
 
@@ -323,7 +326,10 @@ def _build_minimizer(
     double_diode_runtime: Optional[str] = None,
 ):
     energy_fn = parts.energy_fn if fn is None else fn
-    minimizer_cfg = dict(parts.training_cfg.get("energy_minimizer", {}))
+    if parts.energy_minimizer_cfg is not None:
+        minimizer_cfg = dict(parts.energy_minimizer_cfg)
+    else:
+        minimizer_cfg = dict(parts.training_cfg.get("energy_minimizer", {}))
     if double_diode_runtime:
         dd_updater, adaptive_equilibrium = _resolve_double_diode_runtime(double_diode_runtime)
         minimizer_cfg["double_diode_updater"] = dd_updater
@@ -377,8 +383,8 @@ def _build_minimizer(
         quadratic_diode_param=parts.model_cfg.get("quadratic_diode_param", {}),
         exponential_diode_param=parts.model_cfg.get("exponential_diode_param", {}),
         hard_sigmoid_param=parts.model_cfg.get("hard_sigmoid_param", {}),
-        voltage_amp=energy_fn._voltage_amp,
-        current_amp=energy_fn._current_amp,
+        voltage_amp=parts.energy_fn._voltage_amp,
+        current_amp=parts.energy_fn._current_amp,
         iv_data=iv_data,
         iv_data_path=iv_data_path,
         double_diode_updater=double_diode_updater,

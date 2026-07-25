@@ -244,6 +244,7 @@ def _build_torchvision_image_loaders(
     normalize,
     normalize_mean,
     normalize_std,
+    normalize_scale=1.0,
 ):
     transforms_list = [transforms.ToTensor()]
     if normalize:
@@ -252,6 +253,13 @@ def _build_torchvision_image_loaders(
                 mean=(float(normalize_mean),), std=(float(normalize_std),)
             )
         )
+        normalize_scale = float(normalize_scale)
+        if normalize_scale != 1.0:
+            transforms_list.append(
+                transforms.Lambda(
+                    lambda tensor, scale=normalize_scale: tensor * scale
+                )
+            )
     transform = transforms.Compose(transforms_list)
 
     train_dataset = dataset_cls(
@@ -285,6 +293,7 @@ class MnistDataset(Datasets):
         normalize,
         normalize_std,
         normalize_mean=0.1307,
+        normalize_scale=1.0,
     ):
         super().__init__(name, batch_size, device)
         self.root = root
@@ -293,6 +302,7 @@ class MnistDataset(Datasets):
         self.normalize = normalize
         self.normalize_std = normalize_std
         self.normalize_mean = normalize_mean
+        self.normalize_scale = normalize_scale
 
     def build(self):
         return _build_torchvision_image_loaders(
@@ -303,6 +313,7 @@ class MnistDataset(Datasets):
             normalize=self.normalize,
             normalize_mean=self.normalize_mean,
             normalize_std=self.normalize_std,
+            normalize_scale=self.normalize_scale,
         )
 
 
@@ -319,6 +330,7 @@ class FashionMnistDataset(Datasets):
         normalize,
         normalize_std=0.3530,
         normalize_mean=0.2860,
+        normalize_scale=1.0,
     ):
         super().__init__(name, batch_size, device)
         self.root = root
@@ -327,6 +339,7 @@ class FashionMnistDataset(Datasets):
         self.normalize = normalize
         self.normalize_std = normalize_std
         self.normalize_mean = normalize_mean
+        self.normalize_scale = normalize_scale
 
     def build(self):
         return _build_torchvision_image_loaders(
@@ -337,6 +350,7 @@ class FashionMnistDataset(Datasets):
             normalize=self.normalize,
             normalize_mean=self.normalize_mean,
             normalize_std=self.normalize_std,
+            normalize_scale=self.normalize_scale,
         )
 
 

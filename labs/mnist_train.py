@@ -1,14 +1,19 @@
 import argparse
 from datetime import datetime
+import hashlib
 import json
+import math
 import os
+import random
 import socket
 import sys
 from importlib import import_module
 import importlib.util
+from numbers import Integral
 from pathlib import Path
 
 import torch
+import numpy as np
 
 try:  # Optional TensorBoard support
     from torch.utils.tensorboard import SummaryWriter
@@ -47,6 +52,17 @@ def _default_quadratic_params():
 
 def _default_exponential_params():
     return {"I_s": 1e-6, "V_t": 0.025, "V_off": 0.0}
+
+
+def _validate_optional_batch_limit(name, value):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
+        raise ValueError(
+            f"Expected {name} to be null or an integer >= 1. "
+            f"Provided value: {value!r}."
+        )
+    return int(value)
 
 
 def _default_minimizer_settings(non_linearity, double_diode_updater):
@@ -251,6 +267,234 @@ def _resolve_run_dir(config_path: Path, output_dir: str | None) -> tuple[Path, s
     return run_dir, host, timestamp
 
 
+def _resolve_initial_weights_path(value, config_path: Path) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, (str, os.PathLike)) or not str(value).strip():
+        raise ValueError(
+            "Expected initial_weights to be null or a non-empty checkpoint path. "
+            f"Provided value: {value!r}."
+        )
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        path = path.resolve()
+    else:
+        cwd_path = (Path.cwd() / path).resolve()
+        config_path_candidate = (config_path.parent / path).resolve()
+        path = cwd_path if cwd_path.is_file() else config_path_candidate
+    if not path.is_file():
+        raise FileNotFoundError(
+            "Expected initial_weights to name an existing model checkpoint. "
+            f"Provided value: {str(path)!r}."
+        )
+    return path
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@torch.no_grad()
+def _load_initial_parameters(energy_fn, checkpoint_path: Path, device) -> dict:
+    states = torch.load(
+        checkpoint_path,
+        map_location=device,
+        weights_only=True,
+    )
+    if not isinstance(states, (list, tuple)):
+        raise ValueError(
+            "Expected initial weights checkpoint to contain a list or tuple "
+            "of parameter tensors. "
+            f"Provided value: type={type(states).__name__!r}."
+        )
+
+    # Function.save() serializes the underlying ``_params`` list, while some
+    # DRNs expose only trainable parameters from params() (for example, frozen
+    # pooling conductances are omitted). Match the native checkpoint format.
+    parameters = getattr(energy_fn, "_params", None)
+    if parameters is None:
+        parameters = energy_fn.params()
+    parameters = list(parameters)
+    if len(states) != len(parameters):
+        raise ValueError(
+            "Expected initial weights checkpoint to contain exactly "
+            f"{len(parameters)} parameter tensors. "
+            f"Provided value: {len(states)} tensors."
+        )
+
+    validated_states = []
+    parameter_metadata = []
+    for index, (parameter, state) in enumerate(zip(parameters, states)):
+        if not torch.is_tensor(state) or not state.is_floating_point():
+            raise ValueError(
+                "Expected every initial parameter to be a floating-point tensor. "
+                f"Provided value: index={index}, type={type(state).__name__!r}."
+            )
+        if tuple(state.shape) != tuple(parameter.state.shape):
+            raise ValueError(
+                "Expected every initial parameter shape to match the DRN. "
+                f"Provided value: index={index}, checkpoint_shape={tuple(state.shape)!r}, "
+                f"model_shape={tuple(parameter.state.shape)!r}."
+            )
+        if not bool(torch.isfinite(state).all()):
+            raise ValueError(
+                "Expected every initial parameter tensor to contain only finite values. "
+                f"Provided value: index={index}."
+            )
+        loaded = state.to(
+            device=parameter.state.device,
+            dtype=parameter.state.dtype,
+        )
+        minimum = float(loaded.min().item())
+        maximum = float(loaded.max().item())
+        lower_bound = getattr(parameter, "min_cond", None)
+        if lower_bound is None and getattr(parameter, "_non_negative", False):
+            lower_bound = 0.0
+        upper_bound = getattr(parameter, "max_cond", None)
+        if lower_bound is not None and math.isfinite(float(lower_bound)):
+            if minimum < float(lower_bound):
+                raise ValueError(
+                    "Expected every initial parameter to lie inside the DRN "
+                    "parameter bounds. "
+                    f"Provided value: index={index}, minimum={minimum!r}, "
+                    f"lower_bound={float(lower_bound)!r}."
+                )
+        if upper_bound is not None and math.isfinite(float(upper_bound)):
+            if maximum > float(upper_bound):
+                raise ValueError(
+                    "Expected every initial parameter to lie inside the DRN "
+                    "parameter bounds. "
+                    f"Provided value: index={index}, maximum={maximum!r}, "
+                    f"upper_bound={float(upper_bound)!r}."
+                )
+        validated_states.append(loaded)
+        parameter_metadata.append(
+            {
+                "index": index,
+                "type": type(parameter).__name__,
+                "shape": list(parameter.state.shape),
+                "checkpoint_dtype": str(state.dtype),
+                "model_dtype": str(parameter.state.dtype),
+                "minimum": minimum,
+                "maximum": maximum,
+            }
+        )
+
+    for parameter, loaded in zip(parameters, validated_states):
+        parameter.state.copy_(loaded)
+
+    return {
+        "path": str(checkpoint_path),
+        "sha256": _sha256_file(checkpoint_path),
+        "parameters": parameter_metadata,
+    }
+
+
+def _tensor_error_stats(actual: torch.Tensor, expected: torch.Tensor) -> dict:
+    difference = actual.detach().to(dtype=torch.float64) - expected.detach().to(
+        device=actual.device,
+        dtype=torch.float64,
+    )
+    return {
+        "max_abs": float(difference.abs().max().item()),
+        "mean_abs": float(difference.abs().mean().item()),
+        "rmse": float(difference.square().mean().sqrt().item()),
+    }
+
+
+@torch.no_grad()
+def _evaluate_image_loader(
+    network,
+    cost_fn,
+    energy_minimizer,
+    dataloader,
+    device,
+    *,
+    max_batches,
+    label,
+):
+    running_loss = 0.0
+    correct = 0
+    seen = 0
+    batches = 0
+    for batch_index, batch in enumerate(dataloader):
+        if max_batches is not None and batch_index >= max_batches:
+            break
+        if not isinstance(batch, (list, tuple)) or len(batch) < 2:
+            raise ValueError(
+                "Expected each evaluation batch to contain images and labels. "
+                f"Provided value: type={type(batch).__name__!r}."
+            )
+        images, labels = batch[:2]
+        images = images.to(device)
+        labels = labels.to(device)
+        network.set_input(images, reset=True)
+        energy_minimizer.compute_equilibrium()
+        cost_fn.set_target(labels)
+        batch_loss = cost_fn.eval().mean().item()
+        batch_correct = int((~cost_fn.error_fn()).sum().item())
+        running_loss += batch_loss * images.size(0)
+        correct += batch_correct
+        seen += images.size(0)
+        batches += 1
+
+    loss = running_loss / seen if seen else float("nan")
+    accuracy = correct / seen if seen else float("nan")
+    print(
+        f"[{label}] examples={seen} batches={batches} "
+        f"loss={loss:.6f} accuracy={accuracy * 100:.2f}%"
+    )
+    return {
+        "loss": loss,
+        "accuracy": accuracy,
+        "examples": seen,
+        "batches": batches,
+    }
+
+
+def _initialization_mapping_diagnostics(
+    energy_parameters,
+    loaded_states,
+    optimizer,
+) -> list[dict]:
+    persistent_reader = getattr(optimizer, "aihwkit_slow_conductance", None)
+    auxiliary_reader = getattr(optimizer, "auxiliary_state", None)
+    diagnostics = []
+    for index, (parameter, loaded_state) in enumerate(
+        zip(energy_parameters, loaded_states)
+    ):
+        item = {
+            "index": index,
+            "type": type(parameter).__name__,
+            "shape": list(parameter.state.shape),
+            "source_minimum": float(loaded_state.min().item()),
+            "source_maximum": float(loaded_state.max().item()),
+            "visible_realization_error": _tensor_error_stats(
+                parameter.state,
+                loaded_state,
+            ),
+        }
+        if callable(persistent_reader):
+            programmed = persistent_reader(parameter.state, persistent=True)
+            if programmed is not None:
+                item["persistent_programming_error"] = _tensor_error_stats(
+                    programmed,
+                    loaded_state,
+                )
+        if callable(auxiliary_reader):
+            auxiliary = auxiliary_reader(parameter.state)
+            if auxiliary is not None:
+                item["fast_state_max_abs"] = float(
+                    auxiliary.detach().abs().max().item()
+                )
+        diagnostics.append(item)
+    return diagnostics
+
+
 def _train_image_task(
     config_path,
     epochs,
@@ -265,9 +509,31 @@ def _train_image_task(
     sanity_check=False,
     epoch_callback=None,
     output_dir=None,
+    max_test_batches=None,
+    initial_weights=None,
+    seed=None,
 ):
+    max_test_batches = _validate_optional_batch_limit(
+        "max_test_batches",
+        max_test_batches,
+    )
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
+    initial_weights_path = _resolve_initial_weights_path(
+        initial_weights if initial_weights is not None else config.get("initial_weights"),
+        config_path,
+    )
+    seed = seed if seed is not None else config.get("seed")
+    if seed is not None:
+        if isinstance(seed, bool) or not isinstance(seed, Integral):
+            raise ValueError(
+                "Expected seed to be null or an integer. "
+                f"Provided value: {seed!r}."
+            )
+        seed = int(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
     dataset_key = _normalize_dataset_key(dataset_key)
     run_dir, host, timestamp = _resolve_run_dir(config_path, output_dir)
     config_snapshot_path = run_dir / "config.used.json"
@@ -372,6 +638,18 @@ def _train_image_task(
         input_mode=config.get("input_mode", "train"),
     )
     energy_fn.set_device(device)
+    initialization_metadata = None
+    loaded_parameter_states = None
+    if initial_weights_path is not None:
+        initialization_metadata = _load_initial_parameters(
+            energy_fn,
+            initial_weights_path,
+            device,
+        )
+        loaded_parameter_states = [
+            parameter.state.detach().clone()
+            for parameter in energy_fn.params()
+        ]
 
     network = Network(energy_fn)
     free_layers = network.free_layers()
@@ -431,6 +709,17 @@ def _train_image_task(
         train_loader = loader_result
         test_loader = None
 
+    if loaded_parameter_states is not None and test_loader is not None:
+        initialization_metadata["loaded_fp32_evaluation"] = _evaluate_image_loader(
+            network,
+            cost_fn,
+            minimizer_inference,
+            test_loader,
+            device,
+            max_batches=max_test_batches,
+            label="Initial loaded FP32",
+        )
+
     params = augmented_fn.params()
     estimator = EquilibriumProp(
         params,
@@ -460,6 +749,26 @@ def _train_image_task(
         momentum=0.0,
         weight_decay=0.0,
     )
+    if loaded_parameter_states is not None:
+        initialization_metadata["mapping_diagnostics"] = (
+            _initialization_mapping_diagnostics(
+                energy_params,
+                loaded_parameter_states,
+                optimizer,
+            )
+        )
+        if test_loader is not None:
+            initialization_metadata["realized_aihwkit_evaluation"] = (
+                _evaluate_image_loader(
+                    network,
+                    cost_fn,
+                    minimizer_inference,
+                    test_loader,
+                    device,
+                    max_batches=max_test_batches,
+                    label="Initial realized AIHWKit",
+                )
+            )
 
     history = {
         "loss": [],
@@ -467,6 +776,8 @@ def _train_image_task(
         "test_loss": [],
         "test_accuracy": [],
     }
+    if initialization_metadata is not None:
+        history["initialization"] = initialization_metadata
     writer = SummaryWriter(str(run_dir)) if SummaryWriter is not None else None
     if writer is None:
         print("[mnist_train] TensorBoard unavailable; proceeding without event files.")
@@ -531,6 +842,8 @@ def _train_image_task(
             test_seen = 0
             optimizer.zero_grad()
             for test_batch_idx, (images, labels) in enumerate(test_loader):
+                if max_test_batches is not None and test_batch_idx >= max_test_batches:
+                    break
                 images = images.to(device)
                 labels = labels.to(device)
                 network.set_input(images, reset=True)
@@ -601,10 +914,29 @@ def _train_image_task(
         summary["test_error"] = 1.0 - summary["final_test_accuracy"]
     else:
         summary["test_error"] = 1.0 - summary["final_train_accuracy"]
+    if initialization_metadata is not None:
+        loaded_evaluation = initialization_metadata.get(
+            "loaded_fp32_evaluation"
+        )
+        realized_evaluation = initialization_metadata.get(
+            "realized_aihwkit_evaluation"
+        )
+        if loaded_evaluation is not None:
+            summary["initial_loaded_test_accuracy"] = loaded_evaluation[
+                "accuracy"
+            ]
+            summary["initial_loaded_test_loss"] = loaded_evaluation["loss"]
+        if realized_evaluation is not None:
+            summary["initial_realized_test_accuracy"] = realized_evaluation[
+                "accuracy"
+            ]
+            summary["initial_realized_test_loss"] = realized_evaluation["loss"]
 
     if writer is not None:
         writer.close()
 
+    model_path = run_dir / "model.pt"
+    energy_fn.save(str(model_path))
     event_files = sorted(str(path) for path in run_dir.glob("events.out.tfevents.*"))
     metadata = {
         "config_path": str(config_path),
@@ -614,12 +946,17 @@ def _train_image_task(
         "epochs": int(epochs),
         "lr": list(lr) if isinstance(lr, (list, tuple)) else float(lr),
         "beta": beta_value,
+        "max_batches": max_batches,
+        "max_test_batches": max_test_batches,
         "dataset_key": dataset_key,
         "model_key": model_key,
         "dataset_factory": dataset_cfg["factory"],
         "device": str(device),
+        "seed": seed,
         "host": host,
         "timestamp": timestamp,
+        "initialization": initialization_metadata,
+        "model_path": str(model_path),
         "summary": summary,
     }
     metadata_path = run_dir / "run_metadata.json"
@@ -629,6 +966,7 @@ def _train_image_task(
     summary["event_files"] = event_files
     summary["config_used_path"] = str(config_snapshot_path)
     summary["run_metadata_path"] = str(metadata_path)
+    summary["model_path"] = str(model_path)
     history["summary"] = summary
     history["run_dir"] = str(run_dir)
     history["event_files"] = event_files
@@ -651,6 +989,9 @@ def train_mnist_conv(
     dataset_key="mnist",
     output_dir=None,
     model_key="mnist",
+    max_test_batches=None,
+    initial_weights=None,
+    seed=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -666,6 +1007,9 @@ def train_mnist_conv(
         sanity_check=sanity_check,
         epoch_callback=epoch_callback,
         output_dir=output_dir,
+        max_test_batches=max_test_batches,
+        initial_weights=initial_weights,
+        seed=seed,
     )
 
 
@@ -680,6 +1024,9 @@ def train_tiny_grid(
     sanity_check=False,
     epoch_callback=None,
     output_dir=None,
+    max_test_batches=None,
+    initial_weights=None,
+    seed=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -695,6 +1042,9 @@ def train_tiny_grid(
         sanity_check=sanity_check,
         epoch_callback=epoch_callback,
         output_dir=output_dir,
+        max_test_batches=max_test_batches,
+        initial_weights=initial_weights,
+        seed=seed,
     )
 
 
@@ -727,6 +1077,11 @@ def main():
         help="Optional cap on number of batches per epoch. Overrides config if provided.",
     )
     parser.add_argument(
+        "--max-test-batches",
+        type=int,
+        help="Optional cap on number of test batches per epoch. Overrides config if provided.",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         help="Torch device string to use, e.g. 'cpu', 'cuda', or 'cuda:0'. Overrides config if provided.",
@@ -749,6 +1104,21 @@ def main():
         help="Optional directory for run artifacts such as config.used.json, run_metadata.json, and TensorBoard events.",
     )
     parser.add_argument(
+        "--initial-weights",
+        type=str,
+        default=None,
+        help=(
+            "Optional saved DRN model.pt used to initialize parameters before "
+            "constructing the optimizer. Overrides config initial_weights."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional Python/NumPy/PyTorch seed. Overrides config seed.",
+    )
+    parser.add_argument(
         "--dataset",
         type=str,
         default=None,
@@ -756,7 +1126,18 @@ def main():
     )
 
     args = parser.parse_args()
-    config = load_config(args.config)
+    provided_config_path = Path(args.config).expanduser()
+    if provided_config_path.is_absolute() or provided_config_path.exists():
+        config_path = provided_config_path.resolve()
+    else:
+        config_path = (LABS_DIR / provided_config_path).resolve()
+    if not config_path.is_file():
+        raise FileNotFoundError(
+            "Expected --config to name an existing JSON file, either relative "
+            "to the current directory or to labs/. "
+            f"Provided value: {args.config!r}."
+        )
+    config = load_config(config_path)
     lab_cfg = config.get("lab", {})
 
     epochs = args.epochs if args.epochs is not None else lab_cfg.get("epochs")
@@ -790,6 +1171,16 @@ def main():
     if max_batches is not None:
         max_batches = int(max_batches)
 
+    max_test_batches = (
+        args.max_test_batches
+        if args.max_test_batches is not None
+        else config.get("max_test_batches")
+    )
+    max_test_batches = _validate_optional_batch_limit(
+        "max_test_batches",
+        max_test_batches,
+    )
+
     model_key = lab_cfg.get("model_key", "mnist")
     default_dataset_key = lab_cfg.get("dataset_key")
     if default_dataset_key is None:
@@ -812,15 +1203,18 @@ def main():
             )
 
     train_kwargs = dict(
-        config_path=args.config,
+        config_path=str(config_path),
         epochs=epochs,
         lr=learning_rate_cfg,
         beta=beta,
         log_interval=log_interval,
         max_batches=max_batches,
+        max_test_batches=max_test_batches,
         device=args.device,
         sanity_check=args.sanity_check,
         output_dir=args.output_dir,
+        initial_weights=args.initial_weights,
+        seed=args.seed,
     )
     if model_key != "tiny3x3":
         train_kwargs["dataset_key"] = dataset_key
@@ -834,18 +1228,28 @@ def main():
 
     if args.result_json:
         result_payload = {
-            "config_path": args.config,
+            "config_path": str(config_path),
             "epochs": epochs,
             "learning_rate": learning_rate_cfg,
             "beta": beta,
+            "max_batches": max_batches,
+            "max_test_batches": max_test_batches,
+            "seed": args.seed if args.seed is not None else config.get("seed"),
             "model_key": lab_cfg.get("model_key", "mnist"),
             "dataset_key": dataset_key,
             "test_error": summary.get("test_error"),
             "final_train_accuracy": summary.get("final_train_accuracy"),
             "final_test_accuracy": summary.get("final_test_accuracy"),
             "best_test_accuracy": summary.get("best_test_accuracy"),
+            "initial_loaded_test_accuracy": summary.get(
+                "initial_loaded_test_accuracy"
+            ),
+            "initial_realized_test_accuracy": summary.get(
+                "initial_realized_test_accuracy"
+            ),
             "run_dir": summary.get("run_dir"),
             "event_files": summary.get("event_files"),
+            "model_path": summary.get("model_path"),
         }
         result_path = Path(args.result_json)
         result_path.parent.mkdir(parents=True, exist_ok=True)

@@ -41,6 +41,7 @@ class MnistParts:
     current_amp: float = 1.0
     weights_path: Optional[str] = None
     num_iterations: Optional[int] = None
+    energy_minimizer_cfg: Optional[dict] = None
 
 
 def build_evaluator(network, cost_fn, dataloader, energy_minimizer, model_cfg, record_statistics=()):

@@ -401,6 +401,20 @@ def test_parse_update_pipeline_accepts_supported_forms():
         transfer_every=7,
         transfer_columns=False,
     )
+    assert parse_update_pipeline(
+        {
+            "type": "tiki_taka",
+            "aihwkit_preset": "TikiTakaReRamESPreset",
+            "aihwkit_conductance_min": 1e-7,
+            "aihwkit_conductance_max": 1.0,
+            "aihwkit_construction_seed": 7,
+        }
+    ) == TikiTakaConfig(
+        aihwkit_preset="TikiTakaReRamESPreset",
+        aihwkit_conductance_min=1e-7,
+        aihwkit_conductance_max=1.0,
+        aihwkit_construction_seed=7,
+    )
 
 
 @pytest.mark.parametrize(
@@ -425,6 +439,38 @@ def test_parse_update_pipeline_accepts_supported_forms():
             "type": "tiki_taka",
             "fast_weight_min": 1.0,
             "fast_weight_max": 1.0,
+        },
+        {"type": "tiki_taka", "aihwkit_preset": "unknown"},
+        {
+            "type": "tiki_taka",
+            "aihwkit_conductance_min": 0.0,
+            "aihwkit_conductance_max": 1.0,
+        },
+        {
+            "type": "tiki_taka",
+            "aihwkit_preset": "TikiTakaIdealizedPreset",
+            "aihwkit_conductance_min": -1.0,
+        },
+        {
+            "type": "tiki_taka",
+            "aihwkit_preset": "TikiTakaIdealizedPreset",
+            "aihwkit_conductance_max": 0.0,
+        },
+        {
+            "type": "tiki_taka",
+            "aihwkit_preset": "TikiTakaIdealizedPreset",
+            "aihwkit_conductance_min": 1.0,
+            "aihwkit_conductance_max": 1.0,
+        },
+        {
+            "type": "tiki_taka",
+            "aihwkit_preset": "TikiTakaIdealizedPreset",
+            "aihwkit_construction_seed": 0,
+        },
+        {
+            "type": "tiki_taka",
+            "aihwkit_preset": "TikiTakaIdealizedPreset",
+            "fast_weight_min": 0.1,
         },
     ],
 )
