@@ -1,0 +1,51 @@
+{
+  "schema_version": "mnist-conv-lr-conv3-legacy-gain-sensitivity/v1",
+  "name": "conv3-hard-sigmoid-ordinary-mnist-legacy-gain200-rho5e5-3e4",
+  "protocol_id": "conv-hardsigmoid-lr-conv3-legacy-gain-sensitivity-bs16-v1",
+  "source": {
+    "parent_study_schema_version": "mnist-conv-lr-study/v7",
+    "parent_study_id": "lrstudy_6e56b399cf3e522a2c3f39f66a51611147b6171dd3b9e223f20791bc6275caf0",
+    "parent_row_id": "conv3_legacy_v4_c0p25",
+    "rescue_id": "lrrescue_e9c1d08dc339f723f61d3d73b8059fe5f82fe95952a5d1fa06107ed877141a04",
+    "rescue_stage": "promotion_retry_1",
+    "rescue_entry_id": "conv3_legacy_v4_c0p25--legacy-rescue-lower-10x",
+    "source_summary_sha256": "0a768affc2da66e33cfc48af11181c240e38035f6f632ba0ad41703ca44725b5",
+    "source_rescue_summary_sha256": "f764aa2b19eb18fd9fc1da77db0d197f4c8e7403430140946f7f5dae1d62fc04",
+    "source_completion_sha256": "64fb01989444df8109d85ff7c68855a3153fa892d8d3f759e6d034cb31a5a8f8",
+    "source_input_gain": 665.0302124023,
+    "source_final_validation_accuracy": 0.7638,
+    "rho_conv_label": 0.00005,
+    "rho_dense_label": 0.0003
+  },
+  "controlled_change": {
+    "field": "input_gain",
+    "value": 200.0,
+    "reason": "recorded_best_legacy_low_gain_diagnostic",
+    "reuse_exact_source_learning_rate_vector": true,
+    "reprobe_learning_rates": false,
+    "rho_labels_are_source_provenance_only": true,
+    "all_other_row_fields_unchanged": true
+  },
+  "training": {
+    "model_seed": 0,
+    "epochs": 3,
+    "steps_per_epoch": 3438,
+    "total_steps": 10314,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "minimum_final_validation_accuracy": 0.9,
+    "accuracy_boundary": "greater_than_or_equal",
+    "schedule": "constant_seven_parameter_vector",
+    "optimizer": "sgd_no_momentum_no_weight_decay",
+    "one_step_gpu_smoke_required": true
+  },
+  "artifacts": {
+    "hash": "sha256",
+    "immutable_manifest": true,
+    "completion_marker_written_last": true,
+    "resume_completed_work": true,
+    "mutate_parent_study": false,
+    "mutate_source_rescue": false,
+    "official_test_read": false
+  }
+}

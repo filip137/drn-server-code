@@ -1,0 +1,515 @@
+{
+  "schema_version": "mnist-conv-lr-study/v7",
+  "name": "conv3-hard-sigmoid-ordinary-mnist-scheme-two-rho-median-study",
+  "protocol_id": "conv-hardsigmoid-lr-conv3-scheme-two-rho-median-constant-sgd-bs16-v7",
+  "status": {
+    "selection_rule": "frozen_conv3_scheme_two_rho_v7",
+    "measurements": "pending",
+    "final_training": "gated",
+    "study_role": "ordinary_mnist_conv3_optimization_diagnostic",
+    "handoff_scope": "ordinary_mnist_only",
+    "medium_affine_conv3_handoff": "unresolved"
+  },
+  "dataset": {
+    "name": "mnist",
+    "variant": "ordinary",
+    "input_shape": [2, 28, 28],
+    "normalization": {
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "affine": {
+      "enabled": false,
+      "preset": "ordinary_identity",
+      "degrees": 0.0,
+      "translate": [0.0, 0.0],
+      "scale": [1.0, 1.0],
+      "shear": 0.0,
+      "seed": 1729,
+      "interpolation": "bilinear",
+      "fill": 0.0,
+      "deterministic_by_original_index": true
+    },
+    "train": {
+      "source": "mnist_train",
+      "size": 55000,
+      "batch_size": 16,
+      "drop_last": false,
+      "shuffle_method": "torch_randperm",
+      "shuffle_seed": 0,
+      "reset_shuffle_identically_before_each_candidate": true,
+      "steps_per_epoch": 3438
+    },
+    "validation": {
+      "source": "mnist_train",
+      "size": 5000,
+      "class_count": 10,
+      "samples_per_class": 500,
+      "stratified": true,
+      "selection_method": "classwise_torch_randperm",
+      "split_seed": 0,
+      "batch_size": 64,
+      "store_exact_indices": true,
+      "index_hash": "sha256"
+    },
+    "official_test": {
+      "enabled": false,
+      "read_allowed": false
+    }
+  },
+  "model": {
+    "model_seed": 0,
+    "architectures": {
+      "conv3": {
+        "channels": [64, 128, 256],
+        "kernel_sizes": [3, 3, 3],
+        "strides": [2, 2, 1],
+        "paddings": [1, 1, 1],
+        "pooling": "none",
+        "output_dim": 20
+      }
+    },
+    "non_linearity": "hard_sigmoid",
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "hard_sigmoid": {
+      "g_on": 100.0,
+      "g_off": 0.0,
+      "v_off": 4.0
+    },
+    "conductance_bounds": [0.0, 100.0],
+    "weight_initialization": "kaiming_uniform",
+    "weight_gains": 1.0,
+    "paired_output_loss": "squared_error_paired_20",
+    "amplification": "fixed",
+    "input_gain_calibration": {
+      "source_dataset": "deterministic_medium_affine_mnist",
+      "settling_iterations": 64,
+      "target_first_hidden_saturation": 0.3,
+      "recalibrate_for_ordinary_mnist": false,
+      "reuse_for_ordinary_mnist_is_intentional": true
+    },
+    "shared_initialization": "one_seed0_conv3_checkpoint_shared_across_all_schemes_probes_and_candidates",
+    "reset_global_name_counters_before_build": true,
+    "bounded_weight_order": [
+      "ConvWeight_0",
+      "ConvWeight_1",
+      "ConvWeight_2",
+      "DenseWeight_0"
+    ],
+    "trainable_parameter_order": [
+      "ConvWeight_0",
+      "Bias_0",
+      "ConvWeight_1",
+      "Bias_1",
+      "ConvWeight_2",
+      "Bias_2",
+      "DenseWeight_0"
+    ]
+  },
+  "solver": {
+    "energy_mode": "asynchronous",
+    "fixed_step_minimization": true,
+    "batch_state_policy": "reset_each_batch",
+    "minimizer": {
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "adaptive_equilibrium": false,
+      "overrelaxation_factor": 1.1,
+      "single_diode_updater": "custom",
+      "iv_data_path": null,
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "settings": {
+        "rel_tol": 1e-5,
+        "vn_tol": 1e-6,
+        "use_polish": true,
+        "max_newton_iters": 32,
+        "z_thresh": 1e10,
+        "exp_clip": 1e5,
+        "dynamic_polish": true,
+        "overrelaxation_reject_steps": false,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_eps": 0.0,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-5,
+        "experimental_exponential_newton_tol_end": 1e-5,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005
+      }
+    }
+  },
+  "optimizer": {
+    "name": "SGD",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "target_scope": "conv_and_dense",
+    "normalization_statistic": "median",
+    "scalar_lr_for_all_trainable_parameters": false,
+    "weight_specific_learning_rates": true,
+    "learning_rate_formula": "rho_target_divided_by_median_batch_rms_gradient_over_initial_weight_rms",
+    "bias_lr_policy": "match_associated_conv_weight",
+    "bias_weight_mapping": {
+      "Bias_0": "ConvWeight_0",
+      "Bias_1": "ConvWeight_1",
+      "Bias_2": "ConvWeight_2"
+    },
+    "biases_excluded_from_lr_tuning": true,
+    "bounded_weights_set_gates": true,
+    "biases_reported_separately": true
+  },
+  "initialization": {
+    "mode": "create_and_hash_v7_assets",
+    "shared_split_across_rows": true,
+    "shared_checkpoint_across_rows": true,
+    "checkpoint_architecture": "conv3",
+    "checkpoint_model_seed": 0,
+    "required_assets": [
+      "split_indices",
+      "split_provenance",
+      "conv3_initialization_checkpoint",
+      "conv3_initialization_record",
+      "conv3_initialization_tensor_digest",
+      "probe_minibatch_order",
+      "candidate_minibatch_order"
+    ],
+    "content_addressed": true,
+    "official_test_read": false
+  },
+  "probe": {
+    "minibatches": 32,
+    "batch_size": 16,
+    "nominal_lr": 1.0,
+    "restore_parameters_after_each_proposal": true,
+    "shared_minibatch_sequence_across_rows": true,
+    "bounded_parameter_types": ["ConvWeight", "DenseWeight"],
+    "bounded_parameter_names": [
+      "ConvWeight_0",
+      "ConvWeight_1",
+      "ConvWeight_2",
+      "DenseWeight_0"
+    ],
+    "rho_definition": "median_batch_rms_gradient_over_initial_weight_rms_per_bounded_weight",
+    "normalization_statistic": "median",
+    "within_parameter_interpolation": "linear",
+    "q90_relative_update_is_safety_diagnostic": true,
+    "span_rho_is_safety_diagnostic": true,
+    "bias_policy": {
+      "include_in_m": false,
+      "include_in_target_selection": false,
+      "mapping": "Bias_i_to_ConvWeight_i",
+      "dense_output_bias": false
+    }
+  },
+  "range_test": {
+    "enabled": false,
+    "reason": "Every rho pair runs independently from the shared initialization; no increasing-LR range is permitted.",
+    "gates": {
+      "non_finite": {
+        "persistence": 1
+      },
+      "loss_ema": {
+        "factor_over_prior_minimum": 4.0,
+        "persistence": 8
+      },
+      "bounded_gradient_rms": {
+        "factor_over_first_32_median": 100.0,
+        "persistence": 8
+      },
+      "combined_bound_occupancy": {
+        "increase_over_initial": 0.2,
+        "persistence": 16
+      },
+      "projection_efficiency": {
+        "below": 0.5,
+        "persistence": 16,
+        "ignore_numerically_zero_proposed_updates": true,
+        "zero_update_epsilon": 1e-12
+      },
+      "proposed_bound_crossing_fraction_is_gate": false,
+      "raw_learning_rate_magnitude_is_gate": false
+    }
+  },
+  "rho_grid": {
+    "scope": "each_scheme_independently",
+    "row_order": [
+      "conv3_baseline_v1_c1",
+      "conv3_ours_v4_c1",
+      "conv3_legacy_v4_c0p25"
+    ],
+    "core": {
+      "rho_conv": [0.0005, 0.003, 0.01],
+      "rho_dense": [0.003, 0.01, 0.03],
+      "ordering": "row_then_rho_conv_then_rho_dense",
+      "candidate_count_per_row": 9,
+      "total_candidate_count": 27
+    },
+    "expansion": {
+      "trigger": "entire_passing_plateau_confined_to_current_upper_axis",
+      "rho_conv": 0.03,
+      "rho_dense": 0.1,
+      "maximum_waves": 1,
+      "evaluate": "new_cartesian_row_and_or_column_including_corner",
+      "reuse_existing_cells_by_hash": true,
+      "maximum_new_candidates_per_row": 7,
+      "maximum_candidates_per_row": 16,
+      "maximum_total_training_runs": 48,
+      "second_automatic_expansion_allowed": false
+    }
+  },
+  "candidate_training": {
+    "model_seeds": [0],
+    "epochs": 3,
+    "training_examples": 55000,
+    "batch_size": 16,
+    "steps_per_epoch": 3438,
+    "total_steps": 10314,
+    "minimum_final_validation_accuracy": 0.9,
+    "schedule": {
+      "type": "constant_weight_vector",
+      "scheduler_enabled": false,
+      "first_step": 1,
+      "final_step": 10314,
+      "first_lr_factor": 1.0,
+      "final_lr_factor": 1.0,
+      "warmup_steps": 0,
+      "decay": "none",
+      "restarts": false
+    },
+    "validation": {
+      "every_epochs": 1,
+      "scope": "complete_validation_split",
+      "batch_size": 64
+    },
+    "checkpoints": ["minimum_validation_loss", "final"],
+    "official_test_evaluation": false,
+    "inadmissibility": {
+      "numerical_failure": true,
+      "safety_gates": "range_test.gates",
+      "projection_domination": {
+        "training_fraction": 1.0,
+        "below_efficiency": 0.5,
+        "persistence": 16,
+        "ignore_numerically_zero_proposed_updates": true
+      }
+    },
+    "observed_rho": {
+      "coordinate": "initial_parameter_rms_per_bounded_weight",
+      "within_parameter_statistic": "quantile",
+      "within_parameter_q": 0.9,
+      "within_parameter_interpolation": "linear",
+      "across_parameters": "report_independently",
+      "also_report_span_rho": true,
+      "bounded_parameter_types": ["ConvWeight", "DenseWeight"],
+      "initial_steps": 32,
+      "also_report_per_epoch": true,
+      "also_report_complete_run": true
+    }
+  },
+  "selection": {
+    "scope": "each_scheme_independently",
+    "baseline_metric": "final_validation_loss",
+    "minimum_final_accuracy": 0.9,
+    "accuracy_boundary": "greater_than_or_equal",
+    "plateau_relative_to_minimum": 0.02,
+    "plateau_tie_breakers": [
+      "higher_final_validation_accuracy",
+      "higher_median_projection_efficiency",
+      "lower_max_rho",
+      "lower_sum_rho",
+      "lower_rho_conv",
+      "lower_rho_dense"
+    ],
+    "upper_boundary": "maximum_current_rho_conv_or_maximum_current_rho_dense",
+    "extension_rule": "expand_each_implicated_upper_axis_once_per_row",
+    "post_expansion_boundary_policy": "unresolved_without_fallback",
+    "no_passing_candidate_policy": "unresolved_without_fallback",
+    "cross_scheme_transfer_allowed": false,
+    "selected_status": "frozen_seed0_ordinary_mnist_layerwise_screen",
+    "unresolved_status": "unresolved",
+    "partial_handoff_allowed": true,
+    "complete_handoff_requirement": "all_three_rows_selected_and_bracketed",
+    "later_seed_policy": "not_authorized",
+    "final_paper_training_authorized": false
+  },
+  "stages": {
+    "candidate_run_schema_version": "mnist-conv-run/v7",
+    "public_sequence": [
+      "audit",
+      "probe",
+      "preflight",
+      "core_candidates",
+      "select_core",
+      "extension_candidates",
+      "finalize"
+    ],
+    "contracts": {
+      "audit": {
+        "purpose": "create_or_verify_split_and_shared_conv3_initialization",
+        "output": "asset_audit"
+      },
+      "probe": {
+        "purpose": "measure_three_scheme_specific_per_weight_medians",
+        "output": "probe_manifest_and_three_probe_summaries"
+      },
+      "preflight": {
+        "purpose": "measure_worst_cost_ours_candidate_feasibility",
+        "output": "preflight_summary"
+      },
+      "core_candidates": {
+        "purpose": "run_the_three_by_three_grid_independently_per_scheme",
+        "output": "twenty_seven_candidate_completions"
+      },
+      "select_core": {
+        "purpose": "select_or_request_one_axis_specific_expansion_per_scheme",
+        "output": "three_core_selection_records"
+      },
+      "extension_candidates": {
+        "purpose": "run_only_new_hash_distinct_cells_requested_by_select_core",
+        "output": "zero_to_twenty_one_candidate_completions"
+      },
+      "finalize": {
+        "purpose": "freeze_bracketed_rows_and_retain_unresolved_rows",
+        "output": "partial_or_complete_three_row_handoff"
+      }
+    },
+    "conditional_zero_work_completion": {
+      "extension_candidates": "required_when_no_scheme_requests_expansion",
+      "finalize": "records_zero_selected_rows_when_all_schemes_are_unresolved"
+    },
+    "immutable_manifests": true,
+    "completion_marker_written_last": true,
+    "resume_completed_work": true
+  },
+  "preflight": {
+    "required_before_core_candidates": true,
+    "row_id": "conv3_ours_v4_c1",
+    "rho_conv": 0.003,
+    "rho_dense": 0.01,
+    "inference_iterations": 32,
+    "training_iterations": 8,
+    "warmup_steps": 32,
+    "measured_steps": 256,
+    "full_validation_pass": true,
+    "validation_batch_size": 64,
+    "device": "v100-16g-or-larger",
+    "gpu_memory_mib": 16384,
+    "memory_headroom_fraction": 0.1,
+    "maximum_projected_candidate_hours": 20,
+    "failure_policy": "stop_and_revise_protocol",
+    "batch_size_change_allowed": false
+  },
+  "execution": {
+    "availability_checks": ["main", "akibscomputer", "trex"],
+    "conv3_dispatch_priority": ["trex", "jean_zay_r3", "main", "akibscomputer"],
+    "canonical_remote_location": "jean_zay_r3",
+    "allocation": "AD010913993R3",
+    "project": "fmu",
+    "slurm_account": "fmu@v100",
+    "reject_allocation_without_suffix": "R3",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100",
+    "gpus_per_task": 1,
+    "gpu_memory_mib": 16384,
+    "cpus_per_task": 16,
+    "hint": "nomultithread",
+    "loader_workers_per_process": 0,
+    "threads_per_process": 1,
+    "time_limit_hours": 20,
+    "memory_headroom_fraction": 0.1,
+    "default_candidate_processes_per_gpu": 1,
+    "packing_allowed_only_after_measured_preflight": true,
+    "packing_requires_memory_and_throughput_benchmark": true,
+    "training_on_compute_nodes_only": true,
+    "result_root": "/lustre/fsn1/projects/rech/fmu/$USER/server_code/results/<v7-study-id>"
+  },
+  "artifacts": {
+    "hash": "sha256",
+    "immutable_stage_manifests": true,
+    "completion_marker_written_last": true,
+    "embed_upstream_artifact_hashes": true,
+    "resume_completed_work": true,
+    "required_payloads": [
+      "asset_audit",
+      "median_relative_unit_by_weight",
+      "q90_relative_update_by_weight",
+      "span_rho_by_weight",
+      "bias_weight_lr_mapping",
+      "constant_seven_parameter_learning_rate_vector",
+      "validation_metrics",
+      "occupancy",
+      "projection_efficiency",
+      "core_selection",
+      "extension_request",
+      "finalization"
+    ],
+    "final_handoff_fields": [
+      "rho_conv",
+      "rho_dense",
+      "four_weight_learning_rates",
+      "seven_parameter_learning_rate_vector",
+      "achieved_relative_updates_by_weight",
+      "achieved_span_updates_by_weight",
+      "validation_metrics",
+      "safety_diagnostics",
+      "provenance_hashes"
+    ],
+    "large_raw_lr_reporting": {
+      "thresholds": [1.0, 10.0],
+      "comparison": "greater_than_or_equal",
+      "sets_gate": false,
+      "caps_learning_rate": false,
+      "report_weight_rates_only": true
+    },
+    "plots": {
+      "backend": "matplotlib",
+      "kinds": [
+        "epoch3_accuracy_loss_heatmap",
+        "achieved_relative_updates_heatmap",
+        "raw_learning_rates_heatmap",
+        "occupancy_heatmap",
+        "projection_efficiency_heatmap"
+      ]
+    },
+    "ordinary_mnist_only_handoff": true,
+    "replaces_medium_affine_paper_handoff": false,
+    "authorizes_final_paper_training": false
+  },
+  "rows": [
+    {
+      "row_id": "conv3_baseline_v1_c1",
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_name": "mnist_bp_amp_v1_c1",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "input_gain": 251.3061370850,
+      "inference_iterations": 24,
+      "training_iterations": 8
+    },
+    {
+      "row_id": "conv3_ours_v4_c1",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "input_gain": 744.7390747070,
+      "inference_iterations": 32,
+      "training_iterations": 8
+    },
+    {
+      "row_id": "conv3_legacy_v4_c0p25",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "input_gain": 665.0302124023,
+      "inference_iterations": 8,
+      "training_iterations": 6
+    }
+  ]
+}

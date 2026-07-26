@@ -16,7 +16,7 @@ from .identity import code_provenance, normalize_code_provenance, run_fingerprin
 from .layout import ResultLayout
 from .manifest import load_manifest, manifest_entry, publish_manifest
 from .runner import ExecutionPolicy, execute_run
-from .specs import RunSpec, SweepSpec
+from .specs import RunSpec, SweepSpec, require_generic_run_schema
 
 
 DEFAULT_DATA_ROOT = Path("~/datasets/mnist").expanduser()
@@ -58,6 +58,53 @@ def _parser() -> argparse.ArgumentParser:
     collect = subparsers.add_parser("collect", help="collect one canonical sweep directory")
     collect.add_argument("--sweep", required=True)
     collect.add_argument("--allow-incomplete", action="store_true")
+
+    lr_study = subparsers.add_parser(
+        "lr-study", help="plan or execute one staged Conv learning-rate study"
+    )
+    lr_study.add_argument(
+        "--stage",
+        required=True,
+        choices=(
+            "audit",
+            "probe",
+            "range",
+            "candidates",
+            "select",
+            "baseline_candidates",
+            "select_baseline",
+            "confirmations",
+            "preflight",
+            "core_candidates",
+            "select_core",
+            "extension_candidates",
+            "finalize",
+        ),
+    )
+    lr_study.add_argument("--config")
+    lr_study.add_argument("--study")
+    lr_study.add_argument("--results-root")
+    lr_study.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT))
+    lr_study.add_argument("--device", default="cuda")
+    lr_study.add_argument("--download", action="store_true")
+    lr_study.add_argument("--plan-only", action="store_true")
+    lr_study.add_argument("--executor", choices=("local", "slurm"), default="local")
+    lr_study.add_argument("--workers", type=int, default=1)
+    lr_study.add_argument("--profile")
+    lr_study.add_argument("--dry-run", action="store_true")
+    lr_study.add_argument("--manifest", help=argparse.SUPPRESS)
+    lr_study.add_argument("--entry-index", type=int, help=argparse.SUPPRESS)
+    lr_study.add_argument("--finalize-stage", action="store_true", help=argparse.SUPPRESS)
+    lr_study.add_argument("--shadow-benchmark", action="store_true", help=argparse.SUPPRESS)
+    lr_study.add_argument("--shadow-ready", help=argparse.SUPPRESS)
+    lr_study.add_argument("--shadow-start", help=argparse.SUPPRESS)
+    lr_study.add_argument("--shadow-scratch-output", help=argparse.SUPPRESS)
+    lr_study.add_argument(
+        "--shadow-start-timeout-seconds",
+        type=float,
+        default=900.0,
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
@@ -118,6 +165,7 @@ def _run_command(
     backend: TrainingBackend | None,
 ) -> dict[str, Any]:
     spec, layout = RunSpec.from_path(args.config), ResultLayout(args.results_root)
+    require_generic_run_schema(spec.data["schema_version"], surface="run")
     run_id = run_fingerprint(spec, provenance)
     path = layout.run_dir(spec.data["label"], run_id)
     if args.plan_only or args.dry_run:
@@ -152,12 +200,21 @@ def _sweep_command(
         manifest_path = Path(args.manifest).expanduser().resolve()
         manifest = load_manifest(manifest_path)
         _require_current_manifest_source(manifest, provenance)
+        entry = manifest_entry(manifest, args.job_index)
+        require_generic_run_schema(
+            entry["run_spec"]["schema_version"],
+            surface="sweep",
+        )
         return _run_entry(
-            manifest_entry(manifest, args.job_index), args=args, layout=layout,
+            entry, args=args, layout=layout,
             provenance=provenance, backend=backend,
         )
 
     spec = SweepSpec.from_path(args.config)
+    require_generic_run_schema(
+        spec.data["base_run"]["schema_version"],
+        surface="sweep",
+    )
     manifest, manifest_path = publish_manifest(spec, layout, provenance)
     sweep_dir = manifest_path.parent
     planned = {
@@ -259,6 +316,259 @@ def _collect_command(args: argparse.Namespace) -> dict[str, Any]:
     return collect_sweep(manifest_path, layout, allow_incomplete=args.allow_incomplete)
 
 
+def _lr_study_command(
+    args: argparse.Namespace,
+    *,
+    provenance: dict[str, Any],
+) -> dict[str, Any]:
+    from .lr_stages import (
+        execute_v6_shadow_benchmark_entry,
+        prepare_study_assets,
+    )
+    from .lr_study import (
+        _require_current_source,
+        create_study,
+        execute_local_stage,
+        execute_manifest_entry,
+        finalize_stage,
+        load_study,
+        plan_only_result,
+        publish_lr_stage_manifest,
+        submit_slurm_stage,
+    )
+    from .lr_study_spec import LRStudySpec
+
+    if args.shadow_benchmark:
+        from .lr_artifacts import load_stage_manifest
+
+        supplied = {
+            "study": args.study,
+            "manifest": args.manifest,
+            "entry_index": args.entry_index,
+            "shadow_ready": args.shadow_ready,
+            "shadow_start": args.shadow_start,
+            "shadow_scratch_output": args.shadow_scratch_output,
+        }
+        missing = sorted(name for name, value in supplied.items() if value is None)
+        if missing:
+            raise ValueError(
+                "Expected internal shadow benchmark mode to receive study, manifest, "
+                "entry-index, ready/start paths, and a scratch output directory. "
+                f"Provided missing values: {missing!r}."
+            )
+        if (
+            args.stage != "baseline_candidates"
+            or args.config is not None
+            or args.results_root is not None
+            or args.download
+            or args.plan_only
+            or args.executor != "local"
+            or args.workers != 1
+            or args.profile is not None
+            or args.dry_run
+            or args.finalize_stage
+        ):
+            raise ValueError(
+                "Expected internal shadow benchmark mode to be noncanonical baseline "
+                "candidate execution with no download, planning, profile, finalizer, "
+                "or worker fan-out. "
+                f"Provided value: {vars(args)!r}."
+            )
+        root, spec = load_study(args.study)
+        if spec.data.get("schema_version") != "mnist-conv-lr-study/v6":
+            raise ValueError(
+                "Expected shadow benchmark study schema_version to be "
+                "mnist-conv-lr-study/v6. "
+                f"Provided value: {spec.data.get('schema_version')!r}."
+            )
+        manifest = load_stage_manifest(
+            args.manifest,
+            study_dir=root,
+            expected_study_id=spec.study_id,
+            expected_stage_name="baseline_candidates",
+        )
+        _require_current_source(manifest["code_provenance"], provenance)
+        if not 0 <= args.entry_index < len(manifest["entries"]):
+            raise ValueError(
+                f"Expected entry_index in [0, {len(manifest['entries']) - 1}]. "
+                f"Provided value: {args.entry_index!r}."
+            )
+        payload = manifest["entries"][args.entry_index]["payload"]
+        return execute_v6_shadow_benchmark_entry(
+            spec.data,
+            root,
+            payload["row_id"],
+            payload["candidate_role"],
+            candidate_payload=payload,
+            data_root=args.data_root,
+            download=False,
+            device=args.device,
+            ready_path=args.shadow_ready,
+            start_path=args.shadow_start,
+            scratch_output_dir=args.shadow_scratch_output,
+            warmup_steps=32,
+            measured_steps=256,
+            start_timeout_seconds=args.shadow_start_timeout_seconds,
+        )
+
+    if args.manifest is not None:
+        if args.study is None or args.config is not None or args.results_root is not None:
+            raise ValueError(
+                "Expected internal --manifest mode with --study and without --config or "
+                f"--results-root. Provided value: study={args.study!r}, "
+                f"config={args.config!r}, results_root={args.results_root!r}."
+            )
+        if args.finalize_stage:
+            if args.entry_index is not None:
+                raise ValueError(
+                    "Expected --finalize-stage without --entry-index. "
+                    f"Provided value: {args.entry_index!r}."
+                )
+            return finalize_stage(args.study, args.manifest)
+        if args.entry_index is None:
+            raise ValueError(
+                "Expected --entry-index in internal --manifest worker mode. "
+                f"Provided value: {args.entry_index!r}."
+            )
+        return execute_manifest_entry(
+            study_dir=args.study,
+            manifest_path=args.manifest,
+            entry_index=args.entry_index,
+            data_root=args.data_root,
+            download=args.download,
+            device=args.device,
+            current_provenance=provenance,
+        )
+
+    if (
+        args.entry_index is not None
+        or args.finalize_stage
+        or args.shadow_ready is not None
+        or args.shadow_start is not None
+        or args.shadow_scratch_output is not None
+    ):
+        raise ValueError(
+            "Expected internal worker/shadow flags only with their internal mode. "
+            f"Provided value: entry_index={args.entry_index!r}, "
+            f"finalize_stage={args.finalize_stage!r}."
+        )
+    if args.stage in {"audit", "probe"}:
+        if args.config is None or args.study is not None or args.results_root is None:
+            raise ValueError(
+                f"Expected {args.stage} stage with --config and --results-root, "
+                "without --study. "
+                f"Provided value: config={args.config!r}, study={args.study!r}, "
+                f"results_root={args.results_root!r}."
+            )
+        spec = LRStudySpec.from_path(args.config)
+        layout = ResultLayout(args.results_root)
+        study_dir = layout.lr_study_dir(spec.data["name"], spec.study_id)
+        if args.plan_only:
+            if args.profile is not None or args.dry_run:
+                raise ValueError(
+                    "Expected --plan-only without --profile or --dry-run. "
+                    f"Provided value: profile={args.profile!r}, dry_run={args.dry_run!r}."
+                )
+            return plan_only_result(spec, study_dir, args.stage)
+        if (
+            spec.data.get("schema_version") == "mnist-conv-lr-study/v6"
+            and args.stage
+            in {"audit", "probe", "baseline_candidates", "confirmations"}
+        ):
+            raise ValueError(
+                "Expected non-plan v6 stages to use only the dedicated Jean Zay R3 "
+                "wrapper and its internal manifest workers; top-level local and "
+                "generic Slurm execution are prohibited. "
+                f"Provided stage: {args.stage!r}."
+            )
+        study_dir, _ = create_study(spec, args.results_root)
+        # V6 performs verified v5 reuse (or deterministic fallback rebuilds)
+        # inside its Slurm audit entry.  Preparing those assets here would run
+        # model/dataset work on a Jean Zay login node before submission.
+        if spec.data.get("schema_version") not in {
+            "mnist-conv-lr-study/v6",
+            "mnist-conv-lr-study/v7",
+        }:
+            prepare_study_assets(
+                spec.data,
+                study_dir,
+                data_root=args.data_root,
+                download=args.download,
+                device=args.device,
+            )
+    else:
+        if args.study is None or args.config is not None or args.results_root is not None:
+            raise ValueError(
+                f"Expected {args.stage} stage with --study, without --config or --results-root. "
+                f"Provided value: study={args.study!r}, config={args.config!r}, "
+                f"results_root={args.results_root!r}."
+            )
+        study_dir, spec = load_study(args.study)
+        if args.plan_only:
+            if args.profile is not None or args.dry_run:
+                raise ValueError(
+                    "Expected --plan-only without --profile or --dry-run. "
+                    f"Provided value: profile={args.profile!r}, dry_run={args.dry_run!r}."
+                )
+            return plan_only_result(spec, study_dir, args.stage)
+        if (
+            spec.data.get("schema_version") == "mnist-conv-lr-study/v6"
+            and args.stage
+            in {"audit", "probe", "baseline_candidates", "confirmations"}
+        ):
+            raise ValueError(
+                "Expected non-plan v6 stages to use only the dedicated Jean Zay R3 "
+                "wrapper and its internal manifest workers; top-level local and "
+                "generic Slurm execution are prohibited. "
+                f"Provided stage: {args.stage!r}."
+            )
+
+    manifest, manifest_path = publish_lr_stage_manifest(
+        study_dir, spec, args.stage, provenance
+    )
+    planned = {
+        "planned": True,
+        "study_id": spec.study_id,
+        "study_dir": str(study_dir),
+        "stage": args.stage,
+        "manifest_path": str(manifest_path),
+        "entry_count": len(manifest["entries"]),
+    }
+    if args.executor == "local":
+        if args.profile is not None or args.dry_run:
+            raise ValueError(
+                "Expected local LR-study execution without --profile or --dry-run. "
+                f"Provided value: profile={args.profile!r}, dry_run={args.dry_run!r}."
+            )
+        result = execute_local_stage(
+            study_dir=study_dir,
+            manifest_path=manifest_path,
+            data_root=args.data_root,
+            download=args.download,
+            device=args.device,
+            workers=args.workers,
+            provenance=provenance,
+        )
+        return {**planned, "planned": False, **result}
+    if args.profile is None:
+        raise ValueError(
+            f"Expected --profile for Slurm execution. Provided value: {args.profile!r}."
+        )
+    if args.workers != 1:
+        raise ValueError(
+            f"Expected --workers only for local execution. Provided value: {args.workers!r}."
+        )
+    submission = submit_slurm_stage(
+        study_dir=study_dir,
+        manifest_path=manifest_path,
+        data_root=args.data_root,
+        device=args.device,
+        profile_path=args.profile,
+        dry_run=args.dry_run,
+    )
+    return {**planned, "planned": False, "executor": "slurm", "submission": submission}
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -275,6 +585,8 @@ def main(
             provenance = normalize_code_provenance(source_provenance or code_provenance())
             if args.command == "run":
                 result = _run_command(args, provenance=provenance, backend=backend)
+            elif args.command == "lr-study":
+                result = _lr_study_command(args, provenance=provenance)
             else:
                 result = _sweep_command(
                     args, provenance=provenance, backend=backend,

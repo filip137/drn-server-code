@@ -13,7 +13,172 @@ from typing import Any, Iterable, Mapping
 
 
 RUN_SCHEMA_VERSION = "mnist-conv-run/v1"
+RUN_SCHEMA_VERSION_V2 = "mnist-conv-run/v2"
+RUN_SCHEMA_VERSION_V3 = "mnist-conv-run/v3"
+RUN_SCHEMA_VERSION_V4 = "mnist-conv-run/v4"
+RUN_SCHEMA_VERSION_V5 = "mnist-conv-run/v5"
+RUN_SCHEMA_VERSION_V6 = "mnist-conv-run/v6"
+RUN_SCHEMA_VERSION_V7 = "mnist-conv-run/v7"
+LR_STAGE_RUN_SCHEMA_VERSIONS = frozenset(
+    {
+        RUN_SCHEMA_VERSION_V2,
+        RUN_SCHEMA_VERSION_V3,
+        RUN_SCHEMA_VERSION_V4,
+        RUN_SCHEMA_VERSION_V5,
+        RUN_SCHEMA_VERSION_V6,
+        RUN_SCHEMA_VERSION_V7,
+    }
+)
 SWEEP_SCHEMA_VERSION = "mnist-conv-sweep/v1"
+WEIGHT_INIT_MODES = {
+    "bounded_uniform",
+    "kaiming_normal",
+    "kaiming_uniform",
+    "xavier_normal",
+    "xavier_uniform",
+}
+
+OPTIMIZER_BOUNDARY_PROTOCOL_ID = (
+    "conv-hardsigmoid-lr-conv2-sgd-adam-boundary-constant-bs16-v1"
+)
+CONV3_ORDINARY_LR_PROTOCOL_ID = (
+    "conv-hardsigmoid-lr-conv3-scheme-two-rho-"
+    "median-constant-sgd-bs16-v7"
+)
+
+SGD_OPTIMIZER_V7: dict[str, Any] = {
+    "name": "SGD",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+}
+
+ADAM_OPTIMIZER_V7: dict[str, Any] = {
+    "name": "Adam",
+    "betas": [0.9, 0.999],
+    "eps": 1e-8,
+    "weight_decay": 0.0,
+    "amsgrad": False,
+    "foreach": False,
+    "fused": False,
+    "maximize": False,
+    "capturable": False,
+    "differentiable": False,
+}
+
+
+def require_generic_run_schema(
+    schema_version: Any,
+    *,
+    surface: str,
+) -> None:
+    """Keep LR-stage candidate bundles off the generic run/sweep surfaces."""
+
+    if schema_version == RUN_SCHEMA_VERSION:
+        return
+    expected = (
+        f"the generic MNIST Conv {surface} surface to receive schema_version "
+        f"{RUN_SCHEMA_VERSION!r}; LR-stage candidate schemas "
+        f"{sorted(LR_STAGE_RUN_SCHEMA_VERSIONS)!r} must use "
+        "'python -m experiments.mnist_conv lr-study'"
+    )
+    raise SpecValidationError(
+        f"Expected {expected}. Provided schema_version: {schema_version!r}."
+    )
+
+_V7_RHO_CONV_MAIN_GRID = (0.01, 0.015, 0.03)
+_V7_RHO_CONV_SENTINEL = 0.1
+_V7_RHO_DENSE_GRID_BY_SCHEME = {
+    "baseline": (0.01, 0.03),
+    "ours": (0.003, 0.01),
+    "legacy": (0.003, 0.01),
+}
+
+_V6_RHO_CONV_GRID = (5e-4, 1e-3, 3e-3, 1e-2)
+_V6_RHO_DENSE_GRID = (3e-3, 1e-2, 3e-2, 1e-1)
+_V6_CONV2_ROWS: dict[str, dict[str, Any]] = {
+    "conv2_baseline_v1_c1": {
+        "stage": "baseline_grid",
+        "voltage_amp": 1.0,
+        "current_amp": 1.0,
+        "input_gain": 253.302230835,
+        "inference_iterations": 16,
+        "training_iterations": 6,
+    },
+    "conv2_ours_v4_c1": {
+        "stage": "confirmation",
+        "voltage_amp": 4.0,
+        "current_amp": 1.0,
+        "input_gain": 716.3439331055,
+        "inference_iterations": 24,
+        "training_iterations": 6,
+    },
+    "conv2_legacy_v4_c0p25": {
+        "stage": "confirmation",
+        "voltage_amp": 4.0,
+        "current_amp": 0.25,
+        "input_gain": 661.4369506836,
+        "inference_iterations": 8,
+        "training_iterations": 4,
+    },
+}
+
+_CONV1_SCHEME_RHO_CONV_GRID = (1.0 / 3000.0, 1e-3, 3e-3, 1e-2)
+_CONV1_SCHEME_RHO_DENSE_GRID = (3e-3, 1e-2, 3e-2)
+_CONV1_SCHEME_RHO_ROWS: dict[str, dict[str, Any]] = {
+    "conv1_ours_v4_c1": {
+        "voltage_amp": 4.0,
+        "current_amp": 1.0,
+        "input_gain": 84.8402175903,
+        "inference_iterations": 4,
+        "training_iterations": 4,
+    },
+    "conv1_legacy_v4_c0p25": {
+        "voltage_amp": 4.0,
+        "current_amp": 0.25,
+        "input_gain": 31.8188591003,
+        "inference_iterations": 4,
+        "training_iterations": 4,
+    },
+}
+
+_CONV2_SCHEME_RHO_CONV_GRID = (5e-4, 1.5e-3, 3e-3, 1e-2)
+_CONV2_SCHEME_RHO_DENSE_GRID = (3e-3, 1e-2, 3e-2)
+_CONV2_SCHEME_RHO_ROWS: dict[str, dict[str, Any]] = {
+    row_id: contract
+    for row_id, contract in _V6_CONV2_ROWS.items()
+    if row_id in {"conv2_ours_v4_c1", "conv2_legacy_v4_c0p25"}
+}
+
+_CONV3_ORDINARY_RHO_CONV_GRID = (5e-4, 3e-3, 1e-2, 3e-2)
+_CONV3_ORDINARY_RHO_DENSE_GRID = (3e-3, 1e-2, 3e-2, 1e-1)
+_CONV3_LEGACY_RESCUE_RHO_PAIRS = (
+    (5e-5, 3e-4),
+    (1.5e-5, 1e-4),
+    (5e-6, 3e-5),
+)
+_CONV3_ORDINARY_ROWS: dict[str, dict[str, Any]] = {
+    "conv3_baseline_v1_c1": {
+        "voltage_amp": 1.0,
+        "current_amp": 1.0,
+        "input_gain": 251.3061370850,
+        "inference_iterations": 24,
+        "training_iterations": 8,
+    },
+    "conv3_ours_v4_c1": {
+        "voltage_amp": 4.0,
+        "current_amp": 1.0,
+        "input_gain": 744.7390747070,
+        "inference_iterations": 32,
+        "training_iterations": 8,
+    },
+    "conv3_legacy_v4_c0p25": {
+        "voltage_amp": 4.0,
+        "current_amp": 0.25,
+        "input_gain": 665.0302124023,
+        "inference_iterations": 8,
+        "training_iterations": 6,
+    },
+}
 
 ARCHITECTURE_PROFILES: dict[str, dict[str, Any]] = {
     "conv1": {"channels": [64], "kernel_sizes": [3], "strides": [2], "paddings": [1], "output_dim": 20},
@@ -158,6 +323,100 @@ def _normalize_dataset(value: Any) -> dict[str, Any]:
     }
 
 
+def _normalize_dataset_v2(value: Any) -> dict[str, Any]:
+    """Normalize the validation-only dataset contract used by LR candidates.
+
+    V2 is deliberately separate from the established v1 contract: existing
+    bundles retain their original schema and test-split semantics, while LR
+    studies must make the train/validation split and loader RNG independent of
+    model construction explicit.
+    """
+
+    dataset = _object(value, "run.dataset")
+    keys = {
+        "name", "input_shape", "batch_size", "normalization", "affine",
+        "max_batches", "train_shuffle_seed", "validation",
+    }
+    _exact_keys(dataset, keys, "run.dataset")
+    base = _normalize_dataset(
+        {
+            "name": dataset["name"],
+            "input_shape": dataset["input_shape"],
+            "batch_size": dataset["batch_size"],
+            "normalization": dataset["normalization"],
+            "affine": dataset["affine"],
+            "max_batches": dataset["max_batches"],
+            "max_test_batches": None,
+        }
+    )
+    if base["batch_size"] != 16:
+        raise _error("exactly 16 for the frozen LR study", base["batch_size"], "run.dataset.batch_size")
+    if base["max_batches"] is not None:
+        raise _error("null for complete five-epoch candidate runs", base["max_batches"], "run.dataset.max_batches")
+    validation = _object(dataset["validation"], "run.dataset.validation")
+    _exact_keys(
+        validation,
+        {
+            "source", "size", "samples_per_class", "split_seed",
+            "batch_size", "stratified", "official_test_enabled",
+            "indices_sha256",
+        },
+        "run.dataset.validation",
+    )
+    if validation["source"] != "mnist_train":
+        raise _error("exactly 'mnist_train'", validation["source"], "run.dataset.validation.source")
+    if validation["size"] != 5000:
+        raise _error("exactly 5000", validation["size"], "run.dataset.validation.size")
+    if validation["samples_per_class"] != 500:
+        raise _error("exactly 500", validation["samples_per_class"], "run.dataset.validation.samples_per_class")
+    if validation["split_seed"] != 0:
+        raise _error("exactly 0", validation["split_seed"], "run.dataset.validation.split_seed")
+    if validation["batch_size"] != 128:
+        raise _error("exactly 128", validation["batch_size"], "run.dataset.validation.batch_size")
+    if validation["stratified"] is not True:
+        raise _error("true", validation["stratified"], "run.dataset.validation.stratified")
+    if validation["official_test_enabled"] is not False:
+        raise _error("false for LR selection", validation["official_test_enabled"], "run.dataset.validation.official_test_enabled")
+    digest = validation["indices_sha256"]
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise _error("a lowercase SHA-256 digest", digest, "run.dataset.validation.indices_sha256")
+    base.pop("max_test_batches")
+    base["train_shuffle_seed"] = _integer(
+        dataset["train_shuffle_seed"], "run.dataset.train_shuffle_seed"
+    )
+    if base["train_shuffle_seed"] != 0:
+        raise _error("exactly 0", base["train_shuffle_seed"], "run.dataset.train_shuffle_seed")
+    base["validation"] = {
+        "source": "mnist_train",
+        "size": 5000,
+        "samples_per_class": 500,
+        "split_seed": 0,
+        "batch_size": 128,
+        "stratified": True,
+        "official_test_enabled": False,
+        "indices_sha256": digest,
+    }
+    return base
+
+
+def _normalize_dataset_conv3_v7(value: Any) -> dict[str, Any]:
+    """Normalize the v7 ordinary-MNIST split with validation batches of 64."""
+
+    dataset = _object(value, "run.dataset")
+    validation = _object(dataset.get("validation"), "run.dataset.validation")
+    if validation.get("batch_size") != 64:
+        raise _error(
+            "exactly 64 for the Conv3 v7 study",
+            validation.get("batch_size"),
+            "run.dataset.validation.batch_size",
+        )
+    compatibility = copy.deepcopy(dataset)
+    compatibility["validation"]["batch_size"] = 128
+    normalized = _normalize_dataset_v2(compatibility)
+    normalized["validation"]["batch_size"] = 64
+    return normalized
+
+
 def _normalize_architecture(value: Any) -> dict[str, Any]:
     architecture = _object(value, "run.architecture")
     _exact_keys(architecture, {"profile", "channels", "kernel_sizes", "strides", "paddings", "output_dim", "pooling"}, "run.architecture")
@@ -224,13 +483,26 @@ def _normalize_model(value: Any, depth: int) -> dict[str, Any]:
     weight_min, weight_max = _finite(model["weight_min"], "run.model.weight_min"), _finite(model["weight_max"], "run.model.weight_max")
     if weight_min > weight_max:
         raise _error("<= weight_max", weight_min, "run.model.weight_min")
+    weight_init_mode = _string(model["weight_init_mode"], "run.model.weight_init_mode")
+    if weight_init_mode not in WEIGHT_INIT_MODES:
+        raise _error(
+            f"one of {sorted(WEIGHT_INIT_MODES)!r}",
+            weight_init_mode,
+            "run.model.weight_init_mode",
+        )
+    if weight_init_mode == "bounded_uniform" and weight_min >= weight_max:
+        raise _error(
+            "< weight_max for bounded_uniform initialization",
+            weight_min,
+            "run.model.weight_min",
+        )
     model.update({
         "voltage_amp": _finite(model["voltage_amp"], "run.model.voltage_amp", positive=True),
         "current_amp": _finite(model["current_amp"], "run.model.current_amp", positive=True),
         "input_gain": _finite(model["input_gain"], "run.model.input_gain", positive=True),
         "weight_gains": _finite_list(model["weight_gains"], "run.model.weight_gains", depth + 1, positive=True),
         "weight_min": weight_min, "weight_max": weight_max,
-        "weight_init_mode": _string(model["weight_init_mode"], "run.model.weight_init_mode"),
+        "weight_init_mode": weight_init_mode,
         "trainable_parameters": expected_trainable,
         "amplification_min": _finite(model["amplification_min"], "run.model.amplification_min", positive=True),
         "amplification_max": None if model["amplification_max"] is None else _finite(model["amplification_max"], "run.model.amplification_max", positive=True),
@@ -373,6 +645,393 @@ def _normalize_training(value: Any, depth: int) -> dict[str, Any]:
     }
 
 
+def _normalize_training_v2(value: Any, depth: int) -> dict[str, Any]:
+    training = _object(value, "run.training")
+    keys = {
+        "algorithm", "epochs", "optimizer", "peak_learning_rate", "schedule",
+        "beta", "checkpoint_rule", "pruning", "batch_state_policy",
+        "diagnostics",
+    }
+    _exact_keys(training, keys, "run.training")
+    if training["algorithm"] != "BP":
+        raise _error("exactly 'BP'", training["algorithm"], "run.training.algorithm")
+    if training["epochs"] != 5:
+        raise _error("exactly 5 for the frozen LR screen", training["epochs"], "run.training.epochs")
+    if training["batch_state_policy"] != "reset_each_batch":
+        raise _error("exactly 'reset_each_batch'", training["batch_state_policy"], "run.training.batch_state_policy")
+    if training["checkpoint_rule"] != "min_validation_loss":
+        raise _error("exactly 'min_validation_loss'", training["checkpoint_rule"], "run.training.checkpoint_rule")
+
+    optimizer = _object(training["optimizer"], "run.training.optimizer")
+    _exact_keys(optimizer, {"name", "momentum", "weight_decay"}, "run.training.optimizer")
+    if optimizer != {"name": "SGD", "momentum": 0.0, "weight_decay": 0.0}:
+        raise _error(
+            "exactly {'name': 'SGD', 'momentum': 0.0, 'weight_decay': 0.0}",
+            optimizer,
+            "run.training.optimizer",
+        )
+
+    peak = _finite(training["peak_learning_rate"], "run.training.peak_learning_rate", positive=True)
+    schedule = _object(training["schedule"], "run.training.schedule")
+    _exact_keys(
+        schedule,
+        {"name", "interval", "warmup_fraction", "warmup_steps", "total_steps", "min_lr_factor"},
+        "run.training.schedule",
+    )
+    expected_schedule = {
+        "name": "linear_warmup_cosine",
+        "interval": "optimizer_step",
+        "warmup_fraction": 0.05,
+        "warmup_steps": 860,
+        "total_steps": 17190,
+        "min_lr_factor": 0.0,
+    }
+    normalized_schedule = {
+        "name": schedule["name"],
+        "interval": schedule["interval"],
+        "warmup_fraction": _finite(schedule["warmup_fraction"], "run.training.schedule.warmup_fraction"),
+        "warmup_steps": _integer(schedule["warmup_steps"], "run.training.schedule.warmup_steps", minimum=1),
+        "total_steps": _integer(schedule["total_steps"], "run.training.schedule.total_steps", minimum=1),
+        "min_lr_factor": _finite(schedule["min_lr_factor"], "run.training.schedule.min_lr_factor"),
+    }
+    if normalized_schedule != expected_schedule:
+        raise _error(f"the frozen schedule {expected_schedule!r}", normalized_schedule, "run.training.schedule")
+
+    pruning = _object(training["pruning"], "run.training.pruning")
+    _exact_keys(pruning, {"enabled", "after_epoch", "min_best_validation_accuracy"}, "run.training.pruning")
+    if pruning != {"enabled": False, "after_epoch": None, "min_best_validation_accuracy": None}:
+        raise _error("the disabled LR-screen pruning contract", pruning, "run.training.pruning")
+
+    diagnostics = _object(training["diagnostics"], "run.training.diagnostics")
+    _exact_keys(
+        diagnostics,
+        {
+            "enabled", "bounded_parameter_classes", "bias_global_gate", "range_epsilon",
+            "projection_epsilon", "early_fraction", "projection_efficiency_threshold",
+            "projection_persistence", "occupancy_delta_threshold", "occupancy_persistence",
+        },
+        "run.training.diagnostics",
+    )
+    expected_diagnostics = {
+        "enabled": True,
+        "bounded_parameter_classes": ["ConvWeight", "DenseWeight"],
+        "bias_global_gate": False,
+        "range_epsilon": 1e-8,
+        "projection_epsilon": 1e-12,
+        "early_fraction": 0.2,
+        "projection_efficiency_threshold": 0.5,
+        "projection_persistence": 16,
+        "occupancy_delta_threshold": 0.2,
+        "occupancy_persistence": 16,
+    }
+    normalized_diagnostics = {
+        "enabled": diagnostics["enabled"],
+        "bounded_parameter_classes": diagnostics["bounded_parameter_classes"],
+        "bias_global_gate": diagnostics["bias_global_gate"],
+        "range_epsilon": _finite(diagnostics["range_epsilon"], "run.training.diagnostics.range_epsilon", positive=True),
+        "projection_epsilon": _finite(diagnostics["projection_epsilon"], "run.training.diagnostics.projection_epsilon", positive=True),
+        "early_fraction": _finite(diagnostics["early_fraction"], "run.training.diagnostics.early_fraction"),
+        "projection_efficiency_threshold": _finite(diagnostics["projection_efficiency_threshold"], "run.training.diagnostics.projection_efficiency_threshold"),
+        "projection_persistence": _integer(diagnostics["projection_persistence"], "run.training.diagnostics.projection_persistence", minimum=1),
+        "occupancy_delta_threshold": _finite(diagnostics["occupancy_delta_threshold"], "run.training.diagnostics.occupancy_delta_threshold"),
+        "occupancy_persistence": _integer(diagnostics["occupancy_persistence"], "run.training.diagnostics.occupancy_persistence", minimum=1),
+    }
+    if normalized_diagnostics != expected_diagnostics:
+        raise _error(
+            f"the frozen LR diagnostic settings {expected_diagnostics!r}",
+            normalized_diagnostics,
+            "run.training.diagnostics",
+        )
+    return {
+        "algorithm": "BP",
+        "epochs": 5,
+        "optimizer": {"name": "SGD", "momentum": 0.0, "weight_decay": 0.0},
+        "peak_learning_rate": peak,
+        "schedule": expected_schedule,
+        "beta": _finite(training["beta"], "run.training.beta"),
+        "checkpoint_rule": "min_validation_loss",
+        "pruning": {"enabled": False, "after_epoch": None, "min_best_validation_accuracy": None},
+        "batch_state_policy": "reset_each_batch",
+        "diagnostics": expected_diagnostics,
+    }
+
+
+def _layerwise_parameter_names(depth: int) -> tuple[str, ...]:
+    if depth not in (1, 2, 3):
+        raise _error(
+            "one, two, or three convolution layers", depth, "run.architecture"
+        )
+    return tuple(
+        [f"ConvWeight_{index}" for index in range(depth)]
+        + ["DenseWeight_0"]
+        + [f"Bias_{index}" for index in range(depth)]
+    )
+
+
+def _normalize_training_v3(value: Any, depth: int) -> dict[str, Any]:
+    """Normalize the constant layer-wise five-epoch diagnostic contract."""
+
+    training = _object(value, "run.training")
+    keys = {
+        "algorithm", "epochs", "optimizer", "learning_rates_by_parameter",
+        "schedule", "beta", "checkpoint_rule", "pruning",
+        "batch_state_policy", "diagnostics",
+    }
+    _exact_keys(training, keys, "run.training")
+    if training["algorithm"] != "BP":
+        raise _error("exactly 'BP'", training["algorithm"], "run.training.algorithm")
+    if training["epochs"] != 5:
+        raise _error("exactly 5", training["epochs"], "run.training.epochs")
+    if training["batch_state_policy"] != "reset_each_batch":
+        raise _error(
+            "exactly 'reset_each_batch'",
+            training["batch_state_policy"],
+            "run.training.batch_state_policy",
+        )
+    if training["checkpoint_rule"] != "min_validation_loss":
+        raise _error(
+            "exactly 'min_validation_loss'",
+            training["checkpoint_rule"],
+            "run.training.checkpoint_rule",
+        )
+    optimizer = _object(training["optimizer"], "run.training.optimizer")
+    expected_optimizer = {"name": "SGD", "momentum": 0.0, "weight_decay": 0.0}
+    if optimizer != expected_optimizer:
+        raise _error(
+            f"exactly {expected_optimizer!r}", optimizer, "run.training.optimizer"
+        )
+
+    rates = _object(
+        training["learning_rates_by_parameter"],
+        "run.training.learning_rates_by_parameter",
+    )
+    expected_names = _layerwise_parameter_names(depth)
+    _exact_keys(rates, expected_names, "run.training.learning_rates_by_parameter")
+    normalized_rates = {
+        name: _finite(
+            rates[name],
+            f"run.training.learning_rates_by_parameter.{name}",
+            positive=True,
+        )
+        for name in expected_names
+    }
+    for index in range(depth):
+        weight = f"ConvWeight_{index}"
+        bias = f"Bias_{index}"
+        if normalized_rates[bias] != normalized_rates[weight]:
+            raise _error(
+                f"exactly the associated {weight} rate {normalized_rates[weight]!r}",
+                normalized_rates[bias],
+                f"run.training.learning_rates_by_parameter.{bias}",
+            )
+
+    schedule = _object(training["schedule"], "run.training.schedule")
+    expected_schedule = {
+        "name": "constant",
+        "interval": "optimizer_step",
+        "total_steps": 17190,
+        "scheduler_enabled": False,
+    }
+    if schedule != expected_schedule:
+        raise _error(
+            f"the frozen constant schedule {expected_schedule!r}",
+            schedule,
+            "run.training.schedule",
+        )
+    pruning = _object(training["pruning"], "run.training.pruning")
+    expected_pruning = {
+        "enabled": False,
+        "after_epoch": None,
+        "min_best_validation_accuracy": None,
+    }
+    if pruning != expected_pruning:
+        raise _error(
+            "the disabled LR-screen pruning contract",
+            pruning,
+            "run.training.pruning",
+        )
+    diagnostics = _object(training["diagnostics"], "run.training.diagnostics")
+    expected_diagnostics = {
+        "enabled": True,
+        "bounded_parameter_classes": ["ConvWeight", "DenseWeight"],
+        "bias_global_gate": False,
+        "range_epsilon": 1e-8,
+        "projection_epsilon": 1e-12,
+        "early_fraction": 0.2,
+        "projection_efficiency_threshold": 0.5,
+        "projection_persistence": 16,
+        "occupancy_delta_threshold": 0.2,
+        "occupancy_persistence": 16,
+    }
+    if diagnostics != expected_diagnostics:
+        raise _error(
+            f"the frozen LR diagnostic settings {expected_diagnostics!r}",
+            diagnostics,
+            "run.training.diagnostics",
+        )
+    return {
+        "algorithm": "BP",
+        "epochs": 5,
+        "optimizer": expected_optimizer,
+        "learning_rates_by_parameter": normalized_rates,
+        "schedule": expected_schedule,
+        "beta": _finite(training["beta"], "run.training.beta"),
+        "checkpoint_rule": "min_validation_loss",
+        "pruning": expected_pruning,
+        "batch_state_policy": "reset_each_batch",
+        "diagnostics": expected_diagnostics,
+    }
+
+
+def _normalize_training_v4(value: Any, depth: int) -> dict[str, Any]:
+    """V5 keeps the v3 constant-vector contract but gates the complete run."""
+
+    training = copy.deepcopy(_object(value, "run.training"))
+    diagnostics = _object(training.get("diagnostics"), "run.training.diagnostics")
+    if diagnostics.get("early_fraction") != 1.0:
+        raise _error(
+            "exactly 1.0 for full-run v5 safety gates",
+            diagnostics.get("early_fraction"),
+            "run.training.diagnostics.early_fraction",
+        )
+    training["diagnostics"]["early_fraction"] = 0.2
+    normalized = _normalize_training_v3(training, depth)
+    normalized["diagnostics"]["early_fraction"] = 1.0
+    return normalized
+
+
+def _normalize_training_conv3_v7(value: Any, depth: int) -> dict[str, Any]:
+    """Normalize the exact three-epoch constant-vector Conv3 LR screen."""
+
+    if depth != 3:
+        raise _error(
+            "exactly three convolution layers for Conv3 v7",
+            depth,
+            "run.architecture",
+        )
+    training = copy.deepcopy(_object(value, "run.training"))
+    if training.get("epochs") != 3:
+        raise _error(
+            "exactly 3 for the Conv3 v7 LR screen",
+            training.get("epochs"),
+            "run.training.epochs",
+        )
+    schedule = _object(training.get("schedule"), "run.training.schedule")
+    expected_schedule = {
+        "name": "constant",
+        "interval": "optimizer_step",
+        "total_steps": 10314,
+        "scheduler_enabled": False,
+    }
+    if schedule != expected_schedule:
+        raise _error(
+            f"the frozen constant schedule {expected_schedule!r}",
+            schedule,
+            "run.training.schedule",
+        )
+    compatibility = copy.deepcopy(training)
+    compatibility["epochs"] = 5
+    compatibility["schedule"]["total_steps"] = 17190
+    normalized = _normalize_training_v4(compatibility, depth)
+    normalized["epochs"] = 3
+    normalized["schedule"] = expected_schedule
+    return normalized
+
+
+def normalize_optimizer_v7(value: Any, path: str = "run.training.optimizer") -> dict[str, Any]:
+    """Normalize the exact optimizer union frozen by the boundary diagnostic.
+
+    The explicit false-valued Adam flags are scientific inputs.  In
+    particular, omitting a flag and relying on a PyTorch-version default is
+    rejected rather than silently changing the run identity.
+    """
+
+    optimizer = _object(value, path)
+    name = optimizer.get("name")
+    if name == "SGD":
+        _exact_keys(optimizer, SGD_OPTIMIZER_V7, path)
+        normalized = {
+            "name": "SGD",
+            "momentum": _finite(optimizer["momentum"], f"{path}.momentum"),
+            "weight_decay": _finite(
+                optimizer["weight_decay"], f"{path}.weight_decay"
+            ),
+        }
+        if normalized != SGD_OPTIMIZER_V7:
+            raise _error(f"exactly {SGD_OPTIMIZER_V7!r}", normalized, path)
+        return normalized
+
+    if name == "Adam":
+        _exact_keys(optimizer, ADAM_OPTIMIZER_V7, path)
+        betas = _finite_list(optimizer["betas"], f"{path}.betas", 2)
+        normalized = {
+            "name": "Adam",
+            "betas": betas,
+            "eps": _finite(optimizer["eps"], f"{path}.eps", positive=True),
+            "weight_decay": _finite(
+                optimizer["weight_decay"], f"{path}.weight_decay"
+            ),
+        }
+        for flag in (
+            "amsgrad",
+            "foreach",
+            "fused",
+            "maximize",
+            "capturable",
+            "differentiable",
+        ):
+            if optimizer[flag] is not False:
+                raise _error("exactly false", optimizer[flag], f"{path}.{flag}")
+            normalized[flag] = False
+        if normalized != ADAM_OPTIMIZER_V7:
+            raise _error(f"exactly {ADAM_OPTIMIZER_V7!r}", normalized, path)
+        return normalized
+
+    raise _error("'SGD' or 'Adam'", name, f"{path}.name")
+
+
+def _normalize_training_v7(value: Any, depth: int) -> dict[str, Any]:
+    """Normalize an optimizer-neutral constant-vector five-epoch run.
+
+    V7 keeps the established v5/v6 schedule and safety diagnostics, while
+    allowing the exact SGD/Adam union and independently specified bias rates.
+    Every scientific parameter must be represented by one explicit learning
+    rate; there is no optimizer-level fallback LR.
+    """
+
+    training = _object(value, "run.training")
+    expected_names = _layerwise_parameter_names(depth)
+    optimizer = normalize_optimizer_v7(training.get("optimizer"))
+    rates = _object(
+        training.get("learning_rates_by_parameter"),
+        "run.training.learning_rates_by_parameter",
+    )
+    _exact_keys(rates, expected_names, "run.training.learning_rates_by_parameter")
+    normalized_rates = {
+        name: _finite(
+            rates[name],
+            f"run.training.learning_rates_by_parameter.{name}",
+            positive=True,
+        )
+        for name in expected_names
+    }
+
+    # Reuse the frozen constant-schedule and diagnostics validator without
+    # weakening the established v1--v6 contract.  Its two SGD-only checks are
+    # supplied with validation-only placeholders, then replaced by the
+    # already-normalized v7 scientific values.
+    compatibility = copy.deepcopy(training)
+    compatibility["optimizer"] = copy.deepcopy(SGD_OPTIMIZER_V7)
+    for index in range(depth):
+        compatibility["learning_rates_by_parameter"][f"Bias_{index}"] = (
+            normalized_rates[f"ConvWeight_{index}"]
+        )
+    normalized = _normalize_training_v4(compatibility, depth)
+    normalized["optimizer"] = optimizer
+    normalized["learning_rates_by_parameter"] = normalized_rates
+    return normalized
+
+
 def _normalize_initialization(value: Any) -> dict[str, Any]:
     initialization = _object(value, "run.initialization")
     _exact_keys(initialization, {"checkpoint"}, "run.initialization")
@@ -413,6 +1072,1110 @@ def _normalize_initialization(value: Any) -> dict[str, Any]:
                 "run.initialization.checkpoint.source_run_id",
             )
     return {"checkpoint": checkpoint}
+
+
+def _normalize_lr_provenance(value: Any) -> dict[str, Any]:
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id", "row_id", "candidate_role", "rho_target", "rho_unit",
+        "probe_sha256", "range_sha256", "split_sha256", "batch_order_sha256",
+        "initialization_tensor_sha256",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+    if not isinstance(provenance["study_id"], str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", provenance["study_id"]
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            provenance["study_id"],
+            "run.lr_provenance.study_id",
+        )
+    row_id = _string(provenance["row_id"], "run.lr_provenance.row_id")
+    role = provenance["candidate_role"]
+    if role not in {"fast", "middle", "high"}:
+        raise _error("'fast', 'middle', or 'high'", role, "run.lr_provenance.candidate_role")
+    result = {
+        "study_id": provenance["study_id"],
+        "row_id": row_id,
+        "candidate_role": role,
+        "rho_target": _finite(provenance["rho_target"], "run.lr_provenance.rho_target", positive=True),
+        "rho_unit": _finite(provenance["rho_unit"], "run.lr_provenance.rho_unit", positive=True),
+    }
+    for field in (
+        "probe_sha256", "range_sha256", "split_sha256", "batch_order_sha256",
+        "initialization_tensor_sha256",
+    ):
+        digest = provenance[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise _error("a lowercase SHA-256 digest", digest, f"run.lr_provenance.{field}")
+        result[field] = digest
+    return result
+
+
+def _normalize_lr_provenance_v3(value: Any, depth: int) -> dict[str, Any]:
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id", "row_id", "candidate_role", "rho_target",
+        "rho_unit_by_weight", "bias_weight_mapping", "probe_sha256",
+        "range_sha256", "split_sha256", "batch_order_sha256",
+        "initialization_tensor_sha256",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+    study_id = provenance["study_id"]
+    if not isinstance(study_id, str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", study_id
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            study_id,
+            "run.lr_provenance.study_id",
+        )
+    role = provenance["candidate_role"]
+    if role not in {"fast", "middle", "high"}:
+        raise _error(
+            "'fast', 'middle', or 'high'",
+            role,
+            "run.lr_provenance.candidate_role",
+        )
+    units = _object(provenance["rho_unit_by_weight"], "run.lr_provenance.rho_unit_by_weight")
+    expected_weights = tuple(
+        [f"ConvWeight_{index}" for index in range(depth)] + ["DenseWeight_0"]
+    )
+    _exact_keys(units, expected_weights, "run.lr_provenance.rho_unit_by_weight")
+    normalized_units = {
+        name: _finite(
+            units[name],
+            f"run.lr_provenance.rho_unit_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+    mapping = _object(
+        provenance["bias_weight_mapping"],
+        "run.lr_provenance.bias_weight_mapping",
+    )
+    expected_mapping = {
+        f"Bias_{index}": f"ConvWeight_{index}" for index in range(depth)
+    }
+    if mapping != expected_mapping:
+        raise _error(
+            f"exactly {expected_mapping!r}",
+            mapping,
+            "run.lr_provenance.bias_weight_mapping",
+        )
+    result = {
+        "study_id": study_id,
+        "row_id": _string(provenance["row_id"], "run.lr_provenance.row_id"),
+        "candidate_role": role,
+        "rho_target": _finite(
+            provenance["rho_target"],
+            "run.lr_provenance.rho_target",
+            positive=True,
+        ),
+        "rho_unit_by_weight": normalized_units,
+        "bias_weight_mapping": expected_mapping,
+    }
+    for field in (
+        "probe_sha256", "range_sha256", "split_sha256",
+        "batch_order_sha256", "initialization_tensor_sha256",
+    ):
+        digest = provenance[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise _error(
+                "a lowercase SHA-256 digest",
+                digest,
+                f"run.lr_provenance.{field}",
+            )
+        result[field] = digest
+    return result
+
+
+def _normalize_lr_provenance_v4(value: Any, depth: int) -> dict[str, Any]:
+    """Normalize the architecture-alpha provenance recorded by v5 candidates."""
+
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id", "row_id", "candidate_arm", "alpha_role", "alpha_arch",
+        "median_unit_by_weight", "target_multipliers_by_weight",
+        "bias_weight_mapping", "probe_sha256", "anchor_audit_sha256",
+        "split_sha256", "batch_order_sha256", "initialization_tensor_sha256",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+    study_id = provenance["study_id"]
+    if not isinstance(study_id, str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", study_id
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            study_id,
+            "run.lr_provenance.study_id",
+        )
+    arm = provenance["candidate_arm"]
+    if arm not in {"strict_equal", "historical_profile"}:
+        raise _error(
+            "'strict_equal' or 'historical_profile'",
+            arm,
+            "run.lr_provenance.candidate_arm",
+        )
+    alpha_role = provenance["alpha_role"]
+    if alpha_role not in {"lower", "center", "upper"}:
+        raise _error(
+            "'lower', 'center', or 'upper'",
+            alpha_role,
+            "run.lr_provenance.alpha_role",
+        )
+    expected_weights = tuple(
+        [f"ConvWeight_{index}" for index in range(depth)] + ["DenseWeight_0"]
+    )
+    units = _object(
+        provenance["median_unit_by_weight"],
+        "run.lr_provenance.median_unit_by_weight",
+    )
+    _exact_keys(units, expected_weights, "run.lr_provenance.median_unit_by_weight")
+    normalized_units = {
+        name: _finite(
+            units[name],
+            f"run.lr_provenance.median_unit_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+    multipliers = _object(
+        provenance["target_multipliers_by_weight"],
+        "run.lr_provenance.target_multipliers_by_weight",
+    )
+    _exact_keys(
+        multipliers,
+        expected_weights,
+        "run.lr_provenance.target_multipliers_by_weight",
+    )
+    normalized_multipliers = {
+        name: _finite(
+            multipliers[name],
+            f"run.lr_provenance.target_multipliers_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+    expected_mapping = {
+        f"Bias_{index}": f"ConvWeight_{index}" for index in range(depth)
+    }
+    mapping = _object(
+        provenance["bias_weight_mapping"],
+        "run.lr_provenance.bias_weight_mapping",
+    )
+    if mapping != expected_mapping:
+        raise _error(
+            f"exactly {expected_mapping!r}",
+            mapping,
+            "run.lr_provenance.bias_weight_mapping",
+        )
+    result = {
+        "study_id": study_id,
+        "row_id": _string(provenance["row_id"], "run.lr_provenance.row_id"),
+        "candidate_arm": arm,
+        "alpha_role": alpha_role,
+        "alpha_arch": _finite(
+            provenance["alpha_arch"],
+            "run.lr_provenance.alpha_arch",
+            positive=True,
+        ),
+        "median_unit_by_weight": normalized_units,
+        "target_multipliers_by_weight": normalized_multipliers,
+        "bias_weight_mapping": expected_mapping,
+    }
+    for field in (
+        "probe_sha256", "anchor_audit_sha256", "split_sha256",
+        "batch_order_sha256", "initialization_tensor_sha256",
+    ):
+        digest = provenance[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise _error(
+                "a lowercase SHA-256 digest",
+                digest,
+                f"run.lr_provenance.{field}",
+            )
+        result[field] = digest
+    return result
+
+
+def _normalize_lr_provenance_v5(value: Any, depth: int) -> dict[str, Any]:
+    """Normalize the direct Conv/Dense relative-update targets used by v6.
+
+    V6 intentionally has no architecture-level scalar, candidate arm, or
+    target profile.  The exact-key check prevents any of those retired
+    coordinates from being smuggled into a v5 run bundle.
+    """
+
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id",
+        "row_id",
+        "candidate_stage",
+        "rho_conv",
+        "rho_dense",
+        "median_unit_by_weight",
+        "bias_weight_mapping",
+        "probe_sha256",
+        "split_sha256",
+        "batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+    study_id = provenance["study_id"]
+    if not isinstance(study_id, str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", study_id
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            study_id,
+            "run.lr_provenance.study_id",
+        )
+    row_id = _string(provenance["row_id"], "run.lr_provenance.row_id")
+    if row_id not in _V6_CONV2_ROWS:
+        raise _error(
+            f"one of {sorted(_V6_CONV2_ROWS)!r}",
+            row_id,
+            "run.lr_provenance.row_id",
+        )
+    candidate_stage = provenance["candidate_stage"]
+    expected_stage = _V6_CONV2_ROWS[row_id]["stage"]
+    if candidate_stage != expected_stage:
+        raise _error(
+            f"exactly {expected_stage!r} for row {row_id!r}",
+            candidate_stage,
+            "run.lr_provenance.candidate_stage",
+        )
+
+    rho_conv = _finite(
+        provenance["rho_conv"], "run.lr_provenance.rho_conv", positive=True
+    )
+    rho_dense = _finite(
+        provenance["rho_dense"], "run.lr_provenance.rho_dense", positive=True
+    )
+    if rho_conv not in _V6_RHO_CONV_GRID:
+        raise _error(
+            f"one of the frozen values {list(_V6_RHO_CONV_GRID)!r}",
+            rho_conv,
+            "run.lr_provenance.rho_conv",
+        )
+    if rho_dense not in _V6_RHO_DENSE_GRID:
+        raise _error(
+            f"one of the frozen values {list(_V6_RHO_DENSE_GRID)!r}",
+            rho_dense,
+            "run.lr_provenance.rho_dense",
+        )
+
+    expected_weights = tuple(
+        [f"ConvWeight_{index}" for index in range(depth)] + ["DenseWeight_0"]
+    )
+    units = _object(
+        provenance["median_unit_by_weight"],
+        "run.lr_provenance.median_unit_by_weight",
+    )
+    _exact_keys(
+        units, expected_weights, "run.lr_provenance.median_unit_by_weight"
+    )
+    normalized_units = {
+        name: _finite(
+            units[name],
+            f"run.lr_provenance.median_unit_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+    expected_mapping = {
+        f"Bias_{index}": f"ConvWeight_{index}" for index in range(depth)
+    }
+    mapping = _object(
+        provenance["bias_weight_mapping"],
+        "run.lr_provenance.bias_weight_mapping",
+    )
+    if mapping != expected_mapping:
+        raise _error(
+            f"exactly {expected_mapping!r}",
+            mapping,
+            "run.lr_provenance.bias_weight_mapping",
+        )
+
+    result = {
+        "study_id": study_id,
+        "row_id": row_id,
+        "candidate_stage": candidate_stage,
+        "rho_conv": rho_conv,
+        "rho_dense": rho_dense,
+        "median_unit_by_weight": normalized_units,
+        "bias_weight_mapping": expected_mapping,
+    }
+    for field in (
+        "probe_sha256",
+        "split_sha256",
+        "batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+    ):
+        digest = provenance[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise _error(
+                "a lowercase SHA-256 digest",
+                digest,
+                f"run.lr_provenance.{field}",
+            )
+        result[field] = digest
+    return result
+
+
+def _normalize_lr_provenance_v6(
+    value: Any,
+    depth: int,
+    architecture_profile: str,
+) -> dict[str, Any]:
+    """Normalize a direct two-rho amplified-scheme diagnostic."""
+
+    if architecture_profile == "conv1":
+        row_contracts = _CONV1_SCHEME_RHO_ROWS
+        rho_conv_grid = _CONV1_SCHEME_RHO_CONV_GRID
+        rho_dense_grid = _CONV1_SCHEME_RHO_DENSE_GRID
+    elif architecture_profile == "conv2":
+        row_contracts = _CONV2_SCHEME_RHO_ROWS
+        rho_conv_grid = _CONV2_SCHEME_RHO_CONV_GRID
+        rho_dense_grid = _CONV2_SCHEME_RHO_DENSE_GRID
+    else:
+        raise _error(
+            "one of ['conv1', 'conv2'] for a direct two-rho diagnostic",
+            architecture_profile,
+            "run.architecture.profile",
+        )
+
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id",
+        "row_id",
+        "candidate_stage",
+        "rho_conv",
+        "rho_dense",
+        "median_unit_by_weight",
+        "bias_weight_mapping",
+        "probe_sha256",
+        "split_sha256",
+        "batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+    study_id = provenance["study_id"]
+    if not isinstance(study_id, str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", study_id
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            study_id,
+            "run.lr_provenance.study_id",
+        )
+    row_id = _string(provenance["row_id"], "run.lr_provenance.row_id")
+    if row_id not in row_contracts:
+        raise _error(
+            f"one of {sorted(row_contracts)!r}",
+            row_id,
+            "run.lr_provenance.row_id",
+        )
+    candidate_stage = provenance["candidate_stage"]
+    if candidate_stage != "scheme_grid":
+        raise _error(
+            "exactly 'scheme_grid'",
+            candidate_stage,
+            "run.lr_provenance.candidate_stage",
+        )
+    rho_conv = _finite(
+        provenance["rho_conv"], "run.lr_provenance.rho_conv", positive=True
+    )
+    rho_dense = _finite(
+        provenance["rho_dense"], "run.lr_provenance.rho_dense", positive=True
+    )
+    if rho_conv not in rho_conv_grid:
+        raise _error(
+            f"one of the frozen values {list(rho_conv_grid)!r}",
+            rho_conv,
+            "run.lr_provenance.rho_conv",
+        )
+    if rho_dense not in rho_dense_grid:
+        raise _error(
+            f"one of the frozen values {list(rho_dense_grid)!r}",
+            rho_dense,
+            "run.lr_provenance.rho_dense",
+        )
+
+    expected_weights = tuple(
+        [f"ConvWeight_{index}" for index in range(depth)] + ["DenseWeight_0"]
+    )
+    units = _object(
+        provenance["median_unit_by_weight"],
+        "run.lr_provenance.median_unit_by_weight",
+    )
+    _exact_keys(
+        units, expected_weights, "run.lr_provenance.median_unit_by_weight"
+    )
+    normalized_units = {
+        name: _finite(
+            units[name],
+            f"run.lr_provenance.median_unit_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+    expected_mapping = {
+        f"Bias_{index}": f"ConvWeight_{index}" for index in range(depth)
+    }
+    mapping = _object(
+        provenance["bias_weight_mapping"],
+        "run.lr_provenance.bias_weight_mapping",
+    )
+    if mapping != expected_mapping:
+        raise _error(
+            f"exactly {expected_mapping!r}",
+            mapping,
+            "run.lr_provenance.bias_weight_mapping",
+        )
+    result = {
+        "study_id": study_id,
+        "row_id": row_id,
+        "candidate_stage": candidate_stage,
+        "rho_conv": rho_conv,
+        "rho_dense": rho_dense,
+        "median_unit_by_weight": normalized_units,
+        "bias_weight_mapping": expected_mapping,
+    }
+    for field in (
+        "probe_sha256",
+        "split_sha256",
+        "batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+    ):
+        digest = provenance[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise _error(
+                "a lowercase SHA-256 digest",
+                digest,
+                f"run.lr_provenance.{field}",
+            )
+        result[field] = digest
+    return result
+
+
+def _normalize_lr_provenance_conv3_v7(
+    value: Any,
+    depth: int,
+) -> dict[str, Any]:
+    """Normalize the adaptive ordinary-MNIST Conv3 two-rho provenance."""
+
+    if depth != 3:
+        raise _error(
+            "exactly three convolution layers for Conv3 v7",
+            depth,
+            "run.architecture",
+        )
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id",
+        "row_id",
+        "candidate_stage",
+        "rho_conv",
+        "rho_dense",
+        "median_unit_by_weight",
+        "bias_weight_mapping",
+        "probe_sha256",
+        "split_sha256",
+        "batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+        "gain_calibration_dataset",
+        "optimization_dataset",
+        "official_test_read",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+    study_id = provenance["study_id"]
+    if not isinstance(study_id, str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", study_id
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            study_id,
+            "run.lr_provenance.study_id",
+        )
+    row_id = _string(provenance["row_id"], "run.lr_provenance.row_id")
+    if row_id not in _CONV3_ORDINARY_ROWS:
+        raise _error(
+            f"one of {sorted(_CONV3_ORDINARY_ROWS)!r}",
+            row_id,
+            "run.lr_provenance.row_id",
+        )
+    candidate_stage = provenance["candidate_stage"]
+    if candidate_stage not in {
+        "core_grid",
+        "extension_grid",
+        "legacy_rescue_promotion",
+    }:
+        raise _error(
+            "'core_grid', 'extension_grid', or 'legacy_rescue_promotion'",
+            candidate_stage,
+            "run.lr_provenance.candidate_stage",
+        )
+    rho_conv = _finite(
+        provenance["rho_conv"], "run.lr_provenance.rho_conv", positive=True
+    )
+    rho_dense = _finite(
+        provenance["rho_dense"], "run.lr_provenance.rho_dense", positive=True
+    )
+    if candidate_stage == "legacy_rescue_promotion":
+        if (rho_conv, rho_dense) not in _CONV3_LEGACY_RESCUE_RHO_PAIRS:
+            raise _error(
+                "one of the frozen Conv3 legacy rescue rho pairs "
+                f"{list(_CONV3_LEGACY_RESCUE_RHO_PAIRS)!r}",
+                {"rho_conv": rho_conv, "rho_dense": rho_dense},
+                "run.lr_provenance",
+            )
+    else:
+        if rho_conv not in _CONV3_ORDINARY_RHO_CONV_GRID:
+            raise _error(
+                f"one of the frozen values {list(_CONV3_ORDINARY_RHO_CONV_GRID)!r}",
+                rho_conv,
+                "run.lr_provenance.rho_conv",
+            )
+        if rho_dense not in _CONV3_ORDINARY_RHO_DENSE_GRID:
+            raise _error(
+                f"one of the frozen values {list(_CONV3_ORDINARY_RHO_DENSE_GRID)!r}",
+                rho_dense,
+                "run.lr_provenance.rho_dense",
+            )
+    if candidate_stage == "core_grid" and (
+        rho_conv == _CONV3_ORDINARY_RHO_CONV_GRID[-1]
+        or rho_dense == _CONV3_ORDINARY_RHO_DENSE_GRID[-1]
+    ):
+        raise _error(
+            "a core-grid pair excluding extension-only targets",
+            {"rho_conv": rho_conv, "rho_dense": rho_dense},
+            "run.lr_provenance.candidate_stage",
+        )
+    if candidate_stage == "extension_grid" and (
+        rho_conv != _CONV3_ORDINARY_RHO_CONV_GRID[-1]
+        and rho_dense != _CONV3_ORDINARY_RHO_DENSE_GRID[-1]
+    ):
+        raise _error(
+            "an extension pair containing at least one extension-only target",
+            {"rho_conv": rho_conv, "rho_dense": rho_dense},
+            "run.lr_provenance.candidate_stage",
+        )
+
+    expected_weights = (
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+    )
+    units = _object(
+        provenance["median_unit_by_weight"],
+        "run.lr_provenance.median_unit_by_weight",
+    )
+    _exact_keys(units, expected_weights, "run.lr_provenance.median_unit_by_weight")
+    normalized_units = {
+        name: _finite(
+            units[name],
+            f"run.lr_provenance.median_unit_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+    expected_mapping = {
+        "Bias_0": "ConvWeight_0",
+        "Bias_1": "ConvWeight_1",
+        "Bias_2": "ConvWeight_2",
+    }
+    mapping = _object(
+        provenance["bias_weight_mapping"],
+        "run.lr_provenance.bias_weight_mapping",
+    )
+    if mapping != expected_mapping:
+        raise _error(
+            f"exactly {expected_mapping!r}",
+            mapping,
+            "run.lr_provenance.bias_weight_mapping",
+        )
+    if provenance["gain_calibration_dataset"] != "deterministic_medium_affine_mnist":
+        raise _error(
+            "exactly 'deterministic_medium_affine_mnist'",
+            provenance["gain_calibration_dataset"],
+            "run.lr_provenance.gain_calibration_dataset",
+        )
+    if provenance["optimization_dataset"] != "ordinary_mnist":
+        raise _error(
+            "exactly 'ordinary_mnist'",
+            provenance["optimization_dataset"],
+            "run.lr_provenance.optimization_dataset",
+        )
+    if provenance["official_test_read"] is not False:
+        raise _error(
+            "exactly false",
+            provenance["official_test_read"],
+            "run.lr_provenance.official_test_read",
+        )
+    result = {
+        "study_id": study_id,
+        "row_id": row_id,
+        "candidate_stage": candidate_stage,
+        "rho_conv": rho_conv,
+        "rho_dense": rho_dense,
+        "median_unit_by_weight": normalized_units,
+        "bias_weight_mapping": expected_mapping,
+        "gain_calibration_dataset": "deterministic_medium_affine_mnist",
+        "optimization_dataset": "ordinary_mnist",
+        "official_test_read": False,
+    }
+    for field in (
+        "probe_sha256",
+        "split_sha256",
+        "batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+    ):
+        result[field] = _sha256_digest(
+            provenance[field],
+            f"run.lr_provenance.{field}",
+        )
+    return result
+
+
+def _sha256_digest(value: Any, path: str, *, nullable: bool = False) -> str | None:
+    if nullable and value is None:
+        return None
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        expected = "null or a lowercase SHA-256 digest" if nullable else "a lowercase SHA-256 digest"
+        raise _error(expected, value, path)
+    return value
+
+
+def _normalize_lr_provenance_v7(
+    value: Any,
+    *,
+    depth: int,
+    optimizer: Mapping[str, Any],
+    learning_rates_by_parameter: Mapping[str, float],
+) -> dict[str, Any]:
+    """Normalize the optimizer-boundary run provenance.
+
+    The optimizer and raw LR vector are intentionally duplicated here and in
+    ``run.training``.  The exact equality checks below make every standalone
+    run artifact self-describing while preventing the two records from
+    drifting.
+    """
+
+    provenance = _object(value, "run.lr_provenance")
+    keys = {
+        "study_id",
+        "row_id",
+        "candidate_stage",
+        "execution_mode",
+        "optimizer_name",
+        "optimizer_parameters",
+        "rho_conv",
+        "rho_dense",
+        "normalization_unit_by_weight",
+        "bias_q90_unit_by_parameter",
+        "bias_weight_mapping",
+        "bias_lr_policy",
+        "bias_rho_cap",
+        "raw_learning_rates_by_parameter",
+        "probe_sha256",
+        "bias_q90_probe_sha256",
+        "parent_study_config_sha256",
+        "parent_entry_completion_sha256",
+        "parent_decision_sha256",
+        "split_sha256",
+        "normalization_minibatches_sha256",
+        "replay_minibatches_sha256",
+        "training_batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+        "code_fingerprint_sha256",
+        "official_test_read",
+    }
+    _exact_keys(provenance, keys, "run.lr_provenance")
+
+    study_id = provenance["study_id"]
+    if not isinstance(study_id, str) or re.fullmatch(
+        r"lrstudy_[0-9a-f]{64}", study_id
+    ) is None:
+        raise _error(
+            "lrstudy_ followed by 64 lowercase hexadecimal characters",
+            study_id,
+            "run.lr_provenance.study_id",
+        )
+
+    row_id = _string(provenance["row_id"], "run.lr_provenance.row_id")
+    if row_id not in _V6_CONV2_ROWS:
+        raise _error(
+            f"one of {sorted(_V6_CONV2_ROWS)!r}",
+            row_id,
+            "run.lr_provenance.row_id",
+        )
+    scheme = {
+        "conv2_baseline_v1_c1": "baseline",
+        "conv2_ours_v4_c1": "ours",
+        "conv2_legacy_v4_c0p25": "legacy",
+    }[row_id]
+
+    stage = provenance["candidate_stage"]
+    allowed_stages = {
+        "main_grid",
+        "upper_sentinel",
+        "bias_capped_confirmation",
+    }
+    if stage not in allowed_stages:
+        raise _error(
+            f"one of {sorted(allowed_stages)!r}",
+            stage,
+            "run.lr_provenance.candidate_stage",
+        )
+    execution_mode = provenance["execution_mode"]
+    if execution_mode not in {"new", "reuse"}:
+        raise _error(
+            "'new' or 'reuse'",
+            execution_mode,
+            "run.lr_provenance.execution_mode",
+        )
+
+    optimizer_parameters = normalize_optimizer_v7(
+        provenance["optimizer_parameters"],
+        "run.lr_provenance.optimizer_parameters",
+    )
+    optimizer_name = provenance["optimizer_name"]
+    if optimizer_name != optimizer_parameters["name"]:
+        raise _error(
+            "equal to optimizer_parameters.name",
+            optimizer_name,
+            "run.lr_provenance.optimizer_name",
+        )
+    if optimizer_parameters != dict(optimizer):
+        raise _error(
+            "exactly run.training.optimizer",
+            optimizer_parameters,
+            "run.lr_provenance.optimizer_parameters",
+        )
+
+    rho_conv = _finite(
+        provenance["rho_conv"], "run.lr_provenance.rho_conv", positive=True
+    )
+    rho_dense = _finite(
+        provenance["rho_dense"], "run.lr_provenance.rho_dense", positive=True
+    )
+    if stage == "upper_sentinel":
+        if rho_conv != _V7_RHO_CONV_SENTINEL:
+            raise _error(
+                f"exactly {_V7_RHO_CONV_SENTINEL!r}",
+                rho_conv,
+                "run.lr_provenance.rho_conv",
+            )
+    elif rho_conv not in _V7_RHO_CONV_MAIN_GRID + (_V7_RHO_CONV_SENTINEL,):
+        raise _error(
+            "one of the frozen main-grid or sentinel values "
+            f"{list(_V7_RHO_CONV_MAIN_GRID + (_V7_RHO_CONV_SENTINEL,))!r}",
+            rho_conv,
+            "run.lr_provenance.rho_conv",
+        )
+    if stage == "main_grid" and rho_conv not in _V7_RHO_CONV_MAIN_GRID:
+        raise _error(
+            f"one of the frozen main-grid values {list(_V7_RHO_CONV_MAIN_GRID)!r}",
+            rho_conv,
+            "run.lr_provenance.rho_conv",
+        )
+    if rho_dense not in _V7_RHO_DENSE_GRID_BY_SCHEME[scheme]:
+        raise _error(
+            "one of the frozen "
+            f"{scheme} dense values {list(_V7_RHO_DENSE_GRID_BY_SCHEME[scheme])!r}",
+            rho_dense,
+            "run.lr_provenance.rho_dense",
+        )
+
+    expected_weights = tuple(
+        [f"ConvWeight_{index}" for index in range(depth)] + ["DenseWeight_0"]
+    )
+    units = _object(
+        provenance["normalization_unit_by_weight"],
+        "run.lr_provenance.normalization_unit_by_weight",
+    )
+    _exact_keys(
+        units,
+        expected_weights,
+        "run.lr_provenance.normalization_unit_by_weight",
+    )
+    normalized_units = {
+        name: _finite(
+            units[name],
+            f"run.lr_provenance.normalization_unit_by_weight.{name}",
+            positive=True,
+        )
+        for name in expected_weights
+    }
+
+    expected_biases = tuple(f"Bias_{index}" for index in range(depth))
+    bias_units = _object(
+        provenance["bias_q90_unit_by_parameter"],
+        "run.lr_provenance.bias_q90_unit_by_parameter",
+    )
+    _exact_keys(
+        bias_units,
+        expected_biases,
+        "run.lr_provenance.bias_q90_unit_by_parameter",
+    )
+    normalized_bias_units = {
+        name: _finite(
+            bias_units[name],
+            f"run.lr_provenance.bias_q90_unit_by_parameter.{name}",
+            positive=True,
+        )
+        for name in expected_biases
+    }
+
+    expected_mapping = {
+        f"Bias_{index}": f"ConvWeight_{index}" for index in range(depth)
+    }
+    mapping = _object(
+        provenance["bias_weight_mapping"],
+        "run.lr_provenance.bias_weight_mapping",
+    )
+    if mapping != expected_mapping:
+        raise _error(
+            f"exactly {expected_mapping!r}",
+            mapping,
+            "run.lr_provenance.bias_weight_mapping",
+        )
+
+    bias_policy = provenance["bias_lr_policy"]
+    expected_policy = "capped" if stage == "bias_capped_confirmation" else "attached"
+    if bias_policy != expected_policy:
+        raise _error(
+            f"exactly {expected_policy!r} for {stage!r}",
+            bias_policy,
+            "run.lr_provenance.bias_lr_policy",
+        )
+    bias_cap_raw = provenance["bias_rho_cap"]
+    if bias_policy == "attached":
+        if bias_cap_raw is not None:
+            raise _error(
+                "null for attached-bias candidates",
+                bias_cap_raw,
+                "run.lr_provenance.bias_rho_cap",
+            )
+        bias_rho_cap = None
+    else:
+        bias_rho_cap = _finite(
+            bias_cap_raw,
+            "run.lr_provenance.bias_rho_cap",
+            positive=True,
+        )
+        if bias_rho_cap != 1e-3:
+            raise _error(
+                "exactly 0.001",
+                bias_rho_cap,
+                "run.lr_provenance.bias_rho_cap",
+            )
+
+    expected_parameters = _layerwise_parameter_names(depth)
+    raw_rates = _object(
+        provenance["raw_learning_rates_by_parameter"],
+        "run.lr_provenance.raw_learning_rates_by_parameter",
+    )
+    _exact_keys(
+        raw_rates,
+        expected_parameters,
+        "run.lr_provenance.raw_learning_rates_by_parameter",
+    )
+    normalized_raw_rates = {
+        name: _finite(
+            raw_rates[name],
+            f"run.lr_provenance.raw_learning_rates_by_parameter.{name}",
+            positive=True,
+        )
+        for name in expected_parameters
+    }
+    if normalized_raw_rates != dict(learning_rates_by_parameter):
+        raise _error(
+            "exactly run.training.learning_rates_by_parameter",
+            normalized_raw_rates,
+            "run.lr_provenance.raw_learning_rates_by_parameter",
+        )
+
+    for weight, unit in normalized_units.items():
+        expected_target = rho_conv if weight.startswith("ConvWeight_") else rho_dense
+        observed_target = normalized_raw_rates[weight] * unit
+        if not math.isclose(
+            observed_target,
+            expected_target,
+            rel_tol=1e-12,
+            abs_tol=1e-15,
+        ):
+            raise _error(
+                "a rate satisfying learning_rate * optimizer-specific unit == "
+                f"the direct target ({expected_target!r})",
+                {
+                    "learning_rate": normalized_raw_rates[weight],
+                    "normalization_unit": unit,
+                    "product": observed_target,
+                },
+                f"run.training.learning_rates_by_parameter.{weight}",
+            )
+
+    for bias, attached_weight in expected_mapping.items():
+        attached_rate = normalized_raw_rates[attached_weight]
+        if bias_policy == "attached":
+            expected_bias_rate = attached_rate
+        else:
+            expected_bias_rate = min(
+                attached_rate,
+                1e-3 / normalized_bias_units[bias],
+            )
+        if not math.isclose(
+            normalized_raw_rates[bias],
+            expected_bias_rate,
+            rel_tol=1e-12,
+            abs_tol=1e-15,
+        ):
+            raise _error(
+                "the attached weight rate"
+                if bias_policy == "attached"
+                else "min(attached weight rate, 0.001 / optimizer-specific "
+                "Q90 bias unit)",
+                normalized_raw_rates[bias],
+                f"run.training.learning_rates_by_parameter.{bias}",
+            )
+        if bias_policy == "capped" and normalized_raw_rates[bias] > attached_rate:
+            raise _error(
+                "no greater than the attached weight rate",
+                normalized_raw_rates[bias],
+                f"run.training.learning_rates_by_parameter.{bias}",
+            )
+
+    parent_entry_completion_sha256 = _sha256_digest(
+        provenance["parent_entry_completion_sha256"],
+        "run.lr_provenance.parent_entry_completion_sha256",
+        nullable=True,
+    )
+    parent_decision_sha256 = _sha256_digest(
+        provenance["parent_decision_sha256"],
+        "run.lr_provenance.parent_decision_sha256",
+        nullable=True,
+    )
+    if execution_mode == "reuse":
+        if (
+            optimizer_name != "SGD"
+            or stage != "main_grid"
+            or rho_conv != 0.01
+            or parent_entry_completion_sha256 is None
+            or parent_decision_sha256 is not None
+        ):
+            raise _error(
+                "an SGD main-grid rho_conv=0.01 cell with a verified parent "
+                "completion hash and no decision parent",
+                {
+                    "optimizer_name": optimizer_name,
+                    "candidate_stage": stage,
+                    "rho_conv": rho_conv,
+                    "parent_entry_completion_sha256": parent_entry_completion_sha256,
+                    "parent_decision_sha256": parent_decision_sha256,
+                },
+                "run.lr_provenance.execution_mode",
+            )
+    elif stage == "main_grid":
+        if (
+            parent_entry_completion_sha256 is not None
+            or parent_decision_sha256 is not None
+        ):
+            raise _error(
+                "null completion and decision parents for a newly trained "
+                "main-grid entry",
+                {
+                    "parent_entry_completion_sha256": (
+                        parent_entry_completion_sha256
+                    ),
+                    "parent_decision_sha256": parent_decision_sha256,
+                },
+                "run.lr_provenance",
+            )
+    elif stage == "upper_sentinel":
+        if (
+            parent_entry_completion_sha256 is not None
+            or parent_decision_sha256 is None
+        ):
+            raise _error(
+                "no completion parent and the triggering selection decision "
+                "SHA-256 for an upper sentinel",
+                {
+                    "parent_entry_completion_sha256": (
+                        parent_entry_completion_sha256
+                    ),
+                    "parent_decision_sha256": parent_decision_sha256,
+                },
+                "run.lr_provenance",
+            )
+    elif (
+        parent_entry_completion_sha256 is None
+        or parent_decision_sha256 is None
+    ):
+        raise _error(
+            "both the exact selected-run completion SHA-256 and the "
+            "selection decision SHA-256 for a capped confirmation",
+            {
+                "parent_entry_completion_sha256": (
+                    parent_entry_completion_sha256
+                ),
+                "parent_decision_sha256": parent_decision_sha256,
+            },
+            "run.lr_provenance",
+        )
+
+    result = {
+        "study_id": study_id,
+        "row_id": row_id,
+        "candidate_stage": stage,
+        "execution_mode": execution_mode,
+        "optimizer_name": optimizer_name,
+        "optimizer_parameters": optimizer_parameters,
+        "rho_conv": rho_conv,
+        "rho_dense": rho_dense,
+        "normalization_unit_by_weight": normalized_units,
+        "bias_q90_unit_by_parameter": normalized_bias_units,
+        "bias_weight_mapping": expected_mapping,
+        "bias_lr_policy": bias_policy,
+        "bias_rho_cap": bias_rho_cap,
+        "raw_learning_rates_by_parameter": normalized_raw_rates,
+        "parent_entry_completion_sha256": parent_entry_completion_sha256,
+        "parent_decision_sha256": parent_decision_sha256,
+        "official_test_read": False,
+    }
+    if provenance["official_test_read"] is not False:
+        raise _error(
+            "exactly false",
+            provenance["official_test_read"],
+            "run.lr_provenance.official_test_read",
+        )
+    for field in (
+        "probe_sha256",
+        "bias_q90_probe_sha256",
+        "parent_study_config_sha256",
+        "split_sha256",
+        "normalization_minibatches_sha256",
+        "replay_minibatches_sha256",
+        "training_batch_order_sha256",
+        "initialization_checkpoint_sha256",
+        "initialization_tensor_sha256",
+        "code_fingerprint_sha256",
+    ):
+        result[field] = _sha256_digest(
+            provenance[field],
+            f"run.lr_provenance.{field}",
+        )
+    return result
 
 
 def _normalize_layer_measurements(
@@ -531,24 +2294,87 @@ class RunSpec:
     def from_dict(cls, value: Any) -> "RunSpec":
         top = _object(value, "RunSpec")
         _exact_keys(top, {"schema_version", "label", "seed", "replicate_id", "protocol_id", "category", "run"}, "RunSpec")
-        if top["schema_version"] != RUN_SCHEMA_VERSION:
-            raise _error(RUN_SCHEMA_VERSION, top["schema_version"], "RunSpec.schema_version")
+        supported_versions = {
+            RUN_SCHEMA_VERSION,
+            RUN_SCHEMA_VERSION_V2,
+            RUN_SCHEMA_VERSION_V3,
+            RUN_SCHEMA_VERSION_V4,
+            RUN_SCHEMA_VERSION_V5,
+            RUN_SCHEMA_VERSION_V6,
+            RUN_SCHEMA_VERSION_V7,
+        }
+        if top["schema_version"] not in supported_versions:
+            raise _error(
+                f"one of {sorted(supported_versions)!r}",
+                top["schema_version"],
+                "RunSpec.schema_version",
+            )
         label = _string(top["label"], "RunSpec.label")
         protocol_id = _string(top["protocol_id"], "RunSpec.protocol_id")
         if top["category"] not in {"diagnostic", "final"}:
             raise _error("'diagnostic' or 'final'", top["category"], "RunSpec.category")
         run = _object(top["run"], "RunSpec.run")
-        _exact_keys(run, {"dataset", "architecture", "model", "solver", "training", "initialization", "calibration"}, "RunSpec.run")
+        v2 = top["schema_version"] == RUN_SCHEMA_VERSION_V2
+        v3 = top["schema_version"] == RUN_SCHEMA_VERSION_V3
+        v4 = top["schema_version"] == RUN_SCHEMA_VERSION_V4
+        v5 = top["schema_version"] == RUN_SCHEMA_VERSION_V5
+        v6 = top["schema_version"] == RUN_SCHEMA_VERSION_V6
+        v7 = top["schema_version"] == RUN_SCHEMA_VERSION_V7
+        if (v3 or v4 or v5 or v6 or v7) and top["category"] != "diagnostic":
+            raise _error(
+                "exactly 'diagnostic' for layer-wise LR candidates",
+                top["category"],
+                "RunSpec.category",
+            )
+        run_keys = {"dataset", "architecture", "model", "solver", "training", "initialization", "calibration"}
+        if v2 or v3 or v4 or v5 or v6 or v7:
+            run_keys.add("lr_provenance")
+        _exact_keys(run, run_keys, "RunSpec.run")
         replicate_id = top["replicate_id"]
         if replicate_id is not None:
             replicate_id = _string(replicate_id, "RunSpec.replicate_id")
         architecture = _normalize_architecture(run["architecture"])
         model = _normalize_model(run["model"], len(architecture["channels"]))
-        dataset = _normalize_dataset(run["dataset"])
+        dataset = (
+            _normalize_dataset_conv3_v7(run["dataset"])
+            if v7 and protocol_id == CONV3_ORDINARY_LR_PROTOCOL_ID
+            else _normalize_dataset_v2(run["dataset"])
+            if (v2 or v3 or v4 or v5 or v6 or v7)
+            else _normalize_dataset(run["dataset"])
+        )
+        if v2 or v3 or v4 or v5 or v6 or v7:
+            if model["non_linearity"] != "hard_sigmoid":
+                raise _error("exactly 'hard_sigmoid'", model["non_linearity"], "run.model.non_linearity")
+            if model["weight_min"] != 0.0 or model["weight_max"] != 100.0:
+                raise _error("the frozen [0, 100] conductance bounds", [model["weight_min"], model["weight_max"]], "run.model weight bounds")
+            if model["weight_gains"] != [1.0] * (len(architecture["channels"]) + 1):
+                raise _error("all frozen weight gains equal to 1", model["weight_gains"], "run.model.weight_gains")
+            if model["weight_init_mode"] != "kaiming_uniform":
+                raise _error("exactly 'kaiming_uniform'", model["weight_init_mode"], "run.model.weight_init_mode")
+            hard = model["hard_sigmoid_param"]
+            if hard != {"g_on": 100.0, "g_off": 0.0, "v_off": 4.0}:
+                raise _error("the frozen hard-sigmoid parameters", hard, "run.model.hard_sigmoid_param")
         normalized_run = {
             "dataset": dataset,
             "architecture": architecture, "model": model, "solver": _normalize_solver(run["solver"]),
-            "training": _normalize_training(run["training"], len(architecture["channels"])),
+            "training": (
+                _normalize_training_conv3_v7(
+                    run["training"], len(architecture["channels"])
+                )
+                if v7 and protocol_id == CONV3_ORDINARY_LR_PROTOCOL_ID
+                else _normalize_training_v7(
+                    run["training"], len(architecture["channels"])
+                )
+                if v7
+                else
+                _normalize_training_v4(run["training"], len(architecture["channels"]))
+                if (v4 or v5 or v6)
+                else _normalize_training_v3(run["training"], len(architecture["channels"]))
+                if v3
+                else _normalize_training_v2(run["training"], len(architecture["channels"]))
+                if v2
+                else _normalize_training(run["training"], len(architecture["channels"]))
+            ),
             "initialization": _normalize_initialization(run["initialization"]),
             "calibration": _normalize_calibration(
                 run["calibration"],
@@ -557,10 +2383,451 @@ class RunSpec:
                 affine_seed=dataset["affine"]["seed"],
             ),
         }
+        if v2:
+            normalized_run["lr_provenance"] = _normalize_lr_provenance(run["lr_provenance"])
+        elif v3:
+            normalized_run["lr_provenance"] = _normalize_lr_provenance_v3(
+                run["lr_provenance"], len(architecture["channels"])
+            )
+            rho_target = normalized_run["lr_provenance"]["rho_target"]
+            rho_units = normalized_run["lr_provenance"]["rho_unit_by_weight"]
+            layerwise_rates = normalized_run["training"][
+                "learning_rates_by_parameter"
+            ]
+            for weight, rho_unit in rho_units.items():
+                observed_target = layerwise_rates[weight] * rho_unit
+                if not math.isclose(
+                    observed_target,
+                    rho_target,
+                    rel_tol=1e-12,
+                    abs_tol=1e-15,
+                ):
+                    raise _error(
+                        f"a rate satisfying learning_rate * rho_unit == "
+                        f"rho_target ({rho_target!r})",
+                        {
+                            "learning_rate": layerwise_rates[weight],
+                            "rho_unit": rho_unit,
+                            "product": observed_target,
+                        },
+                        f"run.training.learning_rates_by_parameter.{weight}",
+                    )
+        elif v4:
+            normalized_run["lr_provenance"] = _normalize_lr_provenance_v4(
+                run["lr_provenance"], len(architecture["channels"])
+            )
+            provenance = normalized_run["lr_provenance"]
+            alpha = provenance["alpha_arch"]
+            units = provenance["median_unit_by_weight"]
+            multipliers = provenance["target_multipliers_by_weight"]
+            layerwise_rates = normalized_run["training"][
+                "learning_rates_by_parameter"
+            ]
+            for weight, unit in units.items():
+                observed_target = layerwise_rates[weight] * unit
+                expected_target = alpha * multipliers[weight]
+                if not math.isclose(
+                    observed_target,
+                    expected_target,
+                    rel_tol=1e-12,
+                    abs_tol=1e-15,
+                ):
+                    raise _error(
+                        "a rate satisfying learning_rate * median_unit == "
+                        f"alpha_arch * target_multiplier ({expected_target!r})",
+                        {
+                            "learning_rate": layerwise_rates[weight],
+                            "median_unit": unit,
+                            "product": observed_target,
+                        },
+                        f"run.training.learning_rates_by_parameter.{weight}",
+                    )
+        elif v5:
+            if protocol_id != (
+                "conv-hardsigmoid-lr-conv2-two-rho-median-constant-"
+                "sgd-bs16-v6"
+            ):
+                raise _error(
+                    "the frozen v6 two-rho protocol identifier",
+                    protocol_id,
+                    "RunSpec.protocol_id",
+                )
+            if top["seed"] != 0:
+                raise _error("exactly 0", top["seed"], "RunSpec.seed")
+            if architecture["profile"] != "conv2":
+                raise _error(
+                    "exactly 'conv2' for v6",
+                    architecture["profile"],
+                    "run.architecture.profile",
+                )
+            expected_affine = {
+                "enabled": False,
+                "preset": "ordinary_identity",
+                "degrees": 0.0,
+                "translate": [0.0, 0.0],
+                "scale": [1.0, 1.0],
+                "shear": 0.0,
+                "seed": 1729,
+                "interpolation": "bilinear",
+                "fill": 0.0,
+            }
+            if dataset["affine"] != expected_affine:
+                raise _error(
+                    f"the frozen ordinary-MNIST affine settings {expected_affine!r}",
+                    dataset["affine"],
+                    "run.dataset.affine",
+                )
+            normalized_run["lr_provenance"] = _normalize_lr_provenance_v5(
+                run["lr_provenance"], len(architecture["channels"])
+            )
+            provenance = normalized_run["lr_provenance"]
+            row_contract = _V6_CONV2_ROWS[provenance["row_id"]]
+            for field in ("voltage_amp", "current_amp", "input_gain"):
+                if model[field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value {row_contract[field]!r}",
+                        model[field],
+                        f"run.model.{field}",
+                    )
+            for field in ("inference_iterations", "training_iterations"):
+                if normalized_run["solver"][field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value {row_contract[field]!r}",
+                        normalized_run["solver"][field],
+                        f"run.solver.{field}",
+                    )
+            if provenance["split_sha256"] != dataset["validation"]["indices_sha256"]:
+                raise _error(
+                    "exactly run.dataset.validation.indices_sha256",
+                    provenance["split_sha256"],
+                    "run.lr_provenance.split_sha256",
+                )
+            checkpoint = normalized_run["initialization"]["checkpoint"]
+            if checkpoint is None:
+                raise _error(
+                    "the verified shared Conv2 initialization checkpoint",
+                    checkpoint,
+                    "run.initialization.checkpoint",
+                )
+            if provenance["initialization_checkpoint_sha256"] != checkpoint["sha256"]:
+                raise _error(
+                    "exactly run.initialization.checkpoint.sha256",
+                    provenance["initialization_checkpoint_sha256"],
+                    "run.lr_provenance.initialization_checkpoint_sha256",
+                )
+            units = provenance["median_unit_by_weight"]
+            rates = normalized_run["training"]["learning_rates_by_parameter"]
+            for weight, unit in units.items():
+                expected_target = (
+                    provenance["rho_conv"]
+                    if weight.startswith("ConvWeight_")
+                    else provenance["rho_dense"]
+                )
+                observed_target = rates[weight] * unit
+                if not math.isclose(
+                    observed_target,
+                    expected_target,
+                    rel_tol=1e-12,
+                    abs_tol=1e-15,
+                ):
+                    raise _error(
+                        "a rate satisfying learning_rate * median_unit == "
+                        f"the direct target ({expected_target!r})",
+                        {
+                            "learning_rate": rates[weight],
+                            "median_unit": unit,
+                            "product": observed_target,
+                        },
+                        f"run.training.learning_rates_by_parameter.{weight}",
+                    )
+        elif v6:
+            architecture_profile = architecture["profile"]
+            expected_protocol_id = (
+                f"conv-hardsigmoid-lr-{architecture_profile}-amplified-scheme-"
+                "two-rho-median-constant-sgd-bs16"
+            )
+            if protocol_id != expected_protocol_id:
+                raise _error(
+                    f"the frozen {architecture_profile} amplified-scheme "
+                    "two-rho protocol identifier",
+                    protocol_id,
+                    "RunSpec.protocol_id",
+                )
+            if top["seed"] != 0:
+                raise _error("exactly 0", top["seed"], "RunSpec.seed")
+            if architecture_profile not in {"conv1", "conv2"}:
+                raise _error(
+                    "one of ['conv1', 'conv2'] for the amplified-scheme rho diagnostic",
+                    architecture_profile,
+                    "run.architecture.profile",
+                )
+            expected_affine = {
+                "enabled": False,
+                "preset": "ordinary_identity",
+                "degrees": 0.0,
+                "translate": [0.0, 0.0],
+                "scale": [1.0, 1.0],
+                "shear": 0.0,
+                "seed": 1729,
+                "interpolation": "bilinear",
+                "fill": 0.0,
+            }
+            if dataset["affine"] != expected_affine:
+                raise _error(
+                    f"the frozen ordinary-MNIST affine settings {expected_affine!r}",
+                    dataset["affine"],
+                    "run.dataset.affine",
+                )
+            normalized_run["lr_provenance"] = _normalize_lr_provenance_v6(
+                run["lr_provenance"],
+                len(architecture["channels"]),
+                architecture_profile,
+            )
+            provenance = normalized_run["lr_provenance"]
+            row_contracts = (
+                _CONV1_SCHEME_RHO_ROWS
+                if architecture_profile == "conv1"
+                else _CONV2_SCHEME_RHO_ROWS
+            )
+            row_contract = row_contracts[provenance["row_id"]]
+            for field in ("voltage_amp", "current_amp", "input_gain"):
+                if model[field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value {row_contract[field]!r}",
+                        model[field],
+                        f"run.model.{field}",
+                    )
+            for field in ("inference_iterations", "training_iterations"):
+                if normalized_run["solver"][field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value {row_contract[field]!r}",
+                        normalized_run["solver"][field],
+                        f"run.solver.{field}",
+                    )
+            if provenance["split_sha256"] != dataset["validation"]["indices_sha256"]:
+                raise _error(
+                    "exactly run.dataset.validation.indices_sha256",
+                    provenance["split_sha256"],
+                    "run.lr_provenance.split_sha256",
+                )
+            checkpoint = normalized_run["initialization"]["checkpoint"]
+            if checkpoint is None:
+                raise _error(
+                    f"the verified shared {architecture_profile} initialization checkpoint",
+                    checkpoint,
+                    "run.initialization.checkpoint",
+                )
+            if provenance["initialization_checkpoint_sha256"] != checkpoint["sha256"]:
+                raise _error(
+                    "exactly run.initialization.checkpoint.sha256",
+                    provenance["initialization_checkpoint_sha256"],
+                    "run.lr_provenance.initialization_checkpoint_sha256",
+                )
+            units = provenance["median_unit_by_weight"]
+            rates = normalized_run["training"]["learning_rates_by_parameter"]
+            for weight, unit in units.items():
+                expected_target = (
+                    provenance["rho_conv"]
+                    if weight.startswith("ConvWeight_")
+                    else provenance["rho_dense"]
+                )
+                observed_target = rates[weight] * unit
+                if not math.isclose(
+                    observed_target,
+                    expected_target,
+                    rel_tol=1e-12,
+                    abs_tol=1e-15,
+                ):
+                    raise _error(
+                        "a rate satisfying learning_rate * median_unit == "
+                        f"the direct target ({expected_target!r})",
+                        {
+                            "learning_rate": rates[weight],
+                            "median_unit": unit,
+                            "product": observed_target,
+                        },
+                        f"run.training.learning_rates_by_parameter.{weight}",
+                    )
+        elif v7 and protocol_id == CONV3_ORDINARY_LR_PROTOCOL_ID:
+            if top["seed"] != 0:
+                raise _error("exactly 0", top["seed"], "RunSpec.seed")
+            if architecture["profile"] != "conv3":
+                raise _error(
+                    "exactly 'conv3' for the ordinary-MNIST v7 LR study",
+                    architecture["profile"],
+                    "run.architecture.profile",
+                )
+            expected_affine = {
+                "enabled": False,
+                "preset": "ordinary_identity",
+                "degrees": 0.0,
+                "translate": [0.0, 0.0],
+                "scale": [1.0, 1.0],
+                "shear": 0.0,
+                "seed": 1729,
+                "interpolation": "bilinear",
+                "fill": 0.0,
+            }
+            if dataset["affine"] != expected_affine:
+                raise _error(
+                    f"the frozen ordinary-MNIST affine settings {expected_affine!r}",
+                    dataset["affine"],
+                    "run.dataset.affine",
+                )
+            normalized_run["lr_provenance"] = (
+                _normalize_lr_provenance_conv3_v7(
+                    run["lr_provenance"],
+                    len(architecture["channels"]),
+                )
+            )
+            provenance = normalized_run["lr_provenance"]
+            row_contract = _CONV3_ORDINARY_ROWS[provenance["row_id"]]
+            for field in ("voltage_amp", "current_amp", "input_gain"):
+                if model[field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value "
+                        f"{row_contract[field]!r}",
+                        model[field],
+                        f"run.model.{field}",
+                    )
+            for field in ("inference_iterations", "training_iterations"):
+                if normalized_run["solver"][field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value "
+                        f"{row_contract[field]!r}",
+                        normalized_run["solver"][field],
+                        f"run.solver.{field}",
+                    )
+            if provenance["split_sha256"] != dataset["validation"]["indices_sha256"]:
+                raise _error(
+                    "exactly run.dataset.validation.indices_sha256",
+                    provenance["split_sha256"],
+                    "run.lr_provenance.split_sha256",
+                )
+            checkpoint = normalized_run["initialization"]["checkpoint"]
+            if checkpoint is None:
+                raise _error(
+                    "the verified shared Conv3 initialization checkpoint",
+                    checkpoint,
+                    "run.initialization.checkpoint",
+                )
+            if (
+                provenance["initialization_checkpoint_sha256"]
+                != checkpoint["sha256"]
+            ):
+                raise _error(
+                    "exactly run.initialization.checkpoint.sha256",
+                    provenance["initialization_checkpoint_sha256"],
+                    "run.lr_provenance.initialization_checkpoint_sha256",
+                )
+            rates = normalized_run["training"]["learning_rates_by_parameter"]
+            for weight, unit in provenance["median_unit_by_weight"].items():
+                expected_target = (
+                    provenance["rho_conv"]
+                    if weight.startswith("ConvWeight_")
+                    else provenance["rho_dense"]
+                )
+                observed_target = rates[weight] * unit
+                if not math.isclose(
+                    observed_target,
+                    expected_target,
+                    rel_tol=1e-12,
+                    abs_tol=1e-15,
+                ):
+                    raise _error(
+                        "a rate satisfying learning_rate * median_unit == "
+                        f"the direct target ({expected_target!r})",
+                        {
+                            "learning_rate": rates[weight],
+                            "median_unit": unit,
+                            "product": observed_target,
+                        },
+                        f"run.training.learning_rates_by_parameter.{weight}",
+                    )
+        elif v7:
+            if protocol_id != OPTIMIZER_BOUNDARY_PROTOCOL_ID:
+                raise _error(
+                    f"exactly {OPTIMIZER_BOUNDARY_PROTOCOL_ID!r}",
+                    protocol_id,
+                    "RunSpec.protocol_id",
+                )
+            if top["seed"] != 0:
+                raise _error("exactly 0", top["seed"], "RunSpec.seed")
+            if architecture["profile"] != "conv2":
+                raise _error(
+                    "exactly 'conv2' for the optimizer-boundary diagnostic",
+                    architecture["profile"],
+                    "run.architecture.profile",
+                )
+            expected_affine = {
+                "enabled": False,
+                "preset": "ordinary_identity",
+                "degrees": 0.0,
+                "translate": [0.0, 0.0],
+                "scale": [1.0, 1.0],
+                "shear": 0.0,
+                "seed": 1729,
+                "interpolation": "bilinear",
+                "fill": 0.0,
+            }
+            if dataset["affine"] != expected_affine:
+                raise _error(
+                    f"the frozen ordinary-MNIST affine settings {expected_affine!r}",
+                    dataset["affine"],
+                    "run.dataset.affine",
+                )
+            normalized_run["lr_provenance"] = _normalize_lr_provenance_v7(
+                run["lr_provenance"],
+                depth=len(architecture["channels"]),
+                optimizer=normalized_run["training"]["optimizer"],
+                learning_rates_by_parameter=normalized_run["training"][
+                    "learning_rates_by_parameter"
+                ],
+            )
+            provenance = normalized_run["lr_provenance"]
+            row_contract = _V6_CONV2_ROWS[provenance["row_id"]]
+            for field in ("voltage_amp", "current_amp", "input_gain"):
+                if model[field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value "
+                        f"{row_contract[field]!r}",
+                        model[field],
+                        f"run.model.{field}",
+                    )
+            for field in ("inference_iterations", "training_iterations"):
+                if normalized_run["solver"][field] != row_contract[field]:
+                    raise _error(
+                        f"the frozen {provenance['row_id']} value "
+                        f"{row_contract[field]!r}",
+                        normalized_run["solver"][field],
+                        f"run.solver.{field}",
+                    )
+            if provenance["split_sha256"] != dataset["validation"]["indices_sha256"]:
+                raise _error(
+                    "exactly run.dataset.validation.indices_sha256",
+                    provenance["split_sha256"],
+                    "run.lr_provenance.split_sha256",
+                )
+            checkpoint = normalized_run["initialization"]["checkpoint"]
+            if checkpoint is None:
+                raise _error(
+                    "the verified shared Conv2 initialization checkpoint",
+                    checkpoint,
+                    "run.initialization.checkpoint",
+                )
+            if (
+                provenance["initialization_checkpoint_sha256"]
+                != checkpoint["sha256"]
+            ):
+                raise _error(
+                    "exactly run.initialization.checkpoint.sha256",
+                    provenance["initialization_checkpoint_sha256"],
+                    "run.lr_provenance.initialization_checkpoint_sha256",
+                )
         if top["category"] == "final" and normalized_run["training"]["pruning"]["enabled"]:
             raise _error("disabled for final runs", normalized_run["training"]["pruning"], "run.training.pruning")
         return cls({
-            "schema_version": RUN_SCHEMA_VERSION,
+            "schema_version": top["schema_version"],
             "label": label,
             "seed": _integer(top["seed"], "RunSpec.seed"),
             "replicate_id": replicate_id,

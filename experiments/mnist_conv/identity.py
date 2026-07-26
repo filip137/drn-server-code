@@ -228,6 +228,36 @@ def _code_paths(repo_root: Path) -> Iterable[Path]:
         repo_root / "labs" / "custom_classes.py",
         repo_root / "labs" / "custom_minimizer.py",
         repo_root / "labs" / "datasets.py",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_conv1_scheme_rho_sweep.py",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_conv1_scheme_rho_sweep_jeanzay.slurm",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_conv2_scheme_rho_sweep.py",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_conv2_scheme_rho_sweep_jeanzay.slurm",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_optimizer_boundary.py",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_optimizer_boundary_jeanzay.slurm",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_optimizer_boundary_benchmark_jeanzay.slurm",
+        repo_root
+        / "experiments"
+        / "submit_mnist_conv_lr_optimizer_boundary_jeanzay.py",
+        repo_root
+        / "experiments"
+        / "run_mnist_conv_lr_stage_slurm.sh",
+        repo_root
+        / "experiments"
+        / "supervise_mnist_conv_lr_v7_jeanzay.py",
     ]
     for path in explicit:
         if path.is_file():

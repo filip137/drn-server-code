@@ -1,0 +1,69 @@
+{
+  "schema_version": "mnist-conv-lr-conv3-legacy-rescue/v1",
+  "name": "conv3-hard-sigmoid-ordinary-mnist-legacy-low-rho-rescue",
+  "protocol_id": "conv-hardsigmoid-lr-conv3-legacy-low-rho-rescue-constant-sgd-bs16-v1",
+  "parent": {
+    "study_schema_version": "mnist-conv-lr-study/v7",
+    "study_id": "lrstudy_6e56b399cf3e522a2c3f39f66a51611147b6171dd3b9e223f20791bc6275caf0",
+    "row_id": "conv3_legacy_v4_c0p25",
+    "parent_row_status": "unresolved",
+    "mutate_parent_study": false,
+    "reuse": [
+      "ordinary_mnist_split",
+      "seed0_conv3_initialization",
+      "legacy_32_minibatch_probe"
+    ]
+  },
+  "diagnostic": {
+    "steps": 256,
+    "batch_size": 16,
+    "schedule": "constant_seven_parameter_vector",
+    "restart_each_entry_from_shared_initialization": true,
+    "reset_train_shuffle_each_entry": true,
+    "full_validation_after_safety_clean": true,
+    "validation_is_diagnostic_only": true,
+    "safety_gates": "parent_v7_range_test_gates",
+    "targets": [
+      {
+        "role": "lower-10x",
+        "rho_conv": 0.00005,
+        "rho_dense": 0.0003
+      },
+      {
+        "role": "lower-33x",
+        "rho_conv": 0.000015,
+        "rho_dense": 0.0001
+      },
+      {
+        "role": "lower-100x",
+        "rho_conv": 0.000005,
+        "rho_dense": 0.00003
+      }
+    ]
+  },
+  "promotion": {
+    "eligibility": "diagnostic_safety_clean_only",
+    "epochs": 3,
+    "steps_per_epoch": 3438,
+    "total_steps": 10314,
+    "schedule": "constant_seven_parameter_vector",
+    "minimum_final_validation_accuracy": 0.9,
+    "accuracy_boundary": "greater_than_or_equal",
+    "cross_scheme_transfer_allowed": false,
+    "selected_status": "legacy_rescue_candidate_passed_seed0_ordinary_mnist",
+    "does_not_freeze_parent_v7": true
+  },
+  "fallback": {
+    "trigger": "all_three_diagnostics_fail_safety",
+    "action": "investigate_reused_gain_tk_and_tied_bias_policy",
+    "automatic_additional_target_reduction": false,
+    "warmup_diagnostic_requires_new_protocol": true
+  },
+  "artifacts": {
+    "hash": "sha256",
+    "immutable_manifests": true,
+    "completion_marker_written_last": true,
+    "resume_completed_work": true,
+    "official_test_read": false
+  }
+}

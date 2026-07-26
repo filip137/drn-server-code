@@ -1,9 +1,41 @@
 from abc import ABC, abstractmethod
+import math
 import numpy as np
 from sympy.core.numbers import Infinity
 import torch
 
 from model.variable.variable import Variable
+
+
+def _bounded_uniform_(tensor, clamp_min, clamp_max):
+    """Initialize ``tensor`` uniformly inside an explicit finite interval."""
+
+    provided = {"clamp_min": clamp_min, "clamp_max": clamp_max}
+    try:
+        lower = float(clamp_min)
+        upper = float(clamp_max)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "Expected bounded_uniform initialization bounds to be finite numbers "
+            "with clamp_min < clamp_max. "
+            f"Provided value: {provided!r}."
+        ) from None
+
+    if not math.isfinite(lower) or not math.isfinite(upper) or lower >= upper:
+        raise ValueError(
+            "Expected bounded_uniform initialization bounds to be finite numbers "
+            "with clamp_min < clamp_max. "
+            f"Provided value: {provided!r}."
+        )
+
+    torch.nn.init.uniform_(tensor, lower, upper)
+
+
+def _unsupported_init_mode(mode, supported_modes):
+    raise ValueError(
+        f"Expected init_mode to be one of {sorted(supported_modes)!r}. "
+        f"Provided value: {mode!r}."
+    )
 
 
 
@@ -180,7 +212,11 @@ class DenseWeight(Parameter):
         """Initializes the weight tensor according to a uniform or normal distribution.
         Args:
             gain (float32): Number used to scale the weight tensor (~ proportional to the standard deviations of the weight)
-            mode (str, optional): method to initialize the weight tensor. Either 'xavier_uniform', 'xavier_normal', 'kaiming_uniform' or 'kaiming_normal'. Default: 'xavier_uniform'.
+            mode (str, optional): method to initialize the weight tensor. One of
+                'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
+                'kaiming_normal', 'bounded_uniform', or 'Kendall'.
+                'bounded_uniform' samples directly from [clamp_min, clamp_max]
+                and does not use gain. Default: 'kaiming_uniform'.
         """
 
         size_pre = 1
@@ -202,16 +238,27 @@ class DenseWeight(Parameter):
             scale = gain * np.sqrt(1. / size_pre)
             torch.nn.init.uniform_(self._state, -scale, +scale)
         elif mode == 'bounded_uniform':
-            # direct range [0, gain]
-            torch.nn.init.uniform_(self._state, 0.0, self.max_cond)
+            _bounded_uniform_(self._state, self.min_cond, self.max_cond)
         elif mode == 'Kendall':
             lower = 1e-7
             upper = 0.08 / np.sqrt(size_pre + size_post)
             torch.nn.init.uniform_(self._state, lower, upper)
-        else:  #  mode == 'kaiming_normal'
+        elif mode == 'kaiming_normal':
             # half kaiming normal
             scale = gain * 0.5 * np.sqrt(1. / size_pre)
             torch.nn.init.normal_(self._state, std=scale)
+        else:
+            _unsupported_init_mode(
+                mode,
+                {
+                    'xavier_uniform',
+                    'xavier_normal',
+                    'kaiming_uniform',
+                    'kaiming_normal',
+                    'bounded_uniform',
+                    'Kendall',
+                },
+            )
 
 
 
@@ -234,7 +281,11 @@ class ConvWeight(Parameter):
             shape (tuple of ints): shape of the convolutional weight tensor. Shape is (out_channels, in_channels, height, width).
             gain (float32): Number used to scale the weight tensor (~ proportional to the standard deviations of the weight)
             clamp (bool, optional): whether the range of permissible values for the parameter's state is [0,infty] (True) or [-infty, +infty] (False). Default: False
-            init_mode (str, optional): initialization mode ('xavier_uniform', 'xavier_normal', 'kaiming_uniform', 'kaiming_normal'). Default: 'kaiming_uniform'.
+            init_mode (str, optional): initialization mode ('xavier_uniform',
+                'xavier_normal', 'kaiming_uniform', 'kaiming_normal', or
+                'bounded_uniform'). 'bounded_uniform' samples directly from
+                [clamp_min, clamp_max] and does not use gain. Default:
+                'kaiming_uniform'.
         """
 
         Parameter.__init__(self, shape, device=device, non_negative=clamp,
@@ -251,7 +302,9 @@ class ConvWeight(Parameter):
 
         Args:
             gain (float32): Number used to scale the weight tensor (~ proportional to the standard deviations of the weight)
-            mode (str, optional): method to initialize the weight tensor. Either 'xavier_uniform', 'xavier_normal', 'kaiming_uniform' or 'kaiming_normal'. Default: 'kaiming_normal'.
+            init_mode (str, optional): method to initialize the weight tensor.
+                One of 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
+                'kaiming_normal', or 'bounded_uniform'.
         """
 
         (channels_out, channels_in, width, height) = self._shape
@@ -271,10 +324,23 @@ class ConvWeight(Parameter):
             # scale = gain * 0.5 * np.sqrt(3. / size_pre)
             scale = gain * np.sqrt(1. / size_pre)
             torch.nn.init.uniform_(self._state, -scale, +scale)
-        else:  #  mode == 'kaiming_normal'
+        elif init_mode == 'bounded_uniform':
+            _bounded_uniform_(self._state, self.min_cond, self.max_cond)
+        elif init_mode == 'kaiming_normal':
             # half kaiming normal
             scale = gain * 0.5 * np.sqrt(1. / size_pre)
             torch.nn.init.normal_(self._state, std=scale)
+        else:
+            _unsupported_init_mode(
+                init_mode,
+                {
+                    'xavier_uniform',
+                    'xavier_normal',
+                    'kaiming_uniform',
+                    'kaiming_normal',
+                    'bounded_uniform',
+                },
+            )
 
 
 class PoolWeight(Parameter):

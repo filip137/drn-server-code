@@ -1,0 +1,458 @@
+{
+  "schema_version": "mnist-conv-lr-study/v3",
+  "name": "conv1-conv2-hard-sigmoid-amplified-relative-rho-study",
+  "protocol_id": "conv-hardsigmoid-lr-sgd-bs16-relative-rho-v3",
+  "status": {
+    "selection_rule": "frozen_parameter_relative_rho_v3",
+    "measurements": "pending",
+    "final_training": "gated"
+  },
+  "dataset": {
+    "name": "mnist",
+    "variant": "deterministic_medium_affine",
+    "input_shape": [2, 28, 28],
+    "normalization": {
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "affine": {
+      "enabled": true,
+      "preset": "medium",
+      "degrees": 25.0,
+      "translate": [0.2, 0.2],
+      "scale": [0.8, 1.2],
+      "shear": 0.0,
+      "seed": 1729,
+      "interpolation": "bilinear",
+      "fill": 0.0,
+      "deterministic_by_original_index": true
+    },
+    "train": {
+      "source": "mnist_train",
+      "size": 55000,
+      "batch_size": 16,
+      "drop_last": false,
+      "shuffle_method": "torch_randperm",
+      "shuffle_seed": 0,
+      "reset_shuffle_identically_before_each_candidate": true,
+      "steps_per_epoch": 3438
+    },
+    "validation": {
+      "source": "mnist_train",
+      "size": 5000,
+      "class_count": 10,
+      "samples_per_class": 500,
+      "stratified": true,
+      "selection_method": "classwise_torch_randperm",
+      "split_seed": 0,
+      "batch_size": 128,
+      "store_exact_indices": true,
+      "index_hash": "sha256"
+    },
+    "official_test": {
+      "enabled": false,
+      "read_allowed": false
+    }
+  },
+  "model": {
+    "model_seed": 0,
+    "architectures": {
+      "conv1": {
+        "channels": [64],
+        "kernel_sizes": [3],
+        "strides": [2],
+        "paddings": [1],
+        "pooling": "none",
+        "output_dim": 20
+      },
+      "conv2": {
+        "channels": [64, 128],
+        "kernel_sizes": [3, 3],
+        "strides": [2, 2],
+        "paddings": [1, 1],
+        "pooling": "none",
+        "output_dim": 20
+      }
+    },
+    "non_linearity": "hard_sigmoid",
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "hard_sigmoid": {
+      "g_on": 100.0,
+      "g_off": 0.0,
+      "v_off": 4.0
+    },
+    "conductance_bounds": [0.0, 100.0],
+    "weight_initialization": "kaiming_uniform",
+    "weight_gains": 1.0,
+    "paired_output_loss": "squared_error_paired_20",
+    "amplification": "fixed",
+    "input_gain_calibration": {
+      "settling_iterations": 64,
+      "target_first_hidden_saturation": 0.3,
+      "recalibrate_at_operational_iterations": false
+    },
+    "shared_initialization": "reuse_parent_conv1_conv2_checkpoints_across_amplified_schemes_and_candidates",
+    "reset_global_name_counters_before_build": true
+  },
+  "solver": {
+    "energy_mode": "asynchronous",
+    "fixed_step_minimization": true,
+    "batch_state_policy": "reset_each_batch",
+    "minimizer": {
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "adaptive_equilibrium": false,
+      "overrelaxation_factor": 1.1,
+      "single_diode_updater": "custom",
+      "iv_data_path": null,
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "settings": {
+        "rel_tol": 1e-5,
+        "vn_tol": 1e-6,
+        "use_polish": true,
+        "max_newton_iters": 32,
+        "z_thresh": 1e10,
+        "exp_clip": 100000.0,
+        "dynamic_polish": true,
+        "overrelaxation_reject_steps": false,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_eps": 0.0,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-5,
+        "experimental_exponential_newton_tol_end": 1e-5,
+        "experimental_exponential_newton_tol_switch_hi": 1e-2,
+        "experimental_exponential_newton_tol_switch_lo": 5e-4
+      }
+    }
+  },
+  "optimizer": {
+    "name": "SGD",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "scalar_lr_for_all_trainable_parameters": true,
+    "bounded_weights_set_gates": true,
+    "biases_reported_separately": true
+  },
+  "probe": {
+    "minibatches": 32,
+    "nominal_lr": 1.0,
+    "restore_parameters_after_each_proposal": true,
+    "shared_minibatch_sequence_across_rows": true,
+    "bounded_parameter_types": ["ConvWeight", "DenseWeight"],
+    "rho_definition": "initial_parameter_rms",
+    "initial_parameter_scale": {
+      "source": "shared_initialization_checkpoint",
+      "statistic": "rms",
+      "frozen_for_all_steps": true,
+      "require_positive_finite": true
+    },
+    "span_rho_diagnostic": {
+      "definition": "proposed_update_rms_over_bound_span",
+      "bound_span": 100.0,
+      "sets_lr_schedule": false
+    },
+    "bias_scale_epsilon": 1e-8,
+    "aggregation": {
+      "within_parameter_statistic": "quantile",
+      "within_parameter_q": 0.9,
+      "within_parameter_interpolation": "linear",
+      "across_parameters": "maximum",
+      "architecture_semantics": "worst_bounded_parameter_q90"
+    },
+    "rho_targets": [1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 3e-1, 1.0]
+  },
+  "range_test": {
+    "steps": 800,
+    "schedule": "geometric_including_endpoints",
+    "start_rho_target": 3e-4,
+    "end_rho_target": 3.0,
+    "validation_interval_steps": 100,
+    "validation_steps": [0, 100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "validation_scope": "complete_validation_split",
+    "loss_ema_decay": 0.98,
+    "reference_steps": 32,
+    "initial_bound_occupancy_recorded": true,
+    "gates": {
+      "non_finite": {
+        "persistence": 1,
+        "signals": ["loss", "gradient", "update", "state", "diagnostic"]
+      },
+      "loss_ema": {
+        "factor_over_prior_minimum": 4.0,
+        "persistence": 8
+      },
+      "bounded_gradient_rms": {
+        "factor_over_first_32_median": 100.0,
+        "persistence": 8
+      },
+      "combined_bound_occupancy": {
+        "increase_over_initial": 0.2,
+        "persistence": 16
+      },
+      "projection_efficiency": {
+        "below": 0.5,
+        "persistence": 16,
+        "ignore_numerically_zero_proposed_updates": true,
+        "zero_update_epsilon": 1e-12
+      },
+      "proposed_bound_crossing_fraction_is_gate": false
+    },
+    "failure_onset": "first_step_of_earliest_sustained_event_after_reference",
+    "maximum_admissible_lr": "step_immediately_before_failure_onset",
+    "extension": {
+      "enabled_only_if_all_base_steps_safe": true,
+      "steps": 128,
+      "schedule": "geometric_including_endpoints",
+      "start_rho_target": 3.0,
+      "end_rho_target": 9.0
+    },
+    "candidate_extraction": {
+      "summary_steps_per_target": 8,
+      "summary_window": "eight_steps_following_target_crossing",
+      "fast_loss_decrease_fraction": 0.1,
+      "fast_reference": "first_32_step_median",
+      "high": "highest_stable_target_below_failure_onset",
+      "middle": "stable_target_nearest_geometric_midpoint_fast_high",
+      "duplicate_fill": "nearest_unused_stable_target",
+      "require_three_distinct": true,
+      "require_decreasing_region": true,
+      "unresolved_if_requirements_fail": true
+    }
+  },
+  "candidate_training": {
+    "model_seeds": [0],
+    "candidate_roles": ["fast", "middle", "high"],
+    "epochs": 5,
+    "training_examples": 55000,
+    "batch_size": 16,
+    "steps_per_epoch": 3438,
+    "total_steps": 17190,
+    "schedule": {
+      "type": "linear_warmup_cosine_decay",
+      "warmup_fraction": 0.05,
+      "warmup_steps": 860,
+      "warmup_first_factor": 0.0011627906976744186,
+      "peak_step": 860,
+      "cosine_first_step": 861,
+      "final_step": 17190,
+      "final_lr": 0.0,
+      "restarts": false
+    },
+    "validation": {
+      "every_epochs": 1,
+      "scope": "complete_validation_split"
+    },
+    "checkpoints": ["minimum_validation_loss", "final"],
+    "official_test_evaluation": false,
+    "inadmissibility": {
+      "numerical_failure": true,
+      "projection_domination": {
+        "training_fraction": 0.2,
+        "below_efficiency": 0.5,
+        "persistence": 16,
+        "ignore_numerically_zero_proposed_updates": true
+      }
+    },
+    "observed_peak_rho": {
+      "coordinate": "initial_parameter_rms",
+      "within_parameter_statistic": "quantile",
+      "within_parameter_q": 0.9,
+      "within_parameter_interpolation": "linear",
+      "across_parameters": "maximum",
+      "also_report_span_rho": true,
+      "bounded_parameter_types": ["ConvWeight", "DenseWeight"],
+      "warmup_final_steps": 32
+    }
+  },
+  "selection": {
+    "metric": "final_validation_loss",
+    "plateau_relative_to_minimum": 0.02,
+    "plateau_center": "log_space",
+    "choose": "candidate_nearest_plateau_center",
+    "tie_breakers": [
+      "higher_final_validation_accuracy",
+      "higher_median_projection_efficiency",
+      "lower_raw_lr"
+    ],
+    "selected_status": "frozen_seed0_screen",
+    "later_seed_policy": "reuse_selected_lr_across_model_seeds",
+    "unresolved_policy": "do_not_invent_lr"
+  },
+  "artifacts": {
+    "hash": "sha256",
+    "immutable_stage_manifests": true,
+    "completion_marker_written_last": true,
+    "embed_upstream_artifact_hashes": true,
+    "resume_completed_work": true,
+    "required_hashes": ["split_indices", "initialization_checkpoint", "minibatch_indices"],
+    "required_payloads": [
+      "rho_unit",
+      "rho_unit_relative_by_parameter",
+      "rho_span_unit_diagnostic",
+      "rho_targets",
+      "raw_learning_rates",
+      "step_logs",
+      "validation_metrics",
+      "per_parameter_projection_diagnostics",
+      "selected_learning_rate",
+      "observed_peak_rho",
+      "failure_or_unresolved_reason"
+    ],
+    "parameter_state_capture": [
+      "pre_update",
+      "post_optimizer_pre_projection",
+      "post_projection"
+    ],
+    "diagnostics": [
+      "gradient_rms",
+      "proposed_update_rms",
+      "normalized_update",
+      "span_normalized_update",
+      "initial_parameter_rms",
+      "parameter_relative_update",
+      "proposed_bound_crossings",
+      "boundary_occupancy",
+      "projection_efficiency"
+    ],
+    "plots": {
+      "backend": "matplotlib",
+      "x_scale": "log",
+      "y_scale": "log",
+      "panels": ["conv1", "conv2"],
+      "scheme_colors": {
+        "baseline": "#1f77b4",
+        "ours": "#ff7f0e",
+        "legacy": "#2ca02c"
+      },
+      "kinds": [
+        "selected_raw_peak_lr_vs_input_gain",
+        "observed_normalized_peak_update_vs_input_gain"
+      ]
+    }
+  },
+  "rescue": {
+    "kind": "unresolved_amplified_parameter_relative_rho",
+    "import_mode": "copy_and_verify_parent_assets",
+    "parent_study": {
+      "name": "conv1-conv2-hard-sigmoid-sgd-lr-study",
+      "study_id": "lrstudy_2103c850c10540d5628cd20cbebc0af519bd871116062e8b80e50ad0c068a9a4",
+      "resolved_config_sha256": "8bbe06ca62ed622233ab467cc1eb1124a85e4081eeea8c2e2cf0ee33bc7cb896",
+      "selection_sha256": "fe6fa3b744d48c9de0951bd2e71d0d09887c9972cc6006d3d72874888d3d08a7"
+    },
+    "evidence_study": {
+      "name": "conv1-hard-sigmoid-amplified-lr-warm-in-rescue",
+      "study_id": "lrstudy_aa0a5d954056594099cf76ed49a8ef159f9e707d207b0784fc11f44212f9b0a6",
+      "resolved_config_sha256": "25c9832e2a55992ab2fe19d3833967f49a173c092534350242a45bfda9fc98af",
+      "selection_sha256": "6833a026fe41c8d1a3f8d0ce3147f5ec3f258bf4441dcb6b6747d654fa551202",
+      "rows": {
+        "conv1_ours_v4_c1": {
+          "range_summary_sha256": "a3383bf58dd9ccc79857f81adbc99dd89d420747b07515702ec0096949b90594"
+        },
+        "conv1_legacy_v4_c0p25": {
+          "range_summary_sha256": "0461c3648891ee10a54c6e9ad4531a70dca8552b4c66250c523139d2954dc7c7"
+        }
+      }
+    },
+    "eligibility": {
+      "included_row_ids": [
+        "conv1_ours_v4_c1",
+        "conv1_legacy_v4_c0p25",
+        "conv2_ours_v4_c1",
+        "conv2_legacy_v4_c0p25"
+      ],
+      "parent_row_status": "unresolved",
+      "parent_unresolved_reason": "fewer_than_three_stable_targets",
+      "parent_failure_kind": "loss_ema_explosion",
+      "parent_failure_onset_step": 33,
+      "parent_failure_confirmed_step": 40,
+      "baseline_rows_reused_not_rerun": true
+    },
+    "frozen_provenance": {
+      "split_indices_sha256": "0cb0af3c4f63d4338f68081c8484268ae3f79bd3c7310c2fa37653f407dc0737",
+      "split_provenance_sha256": "e9ae8b1a9b16a0067380afa90cf25285ad7ed406c38d632eb15818b4627161a2",
+      "train_indices_sha256": "c0940cfdde9fb2a87f846a4dd234a6ff634eed32a98b9f5d72dfed3e2119a809",
+      "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+      "parent_probe_manifest_sha256": "7d9a6cd431bcab5138eaf4936d9c75cb232122da46035773c8d09597d402f7b9",
+      "parent_probe_completion_sha256": "132602568e1b3a7bc70a45b192a44efea67aa49f2e6640e4d6f29bf7e10abcd2",
+      "parent_range_manifest_sha256": "916e4fe0b3e5155a223b5b4c1dc9990e14a6109ed51d928b1d3181e07636e525",
+      "parent_range_completion_sha256": "217ff00436bdaa48be2f670572f16acb7161135a9737ffa51a019d09709017ab",
+      "parent_select_manifest_sha256": "22a73010b13903ad6176dc53eadbe765204dfd87f189908787b5d7da7d15f5d7",
+      "parent_select_completion_sha256": "f20a37d9fb26c341880d1c6296a85d16957d4238d0f3ff60ff964a01408af7e4",
+      "architectures": {
+        "conv1": {
+          "checkpoint_sha256": "204282e999a10306cc15f6095d1ce6971dcc137f8a473ff8f6481eed5921177c",
+          "metadata_sha256": "05c63549d15d5c315113a4a54af52458362a2316eff35a3af0caac2bed0a745b",
+          "parameter_tensor_sha256": "99f6ee133f72aae48205e58bb5d9a5568f6d7a2f3d3a801a0f4e07d16463fc1d"
+        },
+        "conv2": {
+          "checkpoint_sha256": "dc16ef2bebd2c9e6afe307b41555683c3eec29b9481ab64ea3f412382c837c7e",
+          "metadata_sha256": "4782d0ad32546cf9202c5f3deda1b6377b8db2e26db5aa05739c443459c09db7",
+          "parameter_tensor_sha256": "e9aa471dc5558e525758b345de12c53f0a086c5a1b022024c2fc349ec138e2e3"
+        }
+      },
+      "rows": {
+        "conv1_ours_v4_c1": {
+          "parent_range_summary_sha256": "b275b153e87b8cc6534fba86ed709f880c5f7893086576056c9fb236571ac990"
+        },
+        "conv1_legacy_v4_c0p25": {
+          "parent_range_summary_sha256": "793bb444404936ba4a67ea60422b35a100a0032ce6259aa9155f99d94b4e29eb"
+        },
+        "conv2_ours_v4_c1": {
+          "parent_range_summary_sha256": "8284a83e68b79682426b1984a433c20231499c7a570e10f4b671b1972048de13"
+        },
+        "conv2_legacy_v4_c0p25": {
+          "parent_range_summary_sha256": "7fa51a3200925ca892209e4ee6268c3ed779e764f31f62418311be02525e8906"
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "row_id": "conv1_ours_v4_c1",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "input_gain": 84.8402175903,
+      "inference_iterations": 4,
+      "training_iterations": 4
+    },
+    {
+      "row_id": "conv1_legacy_v4_c0p25",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "input_gain": 31.8188591003,
+      "inference_iterations": 4,
+      "training_iterations": 4
+    },
+    {
+      "row_id": "conv2_ours_v4_c1",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "input_gain": 716.3439331055,
+      "inference_iterations": 24,
+      "training_iterations": 6
+    },
+    {
+      "row_id": "conv2_legacy_v4_c0p25",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "input_gain": 661.4369506836,
+      "inference_iterations": 8,
+      "training_iterations": 4
+    }
+  ]
+}

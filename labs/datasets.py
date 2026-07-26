@@ -1,11 +1,14 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+import hashlib
 import numpy as np
+import os
 import random
 from torchvision import datasets, transforms
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as TF
 import torch
-from torch.utils.data import random_split, DataLoader, TensorDataset
+from torch.utils.data import random_split, DataLoader, Sampler, TensorDataset
 
 
 def _make_moons(*args, **kwargs):
@@ -40,6 +43,270 @@ AFFINE_PRESETS = {
         "shear": 15.0,
     },
 }
+
+
+MNIST_TRAIN_SIZE = 60_000
+MNIST_VALIDATION_PER_CLASS = 500
+MNIST_VALIDATION_SIZE = 5_000
+MNIST_LR_STUDY_TRAIN_SIZE = 55_000
+MNIST_LR_STUDY_VALIDATION_BATCH_SIZE = 128
+
+
+class _TrainOnlyMNIST(datasets.MNIST):
+    """MNIST reader whose existence/download contract contains train files only.
+
+    ``torchvision.datasets.MNIST(train=True)`` loads only the training tensors,
+    but its inherited ``_check_exists`` hashes all four raw resources, including
+    the official test images and labels.  The Conv LR studies prohibit even
+    that incidental read, so their train/validation-only path narrows the
+    resource list before the torchvision constructor performs its checks.
+    """
+
+    resources = tuple(datasets.MNIST.resources[:2])
+
+    def __init__(self, *args, train=True, **kwargs):
+        if train is not True:
+            raise ValueError(
+                "Expected the train-only MNIST reader to receive train=True. "
+                f"Provided value: {train!r}."
+            )
+        super().__init__(*args, train=True, **kwargs)
+
+    def _check_legacy_exist(self):
+        """Bypass torchvision's legacy train+test processed-file probe.
+
+        ``MNIST._check_legacy_exist`` hashes both ``training.pt`` and
+        ``test.pt`` even when ``train=True``.  This study must never touch the
+        official test artifact, so it always uses the raw train-only path.
+        """
+
+        return False
+
+    @property
+    def raw_folder(self):
+        return os.path.join(self.root, "MNIST", "raw")
+
+    @property
+    def processed_folder(self):
+        return os.path.join(self.root, "MNIST", "processed")
+
+
+def stable_index_sequence_hash(indices):
+    """Return a platform-independent SHA-256 for an ordered index sequence."""
+
+    values = tuple(int(index) for index in indices)
+    digest = hashlib.sha256()
+    digest.update(b"mnist-index-sequence/v1\0")
+    digest.update(len(values).to_bytes(8, byteorder="big", signed=False))
+    for value in values:
+        if value < 0:
+            raise ValueError(f"Expected non-negative dataset indices, got {value}.")
+        digest.update(value.to_bytes(8, byteorder="big", signed=False))
+    return digest.hexdigest()
+
+
+def stable_batch_order_hash(batches):
+    """Hash ordered batches while retaining batch-boundary information."""
+
+    digest = hashlib.sha256()
+    digest.update(b"mnist-batch-order/v1\0")
+    for batch in batches:
+        values = tuple(int(index) for index in batch)
+        digest.update(b"B")
+        digest.update(len(values).to_bytes(8, byteorder="big", signed=False))
+        for value in values:
+            if value < 0:
+                raise ValueError(f"Expected non-negative dataset indices, got {value}.")
+            digest.update(value.to_bytes(8, byteorder="big", signed=False))
+    return digest.hexdigest()
+
+
+def stratified_mnist_train_validation_indices(targets, *, split_seed=0):
+    """Select 500 validation examples per MNIST class using ``torch.randperm``.
+
+    A generator dedicated to splitting is seeded once and used class by class in
+    label order.  Returned indices are sorted into original MNIST order so that
+    validation traversal is canonical and independent of the selection draws.
+    """
+
+    labels = torch.as_tensor(targets, dtype=torch.long).reshape(-1).cpu()
+    if labels.numel() != MNIST_TRAIN_SIZE:
+        raise ValueError(
+            f"Expected {MNIST_TRAIN_SIZE} MNIST training labels, got {labels.numel()}."
+        )
+    classes = torch.unique(labels, sorted=True).tolist()
+    if classes != list(range(10)):
+        raise ValueError(f"Expected MNIST classes 0 through 9, got {classes}.")
+
+    generator = torch.Generator().manual_seed(int(split_seed))
+    train_indices = []
+    validation_indices = []
+    for label in classes:
+        class_indices = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if class_indices.numel() < MNIST_VALIDATION_PER_CLASS:
+            raise ValueError(
+                "Expected at least "
+                f"{MNIST_VALIDATION_PER_CLASS} MNIST samples for class {label}, "
+                f"got {class_indices.numel()}."
+            )
+        permutation = torch.randperm(class_indices.numel(), generator=generator)
+        validation_indices.extend(
+            class_indices[permutation[:MNIST_VALIDATION_PER_CLASS]].tolist()
+        )
+        train_indices.extend(
+            class_indices[permutation[MNIST_VALIDATION_PER_CLASS:]].tolist()
+        )
+
+    train_indices = tuple(sorted(int(index) for index in train_indices))
+    validation_indices = tuple(sorted(int(index) for index in validation_indices))
+    if len(train_indices) != MNIST_LR_STUDY_TRAIN_SIZE:
+        raise RuntimeError(
+            f"Expected {MNIST_LR_STUDY_TRAIN_SIZE} training indices, "
+            f"got {len(train_indices)}."
+        )
+    if len(validation_indices) != MNIST_VALIDATION_SIZE:
+        raise RuntimeError(
+            f"Expected {MNIST_VALIDATION_SIZE} validation indices, "
+            f"got {len(validation_indices)}."
+        )
+    return train_indices, validation_indices
+
+
+class OriginalIndexSubset(torch.utils.data.Dataset):
+    """Subset that indexes its source with, and can return, original indices."""
+
+    def __init__(self, dataset, indices, *, return_source_index=False):
+        self.dataset = dataset
+        self.indices = tuple(int(index) for index in indices)
+        self.return_source_index = bool(return_source_index)
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, position):
+        source_index = self.indices[int(position)]
+        item = self.dataset[source_index]
+        if not self.return_source_index:
+            return item
+        if isinstance(item, tuple):
+            return (*item, source_index)
+        return item, source_index
+
+
+class ResettableRandomSampler(Sampler):
+    """Random sampler whose RNG can be restored to its candidate-start state."""
+
+    def __init__(self, data_source, *, seed):
+        self.data_source = data_source
+        self.seed = int(seed)
+        self.generator = torch.Generator()
+        self.reset()
+
+    def __len__(self):
+        return len(self.data_source)
+
+    def __iter__(self):
+        order = torch.randperm(len(self.data_source), generator=self.generator)
+        return iter(order.tolist())
+
+    def reset(self):
+        self.generator.manual_seed(self.seed)
+
+
+def _batch_original_indices(
+    source_indices,
+    *,
+    batch_size,
+    shuffle_seed,
+    num_epochs,
+):
+    if int(batch_size) <= 0:
+        raise ValueError(f"Expected a positive train batch size, got {batch_size}.")
+    if int(num_epochs) <= 0:
+        raise ValueError(f"Expected a positive number of epochs, got {num_epochs}.")
+
+    source_indices = tuple(int(index) for index in source_indices)
+    generator = torch.Generator().manual_seed(int(shuffle_seed))
+    epochs = []
+    for _ in range(int(num_epochs)):
+        positions = torch.randperm(len(source_indices), generator=generator).tolist()
+        ordered = [source_indices[position] for position in positions]
+        epochs.append(
+            tuple(
+                tuple(ordered[start : start + int(batch_size)])
+                for start in range(0, len(ordered), int(batch_size))
+            )
+        )
+    return tuple(epochs)
+
+
+@dataclass
+class MnistTrainValidationLoaders:
+    """Loaders and exact provenance for the LR-study train/validation split."""
+
+    train_loader: DataLoader
+    validation_loader: DataLoader
+    train_indices: tuple
+    validation_indices: tuple
+    split_seed: int
+    shuffle_seed: int
+    batch_size: int
+    validation_batch_size: int
+    train_indices_hash: str
+    validation_indices_hash: str
+    first_epoch_batch_order_hash: str
+    _train_sampler: ResettableRandomSampler = field(repr=False)
+    _worker_generator: torch.Generator = field(repr=False)
+
+    def reset_train_shuffle(self):
+        """Reset sampler and worker RNGs so another candidate sees the same order."""
+
+        self._train_sampler.reset()
+        self._worker_generator.manual_seed(self.shuffle_seed)
+        return self.train_loader
+
+    def reset_train_loader(self):
+        """Compatibility alias for callers that reset between LR candidates."""
+
+        return self.reset_train_shuffle()
+
+    def train_batch_indices(self, *, num_epochs=1):
+        """Return original MNIST indices grouped exactly as candidate batches."""
+
+        return _batch_original_indices(
+            self.train_indices,
+            batch_size=self.batch_size,
+            shuffle_seed=self.shuffle_seed,
+            num_epochs=num_epochs,
+        )
+
+    def train_batch_order_hashes(self, *, num_epochs=1):
+        """Return one original-index batch-order hash per epoch."""
+
+        return tuple(
+            stable_batch_order_hash(epoch_batches)
+            for epoch_batches in self.train_batch_indices(num_epochs=num_epochs)
+        )
+
+    def provenance(self, *, num_epochs=1):
+        """Return JSON-serializable split and shuffle provenance, including indices."""
+
+        return {
+            "schema": "mnist-train-validation-split/v1",
+            "source_split": "train",
+            "split_method": "class-wise-torch-randperm-500-per-class",
+            "split_seed": self.split_seed,
+            "shuffle_seed": self.shuffle_seed,
+            "batch_size": self.batch_size,
+            "validation_batch_size": self.validation_batch_size,
+            "train_indices": list(self.train_indices),
+            "validation_indices": list(self.validation_indices),
+            "train_indices_sha256": self.train_indices_hash,
+            "validation_indices_sha256": self.validation_indices_hash,
+            "train_batch_order_sha256": list(
+                self.train_batch_order_hashes(num_epochs=num_epochs)
+            ),
+        }
 
 
 def affine_config_from_preset(
@@ -429,6 +696,129 @@ def _build_torchvision_image_loaders(
     )
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, test_loader
+
+
+def build_mnist_train_validation_loaders(
+    *,
+    batch_size,
+    root,
+    download,
+    normalize,
+    normalize_std,
+    normalize_mean=0.1307,
+    normalize_scale=1.0,
+    affine_config=None,
+    split_seed=0,
+    shuffle_seed=0,
+    validation_batch_size=MNIST_LR_STUDY_VALIDATION_BATCH_SIZE,
+    return_source_indices=False,
+    num_workers=0,
+    pin_memory=False,
+):
+    """Build deterministic MNIST-train loaders without touching the test split.
+
+    This is an opt-in path for the Conv LR study.  The legacy MNIST builders keep
+    returning their existing train/test loader pair.  Reusing an LR-study bundle
+    across candidates requires ``reset_train_shuffle()`` before each candidate.
+    """
+
+    if int(batch_size) <= 0:
+        raise ValueError(f"Expected a positive train batch size, got {batch_size}.")
+    if int(validation_batch_size) <= 0:
+        raise ValueError(
+            "Expected a positive validation batch size, "
+            f"got {validation_batch_size}."
+        )
+    if int(num_workers) < 0:
+        raise ValueError(f"Expected a non-negative worker count, got {num_workers}.")
+
+    transforms_list = [transforms.ToTensor()]
+    if normalize:
+        transforms_list.append(
+            transforms.Normalize(
+                mean=(float(normalize_mean),), std=(float(normalize_std),)
+            )
+        )
+        scale = float(normalize_scale)
+        if abs(scale - 1.0) > 1e-12:
+            transforms_list.append(
+                transforms.Lambda(lambda tensor, s=scale: tensor * s)
+            )
+    transform = transforms.Compose(transforms_list)
+
+    # Deliberately instantiate only MNIST's training split.  Validation is carved
+    # from it, so the official test split cannot be read accidentally here.
+    full_train_dataset = _TrainOnlyMNIST(
+        root=root,
+        train=True,
+        download=download,
+        transform=None if affine_config is not None else transform,
+    )
+    train_indices, validation_indices = stratified_mnist_train_validation_indices(
+        full_train_dataset.targets,
+        split_seed=split_seed,
+    )
+    if affine_config is not None:
+        full_train_dataset = DeterministicAffineImageDataset(
+            full_train_dataset,
+            transform=transform,
+            affine_config=affine_config,
+            split="train",
+        )
+
+    train_dataset = OriginalIndexSubset(
+        full_train_dataset,
+        train_indices,
+        return_source_index=return_source_indices,
+    )
+    validation_dataset = OriginalIndexSubset(
+        full_train_dataset,
+        validation_indices,
+        return_source_index=return_source_indices,
+    )
+
+    train_sampler = ResettableRandomSampler(train_dataset, seed=shuffle_seed)
+    # Keep worker seeding separate from shuffle seeding.  DataLoader consumes its
+    # generator for worker base seeds; sharing it with the sampler would perturb
+    # the scientifically recorded example order.
+    worker_generator = torch.Generator().manual_seed(int(shuffle_seed))
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=int(batch_size),
+        sampler=train_sampler,
+        num_workers=int(num_workers),
+        pin_memory=bool(pin_memory),
+        generator=worker_generator,
+    )
+    validation_loader = DataLoader(
+        validation_dataset,
+        batch_size=int(validation_batch_size),
+        shuffle=False,
+        num_workers=int(num_workers),
+        pin_memory=bool(pin_memory),
+    )
+
+    first_epoch_batches = _batch_original_indices(
+        train_indices,
+        batch_size=int(batch_size),
+        shuffle_seed=int(shuffle_seed),
+        num_epochs=1,
+    )[0]
+    return MnistTrainValidationLoaders(
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        train_indices=train_indices,
+        validation_indices=validation_indices,
+        split_seed=int(split_seed),
+        shuffle_seed=int(shuffle_seed),
+        batch_size=int(batch_size),
+        validation_batch_size=int(validation_batch_size),
+        train_indices_hash=stable_index_sequence_hash(train_indices),
+        validation_indices_hash=stable_index_sequence_hash(validation_indices),
+        first_epoch_batch_order_hash=stable_batch_order_hash(first_epoch_batches),
+        _train_sampler=train_sampler,
+        _worker_generator=worker_generator,
+    )
 
 
 class MnistDataset(Datasets):

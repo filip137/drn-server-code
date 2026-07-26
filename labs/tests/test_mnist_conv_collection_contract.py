@@ -240,11 +240,6 @@ def test_amplification_grid_cannot_be_combined_across_architectures(tmp_path):
         ("/run/dataset/batch_size", 32, "comparison_batch_size_mismatch"),
         ("/run/training/epochs", 2, "comparison_epoch_budget_mismatch"),
         (
-            "/run/solver/inference_iterations",
-            2,
-            "comparison_solver_tk_mismatch",
-        ),
-        (
             "/run/solver/minimizer/overrelaxation_factor",
             1.2,
             "comparison_minimizer_mismatch",
@@ -288,6 +283,8 @@ def test_case_linked_learning_rates_and_calibration_measurements_may_differ(tmp_
     value = sweep_value(run_value(epochs=1), seeds=(0, 1), three_cases=True)
     allowed_overrides = [
         ("/run/model/input_gain", [1.0, 2.0, 3.0]),
+        ("/run/solver/inference_iterations", [1, 2, 3]),
+        ("/run/solver/training_iterations", [1, 2, 4]),
         ("/run/training/learning_rate", [[0.01] * 3, [0.02] * 3, [0.03] * 3]),
         ("/run/calibration/measured_initial_saturation", [0.30, 0.31, 0.32]),
         (
@@ -314,6 +311,7 @@ def test_case_linked_learning_rates_and_calibration_measurements_may_differ(tmp_
         "comparison_calibration_protocol_mismatch",
         "case_input_gain_mismatch",
         "case_learning_rate_mismatch",
+        "case_solver_tk_mismatch",
         "case_calibration_binding_mismatch",
     }
     assert all(

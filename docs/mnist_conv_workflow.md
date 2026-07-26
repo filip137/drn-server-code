@@ -1,11 +1,12 @@
 # Canonical MNIST Conv workflow
 
-The supported paper-facing interface is one module with three commands:
+The supported interface is one module with four command families:
 
 ```bash
 python -m experiments.mnist_conv run ...
 python -m experiments.mnist_conv sweep ...
 python -m experiments.mnist_conv collect ...
+python -m experiments.mnist_conv lr-study ...
 ```
 
 The numerical implementation remains in `labs/mnist_train.py`, but that module
@@ -14,25 +15,62 @@ does not define run identities, result paths, completion, or collection.
 ## Protocol gate
 
 Read `conv_paper_hyperparameter_protocol.md` and every active protocol it links
-before preparing a run. All nine hard-sigmoid input gains and row-specific T/K
-values are frozen. Perfect-diode calibration and T/K remain pending, and the
-later training protocol has not yet frozen batch size, optimizer, learning rate,
-epoch budget, final seeds, or checkpoint selection. Therefore no paper-facing LR
-screen, long check, or final training may be launched yet. Calibration/reference
-`T=64` is not automatically a training value. This is enforced in code:
-final-category JSON can be validated and
-planned for review, but execution fails before creating a result or attempt
-until its exact protocol ID is added to the reviewed approval registry.
+before preparing a run. All nine hard-sigmoid gains and operational `T/K`
+pairs are frozen. The six Conv1/Conv2 seed-0 LRs are frozen through the
+combined v1-baseline/v3-amplified handoff.
+
+Perfect-diode calibration and `T/K`, medium-affine Conv3 and perfect-diode LR
+rules, and the final epoch, seed, checkpoint, and inclusion protocol remain
+pending. No paper-facing long run or final training is authorized.
+Calibration/reference `T=64` is not automatically a training value.
+
+Final-category JSON can be validated and planned for review, but execution
+fails before creating a result or attempt until its exact protocol ID is added
+to the reviewed approval registry. Ordinary-MNIST optimizer studies are
+curated separately in
+[`conv_learning_rate_diagnostics.md`](conv_learning_rate_diagnostics.md) and
+cannot bypass this gate.
 
 The examples below document the interface using minimal diagnostic placeholder
 values. Those placeholders do not reproduce the frozen hard-sigmoid rows and do
-not imply learning rates, epoch budgets, seed coverage, or other unresolved
-scientific settings.
+not imply the frozen LR handoff, epoch budgets, seed coverage, or other
+unresolved scientific settings.
+
+## A staged LR study
+
+An LR study has a content-addressed source config and publishes immutable stage
+manifests below `RESULTS/lr_studies/`. The available stages depend on the
+study schema. For the canonical v1-v3 chain:
+
+```text
+probe -> range -> candidates -> select
+```
+
+For example:
+
+```bash
+python -m experiments.mnist_conv lr-study \
+  --stage probe \
+  --config configs/conv/hardsigmoid_lr_study_sgd_bs16_v1.json \
+  --results-root RESULTS \
+  --data-root MNIST_DATA \
+  --device cuda
+```
+
+Later stages take `--study STUDY_DIR`. Scientific choices come only from the
+study JSON. Local and Slurm workers consume the same manifest, completed
+entries resume by validated hash, and the stage-completion marker is written
+last.
+
+Run schemas `mnist-conv-run/v2` through `/v7` are internal LR-stage artifacts.
+The generic `run`, `sweep`, and `collect` commands accept only
+`mnist-conv-run/v1`; this prevents an LR artifact from being executed through
+the legacy backend or summarized with the wrong contract.
 
 ## One run
 
-A run JSON is the complete scientific input. Only infrastructure belongs on
-the command line:
+A generic run JSON uses `mnist-conv-run/v1` and is the complete scientific
+input. Only infrastructure belongs on the command line:
 
 ```bash
 python -m experiments.mnist_conv run \
@@ -53,7 +91,8 @@ operations.
 
 ## A sweep
 
-A sweep embeds or references one complete run, declares linked cases and
+A generic sweep contains only `mnist-conv-run/v1` entries, embeds or references
+one complete run, declares linked cases and
 independent axes, and names every field allowed to vary. Planning expands and
 validates every job without training:
 
@@ -142,12 +181,13 @@ values, relative paths, and every artifact checksum. The completion manifest is
 written last. Failed and pruned staging bundles remain under `attempts/`, and a
 crashed collector cannot leave a permanent summary lock.
 
-The result root has three namespaces:
+The result root has four namespaces:
 
 ```text
 RESULTS/
   runs/LABEL--RUN_ID/        # validated, immutable completed bundles
   sweeps/NAME--SWEEP_ID/     # resolved sweep, manifest, collection, summaries
+  lr_studies/NAME--STUDY_ID/ # immutable staged LR-study bundles
   attempts/RUN_ID/ATTEMPT_ID # running, failed, pruned, or superseded attempts
 ```
 

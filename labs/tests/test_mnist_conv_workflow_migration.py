@@ -283,9 +283,26 @@ def test_slurm_submit_dry_run_is_manifest_driven_and_afterany(tmp_path: Path) ->
     export = next(item for item in result["worker"] if item.startswith("--export="))
     assert "MNIST_CONV_RETRY_FAILED=1" in export
     assert "MNIST_CONV_RECOVER_STALE=1" in export
-    forbidden = ("learning_rate", "input_gain", "inference_iterations", "training_iterations", "diode")
-    command_text = " ".join(result["worker"] + result["collector"]).lower()
-    assert not any(item in command_text for item in forbidden)
+    forbidden = (
+        "learning_rate",
+        "input_gain",
+        "inference_iterations",
+        "training_iterations",
+        "diode",
+    )
+    option_names = [
+        token.split("=", 1)[0].lower()
+        for token in result["worker"] + result["collector"]
+        if token.startswith("--")
+    ]
+    export_keys = [
+        assignment.split("=", 1)[0].lower()
+        for assignment in export.removeprefix("--export=").split(",")
+    ]
+    operational_surface = option_names + export_keys
+    assert not any(
+        item in name for item in forbidden for name in operational_surface
+    )
 
 
 def test_executor_profile_and_wrappers_are_operational_only() -> None:

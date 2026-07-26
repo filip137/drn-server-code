@@ -1,3 +1,15 @@
+# Historical Archive — Conv Paper Perfect-Diode Input-Gain Protocol
+
+Archived: 2026-07-26
+
+Status: historical only. This document preserves the former pending
+deterministic-medium-affine perfect-diode input-gain protocol exactly enough
+to retain its provenance. It is not an active protocol, and the user-fixed
+ordinary-MNIST diagnostic gains `40`, `100`, and `360` do not complete or
+supersede the medium-affine calibration described below.
+
+---
+
 # Conv Paper Perfect-Diode Input-Gain Protocol
 
 Updated: 2026-07-18
@@ -6,7 +18,7 @@ Status: protocol frozen; calibration measurements pending.
 
 ## Purpose And Dependency
 
-Calibrate raw `input_gain` after the experiment definition is frozen and before operational `T/K` is selected. This protocol applies only to the `perfect_diode` rows in the frozen [experiment definition](conv_paper_experiment_definition.md).
+Calibrate raw `input_gain` after the experiment definition is frozen and before operational `T/K` is selected. This protocol applies only to the `perfect_diode` rows in the frozen [experiment definition](../conv_paper_experiment_definition.md).
 
 ## Fixed Calibration Configuration
 

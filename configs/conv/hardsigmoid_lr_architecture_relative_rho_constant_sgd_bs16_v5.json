@@ -1,0 +1,372 @@
+{
+  "schema_version": "mnist-conv-lr-study/v5",
+  "name": "conv1-conv2-hard-sigmoid-ordinary-mnist-architecture-relative-median-study",
+  "protocol_id": "conv-hardsigmoid-lr-architecture-relative-median-constant-sgd-bs16-v5",
+  "status": {
+    "selection_rule": "frozen_architecture_relative_median_v5",
+    "measurements": "pending",
+    "final_training": "gated",
+    "study_role": "ordinary_mnist_optimization_diagnostic"
+  },
+  "dataset": {
+    "name": "mnist",
+    "variant": "ordinary",
+    "input_shape": [2, 28, 28],
+    "normalization": {"mean": 0.1307, "std": 0.3081, "scale": 0.3},
+    "affine": {
+      "enabled": false,
+      "preset": "ordinary_identity",
+      "degrees": 0.0,
+      "translate": [0.0, 0.0],
+      "scale": [1.0, 1.0],
+      "shear": 0.0,
+      "seed": 1729,
+      "interpolation": "bilinear",
+      "fill": 0.0,
+      "deterministic_by_original_index": true
+    },
+    "train": {
+      "source": "mnist_train",
+      "size": 55000,
+      "batch_size": 16,
+      "drop_last": false,
+      "shuffle_method": "torch_randperm",
+      "shuffle_seed": 0,
+      "reset_shuffle_identically_before_each_candidate": true,
+      "steps_per_epoch": 3438
+    },
+    "validation": {
+      "source": "mnist_train",
+      "size": 5000,
+      "class_count": 10,
+      "samples_per_class": 500,
+      "stratified": true,
+      "selection_method": "classwise_torch_randperm",
+      "split_seed": 0,
+      "batch_size": 128,
+      "store_exact_indices": true,
+      "index_hash": "sha256"
+    },
+    "official_test": {"enabled": false, "read_allowed": false}
+  },
+  "model": {
+    "model_seed": 0,
+    "architectures": {
+      "conv1": {
+        "channels": [64],
+        "kernel_sizes": [3],
+        "strides": [2],
+        "paddings": [1],
+        "pooling": "none",
+        "output_dim": 20
+      },
+      "conv2": {
+        "channels": [64, 128],
+        "kernel_sizes": [3, 3],
+        "strides": [2, 2],
+        "paddings": [1, 1],
+        "pooling": "none",
+        "output_dim": 20
+      }
+    },
+    "non_linearity": "hard_sigmoid",
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "hard_sigmoid": {"g_on": 100.0, "g_off": 0.0, "v_off": 4.0},
+    "conductance_bounds": [0.0, 100.0],
+    "weight_initialization": "kaiming_uniform",
+    "weight_gains": 1.0,
+    "paired_output_loss": "squared_error_paired_20",
+    "amplification": "fixed",
+    "input_gain_calibration": {
+      "source_dataset": "deterministic_medium_affine_mnist",
+      "settling_iterations": 64,
+      "target_first_hidden_saturation": 0.3,
+      "recalibrate_for_ordinary_mnist": false
+    },
+    "shared_initialization": "one_seed0_checkpoint_per_architecture_shared_across_all_schemes_arms_and_candidates",
+    "reset_global_name_counters_before_build": true
+  },
+  "solver": {
+    "energy_mode": "asynchronous",
+    "fixed_step_minimization": true,
+    "batch_state_policy": "reset_each_batch",
+    "minimizer": {
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "adaptive_equilibrium": false,
+      "overrelaxation_factor": 1.1,
+      "single_diode_updater": "custom",
+      "iv_data_path": null,
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "settings": {
+        "rel_tol": 1e-5,
+        "vn_tol": 1e-6,
+        "use_polish": true,
+        "max_newton_iters": 32,
+        "z_thresh": 1e10,
+        "exp_clip": 1e5,
+        "dynamic_polish": true,
+        "overrelaxation_reject_steps": false,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_eps": 0.0,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-5,
+        "experimental_exponential_newton_tol_end": 1e-5,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005
+      }
+    }
+  },
+  "optimizer": {
+    "name": "SGD",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "alpha_scope": "architecture",
+    "normalization_statistic": "median",
+    "scalar_lr_for_all_trainable_parameters": false,
+    "weight_specific_learning_rates": true,
+    "bias_lr_policy": "match_associated_conv_weight",
+    "biases_excluded_from_lr_tuning": true,
+    "bounded_weights_set_gates": true,
+    "biases_reported_separately": true
+  },
+  "anchor_audit": {
+    "derivation_status": "fallback_predeclared",
+    "fallback_reason": "The curated legacy roots have padding-0 architectures and no recoverable initialization bytes; 32-batch current-contract reconstruction is therefore not historical-init verified.",
+    "formula": "m[a,i]=median_b(RMS(g[a,i,b])/RMS(W[a,i,0])); z[a,i,p]=eta_hist[a]*m[a,i]/c[p,i]; A[a,p]=median_i(z[a,i,p]); center[arch,p]=exp(median_a(log(A[a,p]))). Even medians use the arithmetic mean of the two middle ordered values.",
+    "fallback_centers_by_architecture_and_arm": {
+      "conv1": {"strict_equal": 0.01, "historical_profile": 0.001},
+      "conv2": {"strict_equal": 0.001, "historical_profile": 0.0005}
+    },
+    "diagnostic_config_sha256": "0e1ccc25184218331f30749642d17e640b6e9bf15364e7f186929682e1cfc529",
+    "anchors": [
+      {
+        "anchor_id": "conv1_baseline_v1_c1",
+        "architecture": "conv1",
+        "scheme": "baseline",
+        "source_config_path": "results/mnist_bp_conv1_hardsigmoid_noamp_saturation_targets_voff4_seed0_10epoch_lr0p5_akib/target_sat30/input_gain_65p65764617919922/lr_0p0054829866885183955/hard_sigmoid/mnist_bp_amp_v1_c1/seed_0/source_config.json",
+        "source_config_sha256": "d7d79546c46b6b8213c7357c12d588bb05f5b6e67ddcf0258d6aeae2c05ee70a",
+        "historical_learning_rate": 0.0054829866885183955,
+        "compatibility": "provenance_only_padding0_no_init_checkpoint",
+        "official_test_metrics_read": false
+      },
+      {
+        "anchor_id": "conv1_ours_v4_c1",
+        "architecture": "conv1",
+        "scheme": "ours",
+        "source_config_path": "results/mnist_bp_conv1_hardsigmoid_amp_saturation_targets_voff4_seed0_10epoch_lr0p5_akib/target_sat30/input_gain_65p65764617919922/lr_0p0054829866885183955/hard_sigmoid/mnist_bp_amp_v4_c1/seed_0/source_config.json",
+        "source_config_sha256": "53e48633106b81637156a95684a48d5a524095e184601f7375990af21b539d02",
+        "historical_learning_rate": 0.0054829866885183955,
+        "compatibility": "provenance_only_padding0_no_init_checkpoint",
+        "official_test_metrics_read": false
+      },
+      {
+        "anchor_id": "conv2_baseline_v1_c1",
+        "architecture": "conv2",
+        "scheme": "baseline",
+        "source_config_path": "results/mnist_bp_conv2_hardsigmoid_amp_calibrated_sat30_bestlr_voff4_seed0_50epoch_trex/target_sat30/input_gain_221p068374634/lr_mult_4/lr_0p0260552872365/hard_sigmoid/mnist_bp_amp_v1_c1/seed_0/source_config.json",
+        "source_config_sha256": "9b7c2c8a3a45f733d36057dd0ec73ffc8c44fa83b1aa8e90248c0f77073dd226",
+        "historical_learning_rate": 0.0260552872365,
+        "compatibility": "provenance_only_padding0_no_init_checkpoint",
+        "official_test_metrics_read": false
+      },
+      {
+        "anchor_id": "conv2_ours_v4_c1",
+        "architecture": "conv2",
+        "scheme": "ours",
+        "source_config_path": "results/mnist_bp_conv2_hardsigmoid_amp_calibrated_sat30_bestlr_voff4_seed0_50epoch_trex/target_sat30/input_gain_158p035232544/lr_mult_0p5/lr_0p00455594609132/hard_sigmoid/mnist_bp_amp_v4_c1/seed_0/source_config.json",
+        "source_config_sha256": "4ff417e1fe586751ebbde8eed76d50b4c04492b9a225f18a0b7b00e100b74f8a",
+        "historical_learning_rate": 0.00455594609132,
+        "compatibility": "provenance_only_padding0_no_init_checkpoint",
+        "official_test_metrics_read": false
+      }
+    ],
+    "warnings": [
+      "Historical test accuracies are not runtime inputs and are never read.",
+      "Fallback centers are the predeclared rounded values approved for this diagnostic; they are not claimed as new 32-batch measurements.",
+      "Changing fallback centers creates a different content-addressed study."
+    ]
+  },
+  "probe": {
+    "minibatches": 32,
+    "batch_size": 16,
+    "nominal_lr": 1.0,
+    "restore_parameters_after_each_proposal": true,
+    "shared_minibatch_sequence_across_rows": true,
+    "bounded_parameter_types": ["ConvWeight", "DenseWeight"],
+    "rho_definition": "initial_parameter_rms_per_bounded_weight_median",
+    "normalization_statistic": "median",
+    "within_parameter_interpolation": "linear",
+    "q90_relative_update_is_safety_diagnostic": true,
+    "span_rho_is_safety_diagnostic": true,
+    "bias_policy": {
+      "include_in_m": false,
+      "include_in_alpha_selection": false,
+      "mapping": "Bias_i_to_ConvWeight_i",
+      "dense_output_bias": false
+    }
+  },
+  "range_test": {
+    "enabled": false,
+    "reason": "Each alpha candidate runs independently from the shared initialization; no increasing-LR range is permitted.",
+    "gates": {
+      "non_finite": {"persistence": 1},
+      "loss_ema": {"factor_over_prior_minimum": 4.0, "persistence": 8},
+      "bounded_gradient_rms": {"factor_over_first_32_median": 100.0, "persistence": 8},
+      "combined_bound_occupancy": {"increase_over_initial": 0.2, "persistence": 16},
+      "projection_efficiency": {
+        "below": 0.5,
+        "persistence": 16,
+        "ignore_numerically_zero_proposed_updates": true,
+        "zero_update_epsilon": 1e-12
+      },
+      "proposed_bound_crossing_fraction_is_gate": false,
+      "raw_learning_rate_magnitude_is_gate": false
+    }
+  },
+  "target_policies": {
+    "alpha_scope": "architecture",
+    "arm_order": ["strict_equal", "historical_profile"],
+    "candidate_roles": ["lower", "center", "upper"],
+    "candidate_factors": [0.3333333333333333, 1.0, 3.0],
+    "centers_by_architecture_and_arm": {
+      "conv1": {"strict_equal": 0.01, "historical_profile": 0.001},
+      "conv2": {"strict_equal": 0.001, "historical_profile": 0.0005}
+    },
+    "arms": {
+      "strict_equal": {
+        "conv_multiplier": 1.0,
+        "dense_multiplier_by_architecture": {"conv1": 1.0, "conv2": 1.0}
+      },
+      "historical_profile": {
+        "conv_multiplier": 1.0,
+        "dense_multiplier_by_architecture": {"conv1": 30.0, "conv2": 20.0}
+      }
+    }
+  },
+  "candidate_training": {
+    "model_seeds": [0],
+    "candidate_roles": ["lower", "center", "upper"],
+    "epochs": 5,
+    "training_examples": 55000,
+    "batch_size": 16,
+    "steps_per_epoch": 3438,
+    "total_steps": 17190,
+    "minimum_final_validation_accuracy": 0.9,
+    "schedule": {
+      "type": "constant_weight_vector",
+      "scheduler_enabled": false,
+      "first_step": 1,
+      "final_step": 17190,
+      "first_lr_factor": 1.0,
+      "final_lr_factor": 1.0,
+      "warmup_steps": 0,
+      "decay": "none",
+      "restarts": false
+    },
+    "validation": {"every_epochs": 1, "scope": "complete_validation_split"},
+    "checkpoints": ["minimum_validation_loss", "final"],
+    "official_test_evaluation": false,
+    "inadmissibility": {
+      "numerical_failure": true,
+      "projection_domination": {
+        "training_fraction": 1.0,
+        "below_efficiency": 0.5,
+        "persistence": 16,
+        "ignore_numerically_zero_proposed_updates": true
+      }
+    },
+    "observed_rho": {
+      "coordinate": "initial_parameter_rms_per_bounded_weight",
+      "within_parameter_statistic": "quantile",
+      "within_parameter_q": 0.9,
+      "within_parameter_interpolation": "linear",
+      "across_parameters": "report_independently",
+      "also_report_span_rho": true,
+      "bounded_parameter_types": ["ConvWeight", "DenseWeight"],
+      "initial_steps": 32,
+      "also_report_per_epoch": true,
+      "also_report_complete_run": true
+    }
+  },
+  "selection": {
+    "metric": "worst_row_final_validation_loss",
+    "minimum_final_accuracy": 0.9,
+    "all_three_schemes_must_pass": true,
+    "plateau_relative_to_minimum": 0.02,
+    "within_arm_tie_breakers": [
+      "higher_worst_row_accuracy",
+      "higher_median_projection_efficiency",
+      "lower_alpha"
+    ],
+    "arm_tie_within_plateau": "prefer_strict_equal",
+    "no_passing_alpha_policy": "declare_protocol_failed_without_grid_extension",
+    "selected_status": "ordinary_mnist_v5_diagnostic_selected",
+    "later_seed_policy": "not_authorized",
+    "final_paper_training_authorized": false
+  },
+  "execution": {
+    "candidate_run_count": 36,
+    "local_gpu_targets_checked_first": ["main", "akibscomputer", "trex"],
+    "jean_zay": {
+      "account": "fmu@v100",
+      "constraint": "v100-32g",
+      "gpus_per_task": 1,
+      "gpu_memory_mib": 32768,
+      "memory_headroom_fraction": 0.1,
+      "conv1_pack_size": 3,
+      "conv2_pack_size_allowed": [2, 3],
+      "training_on_compute_nodes_only": true,
+      "result_root": "/lustre/fsn1/projects/rech/fmu/$USER/server_code/results/<v5-study-id>"
+    }
+  },
+  "artifacts": {
+    "hash": "sha256",
+    "immutable_stage_manifests": true,
+    "completion_marker_written_last": true,
+    "embed_upstream_artifact_hashes": true,
+    "resume_completed_work": true,
+    "required_payloads": [
+      "anchor_audit",
+      "median_relative_unit_by_weight",
+      "q90_relative_update_by_weight",
+      "span_rho_by_weight",
+      "bias_weight_lr_mapping",
+      "constant_learning_rate_vector",
+      "validation_metrics",
+      "occupancy",
+      "projection_efficiency",
+      "selection"
+    ],
+    "large_raw_lr_reporting": {
+      "thresholds": [1.0, 10.0],
+      "comparison": "greater_than_or_equal",
+      "sets_gate": false,
+      "caps_learning_rate": false,
+      "report_weight_rates_only": true
+    },
+    "plots": {
+      "backend": "matplotlib",
+      "kinds": [
+        "epoch5_accuracy_loss",
+        "achieved_relative_updates",
+        "raw_learning_rates",
+        "occupancy",
+        "projection_efficiency"
+      ]
+    },
+    "ordinary_mnist_optimization_diagnostic": true,
+    "replaces_medium_affine_paper_handoff": false,
+    "authorizes_final_paper_training": false
+  },
+  "rows": [
+    {"row_id": "conv1_baseline_v1_c1", "architecture": "conv1", "scheme": "baseline", "run_name": "mnist_bp_amp_v1_c1", "voltage_amp": 1.0, "current_amp": 1.0, "input_gain": 75.6030807495, "inference_iterations": 4, "training_iterations": 4},
+    {"row_id": "conv1_ours_v4_c1", "architecture": "conv1", "scheme": "ours", "run_name": "mnist_bp_amp_v4_c1", "voltage_amp": 4.0, "current_amp": 1.0, "input_gain": 84.8402175903, "inference_iterations": 4, "training_iterations": 4},
+    {"row_id": "conv1_legacy_v4_c0p25", "architecture": "conv1", "scheme": "legacy", "run_name": "mnist_bp_amp_v4_c0p25", "voltage_amp": 4.0, "current_amp": 0.25, "input_gain": 31.8188591003, "inference_iterations": 4, "training_iterations": 4},
+    {"row_id": "conv2_baseline_v1_c1", "architecture": "conv2", "scheme": "baseline", "run_name": "mnist_bp_amp_v1_c1", "voltage_amp": 1.0, "current_amp": 1.0, "input_gain": 253.302230835, "inference_iterations": 16, "training_iterations": 6},
+    {"row_id": "conv2_ours_v4_c1", "architecture": "conv2", "scheme": "ours", "run_name": "mnist_bp_amp_v4_c1", "voltage_amp": 4.0, "current_amp": 1.0, "input_gain": 716.3439331055, "inference_iterations": 24, "training_iterations": 6},
+    {"row_id": "conv2_legacy_v4_c0p25", "architecture": "conv2", "scheme": "legacy", "run_name": "mnist_bp_amp_v4_c0p25", "voltage_amp": 4.0, "current_amp": 0.25, "input_gain": 661.4369506836, "inference_iterations": 8, "training_iterations": 4}
+  ]
+}

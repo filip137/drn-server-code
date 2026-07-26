@@ -1,0 +1,612 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-hparam-study/v1",
+  "run_schema_version": "mnist-conv-perfectdiode-hparam-run/v1",
+  "name": "perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen",
+  "protocol_id": "conv-perfectdiode-conv12-two-rho-sgd-adam-ordinary-mnist-bs16-v1",
+  "status": {
+    "measurements": "pending",
+    "study_role": "ordinary_mnist_optimization_diagnostic",
+    "medium_affine_paper_handoff": "unresolved",
+    "final_paper_training_authorized": false
+  },
+  "dataset": {
+    "name": "mnist",
+    "variant": "ordinary",
+    "input_shape": [
+      2,
+      28,
+      28
+    ],
+    "normalization": {
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "signed_two_channel_preprocessing": {
+      "formula": "concatenate(x_normalized,-x_normalized)",
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "affine": {
+      "enabled": false,
+      "preset": "ordinary_identity",
+      "degrees": 0.0,
+      "translate": [
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "shear": 0.0,
+      "seed": 1729,
+      "interpolation": "bilinear",
+      "fill": 0.0,
+      "deterministic_by_original_index": true
+    },
+    "train": {
+      "source": "mnist_train",
+      "size": 55000,
+      "batch_size": 16,
+      "drop_last": false,
+      "shuffle_method": "torch_randperm",
+      "shuffle_seed": 0,
+      "reset_shuffle_identically_before_each_run": true,
+      "steps_per_epoch": 3438
+    },
+    "validation": {
+      "source": "mnist_train",
+      "size": 5000,
+      "class_count": 10,
+      "samples_per_class": 500,
+      "stratified": true,
+      "selection_method": "classwise_torch_randperm",
+      "split_seed": 0,
+      "batch_size": 64,
+      "store_exact_indices": true,
+      "index_hash": "sha256"
+    },
+    "official_test": {
+      "enabled": false,
+      "read_allowed": false
+    }
+  },
+  "model": {
+    "model_seed": 0,
+    "architectures": {
+      "conv1": {
+        "channels": [
+          64
+        ],
+        "kernel_sizes": [
+          3
+        ],
+        "strides": [
+          2
+        ],
+        "paddings": [
+          1
+        ],
+        "pooling": "none",
+        "output_dim": 20,
+        "bounded_weight_order": [
+          "ConvWeight_0",
+          "DenseWeight_0"
+        ],
+        "trainable_parameter_order": [
+          "ConvWeight_0",
+          "Bias_0",
+          "DenseWeight_0"
+        ]
+      },
+      "conv2": {
+        "channels": [
+          64,
+          128
+        ],
+        "kernel_sizes": [
+          3,
+          3
+        ],
+        "strides": [
+          2,
+          2
+        ],
+        "paddings": [
+          1,
+          1
+        ],
+        "pooling": "none",
+        "output_dim": 20,
+        "bounded_weight_order": [
+          "ConvWeight_0",
+          "ConvWeight_1",
+          "DenseWeight_0"
+        ],
+        "trainable_parameter_order": [
+          "ConvWeight_0",
+          "Bias_0",
+          "ConvWeight_1",
+          "Bias_1",
+          "DenseWeight_0"
+        ]
+      }
+    },
+    "non_linearity": "perfect_diode",
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "hard_sigmoid": {},
+    "perfect_diode": {
+      "clamp_epsilon": 1e-08
+    },
+    "conductance_bounds": [
+      0.0,
+      100.0
+    ],
+    "weight_initialization": "kaiming_uniform",
+    "weight_gains": 1.0,
+    "paired_output_loss": "squared_error_paired_20",
+    "amplification": "fixed",
+    "shared_initialization": "one_seed0_checkpoint_per_architecture_shared_across_schemes_optimizers_probes_canaries_candidates_and_confirmations",
+    "reset_global_name_counters_before_build": true,
+    "input_gain": {
+      "conv1": 40.0,
+      "conv2": 100.0,
+      "shared_across_schemes": true,
+      "recalibrate": false,
+      "provenance": "user_fixed_ordinary_mnist_diagnostic"
+    }
+  },
+  "solver": {
+    "energy_mode": "asynchronous",
+    "fixed_step_minimization": true,
+    "batch_state_policy": "reset_each_batch",
+    "minimizer": {
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "adaptive_equilibrium": false,
+      "overrelaxation_factor": 1.1,
+      "single_diode_updater": "custom",
+      "iv_data_path": null,
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "settings": {
+        "rel_tol": 1e-05,
+        "vn_tol": 1e-06,
+        "use_polish": true,
+        "max_newton_iters": 32,
+        "z_thresh": 10000000000.0,
+        "exp_clip": 100000.0,
+        "dynamic_polish": true,
+        "overrelaxation_reject_steps": false,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_eps": 0.0,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005
+      }
+    }
+  },
+  "optimizer": {
+    "name": "SGD",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "scalar_lr_for_all_trainable_parameters": true,
+    "bounded_weights_set_gates": true,
+    "biases_reported_separately": true,
+    "role": "asset_creation_only"
+  },
+  "optimizer_arms": {
+    "sgd": {
+      "name": "SGD",
+      "momentum": 0.0,
+      "weight_decay": 0.0
+    },
+    "adam": {
+      "name": "Adam",
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.0,
+      "amsgrad": false,
+      "foreach": false,
+      "fused": false,
+      "maximize": false,
+      "capturable": false,
+      "differentiable": false
+    }
+  },
+  "rows": [
+    {
+      "row_id": "conv1_baseline_v1_c1",
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "run_name": "mnist_bp_amp_v1_c1",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "input_gain": 40.0,
+      "inference_iterations": 4,
+      "training_iterations": 4,
+      "reference_inference_iterations": 64,
+      "reference_training_iterations": 64
+    },
+    {
+      "row_id": "conv1_ours_v4_c1",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "input_gain": 40.0,
+      "inference_iterations": 4,
+      "training_iterations": 4,
+      "reference_inference_iterations": 64,
+      "reference_training_iterations": 64
+    },
+    {
+      "row_id": "conv1_legacy_v4_c0p25",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "input_gain": 40.0,
+      "inference_iterations": 4,
+      "training_iterations": 4,
+      "reference_inference_iterations": 64,
+      "reference_training_iterations": 64
+    },
+    {
+      "row_id": "conv2_baseline_v1_c1",
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "run_name": "mnist_bp_amp_v1_c1",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "input_gain": 100.0,
+      "inference_iterations": 6,
+      "training_iterations": 6,
+      "reference_inference_iterations": 64,
+      "reference_training_iterations": 64
+    },
+    {
+      "row_id": "conv2_ours_v4_c1",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "input_gain": 100.0,
+      "inference_iterations": 6,
+      "training_iterations": 6,
+      "reference_inference_iterations": 64,
+      "reference_training_iterations": 64
+    },
+    {
+      "row_id": "conv2_legacy_v4_c0p25",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "input_gain": 100.0,
+      "inference_iterations": 6,
+      "training_iterations": 6,
+      "reference_inference_iterations": 64,
+      "reference_training_iterations": 64
+    }
+  ],
+  "fixed_tk_gradient_security": {
+    "required_before_optimizer_probe": true,
+    "scope": "every_row",
+    "cohort_examples": 256,
+    "batch_size": 32,
+    "shared_batches_initialization_state_reset_targets_and_parameter_order": true,
+    "equilibrium_policy": "each_side_computes_its_own_fixed_T_equilibrium",
+    "comparisons": {
+      "conv1": {
+        "operational": [
+          4,
+          4
+        ],
+        "reference": [
+          64,
+          64
+        ]
+      },
+      "conv2": {
+        "operational": [
+          6,
+          6
+        ],
+        "reference": [
+          64,
+          64
+        ]
+      }
+    },
+    "parameter_scope": "every_ConvWeight",
+    "gates": {
+      "relative_gradient_l2_norm_delta_maximum": 0.1,
+      "absolute_zero_fraction_delta_maximum": 0.02,
+      "gradient_vector_cosine_minimum": 0.9
+    },
+    "comparison_boundaries": {
+      "norm_and_zero_fraction": "inclusive",
+      "cosine": "inclusive"
+    },
+    "failure_status": "unresolved_fixed_tk_gradient_mismatch",
+    "fixed_tk_change_allowed": false
+  },
+  "optimizer_probe": {
+    "optimizer_specific": true,
+    "shared_frozen_minibatches": true,
+    "batch_size": 16,
+    "batch_counts": [
+      32,
+      64,
+      128
+    ],
+    "initial_batch_count": 32,
+    "split_half_relative_difference_threshold": 0.1,
+    "extension_comparison": "strictly_greater_than",
+    "maximum_batch_count": 128,
+    "unstable_at_maximum_status": "unresolved_probe",
+    "nominal_learning_rate": 1.0,
+    "restore_before_every_shadow_proposal": {
+      "parameters": true,
+      "gradients": true,
+      "optimizer_state": true,
+      "moments": true,
+      "variances": true,
+      "step_counters": true
+    },
+    "adam_shadow_state": "fresh_empty_state_per_minibatch",
+    "real_adam_state": "preserve_across_training_steps",
+    "weight_unit": "median_batch_rms_preprojection_optimizer_proposal_over_initial_weight_rms",
+    "weight_learning_rate_formula": {
+      "ConvWeight_i": "rho_conv/u_i",
+      "DenseWeight_0": "rho_dense/u_dense"
+    },
+    "bias_unit": "q90_batch_rms_preprojection_optimizer_proposal_over_attached_initial_weight_rms",
+    "bias_learning_rate_formula": "min(attached_conv_weight_lr,rho_conv/u_bias_i_q90)",
+    "zero_bias_unit_policy": "use_attached_conv_weight_lr",
+    "missing_or_non_finite_unit_status": "unresolved_probe",
+    "nonpositive_conv_weight_unit_status": "unresolved_probe"
+  },
+  "rho_search": {
+    "independent_by": [
+      "architecture",
+      "scheme",
+      "optimizer"
+    ],
+    "center_canary": {
+      "initial_rho_conv": 0.003,
+      "initial_rho_dense": 0.01,
+      "steps": 640,
+      "failure_scale_divisor": 3.0,
+      "maximum_attempts": 6,
+      "restart_from_shared_initialization": true,
+      "first_safe_center_wins": true
+    },
+    "core": {
+      "rho_conv": [
+        "safe_center/3",
+        "safe_center",
+        "3*safe_center"
+      ],
+      "rho_dense": [
+        "safe_center/3",
+        "safe_center",
+        "3*safe_center"
+      ],
+      "candidate_count_per_surface": 9,
+      "ordering": "rho_conv_then_rho_dense",
+      "canary_steps_per_cell": 640,
+      "center_canary_reused_by_hash": true,
+      "every_cell_restarted_from_shared_initialization": true
+    },
+    "expansion": {
+      "directions": [
+        "factor_three_lower",
+        "factor_three_upper"
+      ],
+      "trigger": "passing_plateau_confined_to_one_or_two_outer_edges",
+      "expand_only_implicated_axes": true,
+      "include_corner_when_both_axes_expand": true,
+      "maximum_waves": 1,
+      "maximum_added_values_per_axis": 1,
+      "maximum_cells_per_surface": 16,
+      "maximum_new_cells_per_surface": 7,
+      "reuse_existing_cells_by_hash": true,
+      "second_expansion_allowed": false,
+      "no_passing_core_candidate_expands": false,
+      "still_boundary_status": "unresolved_boundary"
+    }
+  },
+  "safety": {
+    "fail_closed": true,
+    "non_finite": {
+      "loss_gradient_update_state_or_diagnostic": true,
+      "persistence_steps": 1
+    },
+    "loss_ema": {
+      "begin_after_steps": 32,
+      "decay": 0.98,
+      "factor_over_prior_minimum": 4.0,
+      "persistence_steps": 8
+    },
+    "bounded_gradient_rms": {
+      "reference": "first_32_step_median",
+      "factor_over_reference": 100.0,
+      "persistence_steps": 8
+    },
+    "combined_bound_occupancy": {
+      "increase_over_initial": 0.2,
+      "persistence_steps": 16
+    },
+    "projection_efficiency": {
+      "minimum": 0.5,
+      "persistence_steps": 16,
+      "ignore_numerically_zero_proposals": true,
+      "zero_update_epsilon": 1e-12
+    }
+  },
+  "candidate_training": {
+    "epochs": 3,
+    "steps_per_epoch": 3438,
+    "total_steps": 10314,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "validate_after_every_epoch": true,
+    "restart_from_shared_initialization": true,
+    "continue_from_canary": false,
+    "schedule": {
+      "type": "constant_parameter_specific_lr_vector",
+      "warmup_steps": 0,
+      "scheduler_enabled": false,
+      "decay": "none",
+      "restarts": false
+    },
+    "promotion": "every_safety_clean_canary_cell",
+    "failed_canary_stops_before_candidate": true,
+    "minimum_final_validation_accuracy": 0.9,
+    "accuracy_boundary": "greater_than_or_equal",
+    "official_test_evaluation": false
+  },
+  "selection": {
+    "independent_by": [
+      "architecture",
+      "scheme",
+      "optimizer"
+    ],
+    "passing_requires": [
+      "safety_admissible",
+      "exactly_10314_successful_steps",
+      "final_validation_accuracy_greater_than_or_equal_to_0.90"
+    ],
+    "primary_metric": "minimum_final_validation_loss",
+    "plateau_relative_to_minimum": 0.02,
+    "plateau_boundary": "inclusive",
+    "tie_breakers": [
+      "higher_final_validation_accuracy",
+      "higher_median_projection_efficiency",
+      "lower_maximum_target",
+      "lower_target_sum",
+      "lower_rho_conv",
+      "lower_rho_dense",
+      "deterministic_candidate_identity"
+    ],
+    "selected_status": "selected_seed0_ordinary_mnist_three_epoch_screen",
+    "unresolved_statuses": [
+      "unresolved_no_pass",
+      "unresolved_boundary",
+      "unresolved_probe",
+      "unresolved_fixed_tk_gradient_mismatch"
+    ]
+  },
+  "long_confirm": {
+    "conditional": true,
+    "one_per_resolved_surface": true,
+    "maximum_run_count": 12,
+    "restart_from_shared_initialization": true,
+    "continue_from_three_epoch_candidate": false,
+    "constant_selected_lr_vector": true,
+    "architectures": {
+      "conv1": {
+        "epochs": 10,
+        "steps_per_epoch": 3438,
+        "total_steps": 34380
+      },
+      "conv2": {
+        "epochs": 30,
+        "steps_per_epoch": 3438,
+        "total_steps": 103140
+      }
+    },
+    "validate_after_every_epoch": true,
+    "checkpoints": [
+      "best_validation_loss",
+      "final"
+    ],
+    "execution": "sequential_on_trex",
+    "ineligible_when": [
+      "no_passing_candidate",
+      "boundary_unresolved",
+      "security_failure",
+      "provenance_failure"
+    ],
+    "official_test_evaluation": false
+  },
+  "stages": {
+    "public_sequence": [
+      "audit",
+      "assets",
+      "fixed_tk_gradient_security",
+      "optimizer_probe",
+      "rho_canary_core",
+      "rho_core_candidates",
+      "select_core",
+      "rho_canary_extension",
+      "rho_extension_candidates",
+      "select_final",
+      "long_confirm",
+      "finalize"
+    ],
+    "conditional_zero_work_completion_stages": [
+      "rho_canary_extension",
+      "rho_extension_candidates",
+      "long_confirm"
+    ],
+    "completion_marker_written_last": true,
+    "resume_policy": "skip_only_hash_verified_immutable_complete_entries",
+    "incomplete_adam_policy": "restart_from_shared_initialization"
+  },
+  "execution": {
+    "one_process_per_gpu": true,
+    "screen_routing": {
+      "conv1": "akib",
+      "conv2": "trex"
+    },
+    "long_confirm_routing": "trex_sequential",
+    "host_shards": {
+      "immutable": true,
+      "shared_mutation": false,
+      "local_merge": "copy_then_sha256_verify"
+    },
+    "pre_batch_gate": [
+      "gpu_process_recheck",
+      "staged_commit_and_config_identity",
+      "remote_import_test",
+      "remote_plan_test",
+      "representative_adam_center_canary_with_memory_and_throughput"
+    ],
+    "jean_zay_authorized": false
+  },
+  "artifacts": {
+    "immutable": true,
+    "hash": "sha256",
+    "generated_results_tracked_by_git": false,
+    "source_commit_required": true,
+    "source_archive_hash_required": true,
+    "resolved_config_hash_required": true,
+    "environment_hash_required": true,
+    "dataset_split_hash_required": true,
+    "minibatch_order_hash_required": true,
+    "initialization_checkpoint_hash_required": true,
+    "stage_manifest_hashes_required": true,
+    "raw_learning_rate_vector_required": true,
+    "rho_targets_required": true,
+    "validation_metrics_required": true,
+    "safety_and_projection_diagnostics_required": true,
+    "boundary_status_required": true,
+    "official_test_read": false,
+    "replaces_medium_affine_paper_handoff": false
+  }
+}

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .protocol import ensure_run_executable
-from .specs import RunSpec
+from .specs import RunSpec, require_generic_run_schema
 
 
 @dataclass(frozen=True)
@@ -72,6 +72,7 @@ def _conv_spatial(size: int, kernel: int, stride: int, padding: int) -> int:
 
 def build_engine_config(spec: RunSpec, context: ExecutionContext) -> dict[str, Any]:
     value = spec.data
+    require_generic_run_schema(value["schema_version"], surface="run")
     run = value["run"]
     dataset = run["dataset"]
     architecture = run["architecture"]

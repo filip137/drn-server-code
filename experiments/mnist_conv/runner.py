@@ -22,7 +22,7 @@ from .identity import canonical_json_bytes, normalize_code_provenance, run_finge
 from .io import atomic_write_csv, atomic_write_json, read_json, relative_posix
 from .layout import ResultLayout
 from .protocol import ensure_run_executable
-from .specs import RunSpec
+from .specs import RunSpec, require_generic_run_schema
 
 
 STATUS_SCHEMA_VERSION = "mnist-conv-status/v1"
@@ -794,6 +794,7 @@ def _validate_pruned_best_artifacts(bundle: Path) -> None:
 
 
 def execute_run(spec: RunSpec, context: ExecutionContext, layout: ResultLayout, code_provenance: dict[str, Any], *, backend: TrainingBackend | None = None, policy: ExecutionPolicy | None = None) -> RunExecution:
+    require_generic_run_schema(spec.data["schema_version"], surface="run")
     ensure_run_executable(spec)
     policy = policy or ExecutionPolicy(); code_provenance = normalize_code_provenance(code_provenance)
     run_id, label = run_fingerprint(spec, code_provenance), spec.data["label"]

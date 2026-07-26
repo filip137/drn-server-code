@@ -11,8 +11,8 @@ This guidance applies to experiment scripts, launchers, collectors, and monitors
 - Choose `input_gain` before operational `T/K`. For both nonlinearities, preserve the per-architecture and per-amplification 30%-target calibration contract and freeze the seed-0 gain across later model seeds.
 - Reset global layer and parameter name counters before every independent calibration model, and seed the shuffled calibration loader independently of model RNG consumption.
 - For perfect diode, use projected KKT residuals for clamped hidden-layer convergence checks and keep raw residuals as diagnostics.
-- All nine hard-sigmoid gains and row-specific operational `T/K` values are frozen; the perfect-diode calibration and `T/K` rule remain pending. Do not launch paper-facing LR screens, long checks, or final training until the later training protocol is frozen.
-- Training batch size, optimizer, LR protocol, epoch budget, final seeds, and checkpoint inclusion rules remain unresolved.
+- All nine hard-sigmoid gains and row-specific operational `T/K` values are frozen. The Conv1/Conv2 hard-sigmoid seed-0 LR handoff is complete through the two v1 baselines and four v3 parameter-relative-rho amplified rows. Perfect-diode calibration and `T/K`, plus Conv3/perfect-diode LR rules, remain pending.
+- Batch size 16 and plain SGD are frozen only for the completed Conv1/Conv2 hard-sigmoid screen. Final-training epoch budget, seeds, checkpoint inclusion, and paper categories remain unresolved; do not launch long checks or final training until the later protocol is frozen.
 - Calibration outputs must preserve enough provenance for later aggregation: resolved dataset transform, affine and model seeds, convolution pipeline, nonlinearity, amplification values, calibration T, adaptive-equilibrium setting, selected gain, target occupancy, and every hidden-layer measured occupancy.
 
 ## Launching

@@ -1,6 +1,6 @@
 # Conv Paper Operational T/K Protocol
 
-Updated: 2026-07-18
+Updated: 2026-07-20
 
 Status: **hard-sigmoid selection rule and all nine values frozen. Perfect-diode rule pending.**
 
@@ -178,6 +178,6 @@ The table must retain failed and unresolved rows rather than dropping them.
 
 ## Current Gate
 
-Hard-sigmoid input gain and operational `T/K` are frozen. Hard-sigmoid paper training remains blocked only on the later training protocol settling batch size, optimizer, LR, epoch budget, final seeds, and checkpoint selection.
+Hard-sigmoid input gain and operational `T/K` are frozen. The later Conv1/Conv2 hard-sigmoid seed-0 studies froze batch size 16 and plain SGD for the screen and completed the six-row LR handoff: two v1 baseline values plus four v3 parameter-relative-rho amplified values are `frozen_seed0_screen`. Hard-sigmoid paper training remains blocked on a later final-training protocol settling epoch budget, final seeds, checkpoint selection, and inclusion rules; this `T/K` document does not define those choices.
 
 Perfect-diode `T/K` remains pending definition and is not authorized by this document.

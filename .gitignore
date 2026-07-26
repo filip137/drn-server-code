@@ -57,6 +57,10 @@ labs/mnist_pytorch/
 !docs/conv_fixed_tk_policy_20260705.csv
 !docs/conv_hardsigmoid_sat30_gains_20260718.csv
 !docs/conv_hardsigmoid_tk_selection_20260718.csv
+!docs/conv_hardsigmoid_lr_seed0_selection_20260719.csv
+!docs/conv_hardsigmoid_lr_conv1_rescue_20260719.csv
+!docs/conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv
+!docs/conv_hardsigmoid_lr_relative_rho_v3_20260719.csv
 *.pkl
 
 # External/vendor code

@@ -1,158 +1,152 @@
 # Amplification Experiment Curation
 
-Last updated: 2026-07-18
+Last updated: 2026-07-26
 
-This note is the paper-facing cleanup layer for the MNIST amplification experiments. Raw result directories are preserved, but analysis should use the curated status below.
+This is the paper-facing cleanup layer for historical MNIST amplification
+experiments. Raw result directories remain immutable; use the classifications
+below instead of selecting runs directly from the filesystem.
 
-Scope note: the evidence curated here was produced primarily with ordinary MNIST, dense models, or mixed historical Conv protocols. It remains useful as historical and diagnostic evidence, but it is not paper-facing quantitative evidence for the new deterministic medium affine MNIST Conv setup. New Conv experiments are governed by [`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md) and its linked focused protocols.
+The active deterministic-medium-affine Conv experiment is governed by
+[`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md).
+Ordinary-MNIST LR studies are curated separately in
+[`conv_learning_rate_diagnostics.md`](conv_learning_rate_diagnostics.md).
 
-## Main Conclusions
+## Main conclusions
 
-1. Early underperforming DRN-XS runs were mostly preprocessing/setup artifacts. The legacy DRN-XS preprocessing run recovers the expected baseline accuracy.
-2. The old current-amplification results for hard-sigmoid/current-amp runs were invalidated by the amplification implementation bug. Use only roots with `dense_amp_fix` for current-amplification conclusions.
-3. Perfect-diode residuals must be interpreted with projected KKT residuals, not raw `|dE/dz|` on clamped variables.
-4. The useful dense result is consistent: voltage amplification increases physical/cost sharpness and write-noise fragility; current amplification lowers curvature but can hurt clean trainability/accuracy, especially `v1/c4`.
-5. Input quantization and center occlusion are negative controls. They corrupt the input channel, not the write/conductance channel, and did not expose the same amplification mechanism.
-6. Conv1 results are usable only as preliminary historical architecture evidence. The 2026-07-05 fixed `T/K` values are superseded for the deterministic medium affine MNIST setup. All nine replacement hard-sigmoid gains and row-specific `T/K` values were frozen on 2026-07-18; the perfect-diode calibration and `T/K` rule remain pending.
-7. The ordinary-MNIST hard-sigmoid gain table and the intermediate medium-affine amplified gain candidates around `165-185` are diagnostic only. The latter were contaminated by global layer-name counters advancing between sequential model builds. Use only the counter-reset, shuffle-seed-0 calibration rooted at `results/conv_hardsigmoid_gain_medium_affine_t64_deterministic_cohort_20260718` for the active hard-sigmoid setup.
+1. Early underperforming DRN-XS rows were mainly preprocessing/setup artifacts;
+   the legacy-preprocessing baseline recovers the expected accuracy.
+2. Old hard-sigmoid current-amplification rows were invalidated by the dense
+   amplification bug. Use only `dense_amp_fix` roots for current-amplification
+   claims.
+3. Perfect-diode clamped hidden layers require projected KKT residuals. Raw
+   `|dE/dz|` remains appropriate only for unconstrained layers and diagnostics.
+4. Corrected dense evidence is consistent: voltage amplification increases
+   curvature and write-noise fragility; current amplification lowers curvature
+   but can hurt clean trainability and accuracy.
+5. Input quantization and center occlusion are negative controls for input
+   corruption, not evidence about the write/conductance mechanism.
+6. Historical Conv accuracy tables are preliminary ordinary-MNIST or
+   mixed-protocol evidence. They are not quantitative evidence for the active
+   medium-affine paper grid.
+7. The active hard-sigmoid Conv1/Conv2 LR handoff is complete; medium-affine
+   Conv3, all perfect-diode LR rules, and final training remain unresolved.
 
-## Paper-Facing Dense Runs
-
-Use these roots for dense DRN-XS claims:
+## Paper-facing dense runs
 
 | Purpose | Use root | Status |
 |---|---|---|
 | Perfect-diode DRN-XS clean BP, paper preprocessing | `results/mnist_bp_amplification_sweep_drn_xs_10epoch_legacy_preproc` | valid |
-| Hard-sigmoid baseline/voltage clean BP | `results/mnist_bp_amplification_sweep_hardsigmoid_voff15_legacy` | valid for `v1/c1`, `v2/c1`, `v4/c1`; supersede current-amp rows |
-| Hard-sigmoid current-amp clean BP after dense amp fix | `results/mnist_bp_amplification_sweep_hardsigmoid_current_amp_scratch_optuna_best_dense_amp_fix` | valid current-amp replacement |
-| Perfect-diode current-amp clean BP after dense amp fix | `results/mnist_bp_amplification_sweep_perfect_diode_current_amp_dense_amp_fix_10epoch` | valid current-amp replacement |
-| Hard-sigmoid write noise after dense amp fix | `results/mnist_bp_write_noise_sweep_hardsigmoid_voff15_sigma_response_30x_dense_amp_fix` | valid |
-| Hard-sigmoid physical Hessian after dense amp fix | `results/mnist_bp_hessian_hardsigmoid_voff15_legacy_drnxs_dense_amp_fix` | valid |
-| Hard-sigmoid physical cost sharpness after dense amp fix | `results/mnist_bp_physical_cost_sharpness_hardsigmoid_voff15_iter16_dense_amp_fix` | valid |
-| Hard-sigmoid finite-difference cost Hessian after dense amp fix | `results/mnist_bp_cost_hessian_noise_curvature_hardsigmoid_voff15_iter16_dense_amp_fix` | valid |
+| Hard-sigmoid baseline/voltage clean BP | `results/mnist_bp_amplification_sweep_hardsigmoid_voff15_legacy` | valid for `v1/c1`, `v2/c1`, `v4/c1`; current-amp rows invalid |
+| Hard-sigmoid current amp after fix | `results/mnist_bp_amplification_sweep_hardsigmoid_current_amp_scratch_optuna_best_dense_amp_fix` | valid replacement |
+| Perfect-diode current amp after fix | `results/mnist_bp_amplification_sweep_perfect_diode_current_amp_dense_amp_fix_10epoch` | valid replacement |
+| Hard-sigmoid write noise after fix | `results/mnist_bp_write_noise_sweep_hardsigmoid_voff15_sigma_response_30x_dense_amp_fix` | valid |
+| Hard-sigmoid physical Hessian after fix | `results/mnist_bp_hessian_hardsigmoid_voff15_legacy_drnxs_dense_amp_fix` | valid |
+| Hard-sigmoid physical cost sharpness after fix | `results/mnist_bp_physical_cost_sharpness_hardsigmoid_voff15_iter16_dense_amp_fix` | valid |
+| Hard-sigmoid finite-difference cost Hessian after fix | `results/mnist_bp_cost_hessian_noise_curvature_hardsigmoid_voff15_iter16_dense_amp_fix` | valid |
 
-Dense clean accuracy summary:
+Dense clean-accuracy summary:
 
-| nonlinearity/setup | v1/c1 | v2/c1 | v4/c1 | v1/c2 | v1/c4 |
+| Nonlinearity/setup | `v1/c1` | `v2/c1` | `v4/c1` | `v1/c2` | `v1/c4` |
 |---|---:|---:|---:|---:|---:|
 | perfect diode, legacy preprocessing | 0.9684 | 0.9686 | 0.9417 | 0.9677 | 0.9679 |
 | hard sigmoid, legacy rows | 0.9576 | 0.9598 | 0.9482 | invalid | invalid |
 | hard sigmoid, fixed current rows | - | - | - | 0.9520 | 0.9085 |
 | perfect diode, fixed current rows | - | - | - | 0.9561 | 0.9136 |
 
-## Dense Write-Noise Interpretation
+## Dense write-noise and curvature evidence
 
-For corrected hard-sigmoid write-noise runs, the 1 percent accuracy-drop sigma is:
+For corrected hard-sigmoid write-noise runs:
 
-| amp | clean acc | sigma for 1 percent drop | RAUC |
+| Amp | Clean accuracy | Sigma for 1% drop | RAUC |
 |---|---:|---:|---:|
-| v1/c1 | 0.9576 | 0.247 | 0.797 |
-| v2/c1 | 0.9598 | 0.155 | 0.651 |
-| v4/c1 | 0.9482 | 0.090 | 0.494 |
-| v1/c2 | 0.9458 | 0.219 | 0.746 |
-| v1/c4 | 0.9086 | 0.122 | 0.646 |
+| `v1/c1` | 0.9576 | 0.247 | 0.797 |
+| `v2/c1` | 0.9598 | 0.155 | 0.651 |
+| `v4/c1` | 0.9482 | 0.090 | 0.494 |
+| `v1/c2` | 0.9458 | 0.219 | 0.746 |
+| `v1/c4` | 0.9086 | 0.122 | 0.646 |
 
-Interpretation:
+Corrected hard-sigmoid curvature:
 
-- Voltage amplification is consistently more fragile to write noise.
-- Current amplification reduces physical/cost curvature, but its apparent robustness is limited by clean accuracy and margins. `v1/c2` is close to baseline robustness; `v1/c4` is not a clean robustness win because its starting accuracy is low.
-- Perfect-diode current-amp fixed runs did not cross a 1 percent accuracy drop in the tested small-sigma grid, but those results cover only `v1/c2` and `v1/c4` and have lower clean accuracy for `v1/c4`.
-
-## Hessian And Curvature Interpretation
-
-Corrected hard-sigmoid physical write sharpness:
-
-| amp | `S_write` mean |
-|---|---:|
-| v1/c4 | 0.092 |
-| v1/c2 | 0.624 |
-| v1/c1 | 2.612 |
-| v2/c1 | 6.499 |
-| v4/c1 | 16.287 |
-
-Corrected finite-difference cost curvature in software/log-weight directions:
-
-| amp | all-weight directional curvature |
-|---|---:|
-| v1/c4 | 0.090 |
-| v1/c2 | 0.664 |
-| v1/c1 | 2.666 |
-| v2/c1 | 6.357 |
-| v4/c1 | 14.934 |
-
-Physical Hessian spectral-radius trends agree with the same qualitative story:
-
-| amp | hard-sigmoid `rho` | LPW/perfect-diode `rho` |
+| Amp | Physical write sharpness | Software/log-weight directional curvature |
 |---|---:|---:|
-| v1/c4 | 0.0060 | 0.0041 |
-| v1/c2 | 0.0081 | 0.0081 |
-| v1/c1 | 0.0082 | 0.0161 |
-| v2/c1 | 0.0167 | 0.0427 |
-| v4/c1 | 0.0491 | 0.1504 |
+| `v1/c4` | 0.092 | 0.090 |
+| `v1/c2` | 0.624 | 0.664 |
+| `v1/c1` | 2.612 | 2.666 |
+| `v2/c1` | 6.499 | 6.357 |
+| `v4/c1` | 16.287 | 14.934 |
 
-Paper interpretation:
+Voltage amplification is consistently sharper and more write-noise fragile.
+Current amplification lowers physical curvature, but the `v1/c4` clean
+accuracy and margins are too poor to call it a robustness win. Curvature
+claims must name the perturbation coordinate; software-weight and physical
+conductance/log-G noise are not interchangeable.
 
-- Voltage amplification makes the equilibrium/cost landscape sharper.
-- Current amplification makes the physical Hessian smoother, but this is not sufficient by itself; training quality and output margins matter.
-- Curvature predicts noise sensitivity best when the perturbation coordinate matches the noise model. Software-weight noise and physical-conductance/log-G noise should not be mixed in one claim.
+## Conv evidence
 
-## Conv Runs
+These older ordinary-MNIST tables remain useful only as preliminary
+architecture evidence:
 
-Conv1 is a useful preliminary result:
-
-| nonlinearity, conv1 continued | v1/c1 | v2/c1 | v4/c1 | v1/c2 | v1/c4 |
+| Nonlinearity, Conv1 continued | `v1/c1` | `v2/c1` | `v4/c1` | `v1/c2` | `v1/c4` |
 |---|---:|---:|---:|---:|---:|
 | hard sigmoid | 0.9549 | 0.9671 | 0.9718 | 0.9337 | 0.9025 |
 | perfect diode | 0.9733 | 0.9736 | 0.9737 | 0.9672 | 0.9378 |
 
-Conv2 current status:
-
-| nonlinearity, conv2 K=6 50 epoch | v1/c1 | v2/c1 | v4/c1 | v1/c2 | v1/c4 |
+| Nonlinearity, Conv2 K=6 50 epochs | `v1/c1` | `v2/c1` | `v4/c1` | `v1/c2` | `v1/c4` |
 |---|---:|---:|---:|---:|---:|
 | hard sigmoid | 0.9512 | 0.9706 | 0.9797 | 0.8611 | 0.8254 |
 | perfect diode | 0.8830 | 0.9472 | 0.9807 | 0.7379 | 0.7079 |
 
-Do not use these older Conv2 K=6 roots as final paper figures; they use ordinary MNIST and are mixed with older geometry, operating-point, and T/K choices. The July 5 T/K policy is also superseded. The medium-affine hard-sigmoid gains and replacement row-specific T/K values are now frozen, but new Conv2 paper training must still wait for the later batch-size/optimizer/LR/final-training protocol.
+Do not use these as final figures. They mix ordinary MNIST with older gains,
+geometry, `T/K`, LR, epoch, and sometimes output conventions.
 
-Useful Conv2 diagnostic: the cost-Hessian ordering already mirrors the dense story. Voltage amplification increases curvature; current amplification lowers curvature but can undertrain or collapse. These results do not determine the paper-facing accuracy comparison under the new protocol.
+For the active medium-affine setup:
 
-## Negative Controls
+- all nine hard-sigmoid gains and row-specific `T/K` pairs are frozen;
+- Conv1/Conv2 baseline LRs come from v1;
+- Conv1/Conv2 amplified LRs come from v3;
+- the authoritative six-row table is
+  [`conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv`](conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv);
+- LR-screen validation values are not paper-facing accuracy;
+- medium-affine Conv3 and perfect-diode LR rules remain unresolved.
 
-Keep as negative-control evidence, not as the main amplification mechanism:
+V4-v7, the scheme-specific two-rho sweeps, and the Conv2 SGD/Adam boundary
+study are optimizer diagnostics only. Their disposition and important results
+are kept in the diagnostic ledger rather than repeated here.
+
+## Negative controls
 
 | Control | Root | Useful conclusion |
 |---|---|---|
-| Input quantization | `results/mnist_bp_input_quantization_sweep_standard_best_bits2_3_4_8` | Input quantization is mild down to very low bit counts and does not reproduce write-noise amplification ordering. |
-| Center occlusion | `results/mnist_bp_input_occlusion_sweep_standard_best_center_zero` | Accuracy drop is dominated by occlusion size and input information loss, not by a clean amplification effect. |
-| Software-weight perfect-diode high-sigma noise | `results/mnist_bp_write_noise_sweep_standard_best_30x_highsigma_no_v4c1` | Useful for showing coordinate mismatch: software-weight noise was nearly amplification-independent for legacy perfect-diode models. |
+| Input quantization | `results/mnist_bp_input_quantization_sweep_standard_best_bits2_3_4_8` | Mild down to low bit counts; does not reproduce write-noise amplification ordering. |
+| Center occlusion | `results/mnist_bp_input_occlusion_sweep_standard_best_center_zero` | Dominated by input information loss, not a clean amplification effect. |
+| Perfect-diode high-sigma software-weight noise | `results/mnist_bp_write_noise_sweep_standard_best_30x_highsigma_no_v4c1` | Demonstrates perturbation-coordinate mismatch; nearly amplification-independent for legacy models. |
 
-## Exclude Or Supersede
+## Exclude or supersede
 
-Do not use the following as paper-facing quantitative evidence:
+Do not use these as paper-facing quantitative evidence:
 
 | Root/pattern | Reason |
 |---|---|
-| `results/mnist_bp_amplification_sweep` | partial/early run; not the final DRN-XS paper setup |
-| `results/mnist_bp_amplification_sweep_bias_lower_lr` | exploratory rerun, not final setup |
-| `results/mnist_bp_amplification_sweep_drn_xs_10epoch` | superseded by legacy preprocessing run |
-| early physical-conductance LR sweeps under `results/mnist_bp_amp_physical_conductance_lr_sweep` | wrong conductance/gain assumptions for the final clean BP comparison |
-| `results/mnist_bp_amplification_sweep_hardsigmoid_voff15_legacy` current-amp rows | invalidated by dense current-amplification bug |
-| `results/mnist_bp_hessian_hardsigmoid_voff15_legacy_drnxs` | superseded by `..._dense_amp_fix` |
-| `results/mnist_bp_physical_cost_sharpness_hardsigmoid_voff15_iter16` | superseded by `..._dense_amp_fix` |
-| `results/mnist_bp_cost_hessian_noise_curvature_hardsigmoid_voff15_iter16` | superseded by `..._dense_amp_fix` |
-| `results/mnist_bp_residual_current_diagnostic_hardsigmoid_iter16` | invalidated by hard-sigmoid updater conductance scaling bug |
-| `results/mnist_bp_conv2_hardsigmoid_residual_vs_iterations_seed0` | superseded by corrected KKT/raw residual diagnostic |
-| pre-2026-07-05 conv2 K=6 training roots | preliminary only; mixed older geometry/operating-point choices and not evidence for the new medium-affine protocol |
+| `results/mnist_bp_amplification_sweep` | partial early run |
+| `results/mnist_bp_amplification_sweep_bias_lower_lr` | exploratory rerun |
+| `results/mnist_bp_amplification_sweep_drn_xs_10epoch` | superseded by legacy preprocessing |
+| early `results/mnist_bp_amp_physical_conductance_lr_sweep` | wrong conductance/gain assumptions |
+| current-amp rows in `results/mnist_bp_amplification_sweep_hardsigmoid_voff15_legacy` | dense amplification bug |
+| `results/mnist_bp_hessian_hardsigmoid_voff15_legacy_drnxs` | superseded by `dense_amp_fix` |
+| `results/mnist_bp_physical_cost_sharpness_hardsigmoid_voff15_iter16` | superseded by `dense_amp_fix` |
+| `results/mnist_bp_cost_hessian_noise_curvature_hardsigmoid_voff15_iter16` | superseded by `dense_amp_fix` |
+| `results/mnist_bp_residual_current_diagnostic_hardsigmoid_iter16` | updater conductance-scaling bug |
+| `results/mnist_bp_conv2_hardsigmoid_residual_vs_iterations_seed0` | superseded by corrected residual diagnostic |
+| pre-2026-07-18 Conv gain and `T/K` handoffs | superseded for deterministic medium affine MNIST |
 
-## Standard Paper Setup Going Forward
+## Standard setup going forward
 
-Use [`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md) as the active Conv protocol index. It freezes the experiment definition, all nine hard-sigmoid gains, and all nine hard-sigmoid operational T/K values. The perfect-diode calibration and T/K rule are pending, and batch size for training, optimizer, LR, epoch budget, and final seeds remain unresolved.
-
-1. Dense DRN-XS perfect diode: use `legacy_preproc` for baseline/voltage/current comparison, and fixed-current reruns for current-amplification bug checks.
-2. Dense hard sigmoid: combine legacy baseline/voltage rows with fixed-current rows only when explicitly labeled. These dense five-scheme comparisons do not define the active three-scheme Conv grid.
-3. Conv1: can be discussed as preliminary, but final figures should use a single seed protocol only if labeled as such.
-4. Conv1/Conv2/Conv3: use only baseline `v1/c1`, proposed/ours `v4/c1`, and legacy `v4/c0.25`; freeze each row's medium-affine input gain before running its T/K diagnostic. Do not begin LR selection or paper training until the applicable operational values are frozen.
-5. Whenever reporting residuals:
-   - hard sigmoid: raw `max |dE/dz|`.
-   - perfect diode: projected KKT residual for clamped diode layers plus raw residual for unconstrained output layers.
-6. Whenever reporting noise robustness, state the perturbation coordinate: software `Weight`, physical conductance/log-G, input quantization, or input occlusion.
+- Conv paper rows use only baseline `v1/c1`, proposed/ours `v4/c1`, and legacy
+  `v4/c0.25`.
+- Gain is calibrated separately per architecture, nonlinearity, and scheme
+  before operational `T/K`.
+- Hard-sigmoid residuals use raw `max |dE/dz|`.
+- Perfect-diode clamped hidden layers use projected KKT residuals.
+- Robustness reports always name the perturbation coordinate.
+- Final paper training waits for the unresolved active protocols even when an
+  ordinary-MNIST diagnostic has completed.

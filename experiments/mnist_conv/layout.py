@@ -9,6 +9,7 @@ from pathlib import Path
 
 _RUN_ID = re.compile(r"run_[0-9a-f]{64}\Z")
 _SWEEP_ID = re.compile(r"sweep_[0-9a-f]{64}\Z")
+_LR_STUDY_ID = re.compile(r"lrstudy_[0-9a-f]{64}\Z")
 
 
 def _validated_id(value: str, pattern: re.Pattern[str], kind: str) -> str:
@@ -53,6 +54,10 @@ class ResultLayout:
     def attempts_root(self) -> Path:
         return self.root / "attempts"
 
+    @property
+    def lr_studies_root(self) -> Path:
+        return self.root / "lr_studies"
+
     def run_dir(self, label: str, run_id: str) -> Path:
         return self.runs_root / f"{safe_label(label)}--{_validated_id(run_id, _RUN_ID, 'run')}"
 
@@ -79,6 +84,25 @@ class ResultLayout:
             )
         return matches[0] if matches else None
 
+    def lr_study_dir(self, name: str, study_id: str) -> Path:
+        return self.lr_studies_root / (
+            f"{safe_label(name)}--{_validated_id(study_id, _LR_STUDY_ID, 'LR study')}"
+        )
+
+    def find_lr_study_dir(self, study_id: str) -> Path | None:
+        canonical_id = _validated_id(study_id, _LR_STUDY_ID, "LR study")
+        matches = (
+            sorted(self.lr_studies_root.glob(f"*--{canonical_id}"))
+            if self.lr_studies_root.exists()
+            else []
+        )
+        if len(matches) > 1:
+            raise RuntimeError(
+                f"Expected at most one published directory for {canonical_id}. "
+                f"Provided value: {matches!r}."
+            )
+        return matches[0] if matches else None
+
     def attempt_root(self, run_id: str) -> Path:
         return self.attempts_root / _validated_id(run_id, _RUN_ID, "run")
 
@@ -99,3 +123,4 @@ class ResultLayout:
         self.runs_root.mkdir(parents=True, exist_ok=True)
         self.sweeps_root.mkdir(parents=True, exist_ok=True)
         self.attempts_root.mkdir(parents=True, exist_ok=True)
+        self.lr_studies_root.mkdir(parents=True, exist_ok=True)

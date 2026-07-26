@@ -1,5 +1,9 @@
 # Fixed-Step Conv DRN Redo Run Plan
 
+> Historical run plan. It predates the active Conv paper protocol index,
+> frozen input gains and `T/K`, and the v1/v3 learning-rate handoff. Preserve
+> it as provenance only; do not use it to launch current experiments.
+
 Updated: 2026-07-03
 
 ## Purpose

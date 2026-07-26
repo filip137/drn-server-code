@@ -1,5 +1,10 @@
 # Learning Nonlinear Parameters
 
+> Historical mixed-protocol diagnostic snapshot. This note predates the
+> deterministic-medium-affine Conv paper protocol and its frozen v1/v3
+> learning-rate handoff. It is preserved for provenance only and is not an
+> active protocol or paper-facing comparison.
+
 Updated: 2026-06-29 14:08 CEST
 
 ## Scope

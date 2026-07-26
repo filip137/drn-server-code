@@ -17,7 +17,7 @@ from .layout import ResultLayout
 from .manifest import load_manifest
 from .protocol import final_protocol_approval_reason
 from .runner import InvalidBundleError, validate_bundle
-from .specs import RunSpec, pointer_get
+from .specs import RunSpec, pointer_get, require_generic_run_schema
 
 
 COLLECTION_SCHEMA_VERSION = "mnist-conv-collection/v1"
@@ -53,6 +53,10 @@ SUMMARY_COLUMNS = [
     "run_relpath", "best_checkpoint_path", "final_checkpoint_path",
     "weights_best_path", "weights_final_path",
     "best_checkpoint_sha256", "final_checkpoint_sha256",
+    "peak_learning_rate", "lr_schedule", "train_shuffle_seed",
+    "validation_indices_sha256", "best_validation_epoch",
+    "best_validation_loss", "final_validation_loss",
+    "final_validation_accuracy",
 ]
 
 CASE_SUMMARY_COLUMNS = [
@@ -60,6 +64,8 @@ CASE_SUMMARY_COLUMNS = [
     "expected_seeds", "complete_seeds", "missing_seeds",
     "run_count", "complete_count", "best_test_accuracy_mean",
     "final_test_accuracy_mean", "paper_eligible", "eligibility_reasons",
+    "best_validation_loss_mean", "final_validation_loss_mean",
+    "final_validation_accuracy_mean",
 ]
 
 
@@ -232,6 +238,17 @@ def _comparison_contract_fields(spec: RunSpec) -> dict[str, Any]:
     checkpoint = run["initialization"]["checkpoint"]
     if checkpoint is not None:
         checkpoint = {key: item for key, item in checkpoint.items() if key != "path"}
+    lr_screen = value["schema_version"] in {
+        "mnist-conv-run/v2",
+        "mnist-conv-run/v3",
+    }
+    lr_policy = {
+        "optimizer": training["optimizer"],
+        "schedule": training["schedule"],
+    } if lr_screen else {
+        "optimizer": training["optimizer"],
+        "lr_decay": training["lr_decay"],
+    }
     return {
         "comparison_protocol_mismatch": {
             "protocol_id": value["protocol_id"],
@@ -261,18 +278,11 @@ def _comparison_contract_fields(spec: RunSpec) -> dict[str, Any]:
         "comparison_batch_size_mismatch": dataset["batch_size"],
         "comparison_epoch_budget_mismatch": training["epochs"],
         "comparison_checkpoint_rule_mismatch": training["checkpoint_rule"],
-        "comparison_solver_tk_mismatch": {
-            "inference_iterations": solver["inference_iterations"],
-            "training_iterations": solver["training_iterations"],
-        },
         "comparison_minimizer_mismatch": {
             "energy_mode": solver["energy_mode"],
             "minimizer": solver["minimizer"],
         },
-        "comparison_lr_policy_mismatch": {
-            "optimizer": training["optimizer"],
-            "lr_decay": training["lr_decay"],
-        },
+        "comparison_lr_policy_mismatch": lr_policy,
         "comparison_training_policy_mismatch": {
             "algorithm": training["algorithm"],
             "beta": training["beta"],
@@ -297,13 +307,26 @@ def _case_linked_fields(spec: RunSpec) -> dict[str, Any]:
         or key == "layer_measurements"
         or key.startswith("measured_")
     }
+    training = run["training"]
+    schema = spec.data["schema_version"]
+    learning_rate = (
+        training["peak_learning_rate"]
+        if schema == "mnist-conv-run/v2"
+        else training["learning_rates_by_parameter"]
+        if schema == "mnist-conv-run/v3"
+        else training["learning_rate"]
+    )
     return {
         "case_amplification_mismatch": {
             "voltage_amp": model["voltage_amp"],
             "current_amp": model["current_amp"],
         },
         "case_input_gain_mismatch": model["input_gain"],
-        "case_learning_rate_mismatch": run["training"]["learning_rate"],
+        "case_learning_rate_mismatch": learning_rate,
+        "case_solver_tk_mismatch": {
+            "inference_iterations": run["solver"]["inference_iterations"],
+            "training_iterations": run["solver"]["training_iterations"],
+        },
         "case_calibration_binding_mismatch": measurements,
     }
 
@@ -454,6 +477,17 @@ def _summary_row(
     metrics = metrics or {}
     calibration, dataset = run["calibration"], run["dataset"]
     hard_sigmoid = model["non_linearity"] == "hard_sigmoid"
+    v2 = value["schema_version"] == "mnist-conv-run/v2"
+    v3 = value["schema_version"] == "mnist-conv-run/v3"
+    lr_screen = v2 or v3
+    learning_rate = (
+        training["peak_learning_rate"]
+        if v2
+        else training["learning_rates_by_parameter"]
+        if v3
+        else training["learning_rate"]
+    )
+    validation = dataset.get("validation", {}) if lr_screen else {}
     return {
         "job_index": entry["job_index"], "logical_key": entry["logical_key"],
         "case_id": entry["case_id"], "run_id": entry["run_id"], "status": status,
@@ -479,7 +513,20 @@ def _summary_row(
         "measured_initial_occupancy": "" if hard_sigmoid else calibration["measured_initial_occupancy"],
         "inference_iterations": solver["inference_iterations"],
         "training_iterations": solver["training_iterations"], "epochs": training["epochs"],
-        "learning_rate": json.dumps(training["learning_rate"], separators=(",", ":")),
+        "learning_rate": json.dumps(learning_rate, separators=(",", ":")),
+        "peak_learning_rate": (
+            training["peak_learning_rate"]
+            if v2
+            else max(training["learning_rates_by_parameter"].values())
+            if v3
+            else ""
+        ),
+        "lr_schedule": (
+            json.dumps(training["schedule"], sort_keys=True, separators=(",", ":"))
+            if lr_screen else ""
+        ),
+        "train_shuffle_seed": dataset.get("train_shuffle_seed", ""),
+        "validation_indices_sha256": validation.get("indices_sha256", ""),
         "checkpoint_rule": training["checkpoint_rule"],
         "batch_state_policy": training["batch_state_policy"],
         "best_epoch": metrics.get("best_epoch", ""),
@@ -487,6 +534,12 @@ def _summary_row(
         "final_test_accuracy": metrics.get("final_test_accuracy", ""),
         "final_train_loss": metrics.get("final_train_loss", ""),
         "final_test_loss": metrics.get("final_test_loss", ""),
+        "best_validation_epoch": metrics.get(
+            "best_validation_epoch", metrics.get("best_epoch", "") if lr_screen else ""
+        ),
+        "best_validation_loss": metrics.get("best_validation_loss", ""),
+        "final_validation_loss": metrics.get("final_validation_loss", ""),
+        "final_validation_accuracy": metrics.get("final_validation_accuracy", ""),
         "run_relpath": run_relpath,
         "best_checkpoint_path": metrics.get("best_checkpoint_path", "checkpoints/best.pt"),
         "final_checkpoint_path": metrics.get("checkpoint_path", "checkpoints/final.pt"),
@@ -505,6 +558,11 @@ def collect_sweep(
 ) -> dict[str, Any]:
     manifest_file = Path(manifest_path).expanduser().resolve()
     manifest = load_manifest(manifest_file)
+    for entry in manifest["entries"]:
+        require_generic_run_schema(
+            entry["run_spec"]["schema_version"],
+            surface="collection",
+        )
     sweep_dir = layout.find_sweep_dir(manifest["sweep_id"]) or layout.sweep_dir(
         manifest["sweep_name"], manifest["sweep_id"]
     )
@@ -629,6 +687,11 @@ def collect_sweep(
             row["eligibility_reasons"] = json.dumps(sorted(set(reasons)), separators=(",", ":"))
 
         grouped: list[dict[str, Any]] = []
+
+        def numeric_mean(values: list[Any]) -> float | str:
+            present = [float(value) for value in values if value not in (None, "")]
+            return sum(present) / len(present) if present else ""
+
         for grouped_key in required_groups:
             case_id, group_key = grouped_key
             run_ids = {
@@ -654,13 +717,20 @@ def collect_sweep(
                 "complete_seeds": json.dumps([seed for seed in expected_seeds if seed in complete_seeds_by_group[grouped_key]], separators=(",", ":")),
                 "missing_seeds": json.dumps([seed for seed in expected_seeds if seed not in complete_seeds_by_group[grouped_key]], separators=(",", ":")),
                 "run_count": len(case_rows), "complete_count": len(complete_rows),
-                "best_test_accuracy_mean": (
-                    sum(float(row["best_test_accuracy"]) for row in complete_rows) / len(complete_rows)
-                    if complete_rows else ""
+                "best_test_accuracy_mean": numeric_mean(
+                    [row["best_test_accuracy"] for row in complete_rows]
                 ),
-                "final_test_accuracy_mean": (
-                    sum(float(row["final_test_accuracy"]) for row in complete_rows) / len(complete_rows)
-                    if complete_rows else ""
+                "final_test_accuracy_mean": numeric_mean(
+                    [row["final_test_accuracy"] for row in complete_rows]
+                ),
+                "best_validation_loss_mean": numeric_mean(
+                    [row["best_validation_loss"] for row in complete_rows]
+                ),
+                "final_validation_loss_mean": numeric_mean(
+                    [row["final_validation_loss"] for row in complete_rows]
+                ),
+                "final_validation_accuracy_mean": numeric_mean(
+                    [row["final_validation_accuracy"] for row in complete_rows]
                 ),
                 "paper_eligible": bool(complete_rows) and all(bool(row["paper_eligible"]) for row in case_rows),
                 "eligibility_reasons": json.dumps(case_reasons, separators=(",", ":")),
