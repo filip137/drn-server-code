@@ -613,4 +613,5 @@ def test_campaign_uses_lazy_default_runner(
     assert result == 0
     assert seen[0][0].campaign_id == "comparison"
     assert seen[0][1]["output_root"] == tmp_path / "outputs"
+    assert seen[0][1]["manifest_path"] == manifest.resolve()
     assert seen[0][1]["dry_run"] is True

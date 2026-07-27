@@ -591,6 +591,7 @@ def _default_campaign_handler(request: CampaignRunRequest) -> int:
         records = run_campaign(
             request.spec,
             output_root=request.output_dir,
+            manifest_path=request.manifest_path,
             resume=request.resume,
             dry_run=request.dry_run,
             allow_dirty=request.allow_dirty,
