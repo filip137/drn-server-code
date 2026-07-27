@@ -214,13 +214,6 @@ def build_model_stack(common: CommonSettings) -> ModelStack:
     """Build the legacy dense resistive model behind stable parameter names."""
 
     adapter = common.model.adapter
-    if adapter.type != "none":
-        raise NotImplementedError(
-            "Expected small_drn.v1 runtime model.adapter.type to be 'none' "
-            "until the passive-low-rank branch supplies its adapter. "
-            f"Provided value: {adapter.type!r}."
-        )
-
     device = _resolve_device(common.runtime.device)
     dtype = _DTYPES[common.runtime.dtype]
     dims = common.model.dims
@@ -258,6 +251,11 @@ def build_model_stack(common: CommonSettings) -> ModelStack:
         current_amp=common.model.current_amp,
         weight_min=common.model.weight_min,
         weight_max=common.model.weight_max,
+        passive_low_rank_adapter=(
+            dict(adapter.parameters)
+            if adapter.type == "passive_low_rank"
+            else None
+        ),
     )
     energy = bundle.energy
     energy.set_device(device)
@@ -453,6 +451,16 @@ def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
         **dict(spec.settings.update_backend.parameters),
     }
     parsed_pipeline = parse_update_pipeline(update_pipeline)
+    if (
+        spec.common.model.adapter.type == "passive_low_rank"
+        and parsed_pipeline is not None
+        and parsed_pipeline.aihwkit_preset is not None
+    ):
+        raise ValueError(
+            "Expected passive_low_rank training to use direct updates or the "
+            "ideal-tensor Tiki-Taka backend. Provided value: "
+            f"aihwkit_preset={parsed_pipeline.aihwkit_preset!r}."
+        )
     optimizer = build_optimizer(
         energy,
         cost_fn,

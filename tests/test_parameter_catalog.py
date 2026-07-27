@@ -66,6 +66,48 @@ def test_builder_wrap_does_not_change_initial_parameter_values():
         torch.testing.assert_close(actual.state, expected, rtol=0.0, atol=0.0)
 
 
+def test_passive_low_rank_catalog_has_stable_groups_roles_and_views():
+    kwargs = _drn_kwargs()
+    kwargs.update(
+        {
+            "layer_shapes": [(4,), (2,)],
+            "weight_gains": [0.2],
+            "passive_low_rank_adapter": {
+                "rank": 3,
+                "input_factor_gain": 0.1,
+                "input_factor_min": 1e-7,
+                "conductance_max": 1.0,
+                "output_factor_init": "zero",
+            },
+        }
+    )
+
+    bundle = build_deep_resistive_energy(**kwargs)
+
+    assert [binding.key for binding in bundle.catalog.all] == [
+        "base.dense_weight.0",
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+    ]
+    assert [
+        (binding.group, binding.role)
+        for binding in bundle.catalog.all
+    ] == [
+        ("base", "dense_weight"),
+        ("adapter", "input_factor"),
+        ("adapter", "output_factor"),
+    ]
+    assert [binding.key for binding in bundle.catalog.trainable] == [
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+    ]
+    assert bundle.catalog.checkpointed == bundle.catalog.all
+    assert bundle.catalog.all_parameters == tuple(bundle.energy._params)
+    assert bundle.catalog.trainable_parameters == tuple(
+        bundle.energy.adapter_params()
+    )
+
+
 def test_explicit_catalog_supports_extension_groups_and_frozen_parameters():
     base = SimpleNamespace(state=torch.ones(2, 2))
     adapter = SimpleNamespace(state=torch.zeros(2, 1))

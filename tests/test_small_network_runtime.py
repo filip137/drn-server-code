@@ -30,7 +30,8 @@ from experiments.small_network.runtime import (
     run_train,
     run_validate,
 )
-from training.checkpoint import NAMED_WEIGHTS_SCHEMA
+from model.resistive.builders import ParameterCatalog
+from training.checkpoint import NAMED_WEIGHTS_SCHEMA, save_named_weights
 
 
 _REPO_ROOT = Path(__file__).parents[1]
@@ -59,6 +60,44 @@ def _document():
     payload["modes"]["linspace"]["samples"] = 2
     payload["modes"]["validate"]["sample_limit"] = 4
     return parse_small_drn_config(payload)
+
+
+def _adapter_document(*, backend: str = "direct"):
+    payload = json.loads(
+        (_REPO_ROOT / "examples" / "small_drn" / "lora.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload["data"].update(
+        {"num_points": 10, "batch_size": 2, "shuffle": False}
+    )
+    payload["solver"].update(
+        {"inference_iterations": 1, "training_iterations": 1}
+    )
+    payload["solver"]["polish"]["enabled"] = False
+    payload["modes"]["train"].update(
+        {
+            "num_epochs": 1,
+            "max_batches": 1,
+            "max_validation_batches": 1,
+            "update_backend": {"type": backend, "parameters": {}},
+        }
+    )
+    payload["modes"]["linspace"]["samples"] = 2
+    payload["modes"]["validate"]["sample_limit"] = 4
+    return parse_small_drn_config(payload)
+
+
+def _write_adapter_base_weights(document, path: Path) -> dict[str, torch.Tensor]:
+    stack = build_model_stack(document.common)
+    base_catalog = ParameterCatalog(
+        stack.bundle.catalog.for_group("base", checkpointed_only=True)
+    )
+    save_named_weights(path, base_catalog)
+    return {
+        binding.key: binding.state.detach().cpu().clone()
+        for binding in base_catalog
+    }
 
 
 def _runs(output_root: Path) -> list[Path]:
@@ -324,6 +363,170 @@ def test_legacy_import_is_explicit_and_produces_named_weights(
     assert payload["metadata"]["source_sha256"]
 
 
+def test_passive_low_rank_training_requires_one_unambiguous_source(
+    tmp_path: Path,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    adapter_spec = definition.resolve(
+        _adapter_document(),
+        RunMode.TRAIN,
+    )
+
+    with pytest.raises(ValueError, match="exactly one"):
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=adapter_spec,
+                config_path=tmp_path / "adapter.json",
+                output_dir=tmp_path / "missing",
+                weights=None,
+                base_weights=None,
+                resume=None,
+                command=("ebl", "train"),
+            )
+        )
+    assert not (tmp_path / "missing").exists()
+
+    with pytest.raises(ValueError, match="at most one"):
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=adapter_spec,
+                config_path=tmp_path / "adapter.json",
+                output_dir=tmp_path / "ambiguous",
+                weights=tmp_path / "full.pt",
+                base_weights=tmp_path / "base.pt",
+                resume=None,
+                command=("ebl", "train"),
+            )
+        )
+    assert not (tmp_path / "ambiguous").exists()
+
+    base_spec = definition.resolve(_document(), RunMode.TRAIN)
+    with pytest.raises(ValueError, match="only when"):
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=base_spec,
+                config_path=tmp_path / "base.json",
+                output_dir=tmp_path / "invalid-base-source",
+                weights=None,
+                base_weights=tmp_path / "base.pt",
+                resume=None,
+                command=("ebl", "train"),
+            )
+        )
+
+
+@pytest.mark.parametrize("backend", ["direct", "tiki_taka"])
+def test_passive_low_rank_tiny_training_freezes_base_and_writes_full_catalog(
+    tmp_path: Path,
+    backend: str,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    document = _adapter_document(backend=backend)
+    spec = definition.resolve(document, RunMode.TRAIN)
+    base_path = tmp_path / f"{backend}-base.pt"
+    expected_base = _write_adapter_base_weights(document, base_path)
+    output_root = tmp_path / backend
+
+    assert (
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=spec,
+                config_path=tmp_path / "adapter.json",
+                output_dir=output_root,
+                weights=None,
+                base_weights=base_path,
+                resume=None,
+                command=("ebl", "train", "--base-weights"),
+            )
+        )
+        == 0
+    )
+    weights_path = _runs(output_root)[0] / "checkpoints" / "weights.pt"
+    payload = _torch_load(weights_path)
+    assert list(payload["weights"]) == [
+        "base.dense_weight.0",
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+    ]
+    assert torch.equal(
+        payload["weights"]["base.dense_weight.0"],
+        expected_base["base.dense_weight.0"],
+    )
+
+    if backend == "direct":
+        assert (
+            run_train(
+                TrainRequest(
+                    definition=definition,
+                    spec=spec,
+                    config_path=tmp_path / "adapter.json",
+                    output_dir=tmp_path / "full-source",
+                    weights=weights_path,
+                    base_weights=None,
+                    resume=None,
+                    command=("ebl", "train", "--weights"),
+                )
+            )
+            == 0
+        )
+
+
+def test_passive_low_rank_legacy_base_import_is_explicit_and_scoped(
+    tmp_path: Path,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    document = _adapter_document()
+    stack = build_model_stack(document.common)
+    base_bindings = stack.bundle.catalog.for_group(
+        "base", checkpointed_only=True
+    )
+    source = tmp_path / "legacy-base.pt"
+    torch.save(
+        [binding.state.detach().cpu().clone() for binding in base_bindings],
+        source,
+    )
+    output = tmp_path / "named-base.pt"
+
+    assert (
+        import_legacy_checkpoint(
+            ImportLegacyCheckpointRequest(
+                definition=definition,
+                document=document,
+                config_path=tmp_path / "adapter.json",
+                source=source,
+                output=output,
+                kind="base",
+                command=("ebl", "checkpoint", "import-legacy"),
+            )
+        )
+        == 0
+    )
+    payload = _torch_load(output)
+    assert list(payload["weights"]) == ["base.dense_weight.0"]
+    assert payload["metadata"]["legacy_profile"] == "base-only"
+
+    spec = definition.resolve(document, RunMode.TRAIN)
+    assert (
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=spec,
+                config_path=tmp_path / "adapter.json",
+                output_dir=tmp_path / "from-import",
+                weights=None,
+                base_weights=output,
+                resume=None,
+                command=("ebl", "train", "--base-weights"),
+            )
+        )
+        == 0
+    )
+
+
 def test_split_run_restores_carried_equilibrium_state_exactly(
     tmp_path: Path,
 ) -> None:
@@ -397,6 +600,103 @@ def test_split_run_restores_carried_equilibrium_state_exactly(
     assert uninterrupted["runtime_state_state"]["layers"].keys() == (
         resumed["runtime_state_state"]["layers"].keys()
     )
+    for key, expected in uninterrupted["weights"]["weights"].items():
+        torch.testing.assert_close(
+            resumed["weights"]["weights"][key],
+            expected,
+            rtol=0.0,
+            atol=0.0,
+        )
+    for key, expected in uninterrupted["runtime_state_state"]["layers"].items():
+        torch.testing.assert_close(
+            resumed["runtime_state_state"]["layers"][key],
+            expected,
+            rtol=0.0,
+            atol=0.0,
+        )
+
+
+@pytest.mark.parametrize("backend", ["direct", "tiki_taka"])
+def test_passive_low_rank_split_run_restores_rank_layer_state_exactly(
+    tmp_path: Path,
+    backend: str,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    one_epoch_document = _adapter_document(backend=backend)
+    two_epoch_document = replace(
+        one_epoch_document,
+        train=replace(one_epoch_document.train, num_epochs=2),
+    )
+    one_epoch_spec = definition.resolve(
+        one_epoch_document,
+        RunMode.TRAIN,
+    )
+    two_epoch_spec = definition.resolve(
+        two_epoch_document,
+        RunMode.TRAIN,
+    )
+    base_path = tmp_path / "base.pt"
+    _write_adapter_base_weights(one_epoch_document, base_path)
+
+    uninterrupted_root = tmp_path / "adapter-uninterrupted"
+    run_train(
+        TrainRequest(
+            definition=definition,
+            spec=two_epoch_spec,
+            config_path=tmp_path / "two.json",
+            output_dir=uninterrupted_root,
+            weights=None,
+            base_weights=base_path,
+            resume=None,
+            command=("ebl", "train", "--base-weights"),
+        )
+    )
+    uninterrupted = _torch_load(
+        _runs(uninterrupted_root)[0] / "checkpoints" / "resume.pt"
+    )
+
+    split_root = tmp_path / "adapter-split"
+    run_train(
+        TrainRequest(
+            definition=definition,
+            spec=one_epoch_spec,
+            config_path=tmp_path / "one.json",
+            output_dir=split_root,
+            weights=None,
+            base_weights=base_path,
+            resume=None,
+            command=("ebl", "train", "--base-weights"),
+        )
+    )
+    boundary = _runs(split_root)[0] / "checkpoints" / "resume.pt"
+    run_train(
+        TrainRequest(
+            definition=definition,
+            spec=two_epoch_spec,
+            config_path=tmp_path / "two.json",
+            output_dir=split_root,
+            weights=None,
+            base_weights=None,
+            resume=boundary,
+            command=("ebl", "train", "--resume"),
+        )
+    )
+    resumed = _torch_load(
+        _runs(split_root)[1] / "checkpoints" / "resume.pt"
+    )
+
+    assert uninterrupted["epoch"] == resumed["epoch"] == 2
+    assert uninterrupted["global_step"] == resumed["global_step"] == 2
+    assert list(uninterrupted["weights"]["weights"]) == [
+        "base.dense_weight.0",
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+    ]
+    assert list(uninterrupted["runtime_state_state"]["layers"]) == [
+        "layer.0",
+        "layer.1",
+        "layer.2",
+    ]
     for key, expected in uninterrupted["weights"]["weights"].items():
         torch.testing.assert_close(
             resumed["weights"]["weights"][key],

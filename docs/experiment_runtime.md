@@ -30,7 +30,9 @@ LoRA is therefore not another name for Tiki-Taka. Passive low-rank recovery
 changes which parameters produce the effective model weights; Tiki-Taka
 changes how an already-computed gradient is accumulated and transferred. They
 can share the same experiment, engine, checkpoint, and evaluation structure
-without being coupled to each other.
+without being coupled to each other. The focused circuit, configuration, and
+checkpoint contract is documented in
+[Passive low-rank adapter](passive_low_rank_adapter.md).
 
 Each worktree's experiment definition lists only combinations implemented in
 that worktree. The shared foundation advertises base direct and Tiki-Taka

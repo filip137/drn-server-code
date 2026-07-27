@@ -51,6 +51,26 @@ _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
         "experimental",
         "Tiki-taka backend with backpropagation.",
     ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "passive_low_rank",
+            "none",
+            "direct",
+            "ep",
+        ),
+        "experimental",
+        "Passive low-rank factors trained by direct EP updates.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "passive_low_rank",
+            "none",
+            "tiki_taka",
+            "ep",
+        ),
+        "experimental",
+        "Passive low-rank factors trained by ideal-tensor Tiki-Taka.",
+    ),
 )
 
 
@@ -78,6 +98,22 @@ def _resolve_small_drn(
                     spec.extensions.weight_modifier,
                     spec.extensions.update_backend,
                     spec.extensions.algorithm,
+                ),
+            )
+        if (
+            spec.extensions.model_adapter == "passive_low_rank"
+            and spec.extensions.update_backend == "tiki_taka"
+            and spec.settings.update_backend.parameters.get(
+                "aihwkit_preset"
+            )
+            is not None
+        ):
+            raise config_error(
+                "config.modes.train.update_backend.parameters.aihwkit_preset",
+                "to be null or omitted for passive_low_rank because only the "
+                "ideal-tensor Tiki-Taka backend is validated",
+                spec.settings.update_backend.parameters.get(
+                    "aihwkit_preset"
                 ),
             )
     return spec

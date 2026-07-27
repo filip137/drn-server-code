@@ -141,6 +141,34 @@ def _config() -> dict:
     }
 
 
+def _enable_passive_low_rank(payload: dict) -> dict:
+    payload["model"].update(
+        {
+            "dims": [4, 2],
+            "weight_gains": [1.0],
+            "voltage_amp": 1.0,
+            "current_amp": 1.0,
+            "adapter": {
+                "type": "passive_low_rank",
+                "parameters": {
+                    "rank": 2,
+                    "input_factor_gain": 0.01,
+                    "input_factor_min": 1e-7,
+                    "conductance_max": 1,
+                    "output_factor_init": "zero",
+                },
+            },
+        }
+    )
+    payload["modes"]["train"].update(
+        {
+            "learning_rates": [0.01, 0.02],
+            "bias_learning_rates": [],
+        }
+    )
+    return payload
+
+
 def _write_config(tmp_path: Path, payload: dict) -> Path:
     path = tmp_path / "experiment.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -243,11 +271,7 @@ def test_solver_constraints_fail_before_numerical_construction() -> None:
 
 
 def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
-    payload = _config()
-    payload["model"]["adapter"] = {
-        "type": "passive_low_rank",
-        "parameters": {"rank": 2},
-    }
+    payload = _enable_passive_low_rank(_config())
     payload["modes"]["train"]["weight_modifier"] = {
         "type": "add_normal",
         "parameters": {"std": 0.01},
@@ -286,11 +310,7 @@ def test_feature_combination_unavailable_in_this_worktree_fails_closed(
 def test_lora_hardware_aware_tiki_triple_is_rejected(
     tmp_path: Path,
 ) -> None:
-    payload = _config()
-    payload["model"]["adapter"] = {
-        "type": "passive_low_rank",
-        "parameters": {"rank": 2},
-    }
+    payload = _enable_passive_low_rank(_config())
     payload["modes"]["train"]["weight_modifier"] = {
         "type": "add_normal",
         "parameters": {"std": 0.01},
@@ -306,6 +326,133 @@ def test_lora_hardware_aware_tiki_triple_is_rejected(
         match="listed explicitly by the 'small_drn.v1' definition",
     ):
         resolve_experiment_config(path, RunMode.TRAIN)
+
+
+def test_passive_low_rank_config_is_strict_normalized_and_frozen() -> None:
+    payload = _enable_passive_low_rank(_config())
+    document = parse_small_drn_config(payload)
+    adapter = document.common.model.adapter
+
+    assert adapter.type == "passive_low_rank"
+    assert dict(adapter.parameters) == {
+        "rank": 2,
+        "input_factor_gain": 0.01,
+        "input_factor_min": 1e-7,
+        "conductance_max": 1.0,
+        "output_factor_init": "zero",
+        "output_off_conductance": None,
+    }
+    assert isinstance(adapter.parameters["conductance_max"], float)
+    with pytest.raises(TypeError):
+        adapter.parameters["rank"] = 3
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"].update(
+                {"mystery": 1}
+            ),
+            "unknown keys",
+        ),
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"].update(
+                {"rank": 0}
+            ),
+            "positive integer",
+        ),
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"].update(
+                {"input_factor_min": 1.0}
+            ),
+            "strictly less",
+        ),
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"].update(
+                {"output_factor_init": "off_conductance"}
+            ),
+            "positive finite number",
+        ),
+    ],
+)
+def test_passive_low_rank_parameter_errors_report_expected_and_provided(
+    mutate,
+    message,
+) -> None:
+    payload = _enable_passive_low_rank(_config())
+    mutate(payload)
+
+    with pytest.raises(ConfigError, match=message) as raised:
+        parse_small_drn_config(payload)
+
+    assert "Expected" in str(raised.value)
+    assert "Provided value:" in str(raised.value)
+
+
+def test_passive_low_rank_topology_amplification_and_rates_are_strict() -> None:
+    payload = _enable_passive_low_rank(_config())
+    payload["model"]["dims"] = [4, 3, 2]
+    payload["model"]["weight_gains"] = [1.0, 1.0]
+    with pytest.raises(ConfigError, match="exactly"):
+        parse_small_drn_config(payload)
+
+    payload = _enable_passive_low_rank(_config())
+    payload["model"]["current_amp"] = 2.0
+    with pytest.raises(ConfigError, match="both equal 1.0"):
+        parse_small_drn_config(payload)
+
+    payload = _enable_passive_low_rank(_config())
+    payload["modes"]["train"]["learning_rates"] = [0.01]
+    with pytest.raises(ConfigError, match="exactly 2 values"):
+        parse_small_drn_config(payload)
+
+    payload = _enable_passive_low_rank(_config())
+    payload["modes"]["train"]["bias_learning_rates"] = [0.01]
+    with pytest.raises(ConfigError, match="exactly 0 values"):
+        parse_small_drn_config(payload)
+
+
+def test_passive_low_rank_capabilities_are_direct_or_ideal_tiki_ep_only(
+    tmp_path: Path,
+) -> None:
+    direct = _enable_passive_low_rank(_config())
+    _, direct_spec = resolve_experiment_config(
+        _write_config(tmp_path, direct),
+        RunMode.TRAIN,
+    )
+    assert direct_spec.extensions.update_backend == "direct"
+    assert direct_spec.extensions.algorithm == "ep"
+
+    tiki = _enable_passive_low_rank(_config())
+    tiki["modes"]["train"]["update_backend"] = {
+        "type": "tiki_taka",
+        "parameters": {},
+    }
+    _, tiki_spec = resolve_experiment_config(
+        _write_config(tmp_path, tiki),
+        RunMode.TRAIN,
+    )
+    assert tiki_spec.extensions.update_backend == "tiki_taka"
+
+    aihwkit = _enable_passive_low_rank(_config())
+    aihwkit["modes"]["train"]["update_backend"] = {
+        "type": "tiki_taka",
+        "parameters": {"aihwkit_preset": "TikiTakaIdealizedPreset"},
+    }
+    with pytest.raises(ConfigError, match="ideal-tensor"):
+        resolve_experiment_config(
+            _write_config(tmp_path, aihwkit),
+            RunMode.TRAIN,
+        )
+
+    backprop = _enable_passive_low_rank(_config())
+    backprop["modes"]["train"]["algorithm"] = "backprop"
+    with pytest.raises(ConfigError, match="listed explicitly"):
+        resolve_experiment_config(
+            _write_config(tmp_path, backprop),
+            RunMode.TRAIN,
+        )
 
 
 def test_removed_algorithm_and_backend_names_are_rejected() -> None:

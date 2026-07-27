@@ -6,7 +6,11 @@ import numpy as np
 import pytest
 import torch
 
-from model.resistive.builders import ParameterBinding, ParameterCatalog
+from model.resistive.builders import (
+    ParameterBinding,
+    ParameterCatalog,
+    build_deep_resistive_energy,
+)
 import training.checkpoint as checkpoint_module
 from training.checkpoint import (
     CheckpointError,
@@ -107,6 +111,33 @@ def _catalog(*, trainable_tensor=False):
     return catalog, base, adapter
 
 
+def _passive_low_rank_catalog():
+    bundle = build_deep_resistive_energy(
+        layer_shapes=[(4,), (2,)],
+        weight_gains=[0.2],
+        input_gain=1.0,
+        non_linearity="linear",
+        exponential_diode_param={},
+        quadratic_diode_param={},
+        hard_sigmoid_param={},
+        voltage_amp=1.0,
+        current_amp=1.0,
+        weight_min=0.0,
+        weight_max=1.0,
+        passive_low_rank_adapter={
+            "rank": 2,
+            "input_factor_gain": 0.1,
+            "input_factor_min": 1e-7,
+            "conductance_max": 1.0,
+            "output_factor_init": "zero",
+        },
+    )
+    base_catalog = ParameterCatalog(
+        bundle.catalog.for_group("base", checkpointed_only=True)
+    )
+    return bundle.catalog, base_catalog
+
+
 def test_named_weights_round_trip_preserves_tensor_identity_and_metadata(
     tmp_path,
 ):
@@ -138,6 +169,68 @@ def test_named_weights_round_trip_preserves_tensor_identity_and_metadata(
     assert id(adapter.state) == adapter_identity
     torch.testing.assert_close(base.state, expected_base)
     torch.testing.assert_close(adapter.state, expected_adapter)
+
+
+def test_passive_low_rank_named_full_and_base_profiles_are_structural(
+    tmp_path,
+):
+    catalog, base_catalog = _passive_low_rank_catalog()
+    full_path = tmp_path / "full.pt"
+    base_path = tmp_path / "base.pt"
+    expected = {
+        binding.key: binding.state.detach().clone() for binding in catalog
+    }
+
+    save_named_weights(full_path, catalog)
+    save_named_weights(base_path, base_catalog)
+    assert list(torch.load(
+        full_path, map_location="cpu", weights_only=True
+    )["weights"]) == [
+        "base.dense_weight.0",
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+    ]
+    assert list(torch.load(
+        base_path, map_location="cpu", weights_only=True
+    )["weights"]) == ["base.dense_weight.0"]
+
+    for binding in catalog:
+        binding.state.fill_(0.4)
+    load_named_weights(full_path, catalog)
+    for binding in catalog:
+        torch.testing.assert_close(
+            binding.state,
+            expected[binding.key],
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    adapter_before = {}
+    for binding in catalog:
+        if binding.group == "base":
+            binding.state.zero_()
+        else:
+            binding.state.fill_(0.3)
+            adapter_before[binding.key] = binding.state.detach().clone()
+    load_named_weights(base_path, base_catalog)
+    torch.testing.assert_close(
+        catalog.by_key["base.dense_weight.0"].state,
+        expected["base.dense_weight.0"],
+        rtol=0.0,
+        atol=0.0,
+    )
+    for key, value in adapter_before.items():
+        torch.testing.assert_close(
+            catalog.by_key[key].state,
+            value,
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    with pytest.raises(CheckpointError, match="keys"):
+        load_named_weights(base_path, catalog)
+    with pytest.raises(CheckpointError, match="keys"):
+        load_named_weights(full_path, base_catalog)
 
 
 def test_named_weights_validate_every_tensor_before_copying(tmp_path):

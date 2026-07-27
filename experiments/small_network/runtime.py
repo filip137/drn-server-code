@@ -45,6 +45,7 @@ from experiments.small_network.config import (
     ValidateSpec,
 )
 from labs.datasets import MoonsDataset
+from model.resistive.builders import ParameterCatalog
 from training.checkpoint import (
     LEGACY_BASE_ONLY,
     LEGACY_FULL,
@@ -148,6 +149,7 @@ def execute_train(
     """
 
     spec = _expect_spec(request.spec, TrainSpec, mode="train")
+    _validate_training_initialization(request, spec)
     active_observers = _validated_observers(observers)
     resume_capability = configured_resume_capability(spec)
     store = _create_run_store(
@@ -286,6 +288,11 @@ def import_legacy_checkpoint(
     seed_runtime(request.document.common.runtime.seed)
     stack = build_model_stack(request.document.common)
     profile = LEGACY_FULL if request.kind == "full" else LEGACY_BASE_ONLY
+    output_catalog = (
+        stack.bundle.catalog
+        if request.kind == "full"
+        else _base_checkpoint_catalog(stack.bundle.catalog)
+    )
     loaded = load_legacy_positional_weights(
         source,
         stack.bundle.catalog,
@@ -293,7 +300,7 @@ def import_legacy_checkpoint(
     )
     save_named_weights(
         output,
-        stack.bundle.catalog,
+        output_catalog,
         metadata={
             "experiment_id": request.definition.experiment_id,
             "legacy_profile": profile.name,
@@ -390,9 +397,10 @@ def _execute_training(
     elif request.weights is not None:
         load_named_weights(request.weights, catalog)
     elif request.base_weights is not None:
-        # In the foundation runtime every checkpointed parameter is in the
-        # base group.  The future adapter runtime can narrow this explicitly.
-        load_named_weights(request.base_weights, catalog)
+        load_named_weights(
+            request.base_weights,
+            _base_checkpoint_catalog(catalog),
+        )
 
     last_validation: dict[str, Any] | None = None
     completed_epoch = start_epoch
@@ -1143,6 +1151,47 @@ def _training_input_artifacts(request: Any) -> tuple[Mapping[str, Any], ...]:
         if path is not None:
             records.append(_input_artifact(role, path))
     return tuple(records)
+
+
+def _validate_training_initialization(
+    request: Any,
+    spec: TrainSpec,
+) -> None:
+    sources = tuple(
+        name
+        for name in ("weights", "base_weights", "resume")
+        if getattr(request, name) is not None
+    )
+    if len(sources) > 1:
+        raise ValueError(
+            "Expected at most one of --weights, --base-weights, or --resume. "
+            f"Provided value: {sources!r}."
+        )
+    has_adapter = spec.common.model.adapter.type == "passive_low_rank"
+    if has_adapter and len(sources) != 1:
+        raise ValueError(
+            "Expected passive_low_rank training to initialize from exactly "
+            "one of --weights, --base-weights, or --resume. "
+            f"Provided value: {sources!r}."
+        )
+    if not has_adapter and request.base_weights is not None:
+        raise ValueError(
+            "Expected --base-weights only when model.adapter.type is "
+            "'passive_low_rank'. Provided value: "
+            f"{str(request.base_weights)!r}."
+        )
+
+
+def _base_checkpoint_catalog(
+    catalog: ParameterCatalog,
+) -> ParameterCatalog:
+    bindings = catalog.for_group("base", checkpointed_only=True)
+    if not bindings:
+        raise ValueError(
+            "Expected the model catalog to contain at least one checkpointed "
+            "base parameter. Provided value: empty base group."
+        )
+    return ParameterCatalog(bindings)
 
 
 def _input_artifact(role: str, path: Path) -> dict[str, Any]:

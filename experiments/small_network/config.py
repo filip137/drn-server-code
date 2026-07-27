@@ -7,7 +7,7 @@ to the CLI request, not this document.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import math
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
@@ -17,6 +17,9 @@ from experiments.schema import (
     RunMode,
     config_error,
     freeze_json,
+)
+from model.resistive.low_rank_config import (
+    parse_passive_low_rank_adapter,
 )
 
 
@@ -424,6 +427,48 @@ def _component(
     )
 
 
+def _parse_adapter(value: Any) -> ComponentSettings:
+    path = "config.model.adapter"
+    parsed = _object(value, path)
+    _check_keys(
+        parsed,
+        path,
+        required=("type", "parameters"),
+    )
+    adapter_type = _string(
+        parsed["type"],
+        f"{path}.type",
+        choices=("none", "passive_low_rank"),
+    )
+    parameters = _object(parsed["parameters"], f"{path}.parameters")
+    if adapter_type == "none":
+        if parameters:
+            raise config_error(
+                f"{path}.parameters",
+                "to be an empty object when type is 'none'",
+                dict(parameters),
+            )
+        normalized_parameters: Mapping[str, Any] = {}
+    else:
+        try:
+            normalized = parse_passive_low_rank_adapter(
+                parameters,
+                path=f"{path}.parameters",
+            )
+        except ValueError as error:
+            raise ConfigError(str(error)) from error
+        if normalized is None:  # pragma: no cover - non-null mapping above
+            raise AssertionError("passive_low_rank normalization returned null")
+        normalized_parameters = asdict(normalized)
+    return ComponentSettings(
+        type=adapter_type,
+        parameters=freeze_json(
+            normalized_parameters,
+            path=f"{path}.parameters",
+        ),
+    )
+
+
 def _parse_runtime(value: Any) -> RuntimeSettings:
     path = "config.runtime"
     parsed = _object(value, path)
@@ -579,6 +624,36 @@ def _parse_model(value: Any) -> ModelSettings:
             {"weight_min": weight_min, "weight_max": weight_max},
         )
 
+    voltage_amp = _number(
+        parsed["voltage_amp"],
+        f"{path}.voltage_amp",
+        strictly_positive=True,
+    )
+    current_amp = _number(
+        parsed["current_amp"],
+        f"{path}.current_amp",
+        strictly_positive=True,
+    )
+    adapter = _parse_adapter(parsed["adapter"])
+    if adapter.type == "passive_low_rank":
+        if len(dims) != 2:
+            raise config_error(
+                f"{path}.dims",
+                "to contain exactly [input_width, output_width] when "
+                "model.adapter.type is 'passive_low_rank'",
+                list(dims),
+            )
+        if voltage_amp != 1.0 or current_amp != 1.0:
+            raise config_error(
+                f"{path}.voltage_amp and {path}.current_amp",
+                "to both equal 1.0 when model.adapter.type is "
+                "'passive_low_rank'",
+                {
+                    "voltage_amp": voltage_amp,
+                    "current_amp": current_amp,
+                },
+            )
+
     return ModelSettings(
         dims=dims,
         input_gain=_number(
@@ -589,22 +664,10 @@ def _parse_model(value: Any) -> ModelSettings:
         weight_gains=weight_gains,
         weight_min=weight_min,
         weight_max=weight_max,
-        voltage_amp=_number(
-            parsed["voltage_amp"],
-            f"{path}.voltage_amp",
-            strictly_positive=True,
-        ),
-        current_amp=_number(
-            parsed["current_amp"],
-            f"{path}.current_amp",
-            strictly_positive=True,
-        ),
+        voltage_amp=voltage_amp,
+        current_amp=current_amp,
         non_linearity=_parse_non_linearity(parsed["non_linearity"]),
-        adapter=_component(
-            parsed["adapter"],
-            f"{path}.adapter",
-            allowed_types=("none", "passive_low_rank"),
-        ),
+        adapter=adapter,
     )
 
 
@@ -906,7 +969,12 @@ def _parse_solver(value: Any) -> SolverSettings:
     return settings
 
 
-def _parse_train(value: Any, *, layer_count: int) -> TrainSettings:
+def _parse_train(
+    value: Any,
+    *,
+    weight_count: int,
+    bias_count: int,
+) -> TrainSettings:
     path = "config.modes.train"
     parsed = _object(value, path)
     _check_keys(
@@ -931,11 +999,11 @@ def _parse_train(value: Any, *, layer_count: int) -> TrainSettings:
         nonempty=True,
         minimum=0.0,
     )
-    if len(learning_rates) != layer_count:
+    if len(learning_rates) != weight_count:
         raise config_error(
             f"{path}.learning_rates",
-            f"to contain exactly {layer_count} values "
-            "(one per weight layer)",
+            f"to contain exactly {weight_count} values "
+            "(one per weight layer or trainable adapter factor)",
             list(learning_rates),
         )
     bias_learning_rates = _number_tuple(
@@ -943,11 +1011,10 @@ def _parse_train(value: Any, *, layer_count: int) -> TrainSettings:
         f"{path}.bias_learning_rates",
         minimum=0.0,
     )
-    expected_biases = max(0, layer_count - 1)
-    if len(bias_learning_rates) != expected_biases:
+    if len(bias_learning_rates) != bias_count:
         raise config_error(
             f"{path}.bias_learning_rates",
-            f"to contain exactly {expected_biases} values "
+            f"to contain exactly {bias_count} values "
             "(one per hidden-layer bias; use 0.0 to freeze one)",
             list(bias_learning_rates),
         )
@@ -1156,13 +1223,22 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             "to define at least one of 'train', 'linspace', or 'validate'",
             dict(modes),
         )
-    layer_count = len(model.dims) - 1
+    if model.adapter.type == "passive_low_rank":
+        weight_count = 2
+        bias_count = 0
+    else:
+        weight_count = len(model.dims) - 1
+        bias_count = max(0, weight_count - 1)
     return SmallDrnConfig(
         schema_version=schema_version,
         experiment_id=experiment_id,
         common=common,
         train=(
-            _parse_train(modes["train"], layer_count=layer_count)
+            _parse_train(
+                modes["train"],
+                weight_count=weight_count,
+                bias_count=bias_count,
+            )
             if "train" in modes
             else None
         ),

@@ -1,4 +1,6 @@
 from tokenize import Double
+from numbers import Integral, Real
+
 import torch
 from torch.nn import Hardsigmoid
 
@@ -9,6 +11,11 @@ from model.variable.parameter import Bias, DenseWeight, ConvWeight, PoolWeight
 # from model.resistive.parameter import TiedDenseWeight as DenseWeight
 from model.function.interaction import BiasInteraction
 from model.resistive.interaction import BasePoolResistive, AveragePoolResistive, MaxPoolResistive, DenseResistive, ConvResistive
+from model.resistive.low_rank import (
+    PassiveLowRankAdapterConfig,
+    PassiveLowRankDenseWeight,
+    parse_passive_low_rank_adapter,
+)
 from model.function.interaction import (
     DoubleQuadraticNonLinearInteraction,
     DoubleExponentialNonLinearInteraction,
@@ -33,7 +40,7 @@ class DeepResistiveEnergy(SumSeparableFunction):
                  voltage_amp, current_amp,
                  weight_min=None, weight_max=None,
                  weight_init_mode='kaiming_uniform', conv_pipeline=None,
-                 pooling_mode="avg"):
+                 pooling_mode="avg", passive_low_rank_adapter=None):
         """Creates an instance of a dense Hopfield network
 
         Args:
@@ -47,6 +54,10 @@ class DeepResistiveEnergy(SumSeparableFunction):
             weight_max (float, optional): Upper clamp bound applied to the conductance weights.
         """
 
+        adapter_config = parse_passive_low_rank_adapter(
+            passive_low_rank_adapter
+        )
+        self._passive_low_rank_adapter_config = adapter_config
         self._input_amplifier = input_gain
         self._voltage_amp = voltage_amp
         self._current_amp = current_amp
@@ -61,12 +72,28 @@ class DeepResistiveEnergy(SumSeparableFunction):
         self._weight_min = weight_min
         self._weight_max = weight_max
         self._weight_init_mode = weight_init_mode
-        self._conv_pipeline = list(conv_pipeline or [])
+        if adapter_config is not None:
+            if conv_pipeline is None or (
+                isinstance(conv_pipeline, (list, tuple))
+                and not conv_pipeline
+            ):
+                self._conv_pipeline = []
+            else:
+                raise ValueError(
+                    "Expected conv_pipeline to be empty when "
+                    "passive_low_rank_adapter is enabled. "
+                    f"Provided value: {conv_pipeline!r}."
+                )
+        else:
+            self._conv_pipeline = list(conv_pipeline or [])
         has_pooling_stage = any(conf.get("mode") == "pooling" for conf in self._conv_pipeline)
         self._pooling_mode = pooling_mode if has_pooling_stage else None
         if has_pooling_stage and self._pooling_mode is None:
             self._pooling_mode = "avg"
 
+        if adapter_config is not None:
+            self._init_passive_low_rank_adapter(adapter_config)
+            return
 
 
         num_conv_stages = len(self._conv_pipeline)
@@ -258,10 +285,143 @@ class DeepResistiveEnergy(SumSeparableFunction):
         # Track all params for device movement, but expose only trainable ones (exclude PoolWeight)
         self._all_params = convpool_weights + dense_weights + biases
         self._trainable_params = [p for p in self._all_params if not isinstance(p, PoolWeight)]
+        self._base_params = list(self._all_params)
+        self._adapter_params = []
         interactions = bias_interactions + weight_interactions + non_linear_interaction + convpool_interactions
 
         # creates an instance of Network; pass all params so set_device moves everything to the right device
         SumSeparableFunction.__init__(self, layers, self._all_params, interactions)
+
+    def _init_passive_low_rank_adapter(
+        self,
+        config: PassiveLowRankAdapterConfig,
+    ):
+        """Build one dense base edge plus a passive two-factor branch."""
+
+        layer_shapes = self._layer_shapes
+        valid_shapes = (
+            isinstance(layer_shapes, (list, tuple))
+            and len(layer_shapes) == 2
+            and all(
+                isinstance(shape, (list, tuple, torch.Size))
+                and len(shape) == 1
+                and isinstance(shape[0], Integral)
+                and not isinstance(shape[0], bool)
+                and shape[0] > 0
+                for shape in layer_shapes
+            )
+        )
+        if not valid_shapes:
+            raise ValueError(
+                "Expected layer_shapes to contain exactly two "
+                "one-dimensional positive shapes when "
+                "passive_low_rank_adapter is enabled. "
+                f"Provided value: {layer_shapes!r}."
+            )
+        self._layer_shapes = [tuple(shape) for shape in layer_shapes]
+
+        for name, value in (
+            ("voltage_amp", self._voltage_amp),
+            ("current_amp", self._current_amp),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, Real)
+                or float(value) != 1.0
+            ):
+                raise ValueError(
+                    f"Expected {name} to equal 1.0 when "
+                    "passive_low_rank_adapter is enabled. "
+                    f"Provided value: {value!r}."
+                )
+
+        if (
+            not isinstance(self._weight_gains, (list, tuple))
+            or len(self._weight_gains) != 1
+        ):
+            raise ValueError(
+                "Expected weight_gains to contain exactly one gain for the "
+                "base dense matrix when passive_low_rank_adapter is enabled. "
+                f"Provided value: {self._weight_gains!r}."
+            )
+
+        input_shape, output_shape = self._layer_shapes
+        rank_shape = (config.rank,)
+        input_layer = ResistiveInputLayer(
+            input_shape,
+            gain=self._input_amplifier,
+            device=None,
+        )
+        rank_layer = LinearLayer(rank_shape, device=None)
+        output_layer = LinearLayer(output_shape, device=None)
+
+        base_weight = DenseWeight(
+            input_shape,
+            output_shape,
+            self._weight_gains[0],
+            device=None,
+            clamp=True,
+            clamp_min=self._weight_min,
+            clamp_max=self._weight_max,
+            init_mode=self._weight_init_mode,
+        )
+        input_factor = PassiveLowRankDenseWeight(
+            input_shape,
+            rank_shape,
+            role="input_factor",
+            gain=config.input_factor_gain,
+            conductance_min=config.input_factor_min,
+            conductance_max=config.conductance_max,
+        )
+        output_initial_value = (
+            0.0
+            if config.output_factor_init == "zero"
+            else config.output_off_conductance
+        )
+        output_factor = PassiveLowRankDenseWeight(
+            rank_shape,
+            output_shape,
+            role="output_factor",
+            gain=0.0,
+            conductance_min=output_initial_value,
+            conductance_max=config.conductance_max,
+            initial_value=output_initial_value,
+        )
+
+        layers = [input_layer, rank_layer, output_layer]
+        interactions = [
+            DenseResistive(
+                input_layer,
+                output_layer,
+                base_weight,
+                voltage_amp=1.0,
+                current_amp=1.0,
+            ),
+            DenseResistive(
+                input_layer,
+                rank_layer,
+                input_factor,
+                voltage_amp=1.0,
+                current_amp=1.0,
+            ),
+            DenseResistive(
+                rank_layer,
+                output_layer,
+                output_factor,
+                voltage_amp=1.0,
+                current_amp=1.0,
+            ),
+        ]
+        self._base_params = [base_weight]
+        self._adapter_params = [input_factor, output_factor]
+        self._all_params = self._base_params + self._adapter_params
+        self._trainable_params = list(self._adapter_params)
+        SumSeparableFunction.__init__(
+            self,
+            layers,
+            self._all_params,
+            interactions,
+        )
 
 
 
@@ -299,6 +459,22 @@ class DeepResistiveEnergy(SumSeparableFunction):
 
     def __str__(self):
         return 'Deep Resistive Network -- layer shapes={}, weight gains={}, input_gain={}'.format(self._layer_shapes, self._weight_gains, self._input_amplifier)
+
+    @property
+    def passive_low_rank_adapter_config(self):
+        """Return the normalized adapter configuration, or ``None``."""
+
+        return self._passive_low_rank_adapter_config
+
+    def base_params(self):
+        """Return parameters belonging to the original DRN."""
+
+        return list(self._base_params)
+
+    def adapter_params(self):
+        """Return passive adapter factors in stable ``[A, B]`` order."""
+
+        return list(self._adapter_params)
 
     # Expose only trainable params (PoolWeight is kept frozen)
     def params(self):
