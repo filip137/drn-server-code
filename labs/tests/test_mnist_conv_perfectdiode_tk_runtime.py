@@ -19,7 +19,9 @@ from experiments.mnist_conv.perfectdiode_tk_runtime import (
 )
 from experiments.mnist_conv.perfectdiode_tk_spec import (
     CONV3_CONV_WEIGHTS,
+    K_GRID,
     PerfectDiodeTKStudySpec,
+    select_k_measurements,
 )
 from experiments.run_mnist_conv_perfectdiode_tk import (
     PerfectDiodeTKOrchestrationError,
@@ -155,6 +157,71 @@ def test_k_comparison_uses_mean_per_batch_not_concatenated_norm() -> None:
     assert row["gradient_vector_cosine"] == pytest.approx(1.0)
     assert row["batch_count"] == 8
     assert len(row["batches"]) == 8
+
+
+def test_self_cosine_roundoff_is_clamped_and_k64_record_selects() -> None:
+    vector = torch.randn(
+        1003,
+        dtype=torch.float64,
+        generator=torch.Generator().manual_seed(1),
+    )
+    norm = float(torch.linalg.vector_norm(vector).item())
+    assert float(torch.dot(vector, vector).item() / (norm * norm)) > 1.0
+
+    def collection(scale: float) -> dict:
+        return {
+            "gradients": {
+                name: tuple((scale * vector).clone() for _ in range(8))
+                for name in CONV3_CONV_WEIGHTS
+            },
+            "initial_weight_rms": {
+                name: 1.0 for name in CONV3_CONV_WEIGHTS
+            },
+            "free_equilibrium_sha256_by_batch": ["a" * 64] * 8,
+        }
+
+    reference = collection(1.0)
+    context = {
+        "cohort_examples": 256,
+        "batch_size": 32,
+        "official_test_read": False,
+        "cohort_source_indices_sha256": "b" * 64,
+        "initialization_checkpoint_sha256": "c" * 64,
+        "initialization_tensor_sha256": "d" * 64,
+        "selected_t": 16,
+        "fixed_step_minimization": True,
+        "batch_state_policy": "reset_each_batch",
+    }
+    core = {}
+    for count in K_GRID:
+        candidate = reference if count == 64 else collection(0.5)
+        record = compare_k_gradients(
+            candidate,
+            reference,
+            candidate_k=count,
+            reference_k=64,
+        )
+        record.update(context)
+        core[count] = record
+    self_record = core[64]
+    for parameter in self_record["parameter_diagnostics"]:
+        assert parameter["gradient_vector_cosine"] == 1.0
+        assert all(
+            batch["gradient_vector_cosine"] == 1.0
+            for batch in parameter["batches"]
+        )
+    assert select_k_measurements(core)["status"] == "needs_k128_sentinel"
+
+    sentinel = compare_k_gradients(
+        reference,
+        reference,
+        candidate_k=64,
+        reference_k=128,
+    )
+    sentinel.update(context)
+    selection = select_k_measurements(core, k128_sentinel=sentinel)
+    assert selection["status"] == "selected"
+    assert selection["selected_k"] == 64
 
 
 def _fake_assets(spec: PerfectDiodeTKStudySpec, root: Path) -> Path:

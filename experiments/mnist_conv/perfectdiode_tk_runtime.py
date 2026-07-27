@@ -978,11 +978,22 @@ def compare_k_gradients(
                 .item()
             )
             denominator = current_norm * reference_norm
-            cosine = (
-                float(torch.dot(current, target).item() / denominator)
-                if denominator > 0.0
-                else None
-            )
+            if denominator > 0.0:
+                raw_cosine = float(
+                    torch.dot(current, target).item() / denominator
+                )
+                if not math.isfinite(raw_cosine):
+                    raise PerfectDiodeTKRuntimeError(
+                        f"Expected a finite gradient-vector cosine for {name!r} "
+                        f"batch {batch_index}. Provided value: {raw_cosine!r}."
+                    )
+                # Mathematically cosine is bounded by [-1, 1]. Identical
+                # nonzero float64 vectors can round to 1+2e-16, so canonicalize
+                # only this finite floating-point overshoot. A zero-vector
+                # denominator remains undefined below.
+                cosine = min(1.0, max(-1.0, raw_cosine))
+            else:
+                cosine = None
             batch_records.append(
                 {
                     "batch_index": batch_index,
