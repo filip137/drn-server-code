@@ -2170,3 +2170,16 @@ def test_wrapper_can_derive_optional_slurm_fields_and_hashes_canary_gate() -> No
         '[[ -z "${live_cpus_per_task}" && "${live_req_tres}"'
         not in wrapper
     )
+    assert '  JOBSCRATCH' in wrapper
+    assert (
+        'expected_jobscratch_prefix="/lustre/fsn1/jobscratch_hpe/'
+        '${USER}_"'
+    ) in wrapper
+    assert '! -w "${JOBSCRATCH}"' in wrapper
+    assert 'export TMPDIR="${resolved_jobscratch}"' in wrapper
+    assert wrapper.index('exec "${runtime_preflight[@]}"') < wrapper.index(
+        'expected_jobscratch_prefix="/lustre/fsn1/jobscratch_hpe/'
+    )
+    assert wrapper.index('export TMPDIR="${resolved_jobscratch}"') < (
+        wrapper.index('exec "${runtime_args[@]}"')
+    )

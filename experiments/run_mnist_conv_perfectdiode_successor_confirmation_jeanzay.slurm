@@ -291,7 +291,8 @@ for name in \
   SLURM_ARRAY_TASK_MAX \
   SLURM_ARRAY_TASK_STEP \
   SLURM_CPUS_PER_TASK \
-  CUDA_VISIBLE_DEVICES
+  CUDA_VISIBLE_DEVICES \
+  JOBSCRATCH
 do
   require_env "${name}"
 done
@@ -454,6 +455,22 @@ done
 if [[ "${resolved_data}" != "${expected_data_root}" ]]; then
   fail_value "the MNIST data root to be ${expected_data_root}" "${resolved_data}"
 fi
+if [[ "${JOBSCRATCH}" != /* || -L "${JOBSCRATCH}" || ! -d "${JOBSCRATCH}" || ! -w "${JOBSCRATCH}" ]]; then
+  fail_value \
+    "JOBSCRATCH to be an existing writable absolute non-symlink per-job directory" \
+    "${JOBSCRATCH}"
+fi
+resolved_jobscratch="$(realpath "${JOBSCRATCH}")"
+expected_jobscratch_prefix="/lustre/fsn1/jobscratch_hpe/${USER}_"
+if [[ "${resolved_jobscratch}/" != "${expected_jobscratch_prefix}"* ]]; then
+  fail_value \
+    "JOBSCRATCH to resolve under ${expected_jobscratch_prefix}" \
+    "${resolved_jobscratch}"
+fi
+# Jean Zay documents /tmp as very limited and JOBSCRATCH as the large,
+# job-unique temporary filesystem. The source-archive verification expands
+# about 214 MiB before training, so bind Python tempfile use to JOBSCRATCH.
+export TMPDIR="${resolved_jobscratch}"
 
 if ! command -v nvidia-smi >/dev/null 2>&1; then
   fail_value "nvidia-smi to verify the V100-32GB allocation" "not found"

@@ -4,6 +4,7 @@ import copy
 import json
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -96,6 +97,35 @@ def test_source_archive_is_safe_and_checkout_needs_no_git(
         match="readable tar or compressed-tar archive",
     ):
         successor._source_archive_fingerprint(not_an_archive)
+
+
+def test_source_archive_fingerprint_honors_job_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged = tmp_path / "staged"
+    _mini_checkout(staged)
+    archive = tmp_path / "source.tar.gz"
+    _archive_checkout(staged, archive)
+    jobscratch = tmp_path / "jobscratch"
+    jobscratch.mkdir()
+    monkeypatch.setenv("TMPDIR", str(jobscratch))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    created: list[Path] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def recording_mkdtemp(*args: object, **kwargs: object) -> str:
+        path = Path(real_mkdtemp(*args, **kwargs))
+        created.append(path)
+        return str(path)
+
+    monkeypatch.setattr(successor.tempfile, "mkdtemp", recording_mkdtemp)
+    assert successor._source_archive_fingerprint(archive) == code_fingerprint(
+        staged
+    )
+    assert len(created) == 1
+    assert created[0].parent == jobscratch
+    assert not created[0].exists()
 
 
 def test_bundle_config_copy_preserves_source_bytes_and_hash_domain(
