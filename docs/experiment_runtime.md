@@ -100,13 +100,16 @@ Named weights and full resume state are intentionally different:
 
 - `weights.pt` contains stable parameter keys and is suitable for evaluation
   or transfer.
-- `resume.pt` contains model, optimizer, scheduler, modifier, progress, random
+- `resume.pt` contains model, optimizer, scheduler, modifier, tensor-bearing
+  runtime continuation state (including carried equilibria), progress, random
   number generator, and named dataloader-generator state at an epoch boundary.
 
 Restore is transactional. All payloads are validated before mutation, and any
 failure rolls back already-restored components. AIHWKit-backed runs may
 declare `stateful_nondeterministic`; an unsupported runtime must not emit a
 resume checkpoint.
+For `small_drn.v1`, every numerical setting must match on resume; only the
+target `modes.train.num_epochs` horizon may be extended.
 
 Old positional tensor lists are not auto-detected:
 
@@ -130,7 +133,7 @@ prevents Python import-cache and module-path contamination between branches.
 
 ```bash
 python -m ebl campaign run \
-  --manifest path/to/campaign.json \
+  --manifest examples/campaigns/base_train_validate.json \
   --output-dir campaign-runs \
   --dry-run
 ```
@@ -138,6 +141,9 @@ python -m ebl campaign run \
 A campaign manifest declares targets, stages, dependencies, configs, and
 explicit artifact references. A later validation stage can consume the
 `weights` artifact produced by a training stage without guessing a filename.
+The checked-in example uses the repository's current worktree layout and
+Python environment; adjust its target paths when copying it to another
+machine.
 Use `--resume` to reuse a completed stage only when its config, inputs, source
 identity, and result hash still match.
 

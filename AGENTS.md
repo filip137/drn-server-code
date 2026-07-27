@@ -13,8 +13,8 @@ This repository contains code and tooling for coordinate-descent simulations of 
   and checkpoint codecs
 - `experiments/`: versioned experiment schemas and thin composition roots
 - `campaigns/`: subprocess-only orchestration across clean Git worktrees
-- `labs/`: legacy experiments and specialized utilities; do not add new
-  orchestration to `labs/small_network.py`
+- `labs/`: specialized numerical and analysis utilities; experiment execution
+  belongs under `experiments/` and orchestration under `campaigns/`
 - `plotting_functions/`: analysis/plotting helpers
 - `playbooks/`: SOPs for repeatable tasks
 - `docs/`: lightweight state and notes

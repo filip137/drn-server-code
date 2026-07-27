@@ -12,10 +12,6 @@
 # Example: export LABS_IV_CURVE_PATH=/home/filip/server_code/labs/iv_data/iv_curve.json
 : "${LABS_IV_CURVE_PATH:=/home/filip/server_code/labs/i_v_npz/experimental_curve_voff_0.8_200_points.npz}"
 
-# ---- Run-time behavior / outputs ----
-# Store layer states during runs (1 to enable).
-: "${DRN_STORE_STATES:=}"
-
 # ---- Debug / safety ----
 # Enable diode debug prints (set to 1). Warning: triggers pdb.set_trace() in custom_minimizer init.
 : "${DRN_DEBUG_DIODE:=}"
@@ -51,7 +47,6 @@ _export_if_set() {
 for var in \
   DRN_B_CLAMP \
   LABS_IV_CURVE_PATH \
-  DRN_STORE_STATES \
   DRN_DEBUG_DIODE \
   DRN_DEBUG_BREAK_ON_ERROR \
   DRN_DEBUG_STATE_MAX_ABS \

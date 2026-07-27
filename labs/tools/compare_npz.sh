@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/home/filip/server_code/labs/tools/lib.sh
+# shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
 compare_npz "$@"

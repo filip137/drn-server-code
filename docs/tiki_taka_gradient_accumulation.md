@@ -1,10 +1,10 @@
 # Tiki-Taka gradient accumulation
 
-The optional `update_pipeline` configuration routes gradients produced by
-EqProp/DRN through an auxiliary ("fast") tensor before changing the DRN's
-visible ("slow") parameters. The DRN still computes one complete parameter
-gradient tensor per minibatch. Tiki-Taka changes only how that tensor is
-accumulated and applied.
+The optional Tiki-Taka update backend routes gradients produced by EqProp/DRN
+through an auxiliary ("fast") tensor before changing the DRN's visible
+("slow") parameters. The DRN still computes one complete parameter gradient
+tensor per minibatch. Tiki-Taka changes only how that tensor is accumulated
+and applied.
 
 The implementation is in `training/tiki_taka.py`. It has two backends:
 
@@ -14,47 +14,49 @@ The implementation is in `training/tiki_taka.py`. It has two backends:
 
 ## Selecting the update pipeline
 
-An omitted value, JSON `null`, or the following object selects the existing
-direct SGD path:
+For the versioned `small_drn.v1` experiment, select the backend at
+`modes.train.update_backend`. The direct SGD path is:
 
 ```json
 {
-  "update_pipeline": {
-    "type": "direct"
+  "modes": {
+    "train": {
+      "update_backend": {
+        "type": "direct",
+        "parameters": {}
+      }
+    }
   }
 }
 ```
 
-The `direct` object cannot contain additional keys. To enable the auxiliary
-array, use `"type": "tiki_taka"`.
-
-For `labs/small_network.py`, `labs/tools/optuna_digits_train.py`, and
-`labs/mnist_train.py`, place `update_pipeline` at the top level of the input
-JSON. `labs/mnist_monitor_training.py` and
-`plotting_functions/visualize_training_steps.py` read the same object from
-`training.update_pipeline`.
-
-Here is an explicit top-level small-network example. The values are
-illustrative rather than implicit recommendations:
+The direct backend requires an empty parameter object. To enable the auxiliary
+array, use `"type": "tiki_taka"`. The values below are illustrative:
 
 ```json
 {
-  "learning_rate": [0.8, 0.3],
-  "update_pipeline": {
-    "type": "tiki_taka",
-    "fast_lr": 1.0,
-    "transfer_every": 4,
-    "units_in_mbatch": true,
-    "n_reads_per_transfer": 2,
-    "gamma": 0.0,
-    "transfer_lr": 1.0,
-    "scale_transfer_lr": true,
-    "transfer_columns": true,
-    "with_reset_prob": 1.0,
-    "random_selection": false,
-    "fast_weight_min": -1.0,
-    "fast_weight_max": 1.0,
-    "accumulate_biases": false
+  "modes": {
+    "train": {
+      "learning_rates": [0.8, 0.3],
+      "update_backend": {
+        "type": "tiki_taka",
+        "parameters": {
+          "fast_lr": 1.0,
+          "transfer_every": 4,
+          "units_in_mbatch": true,
+          "n_reads_per_transfer": 2,
+          "gamma": 0.0,
+          "transfer_lr": 1.0,
+          "scale_transfer_lr": true,
+          "transfer_columns": true,
+          "with_reset_prob": 1.0,
+          "random_selection": false,
+          "fast_weight_min": -1.0,
+          "fast_weight_max": 1.0,
+          "accumulate_biases": false
+        }
+      }
+    }
   }
 }
 ```
@@ -62,6 +64,12 @@ illustrative rather than implicit recommendations:
 Unknown keys and values of the wrong type are rejected. Tiki-Taka currently
 requires optimizer `momentum` and `weight_decay` both to be zero because their
 placement in the two-array update rule is undefined.
+
+The still-live MNIST research tools retain their older `update_pipeline`
+locations: `labs/mnist_train.py` reads it at the top level, while
+`labs/mnist_monitor_training.py` and
+`plotting_functions/visualize_training_steps.py` read
+`training.update_pipeline`.
 
 ## Exact ideal-tensor update rule and signs
 

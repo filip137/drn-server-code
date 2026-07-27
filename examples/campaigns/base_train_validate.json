@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "campaign_id": "base-train-validate",
+  "targets": [
+    {
+      "id": "base",
+      "worktree": "../..",
+      "python": "../../../../miniconda3/envs/py312/bin/python"
+    }
+  ],
+  "stages": [
+    {
+      "id": "train",
+      "case_id": "base",
+      "target": "base",
+      "command": "train",
+      "config": "../small_drn/base.json"
+    },
+    {
+      "id": "validate",
+      "case_id": "base",
+      "target": "base",
+      "command": "validate",
+      "config": "../small_drn/base.json",
+      "depends_on": ["train"],
+      "inputs": {
+        "weights": {
+          "stage": "train",
+          "artifact_kind": "weights"
+        }
+      }
+    }
+  ]
+}

@@ -2289,7 +2289,7 @@ class ExperimentalIVcurveUpdater(LayerUpdater):
         self._timing_counter = 0
         self._timing_total = 0.0
         self._timing_calls = 0
-        # Used by validation metadata aggregation in small_network_core.py.
+        # Cumulative diagnostics consumed by experiment probes and reports.
         self._newton_iter_total = 0
         self._newton_iter_calls = 0
         # Standard quadratic coefficients (matching QuadraticUpdater interface)

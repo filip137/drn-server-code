@@ -80,4 +80,5 @@ if [[ -z "$out_dir" ]]; then
   out_dir="$(dirname "$run_npz")/error_vs_spice_layers"
 fi
 
-/home/filip/server_code/labs/tools/compare_npz.sh "$run_npz" "$spice_npz" "$out_dir" "$@"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$script_dir/compare_npz.sh" "$run_npz" "$spice_npz" "$out_dir" "$@"

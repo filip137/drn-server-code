@@ -349,26 +349,6 @@ def export_pt_to_npz(pt_path, npz_path: Optional[Path] = None, param_names=None)
     return target
 
 
-def build_metadata_from_config(config_path, model_key):
-    """Build a metadata dict from a config JSON in the same shape as small_network.py."""
-    config_path = Path(config_path)
-    config = json.loads(config_path.read_text())
-    if "models" not in config or model_key not in config["models"]:
-        raise KeyError(f"Model '{model_key}' not found in config: {config_path}")
-    model_cfg = config["models"][model_key]
-
-    return {
-        "voltage_amp": model_cfg.get("voltage_amp"),
-        "current_amp": model_cfg.get("current_amp"),
-        "layer_shapes": model_cfg.get("layer_shapes"),
-        "non_linearity": {
-            "type": model_cfg.get("non_linearity"),
-            "quadratic_params": dict(model_cfg.get("quadratic_diode_param", {})),
-            "exponential_params": dict(model_cfg.get("exponential_diode_param", {})),
-        },
-    }
-
-
 def flatten_weights_and_inputs(
     weights_npz_path,
     inputs_npz_path,
