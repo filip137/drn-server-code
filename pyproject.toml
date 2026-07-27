@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ebl-experiments"
+version = "0.1.0"
+description = "Versioned experiment runtime for dissipative resistive networks"
+requires-python = ">=3.10"
+
+[project.scripts]
+ebl = "ebl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "campaigns*",
+  "ebl*",
+  "experiments*",
+  "labs*",
+  "model*",
+  "training*",
+]
+exclude = [
+  "labs.MNIST_network_data*",
+  "labs.configs*",
+  "labs.figures_for_paper_digits*",
+  "labs.i_v_npz*",
+  "labs.shfiles*",
+]
+namespaces = true

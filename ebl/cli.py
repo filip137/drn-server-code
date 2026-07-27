@@ -1,0 +1,730 @@
+"""Public ``ebl`` command line.
+
+This module owns argument parsing and experiment selection.  Numerical
+execution is injected through :class:`CommandHandlers`, keeping the stable CLI
+independent from legacy scripts while the runtime adapters are migrated.
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import subprocess
+import sys
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Optional,
+    Sequence,
+    TextIO,
+    Tuple,
+)
+
+from experiments.definitions import (
+    get_definition,
+    list_definitions,
+    load_experiment_config,
+    resolve_experiment_config,
+)
+from experiments.schema import (
+    ConfigError,
+    ExperimentDefinition,
+    RunMode,
+    to_plain_data,
+)
+
+if TYPE_CHECKING:
+    from campaigns.schema import CampaignSpec
+
+
+class CliUsageError(ValueError):
+    """Raised for command-line syntax errors without terminating the process."""
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise CliUsageError(
+            "Expected command-line arguments matching this command's help. "
+            f"Provided value: {message}."
+        )
+
+
+@dataclass(frozen=True)
+class TrainRequest:
+    definition: ExperimentDefinition
+    spec: Any
+    config_path: Path
+    output_dir: Path
+    weights: Optional[Path]
+    base_weights: Optional[Path]
+    resume: Optional[Path]
+    command: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LinspaceRequest:
+    definition: ExperimentDefinition
+    spec: Any
+    config_path: Path
+    output_dir: Path
+    weights: Path
+    command: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ValidateRequest:
+    definition: ExperimentDefinition
+    spec: Any
+    config_path: Path
+    output_dir: Path
+    weights: Path
+    command: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ImportLegacyCheckpointRequest:
+    definition: ExperimentDefinition
+    document: Any
+    config_path: Path
+    source: Path
+    output: Path
+    kind: str
+    command: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CampaignRunRequest:
+    spec: "CampaignSpec"
+    manifest_path: Path
+    output_dir: Path
+    resume: bool
+    dry_run: bool
+    allow_dirty: bool
+    fail_fast: bool
+    command: Tuple[str, ...]
+
+
+Handler = Callable[[Any], Optional[int]]
+
+
+@dataclass(frozen=True)
+class CommandHandlers:
+    """Optional execution handlers connected by the application layer."""
+
+    train: Optional[Handler] = None
+    linspace: Optional[Handler] = None
+    validate: Optional[Handler] = None
+    checkpoint_import_legacy: Optional[Handler] = None
+    campaign_run: Optional[Handler] = None
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Construct the stable public parser without importing numerical code."""
+
+    parser = _ArgumentParser(
+        prog="ebl",
+        description=(
+            "Run versioned EBL experiments from strict JSON configuration."
+        ),
+    )
+    commands = parser.add_subparsers(
+        dest="command_name",
+        required=True,
+        metavar="COMMAND",
+    )
+
+    describe = commands.add_parser(
+        "describe",
+        help="list experiment IDs or describe one registered definition",
+    )
+    describe.add_argument(
+        "--experiment",
+        dest="experiment_id",
+        help="stable registered ID, for example small_drn.v1",
+    )
+    describe.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable definition metadata",
+    )
+
+    train = commands.add_parser(
+        "train",
+        help="train the experiment selected by the config file",
+    )
+    _add_config_and_output(train)
+    initial = train.add_mutually_exclusive_group()
+    initial.add_argument(
+        "--weights",
+        type=Path,
+        help="initialize the complete model from a weights artifact",
+    )
+    initial.add_argument(
+        "--base-weights",
+        type=Path,
+        help="initialize only base weights, leaving adapters independent",
+    )
+    initial.add_argument(
+        "--resume",
+        type=Path,
+        help="resume from a full training-state checkpoint",
+    )
+
+    linspace = commands.add_parser(
+        "linspace",
+        help="evaluate a trained checkpoint over a configured linspace",
+    )
+    _add_config_and_output(linspace)
+    linspace.add_argument(
+        "--weights",
+        type=Path,
+        required=True,
+        help="explicit weights artifact to evaluate",
+    )
+
+    validate = commands.add_parser(
+        "validate",
+        help="validate a trained checkpoint on a configured dataset split",
+    )
+    _add_config_and_output(validate)
+    validate.add_argument(
+        "--weights",
+        type=Path,
+        required=True,
+        help="explicit weights artifact to validate",
+    )
+
+    checkpoint = commands.add_parser(
+        "checkpoint",
+        help="checkpoint inspection and conversion commands",
+    )
+    checkpoint_commands = checkpoint.add_subparsers(
+        dest="checkpoint_command",
+        required=True,
+        metavar="CHECKPOINT_COMMAND",
+    )
+    import_legacy = checkpoint_commands.add_parser(
+        "import-legacy",
+        help="convert a legacy checkpoint to the versioned artifact format",
+    )
+    import_legacy.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="JSON config that selects and describes the experiment",
+    )
+    import_legacy.add_argument(
+        "--source",
+        type=Path,
+        required=True,
+        help="legacy checkpoint to read",
+    )
+    import_legacy.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="versioned checkpoint file to write",
+    )
+    import_legacy.add_argument(
+        "--kind",
+        choices=("full", "base"),
+        default="full",
+        help="whether the source contains full-model or base-only weights",
+    )
+
+    campaign = commands.add_parser(
+        "campaign",
+        help="run a strict cross-worktree experiment campaign",
+    )
+    campaign_commands = campaign.add_subparsers(
+        dest="campaign_command",
+        required=True,
+        metavar="CAMPAIGN_COMMAND",
+    )
+    campaign_run = campaign_commands.add_parser(
+        "run",
+        help="execute stages from a versioned campaign manifest",
+    )
+    campaign_run.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="strict JSON campaign manifest",
+    )
+    campaign_run.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="explicit operational root for campaign results",
+    )
+    campaign_run.add_argument(
+        "--resume",
+        action="store_true",
+        help="reuse complete stages with an identical fingerprint",
+    )
+    campaign_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preflight and write plans without launching stage processes",
+    )
+    campaign_run.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="allow targets with uncommitted worktree changes",
+    )
+    failure_policy = campaign_run.add_mutually_exclusive_group()
+    failure_policy.add_argument(
+        "--fail-fast",
+        dest="fail_fast",
+        action="store_true",
+        help="stop launching independent stages after the first failure",
+    )
+    failure_policy.add_argument(
+        "--continue-on-error",
+        "--continue",
+        dest="fail_fast",
+        action="store_false",
+        help="continue launching independent stages after failures (default)",
+    )
+    campaign_run.set_defaults(fail_fast=False)
+    return parser
+
+
+def _add_config_and_output(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="strict JSON experiment document; it selects the experiment ID",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help="operational root for the new run directory",
+    )
+
+
+def _definition_payload(definition: ExperimentDefinition) -> dict:
+    return {
+        "experiment_id": definition.experiment_id,
+        "schema_version": definition.schema_version,
+        "description": definition.description,
+        "supported_modes": [
+            mode.value for mode in definition.supported_modes
+        ],
+        "legacy_names": list(definition.legacy_names),
+        "combinations": [
+            to_plain_data(combination)
+            for combination in definition.combinations
+        ],
+    }
+
+
+def _protocol_payload(
+    definitions: Sequence[ExperimentDefinition],
+) -> dict:
+    combinations = [
+        combination
+        for definition in definitions
+        for combination in definition.combinations
+    ]
+    return {
+        "protocol_version": 1,
+        "capabilities": {
+            "supported_commands": [
+                "describe",
+                "train",
+                "linspace",
+                "validate",
+                "checkpoint import-legacy",
+                "campaign run",
+            ],
+            "config_selects_experiment": True,
+            "strict_json_config": True,
+            "immutable_mode_specs": True,
+            "extensions": {
+                "model_adapter": sorted(
+                    {
+                        item.selection.model_adapter
+                        for item in combinations
+                    }
+                ),
+                "weight_modifier": sorted(
+                    {
+                        item.selection.weight_modifier
+                        for item in combinations
+                    }
+                ),
+                "update_backend": sorted(
+                    {
+                        item.selection.update_backend
+                        for item in combinations
+                    }
+                ),
+                "algorithm": sorted(
+                    {
+                        item.selection.algorithm
+                        for item in combinations
+                    }
+                ),
+                "unlisted_combinations": "rejected",
+            },
+            "resume": {
+                "weights": True,
+                "base_weights": True,
+                "full_training_state": True,
+                "legacy_checkpoint_import": True,
+                "campaign_stage_reuse": True,
+            },
+            "campaign": {
+                "schema_version": 1,
+                "dry_run": True,
+                "stage_artifact_references": True,
+                "allow_dirty": True,
+                "failure_policies": ["continue", "fail_fast"],
+            },
+        },
+        "commands": {
+            "describe": {
+                "available": True,
+                "required_options": [],
+            },
+            "train": {
+                "available": any(
+                    RunMode.TRAIN in item.supported_modes
+                    for item in definitions
+                ),
+                "required_options": ["--config", "--output-dir"],
+                "exclusive_input_options": [
+                    "--weights",
+                    "--base-weights",
+                    "--resume",
+                ],
+            },
+            "linspace": {
+                "available": any(
+                    RunMode.LINSPACE in item.supported_modes
+                    for item in definitions
+                ),
+                "required_options": [
+                    "--config",
+                    "--output-dir",
+                    "--weights",
+                ],
+            },
+            "validate": {
+                "available": any(
+                    RunMode.VALIDATE in item.supported_modes
+                    for item in definitions
+                ),
+                "required_options": [
+                    "--config",
+                    "--output-dir",
+                    "--weights",
+                ],
+            },
+            "checkpoint import-legacy": {
+                "available": True,
+                "required_options": [
+                    "--config",
+                    "--source",
+                    "--output",
+                ],
+            },
+            "campaign run": {
+                "available": True,
+                "required_options": [
+                    "--manifest",
+                    "--output-dir",
+                ],
+                "optional_flags": [
+                    "--resume",
+                    "--dry-run",
+                    "--allow-dirty",
+                    "--fail-fast",
+                    "--continue-on-error",
+                ],
+            },
+        },
+    }
+
+
+def _describe(
+    experiment_id: Optional[str],
+    *,
+    json_output: bool,
+    stdout: TextIO,
+) -> int:
+    if experiment_id is None:
+        definitions = list_definitions()
+        if json_output:
+            payload = _protocol_payload(definitions)
+            payload["experiments"] = [
+                _definition_payload(item) for item in definitions
+            ]
+            json.dump(payload, stdout, indent=2, sort_keys=True)
+            stdout.write("\n")
+        else:
+            for definition in definitions:
+                modes = ", ".join(
+                    mode.value for mode in definition.supported_modes
+                )
+                stdout.write(
+                    f"{definition.experiment_id}\t{modes}\t"
+                    f"{definition.description}\n"
+                )
+        return 0
+
+    definition = get_definition(experiment_id)
+    definition_payload = _definition_payload(definition)
+    if json_output:
+        payload = _protocol_payload((definition,))
+        payload.update(definition_payload)
+        json.dump(payload, stdout, indent=2, sort_keys=True)
+        stdout.write("\n")
+        return 0
+
+    stdout.write(f"{definition_payload['experiment_id']}\n")
+    stdout.write(
+        f"  schema version: {definition_payload['schema_version']}\n"
+    )
+    stdout.write(
+        "  modes: "
+        + ", ".join(definition_payload["supported_modes"])
+        + "\n"
+    )
+    stdout.write(f"  {definition_payload['description']}\n")
+    if definition_payload["legacy_names"]:
+        stdout.write(
+            "  legacy names: "
+            + ", ".join(definition_payload["legacy_names"])
+            + "\n"
+        )
+    stdout.write("  explicit train combinations:\n")
+    for combination in definition.combinations:
+        selection = combination.selection
+        stdout.write(
+            "    "
+            f"{selection.model_adapter}/"
+            f"{selection.weight_modifier}/"
+            f"{selection.update_backend}/"
+            f"{selection.algorithm}: "
+            f"{combination.status}\n"
+        )
+    return 0
+
+
+def _require_handler(
+    handler: Optional[Handler],
+    command_name: str,
+) -> Handler:
+    if handler is None:
+        raise ConfigError(
+            f"Expected a connected execution handler for {command_name!r}. "
+            "Provided value: None. Argument parsing and configuration "
+            "validation succeeded, but the numerical runtime is not "
+            "connected yet."
+        )
+    return handler
+
+
+def _handler_result(handler: Handler, request: Any) -> int:
+    result = handler(request)
+    if result is None:
+        return 0
+    if isinstance(result, bool) or not isinstance(result, int):
+        raise ConfigError(
+            "Expected an execution handler to return an integer exit code or "
+            f"None. Provided value: {result!r}."
+        )
+    return result
+
+
+def _default_campaign_handler(request: CampaignRunRequest) -> int:
+    """Lazily execute a campaign without connecting numerical handlers."""
+
+    from campaigns.runner import run_campaign
+
+    try:
+        records = run_campaign(
+            request.spec,
+            output_root=request.output_dir,
+            resume=request.resume,
+            dry_run=request.dry_run,
+            allow_dirty=request.allow_dirty,
+            fail_fast=request.fail_fast,
+        )
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
+        raise ConfigError(
+            "Expected campaign preflight and execution to complete "
+            "successfully. "
+            f"Provided value: {type(error).__name__}: {error}."
+        ) from error
+    return (
+        1
+        if any(record.get("status") == "failed" for record in records.values())
+        else 0
+    )
+
+
+def _dispatch(
+    args: argparse.Namespace,
+    *,
+    handlers: CommandHandlers,
+    command: Tuple[str, ...],
+    stdout: TextIO,
+) -> int:
+    if args.command_name == "describe":
+        return _describe(
+            args.experiment_id,
+            json_output=args.json,
+            stdout=stdout,
+        )
+
+    if args.command_name == "train":
+        definition, spec = resolve_experiment_config(
+            args.config,
+            RunMode.TRAIN,
+        )
+        request = TrainRequest(
+            definition=definition,
+            spec=spec,
+            config_path=args.config,
+            output_dir=args.output_dir,
+            weights=args.weights,
+            base_weights=args.base_weights,
+            resume=args.resume,
+            command=command,
+        )
+        return _handler_result(
+            _require_handler(handlers.train, "train"),
+            request,
+        )
+
+    if args.command_name == "linspace":
+        definition, spec = resolve_experiment_config(
+            args.config,
+            RunMode.LINSPACE,
+        )
+        request = LinspaceRequest(
+            definition=definition,
+            spec=spec,
+            config_path=args.config,
+            output_dir=args.output_dir,
+            weights=args.weights,
+            command=command,
+        )
+        return _handler_result(
+            _require_handler(handlers.linspace, "linspace"),
+            request,
+        )
+
+    if args.command_name == "validate":
+        definition, spec = resolve_experiment_config(
+            args.config,
+            RunMode.VALIDATE,
+        )
+        request = ValidateRequest(
+            definition=definition,
+            spec=spec,
+            config_path=args.config,
+            output_dir=args.output_dir,
+            weights=args.weights,
+            command=command,
+        )
+        return _handler_result(
+            _require_handler(handlers.validate, "validate"),
+            request,
+        )
+
+    if (
+        args.command_name == "checkpoint"
+        and args.checkpoint_command == "import-legacy"
+    ):
+        definition, document = load_experiment_config(args.config)
+        request = ImportLegacyCheckpointRequest(
+            definition=definition,
+            document=document,
+            config_path=args.config,
+            source=args.source,
+            output=args.output,
+            kind=args.kind,
+            command=command,
+        )
+        return _handler_result(
+            _require_handler(
+                handlers.checkpoint_import_legacy,
+                "checkpoint import-legacy",
+            ),
+            request,
+        )
+
+    if (
+        args.command_name == "campaign"
+        and args.campaign_command == "run"
+    ):
+        from campaigns.schema import load_campaign_manifest
+
+        try:
+            spec = load_campaign_manifest(args.manifest)
+        except ValueError as error:
+            raise ConfigError(str(error)) from error
+        request = CampaignRunRequest(
+            spec=spec,
+            manifest_path=args.manifest.expanduser().resolve(),
+            output_dir=args.output_dir,
+            resume=args.resume,
+            dry_run=args.dry_run,
+            allow_dirty=args.allow_dirty,
+            fail_fast=args.fail_fast,
+            command=command,
+        )
+        return _handler_result(
+            handlers.campaign_run or _default_campaign_handler,
+            request,
+        )
+
+    raise CliUsageError(
+        "Expected a supported ebl command. "
+        f"Provided value: {args.command_name!r}."
+    )
+
+
+def main(
+    argv: Optional[Sequence[str]] = None,
+    *,
+    handlers: Optional[CommandHandlers] = None,
+    stdout: Optional[TextIO] = None,
+    stderr: Optional[TextIO] = None,
+) -> int:
+    """Parse and dispatch one CLI invocation.
+
+    ``handlers`` is injectable for the runtime composition root and for tests.
+    Until a handler is connected, execution commands fail only after the
+    selected config has been fully validated.
+    """
+
+    output = stdout if stdout is not None else sys.stdout
+    errors = stderr if stderr is not None else sys.stderr
+    raw_argv = tuple(argv) if argv is not None else tuple(sys.argv[1:])
+    parser = build_parser()
+    try:
+        parsed = parser.parse_args(raw_argv)
+        return _dispatch(
+            parsed,
+            handlers=handlers or CommandHandlers(),
+            command=("ebl",) + raw_argv,
+            stdout=output,
+        )
+    except (CliUsageError, ConfigError) as error:
+        errors.write(f"error: {error}\n")
+        return 2

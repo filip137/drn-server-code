@@ -8,12 +8,62 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - Out of scope: large generated outputs and datasets (see `.gitignore`).
 
 ## Repo Layout (key)
-- `model/`: core model components
-- `training/`: training loops and monitoring
-- `labs/`: experiments and utilities
+- `model/`: model components and parameterized model adapters
+- `training/`: reusable engines, estimators, update backends, modifiers, probes,
+  and checkpoint codecs
+- `experiments/`: versioned experiment schemas and thin composition roots
+- `campaigns/`: subprocess-only orchestration across clean Git worktrees
+- `labs/`: legacy experiments and specialized utilities; do not add new
+  orchestration to `labs/small_network.py`
 - `plotting_functions/`: analysis/plotting helpers
 - `playbooks/`: SOPs for repeatable tasks
 - `docs/`: lightweight state and notes
+
+## Experiment Architecture
+
+- The stable public CLI is `python -m ebl`.
+- Config files select a registered versioned experiment ID. They contain
+  scientific settings only; input checkpoints and output paths are CLI
+  arguments.
+- Keep config parsing pure. It must not import datasets, initialize a GPU,
+  create directories, or discover modules dynamically.
+- Keep `model/` and `training/` independent of experiment-specific config
+  dataclasses. Adapt config into numerical objects in
+  `experiments/<experiment>/`.
+- Add an intervention at the narrowest extension boundary:
+  - structural parameterization: model adapter;
+  - free/nudged phase perturbation: parameter modifier;
+  - gradient application/accumulation: update backend;
+  - measurements: evaluation probe.
+- New combinations fail closed until listed in the experiment definition and
+  covered by a numerical parity or acceptance test.
+- Do not use module globals or monkey patches to compose experiments.
+
+## Artifacts and Checkpoints
+
+- A command owns exactly one run directory. Never append to a prior run.
+- `checkpoints/weights.pt` is the selected named-weights artifact.
+- `checkpoints/resume.pt` is the latest full epoch-boundary state and is not a
+  substitute for selected weights.
+- Load parameters by stable catalog key, not positional order.
+- Positional checkpoints are accepted only by
+  `ebl checkpoint import-legacy` with an explicit `--kind`.
+- Linspace and validation require an explicit `--weights` path. Never scan for
+  the newest model.
+- Campaigns invoke worktrees as subprocesses through the public CLI. Do not
+  import Python modules from another worktree into the controller process.
+
+## Change Checklist
+
+1. Update the strict schema and explicit experiment capability matrix.
+2. Implement against an existing extension protocol or add a focused one.
+3. Add unit tests for lifecycle/order and a numerical parity test where
+   behavior should remain unchanged.
+4. Add or update a nested example config.
+5. Run `python -m ebl describe --experiment small_drn.v1 --json`, the focused
+   tests, and the legacy `labs/tests` suite.
+6. Keep HWA and LoRA feature commits separate so each can be rebased onto the
+   same foundation and compared by a campaign.
 
 ## Playbooks
 - Optuna analysis SOP: `playbooks/optuna_analysis.md`
@@ -43,6 +93,8 @@ Generated outputs live under folders like `simulation_results*`, `papers/`, and 
 
 ## Config Rules
 - Do not silently default diode parameter dicts; require explicit `*_diode_param` dicts in config.
+- Reject unknown keys at every versioned experiment-config level.
+- Error messages state the expected format before the provided value.
 
 ## Environment Issues
 - OpenMP SHM error (`OMP: Error #179: Function Can't open SHM2 failed: System error #13: Permission denied`) can occur when running Python (e.g., matplotlib/numpy) in the sandbox. Fix options:
