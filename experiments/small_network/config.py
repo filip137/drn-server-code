@@ -709,7 +709,7 @@ def _parse_solver(value: Any) -> SolverSettings:
         ),
     )
 
-    return SolverSettings(
+    settings = SolverSettings(
         inference_iterations=_integer(
             parsed["inference_iterations"],
             f"{path}.inference_iterations",
@@ -728,6 +728,12 @@ def _parse_solver(value: Any) -> SolverSettings:
         minimizer_mode=_string(
             parsed["minimizer_mode"],
             f"{path}.minimizer_mode",
+            choices=(
+                "forward",
+                "backward",
+                "synchronous",
+                "asynchronous",
+            ),
         ),
         adaptive_equilibrium=_boolean(
             parsed["adaptive_equilibrium"],
@@ -855,25 +861,49 @@ def _parse_solver(value: Any) -> SolverSettings:
             tolerance_start=_number(
                 experimental["tolerance_start"],
                 f"{experimental_path}.tolerance_start",
-                minimum=0.0,
+                strictly_positive=True,
             ),
             tolerance_end=_number(
                 experimental["tolerance_end"],
                 f"{experimental_path}.tolerance_end",
-                minimum=0.0,
+                strictly_positive=True,
             ),
             tolerance_switch_high=_number(
                 experimental["tolerance_switch_high"],
                 f"{experimental_path}.tolerance_switch_high",
-                minimum=0.0,
+                strictly_positive=True,
             ),
             tolerance_switch_low=_number(
                 experimental["tolerance_switch_low"],
                 f"{experimental_path}.tolerance_switch_low",
-                minimum=0.0,
+                strictly_positive=True,
             ),
         ),
     )
+    if settings.overrelaxation.reject_shrink >= 1.0:
+        raise config_error(
+            f"{overrelaxation_path}.reject_shrink",
+            "to be smaller than 1.0",
+            settings.overrelaxation.reject_shrink,
+        )
+    if (
+        settings.experimental_exponential.tolerance_switch_high
+        <= settings.experimental_exponential.tolerance_switch_low
+    ):
+        raise config_error(
+            f"{experimental_path}.tolerance_switch_high and "
+            f"{experimental_path}.tolerance_switch_low",
+            "to satisfy tolerance_switch_high > tolerance_switch_low > 0",
+            {
+                "tolerance_switch_high": (
+                    settings.experimental_exponential.tolerance_switch_high
+                ),
+                "tolerance_switch_low": (
+                    settings.experimental_exponential.tolerance_switch_low
+                ),
+            },
+        )
+    return settings
 
 
 def _parse_train(value: Any, *, layer_count: int) -> TrainSettings:

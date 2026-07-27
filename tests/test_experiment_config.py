@@ -223,6 +223,25 @@ def test_dataset_shape_and_training_rates_fail_during_pure_validation() -> None:
         parse_small_drn_config(payload)
 
 
+def test_solver_constraints_fail_before_numerical_construction() -> None:
+    payload = _config()
+    payload["solver"]["minimizer_mode"] = "sideways"
+    with pytest.raises(ConfigError, match="'forward'.*'asynchronous'"):
+        parse_small_drn_config(payload)
+
+    payload = _config()
+    payload["solver"]["overrelaxation"]["reject_shrink"] = 1.0
+    with pytest.raises(ConfigError, match="smaller than 1.0"):
+        parse_small_drn_config(payload)
+
+    payload = _config()
+    experimental = payload["solver"]["experimental_exponential"]
+    experimental["tolerance_switch_high"] = 1e-4
+    experimental["tolerance_switch_low"] = 1e-3
+    with pytest.raises(ConfigError, match="tolerance_switch_high >"):
+        parse_small_drn_config(payload)
+
+
 def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
     payload = _config()
     payload["model"]["adapter"] = {
