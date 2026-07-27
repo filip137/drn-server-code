@@ -1,7 +1,14 @@
 import torch
 
-from custom_classes import ConvLayer, ConvResistive, DetailedSumSeparableFunction
-from custom_minimizer import CustomQuadraticMinimizer as QuadraticMinimizer
+from labs.custom_classes import (
+    ConvLayer,
+    ConvResistive,
+    DetailedSumSeparableFunction,
+)
+from labs.custom_minimizer import (
+    CustomQuadraticMinimizer as QuadraticMinimizer,
+    MinimizerSettings,
+)
 from model.variable.parameter import ConvWeight
 
 
@@ -25,8 +32,16 @@ def test_single_conv_layer_quadratic_update_reduces_gradient():
     # Derived output spatial size: (6 - 3 + 1) = 4
     output_shape = (4, 4, 4)
 
-    input_layer = ConvLayer(input_shape, device="cpu")
-    output_layer = ConvLayer(output_shape, device="cpu")
+    input_layer = ConvLayer(
+        input_shape,
+        device="cpu",
+        non_linearity="linear",
+    )
+    output_layer = ConvLayer(
+        output_shape,
+        device="cpu",
+        non_linearity="linear",
+    )
 
     conv_weight = ConvWeight(
         shape=(output_shape[0], input_shape[0], kernel_size[0], kernel_size[1]),
@@ -35,7 +50,6 @@ def test_single_conv_layer_quadratic_update_reduces_gradient():
         clamp=False,
         clamp_min=None,
         clamp_max=None,
-        mode="convolution",
     )
 
     conv_interaction = ConvResistive(
@@ -45,6 +59,8 @@ def test_single_conv_layer_quadratic_update_reduces_gradient():
         padding=padding,
         stride=stride,
         dilation=1,
+        voltage_amp=1.0,
+        current_amp=1.0,
     )
 
     energy_fn = DetailedSumSeparableFunction(
@@ -67,6 +83,26 @@ def test_single_conv_layer_quadratic_update_reduces_gradient():
         exponential_diode_param=_default_exponential_params(),
         voltage_amp=1.0,
         current_amp=1.0,
+        hard_sigmoid_param={},
+        iv_data=None,
+        iv_data_path=None,
+        double_diode_updater=None,
+        adaptive_equilibrium=False,
+        overrelaxation_factor=1.0,
+        single_diode_updater=None,
+        minimizer_settings=MinimizerSettings(
+            rel_tol=1e-5,
+            vn_tol=1e-6,
+            use_polish=False,
+            max_newton_iters=0,
+            z_thresh=1e10,
+            exp_clip=100.0,
+            dynamic_polish=False,
+            overrelaxation_reject_steps=False,
+            overrelaxation_reject_max_tries=3,
+            overrelaxation_reject_shrink=0.5,
+            overrelaxation_reject_eps=0.0,
+        ),
     )
 
     grad_fn = energy_fn.grad_layer_fn(output_layer)

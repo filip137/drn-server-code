@@ -21,6 +21,10 @@ from training.statistics import (
 )
 
 
+class NonFiniteGradientError(RuntimeError):
+    """Raised when a training step produces NaN or infinite gradients."""
+
+
 @dataclass
 class MnistParts:
     energy_fn: object
@@ -193,9 +197,7 @@ class CustomTrainer(Trainer):
                     nan_count = torch.isnan(grad).sum().item()
                     inf_count = torch.isinf(grad).sum().item()
                     name = getattr(param, "name", param.__class__.__name__)
-                    import pdb
-                    pdb.set_trace()
-                    raise RuntimeError(
+                    raise NonFiniteGradientError(
                         f"[grad-check] non-finite gradient for {name}: nan={nan_count} inf={inf_count} "
                         f"shape={tuple(grad.shape)} dtype={grad.dtype} device={grad.device}"
                     )

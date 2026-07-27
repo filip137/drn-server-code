@@ -862,10 +862,10 @@ def train(
     model_npz_path = run_dir / "model.npz"
     export_pt_to_npz(model_path, model_npz_path)
 
-    try:
-        energy_fn.load(model_path)
-    except Exception:
-        pass
+    # Final metrics must describe the exact checkpoint published as
+    # ``model.pt``. A load failure is a correctness error, not a reason to
+    # evaluate whichever parameters happen to remain in memory.
+    energy_fn.load(model_path)
     train_accuracy = _compute_accuracy(
         network=network,
         cost_fn=cost_fn,
@@ -1072,16 +1072,6 @@ def moons_linspace(
             iteration_count_batches.append(batch_iteration_counts.astype(np.int64, copy=False))
         for layer in network.layers():
             state_history[layer.name].append(layer.state.detach().cpu())
-        fn = network._function
-        for layer in fn.layers():
-            grad = fn.grad_layer_fn(layer)()
-            res_current = grad.abs().max()
-            residual_history[layer.name].append(float(res_current.item()))
-        fn = network._function
-        for layer in fn.layers():
-            grad = fn.grad_layer_fn(layer)()
-            res_current = grad.abs().max()
-            residual_history[layer.name].append(float(res_current.item()))
         fn = network._function
         for layer in fn.layers():
             grad = fn.grad_layer_fn(layer)()
