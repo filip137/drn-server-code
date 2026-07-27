@@ -1397,8 +1397,8 @@ def test_manifest_freezes_high_grid_expansion_routes_and_shared_assets(
         "row_id": "conv3_baseline_v1_c1",
         "optimizer": "adam",
         "host": "main",
-        "rho_conv": 0.027,
-        "rho_dense": 0.09,
+        "rho_conv": 0.009,
+        "rho_dense": 0.03,
         "steps": CANARY_STEPS,
         "restart_from_shared_initialization": True,
         "shared_asset_hashes": _shared_assets(spec),
@@ -1413,8 +1413,14 @@ def test_manifest_freezes_high_grid_expansion_routes_and_shared_assets(
     )
     assert akib_preflight["surface_id"] == "conv3_ours_v4_c1--adam"
     assert akib_preflight["host"] == "akibscomputer"
-    assert akib_preflight["rho_conv"] == 0.027
-    assert akib_preflight["rho_dense"] == 0.09
+    assert akib_preflight["rho_conv"] == 0.009
+    assert akib_preflight["rho_dense"] == 0.03
+    assert {
+        (cell["rho_conv"], cell["rho_dense"])
+        for cell in by_id["conv3_baseline_v1_c1--adam"]["rho_policy"][
+            "core_cells"
+        ]
+    } == set(FIXED_HIGH_GRID)
     assert validate_surface_manifest(manifest, spec=spec) == manifest
     tampered = copy.deepcopy(manifest)
     tampered["surfaces"][0]["host"] = "akibscomputer"

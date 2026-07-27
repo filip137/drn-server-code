@@ -2491,7 +2491,7 @@ def representative_preflight_plan(
     spec: PerfectDiodeConv3HparamStudySpec,
     host: str,
 ) -> dict[str, Any]:
-    """Return a real Adam 640-step center-canary request from the manifest."""
+    """Return a real Adam 640-step minimal-core canary from the manifest."""
 
     value = validate_surface_manifest(manifest, spec=spec)
     if host not in ALLOWED_HOSTS:
@@ -2520,8 +2520,8 @@ def representative_preflight_plan(
     surface = eligible_adam[0]
     policy = surface["rho_policy"]
     if policy["core_mode"] == "fixed_high_3x3":
-        rho_conv = 0.027
-        rho_dense = 0.09
+        rho_conv = min(float(value) for value in policy["rho_conv"])
+        rho_dense = min(float(value) for value in policy["rho_dense"])
     else:
         rho_conv = float(policy["initial_rho_conv"])
         rho_dense = float(policy["initial_rho_dense"])
