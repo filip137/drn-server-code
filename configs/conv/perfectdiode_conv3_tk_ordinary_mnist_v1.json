@@ -1,0 +1,290 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-tk-study/v1",
+  "run_schema_version": "mnist-conv-perfectdiode-tk-run/v1",
+  "name": "perfect-diode-conv3-tk-ordinary-mnist-gain360",
+  "protocol_id": "conv3-perfectdiode-tk-ordinary-mnist-gain360-seed0-v1",
+  "status": {
+    "measurements": "pending",
+    "study_role": "ordinary_mnist_tk_diagnostic",
+    "medium_affine_paper_handoff": "unresolved",
+    "final_paper_training_authorized": false
+  },
+  "dataset": {
+    "name": "mnist",
+    "variant": "ordinary",
+    "input_shape": [
+      2,
+      28,
+      28
+    ],
+    "normalization": {
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "signed_two_channel_preprocessing": {
+      "formula": "concatenate(x_normalized,-x_normalized)",
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "affine": {
+      "enabled": false,
+      "preset": "ordinary_identity",
+      "degrees": 0.0,
+      "translate": [
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "shear": 0.0,
+      "seed": 1729,
+      "interpolation": "bilinear",
+      "fill": 0.0,
+      "deterministic_by_original_index": true
+    },
+    "train": {
+      "source": "mnist_train",
+      "size": 55000,
+      "batch_size": 16,
+      "drop_last": false,
+      "shuffle_method": "torch_randperm",
+      "shuffle_seed": 0,
+      "reset_shuffle_identically_before_each_run": true,
+      "steps_per_epoch": 3438
+    },
+    "validation": {
+      "source": "mnist_train",
+      "size": 5000,
+      "class_count": 10,
+      "samples_per_class": 500,
+      "stratified": true,
+      "selection_method": "classwise_torch_randperm",
+      "split_seed": 0,
+      "batch_size": 64,
+      "store_exact_indices": true,
+      "index_hash": "sha256"
+    },
+    "official_test": {
+      "enabled": false,
+      "read_allowed": false
+    }
+  },
+  "model": {
+    "model_seed": 0,
+    "architectures": {
+      "conv3": {
+        "channels": [
+          64,
+          128,
+          256
+        ],
+        "kernel_sizes": [
+          3,
+          3,
+          3
+        ],
+        "strides": [
+          2,
+          2,
+          1
+        ],
+        "paddings": [
+          1,
+          1,
+          1
+        ],
+        "pooling": "none",
+        "output_dim": 20,
+        "bounded_weight_order": [
+          "ConvWeight_0",
+          "ConvWeight_1",
+          "ConvWeight_2",
+          "DenseWeight_0"
+        ],
+        "trainable_parameter_order": [
+          "ConvWeight_0",
+          "Bias_0",
+          "ConvWeight_1",
+          "Bias_1",
+          "ConvWeight_2",
+          "Bias_2",
+          "DenseWeight_0"
+        ]
+      }
+    },
+    "non_linearity": "perfect_diode",
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "hard_sigmoid": {},
+    "perfect_diode": {
+      "clamp_epsilon": 1e-08
+    },
+    "conductance_bounds": [
+      0.0,
+      100.0
+    ],
+    "weight_initialization": "kaiming_uniform",
+    "weight_gains": 1.0,
+    "paired_output_loss": "squared_error_paired_20",
+    "amplification": "fixed",
+    "shared_initialization": "one_imported_seed0_conv3_checkpoint_shared_across_all_schemes_and_hosts",
+    "reset_global_name_counters_before_build": true,
+    "input_gain": {
+      "conv3": 360.0,
+      "shared_across_schemes": true,
+      "recalibrate": false,
+      "provenance": "user_fixed_ordinary_mnist_diagnostic"
+    }
+  },
+  "solver": {
+    "energy_mode": "asynchronous",
+    "fixed_step_minimization": true,
+    "batch_state_policy": "reset_each_batch",
+    "minimizer": {
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "adaptive_equilibrium": false,
+      "overrelaxation_factor": 1.1,
+      "single_diode_updater": "custom",
+      "iv_data_path": null,
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "settings": {
+        "rel_tol": 1e-05,
+        "vn_tol": 1e-06,
+        "use_polish": true,
+        "max_newton_iters": 32,
+        "z_thresh": 10000000000.0,
+        "exp_clip": 100000.0,
+        "dynamic_polish": true,
+        "overrelaxation_reject_steps": false,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_eps": 0.0,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005
+      }
+    }
+  },
+  "optimizer": {
+    "name": "SGD",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "scalar_lr_for_all_trainable_parameters": true,
+    "bounded_weights_set_gates": true,
+    "biases_reported_separately": true,
+    "role": "initialization_and_gradient_diagnostic_only"
+  },
+  "rows": [
+    {
+      "row_id": "conv3_baseline_v1_c1",
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_name": "mnist_bp_amp_v1_c1",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "input_gain": 360.0
+    },
+    {
+      "row_id": "conv3_ours_v4_c1",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "input_gain": 360.0
+    },
+    {
+      "row_id": "conv3_legacy_v4_c0p25",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "input_gain": 360.0
+    }
+  ],
+  "t_selection": {
+    "phase": "initialization_only",
+    "cohort_source": "mnist_train_55000_subset",
+    "cohort_examples": 1024,
+    "batch_size": 64,
+    "candidate_grid": [
+      4,
+      6,
+      8,
+      10,
+      16,
+      24,
+      32,
+      48,
+      64
+    ],
+    "reference_sentinel": 64,
+    "extension_grid": [
+      96,
+      128,
+      192,
+      256
+    ],
+    "threshold": 0.01,
+    "comparison": "strictly_less_than",
+    "hidden_residual": "projected_kkt",
+    "output_residual": "raw",
+    "per_sample_reduction": "layer_unit_maximum",
+    "cohort_reduction": "linear_p90",
+    "missing_nonfinite_or_incomplete": "fail_candidate"
+  },
+  "k_selection": {
+    "phase": "initialization_only_after_selected_t",
+    "cohort_source": "mnist_train_55000_subset",
+    "cohort_examples": 256,
+    "batch_size": 32,
+    "candidate_grid": [
+      4,
+      6,
+      8,
+      16,
+      32,
+      64
+    ],
+    "reference": 64,
+    "boundary_sentinel": 128,
+    "parameter_scope": [
+      "ConvWeight_0",
+      "ConvWeight_1",
+      "ConvWeight_2"
+    ],
+    "relative_gradient_l2_norm_delta_maximum": 0.1,
+    "absolute_zero_fraction_delta_maximum": 0.02,
+    "gradient_vector_cosine_minimum": 0.9,
+    "zero_epsilon": 1e-12,
+    "reference_median_gradient_rms_minimum": 1e-12,
+    "reference_q90_zero_fraction_maximum": 0.99,
+    "reference_nominal_update_unit": "finite_positive",
+    "comparison_boundaries": "inclusive",
+    "same_batches_initialization_free_equilibria_targets_and_parameter_order": true
+  },
+  "execution": {
+    "backend": "tmux",
+    "whole_scheme_row_per_entry": true,
+    "lane_by_scheme": {
+      "baseline": "main",
+      "ours": "akibscomputer",
+      "legacy": "main"
+    },
+    "shared_asset_policy": "create_once_locally_then_copy_and_hash_verify_on_every_host"
+  },
+  "artifacts": {
+    "content_addressed_config": true,
+    "content_addressed_manifest": true,
+    "checksummed_entry_completions": true,
+    "aggregate_selection_schema": "mnist-conv-perfectdiode-tk-selection/v1"
+  }
+}
