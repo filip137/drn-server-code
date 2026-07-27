@@ -42,7 +42,7 @@ PYTHON_EXECUTABLE = (
 )
 CPUS_PER_TASK = 16
 GPUS_PER_TASK = 1
-MEMORY_MB = 64_000
+HOST_MEMORY_POLICY = "jean_zay_site_managed_no_explicit_slurm_request"
 CANARY_ARRAY = "0-0"
 PRODUCTION_ARRAY = "0-5%6"
 CANARY_TASK_COUNT = 1
@@ -57,7 +57,7 @@ FIXED_ENTRY_PACKS = tuple(
 )
 ALLOCATION_AUTHORIZATION = (
     "AD011016471R1:umg@v100:gpu_p13:qos_gpu-t3:"
-    "v100-32g:gpu1:cpu16:mem64000M:nomultithread:"
+    "v100-32g:gpu1:cpu16:hostmem-site-managed:nomultithread:"
     "runs2:concurrent-processes:"
     "allocation-user-approved-20260727"
 )
@@ -431,7 +431,7 @@ def load_environment_contract(path: str | Path) -> dict[str, Any]:
         "tasks": 1,
         "gpus_per_task": GPUS_PER_TASK,
         "cpus_per_task": CPUS_PER_TASK,
-        "memory_mb": MEMORY_MB,
+        "host_memory_policy": HOST_MEMORY_POLICY,
         "hint": "nomultithread",
         "module": MODULE,
         "python_executable": python_executable,
@@ -678,23 +678,6 @@ def _scontrol_fields(line: str) -> dict[str, str]:
     return fields
 
 
-def _memory_mb(value: str) -> int | None:
-    match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([KMGTP]?)", value)
-    if match is None:
-        return None
-    number = float(match.group(1))
-    unit = match.group(2)
-    factors = {
-        "": 1,
-        "K": 1 / 1024,
-        "M": 1,
-        "G": 1024,
-        "T": 1024**2,
-        "P": 1024**3,
-    }
-    return round(number * factors[unit])
-
-
 def _array_task_spec(value: str) -> tuple[set[int], int | None]:
     indices: set[int] = set()
     throttles: set[int] = set()
@@ -865,19 +848,6 @@ def verify_submitted_job_contract(
                     "ReqTRES": req_tres,
                     "TresPerNode": tres_per_node,
                 },
-            }
-        memory_value = row.get("MinMemoryNode")
-        if memory_value is None:
-            memory_match = re.search(
-                r"(?:^|,)mem=([^,]+)(?:,|$)", req_tres
-            )
-            memory_value = (
-                None if memory_match is None else memory_match.group(1)
-            )
-        if memory_value is None or _memory_mb(memory_value) != MEMORY_MB:
-            mismatches["memory_mb"] = {
-                "expected": MEMORY_MB,
-                "provided": memory_value,
             }
         cpus_per_task = row.get("CPUs/Task")
         if cpus_per_task is None:
@@ -1226,7 +1196,6 @@ def prepare_submission(
         f"--constraint={CONSTRAINT}",
         f"--gres=gpu:{GPUS_PER_TASK}",
         f"--cpus-per-task={CPUS_PER_TASK}",
-        f"--mem={MEMORY_MB}M",
         "--hint=nomultithread",
         _export_arg(exports),
         str(wrapper),
@@ -1291,7 +1260,7 @@ def prepare_submission(
             "tasks": 1,
             "gpus_per_task": GPUS_PER_TASK,
             "cpus_per_task": CPUS_PER_TASK,
-            "memory_mb": MEMORY_MB,
+            "host_memory_policy": HOST_MEMORY_POLICY,
             "hint": "nomultithread",
             "module": MODULE,
             "python_executable": python_executable,

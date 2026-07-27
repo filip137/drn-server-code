@@ -361,7 +361,10 @@ def test_environment_contract_and_exact_array_resources(
         assert "--constraint=v100-32g" in command
         assert "--gres=gpu:1" in command
         assert "--cpus-per-task=16" in command
-        assert "--mem=64000M" in command
+        assert not any(
+            item.startswith(("--mem=", "--mem-per-cpu=", "--mem-per-gpu="))
+            for item in command
+        )
         assert "--hint=nomultithread" in command
         assert (
             f"--output={paths['output'].resolve()}/slurm/%x-%A_%a.out"
@@ -1094,7 +1097,7 @@ def _scontrol_submission_row(
         "QOS=qos_gpu-t3 Features=v100-32g "
         f"NumNodes={nodes} NumTasks=1 NumCPUs=16 CPUs/Task=16 "
         "ReqB:S:C:T=0:0:*:1 "
-        "ReqTRES=cpu=16,mem=64000M,gres/gpu=1 "
+        "ReqTRES=cpu=16,gres/gpu=1 "
         f"TimeLimit={walltime} WorkDir={repo_root} Command={wrapper} "
         f"StdOut={stdout_value} StdErr={stderr_value}\n"
     )
@@ -1364,7 +1367,11 @@ def test_immediate_scontrol_readback_binds_pending_resources_and_paths(
     wrapper = repo / "experiments" / "worker.slurm"
     output = (tmp_path / "output").resolve()
     metadata = {
-        "resources": {"memory_mb": 64_000},
+        "resources": {
+            "host_memory_policy": (
+                "jean_zay_site_managed_no_explicit_slurm_request"
+            )
+        },
         "repo_root": str(repo),
         "wrapper": str(wrapper),
         "output_root": str(output),
@@ -1495,7 +1502,11 @@ def test_supervisor_resume_reaudits_submitted_unverified_job(
         "repo_root": str(repo),
         "wrapper": str(wrapper),
         "launch_contract": {
-            "resources": {"memory_mb": 64_000},
+            "resources": {
+                "host_memory_policy": (
+                    "jean_zay_site_managed_no_explicit_slurm_request"
+                )
+            },
             "output_root": str(output),
         },
     }

@@ -808,7 +808,9 @@ def _receipt_fixture(
         "tasks": 1,
         "gpus_per_task": 1,
         "cpus_per_task": 16,
-        "memory_mb": 64_000,
+        "host_memory_policy": (
+            "jean_zay_site_managed_no_explicit_slurm_request"
+        ),
         "hint": "nomultithread",
         "module": "pytorch-gpu/py3/2.5.0",
         "python_executable": python_executable,
@@ -833,7 +835,6 @@ def _receipt_fixture(
             "--constraint=v100-32g",
             "--gres=gpu:1",
             "--cpus-per-task=16",
-            "--mem=64000M",
             "--hint=nomultithread",
             f"--export={placeholders}",
         ]

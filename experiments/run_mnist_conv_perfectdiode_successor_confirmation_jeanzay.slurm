@@ -10,7 +10,6 @@
 #SBATCH --partition=gpu_p13
 #SBATCH --qos=qos_gpu-t3
 #SBATCH --constraint=v100-32g
-#SBATCH --mem=64000M
 
 set -euo pipefail
 
@@ -81,7 +80,7 @@ do
   require_env "${name}"
 done
 
-authorization_expected="AD011016471R1:umg@v100:gpu_p13:qos_gpu-t3:v100-32g:gpu1:cpu16:mem64000M:nomultithread:runs2:concurrent-processes:allocation-user-approved-20260727"
+authorization_expected="AD011016471R1:umg@v100:gpu_p13:qos_gpu-t3:v100-32g:gpu1:cpu16:hostmem-site-managed:nomultithread:runs2:concurrent-processes:allocation-user-approved-20260727"
 if [[ "${PD_SUCCESSOR_AUTHORIZATION}" != "${authorization_expected}" ]]; then
   fail_value "PD_SUCCESSOR_AUTHORIZATION to match the user-approved allocation-only contract" "${PD_SUCCESSOR_AUTHORIZATION}"
 fi
@@ -362,7 +361,6 @@ live_cpus="$(job_field NumCPUs)"
 live_cpus_per_task="$(job_field CPUs/Task)"
 live_tres_per_node="$(job_field TresPerNode)"
 live_req_tres="$(job_field ReqTRES)"
-live_memory="$(job_field MinMemoryNode)"
 live_array_job_id="$(job_field ArrayJobId)"
 live_array_task_id="$(job_field ArrayTaskId)"
 
@@ -396,19 +394,6 @@ fi
 if [[ ",${live_tres_per_node}," != *",gres/gpu:1,"* && ",${live_req_tres}," != *",gres/gpu=1,"* ]]; then
   fail_value "the live Slurm job to request exactly one GPU per node" "${live_tres_per_node:-<unset>}"
 fi
-if [[ -z "${live_memory}" && "${live_req_tres}" =~ (^|,)mem=([^,]+)($|,) ]]; then
-  live_memory="${BASH_REMATCH[2]}"
-fi
-case "${live_memory}" in
-  64000M) live_memory_mb="64000" ;;
-  *G)
-    live_memory_mb="$(awk -v value="${live_memory%G}" 'BEGIN { printf "%.0f", value * 1024 }')"
-    ;;
-  *) live_memory_mb="" ;;
-esac
-if [[ "${live_memory_mb}" != "64000" ]]; then
-  fail_value "the live Slurm job memory to be exactly 64000 MiB" "${live_memory:-<unset>}"
-fi
 if [[ "${live_array_job_id}:${live_array_task_id}" != "${SLURM_ARRAY_JOB_ID}:${SLURM_ARRAY_TASK_ID}" ]]; then
   fail_value \
     "scontrol array job/task identity to match the live task environment" \
@@ -430,14 +415,10 @@ done
 if [[ -n "${SLURM_GPUS_ON_NODE:-}" && "${SLURM_GPUS_ON_NODE}" != "1" ]]; then
   fail_value "SLURM_GPUS_ON_NODE, when set, to be one" "${SLURM_GPUS_ON_NODE}"
 fi
-if [[ -n "${SLURM_MEM_PER_NODE:-}" && "${SLURM_MEM_PER_NODE}" != "64000" ]]; then
-  fail_value "SLURM_MEM_PER_NODE, when set, to be 64000" "${SLURM_MEM_PER_NODE}"
-fi
 export SLURM_JOB_ACCOUNT="${live_account}"
 export SLURM_JOB_PARTITION="${live_partition}"
 export SLURM_JOB_QOS="${live_qos}"
 export SLURM_GPUS_ON_NODE="1"
-export SLURM_MEM_PER_NODE="64000"
 
 IFS=',' read -r -a visible_gpus <<< "${CUDA_VISIBLE_DEVICES}"
 if [[ "${#visible_gpus[@]}" -ne 1 || -z "${visible_gpus[0]}" ]]; then

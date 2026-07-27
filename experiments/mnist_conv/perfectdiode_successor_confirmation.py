@@ -839,7 +839,9 @@ def validate_config(
         "constraint": "v100-32g",
         "gpus_per_task": 1,
         "cpus_per_task": 16,
-        "memory_mb": 64_000,
+        "host_memory_policy": (
+            "jean_zay_site_managed_no_explicit_slurm_request"
+        ),
         "hint": "nomultithread",
         "production_time_limit": "08:00:00",
         "canary_time_limit": "02:00:00",
@@ -2725,7 +2727,9 @@ def _validate_launch_contract(
         "tasks": 1,
         "gpus_per_task": 1,
         "cpus_per_task": 16,
-        "memory_mb": 64_000,
+        "host_memory_policy": (
+            "jean_zay_site_managed_no_explicit_slurm_request"
+        ),
         "hint": "nomultithread",
         "module": "pytorch-gpu/py3/2.5.0",
         "python_executable": JEAN_ZAY_PYTHON,
@@ -2822,13 +2826,25 @@ def _validate_launch_contract(
             "--constraint=v100-32g",
             "--gres=gpu:1",
             "--cpus-per-task=16",
-            "--mem=64000M",
             "--hint=nomultithread",
         }
         if not required_flags.issubset(template):
             raise _error(
                 f"launch contract.commands.{kind}.template",
                 f"all flags {sorted(required_flags)!r}",
+                template,
+            )
+        forbidden_memory_flags = (
+            "--mem=",
+            "--mem-per-cpu=",
+            "--mem-per-gpu=",
+        )
+        if any(
+            item.startswith(forbidden_memory_flags) for item in template
+        ):
+            raise _error(
+                f"launch contract.commands.{kind}.template",
+                "no explicit Slurm memory request on Jean Zay",
                 template,
             )
     return contract
