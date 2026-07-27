@@ -434,13 +434,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         else int(base_cfg["modes"]["linspace"]["samples"])
     )
 
-    md_path = (
-        Path(args.md_log).expanduser().resolve()
-        if args.md_log
-        else config_path.parent / "anderson_search.md"
-    )
-    _write_markdown_header(md_path)
-
     compare_script = _compare_script_path()
     if not compare_script.is_file():
         raise SystemExit(
@@ -453,6 +446,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     config_root = search_root / "configs"
     config_root.mkdir()
+    md_path = (
+        Path(args.md_log).expanduser().resolve()
+        if args.md_log
+        else search_root / "anderson_search.md"
+    )
+    _write_markdown_header(md_path)
 
     env = os.environ.copy()
     env.setdefault("KMP_DISABLE_SHM", "1")
