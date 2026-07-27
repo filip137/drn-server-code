@@ -1083,8 +1083,9 @@ def load_execution_context(
     source_archive_path: str | Path,
     environment_contract_path: str | Path,
     execution_environment_path: str | Path,
+    verify_live_environment: bool = True,
 ) -> ExecutionContext:
-    """Load and verify one surface plus immutable execution authority."""
+    """Load one surface and verify immutable and, by default, live authority."""
 
     if host not in ALLOWED_HOSTS:
         raise _error("host", f"one of {ALLOWED_HOSTS!r}", host)
@@ -1289,11 +1290,25 @@ def load_execution_context(
             f"exactly {expected_observed!r}",
             observed,
         )
-    verify_current_execution_environment(
-        contract=environment_contract_value,
-        receipt=environment_receipt,
-        host=host,
-    )
+    if verify_live_environment:
+        verify_current_execution_environment(
+            contract=environment_contract_value,
+            receipt=environment_receipt,
+            host=host,
+        )
+    else:
+        validated_contract = validate_environment_contract(
+            environment_contract_value
+        )
+        validated_receipt = validate_environment_receipt(
+            environment_receipt,
+            expected_host=host,
+        )
+        if validated_receipt != validated_contract["host_receipts"][host]:
+            raise PerfectDiodeConv3ExecutionError(
+                "Expected the bound execution receipt semantics to equal the "
+                "environment contract while validating existing artifacts."
+            )
     surface_root = _resolve_relative(
         root, surface["output_path"], "surface.output_path"
     )
@@ -4306,6 +4321,28 @@ def _validate_preflight_completion(
     return result
 
 
+def validate_existing_fixed_operating_point_preflight_gate(
+    context: ExecutionContext,
+) -> dict[str, Any]:
+    """Validate an existing fixed-T/K receipt without numerical execution."""
+
+    return _validate_fixed_tk_gate_completion(
+        context,
+        _fixed_tk_gate_dir(context),
+    )
+
+
+def validate_existing_representative_preflight_canary(
+    context: ExecutionContext,
+) -> dict[str, Any]:
+    """Validate an existing smoke receipt without numerical execution."""
+
+    return _validate_preflight_completion(
+        context,
+        _preflight_dir(context),
+    )
+
+
 def execute_representative_preflight_canary(
     context: ExecutionContext,
     *,
@@ -4596,5 +4633,7 @@ __all__ = [
     "run_builtin_post_training_tk_audit",
     "validate_environment_contract",
     "validate_environment_receipt",
+    "validate_existing_fixed_operating_point_preflight_gate",
+    "validate_existing_representative_preflight_canary",
     "verify_current_execution_environment",
 ]

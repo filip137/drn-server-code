@@ -1484,6 +1484,8 @@ def test_public_stage_and_worker_contract_expose_only_authoritative_names(
     assert "--post-tk-audit-result" not in parser._option_string_actions
     assert "--preflight-canary" in parser._option_string_actions
     assert "--preflight-tk-gate" in parser._option_string_actions
+    assert "--validate-preflight-canary" in parser._option_string_actions
+    assert "--validate-preflight-tk-gate" in parser._option_string_actions
     assert {
         "--t",
         "--k",
@@ -1908,6 +1910,76 @@ def test_worker_returns_nonzero_for_failed_preflight(
         ]
     )
     assert exit_code == 2
+
+
+@pytest.mark.parametrize(
+    ("action", "validator_name"),
+    (
+        (
+            "--validate-preflight-canary",
+            "validate_existing_representative_preflight_canary",
+        ),
+        (
+            "--validate-preflight-tk-gate",
+            "validate_existing_fixed_operating_point_preflight_gate",
+        ),
+    ),
+)
+def test_worker_read_only_preflight_validation_skips_live_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    validator_name: str,
+) -> None:
+    context = _context(tmp_path, optimizer="adam")
+    load_calls: list[dict[str, Any]] = []
+    validator_calls: list[ExecutionContext] = []
+
+    def load_context(**kwargs: Any) -> ExecutionContext:
+        load_calls.append(dict(kwargs))
+        return context
+
+    def validate(
+        observed_context: ExecutionContext,
+    ) -> dict[str, Any]:
+        validator_calls.append(observed_context)
+        return {"status": "complete", "passed": True}
+
+    monkeypatch.setattr(
+        "experiments.run_mnist_conv_perfectdiode_hparam_v2_worker."
+        "load_execution_context",
+        load_context,
+    )
+    monkeypatch.setattr(
+        "experiments.run_mnist_conv_perfectdiode_hparam_v2_worker."
+        f"{validator_name}",
+        validate,
+    )
+
+    exit_code = _worker_main(
+        [
+            "--study",
+            str(tmp_path / "study.json"),
+            "--surface-manifest",
+            str(tmp_path / "manifest.json"),
+            "--surface-id",
+            context.surface_id,
+            action,
+            "--host",
+            "main",
+            "--source-archive",
+            str(tmp_path / "source.tar"),
+            "--environment-contract",
+            str(tmp_path / "environment.json"),
+            "--execution-environment",
+            str(tmp_path / "main-environment.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert len(load_calls) == 1
+    assert load_calls[0]["verify_live_environment"] is False
+    assert validator_calls == [context]
 
 
 def test_worker_returns_nonzero_for_failed_fixed_tk_gate(

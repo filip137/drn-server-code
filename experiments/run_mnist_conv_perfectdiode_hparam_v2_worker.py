@@ -27,6 +27,8 @@ from experiments.mnist_conv.perfectdiode_hparam_v2_execution import (
     execute_representative_preflight_canary,
     execute_surface_stage,
     load_execution_context,
+    validate_existing_fixed_operating_point_preflight_gate,
+    validate_existing_representative_preflight_canary,
 )
 
 
@@ -56,6 +58,22 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Run only the manifest-bound user-fixed T/K residual and gradient "
             "gate at initialization; T and K come from the resolved study."
+        ),
+    )
+    action.add_argument(
+        "--validate-preflight-canary",
+        action="store_true",
+        help=(
+            "Read and hash-validate an existing representative smoke receipt "
+            "without requiring the caller to execute inside the bound lane."
+        ),
+    )
+    action.add_argument(
+        "--validate-preflight-tk-gate",
+        action="store_true",
+        help=(
+            "Read and hash-validate an existing fixed-T/K gate receipt without "
+            "requiring the caller to execute inside the bound lane."
         ),
     )
     parser.add_argument("--host", choices=ALLOWED_HOSTS, required=True)
@@ -94,6 +112,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    validation_only = (
+        args.validate_preflight_canary
+        or args.validate_preflight_tk_gate
+    )
     context = load_execution_context(
         study_path=args.study,
         manifest_path=args.surface_manifest,
@@ -102,8 +124,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         source_archive_path=args.source_archive,
         environment_contract_path=args.environment_contract,
         execution_environment_path=args.execution_environment,
+        verify_live_environment=not validation_only,
     )
-    if args.preflight_tk_gate:
+    if args.validate_preflight_tk_gate:
+        result = validate_existing_fixed_operating_point_preflight_gate(
+            context
+        )
+    elif args.validate_preflight_canary:
+        result = validate_existing_representative_preflight_canary(context)
+    elif args.preflight_tk_gate:
         result = execute_fixed_operating_point_preflight_gate(
             context,
             asset_dir=args.assets_dir,
@@ -134,6 +163,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if (
             not args.preflight_canary
             and not args.preflight_tk_gate
+            and not args.validate_preflight_canary
+            and not args.validate_preflight_tk_gate
         )
         or result.get("passed") is True
         else 2
