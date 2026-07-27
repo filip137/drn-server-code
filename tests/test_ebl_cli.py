@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
+import sys
+from types import ModuleType
 
 from ebl.cli import (
     CampaignRunRequest,
@@ -238,6 +240,7 @@ def test_missing_runtime_handler_is_clear_and_post_validation(
             "--weights",
             "weights.pt",
         ],
+        handlers=CommandHandlers(),
         stderr=stderr,
     )
 
@@ -245,6 +248,121 @@ def test_missing_runtime_handler_is_clear_and_post_validation(
     message = stderr.getvalue()
     assert "Expected a connected execution handler for 'validate'" in message
     assert "configuration validation succeeded" in message
+
+
+def test_default_handlers_do_not_import_runtime_before_config_validation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    runtime_module = "experiments.small_network.runtime"
+    monkeypatch.delitem(sys.modules, runtime_module, raising=False)
+    config_path = tmp_path / "invalid.json"
+    config_path.write_text('{"schema_version": 1,', encoding="utf-8")
+    stderr = io.StringIO()
+
+    assert main(
+        [
+            "train",
+            "--config",
+            str(config_path),
+            "--output-dir",
+            str(tmp_path / "runs"),
+        ],
+        stderr=stderr,
+    ) == 2
+
+    assert "Expected --config to contain valid JSON" in stderr.getvalue()
+    assert runtime_module not in sys.modules
+
+
+def test_default_handlers_lazily_dispatch_all_numerical_commands(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = _write_config(tmp_path)
+    runtime = ModuleType("experiments.small_network.runtime")
+    seen = []
+
+    def handler(command_name: str, result: int):
+        def invoke(request):
+            seen.append((command_name, request))
+            return result
+
+        return invoke
+
+    runtime.run_train = handler("train", 11)
+    runtime.run_linspace = handler("linspace", 12)
+    runtime.run_validate = handler("validate", 13)
+    runtime.import_legacy_checkpoint = handler(
+        "checkpoint import-legacy",
+        14,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "experiments.small_network.runtime",
+        runtime,
+    )
+
+    cases = (
+        (
+            [
+                "train",
+                "--config",
+                str(config_path),
+                "--output-dir",
+                str(tmp_path / "train-runs"),
+            ],
+            11,
+        ),
+        (
+            [
+                "linspace",
+                "--config",
+                str(config_path),
+                "--output-dir",
+                str(tmp_path / "linspace-runs"),
+                "--weights",
+                "weights.pt",
+            ],
+            12,
+        ),
+        (
+            [
+                "validate",
+                "--config",
+                str(config_path),
+                "--output-dir",
+                str(tmp_path / "validate-runs"),
+                "--weights",
+                "weights.pt",
+            ],
+            13,
+        ),
+        (
+            [
+                "checkpoint",
+                "import-legacy",
+                "--config",
+                str(config_path),
+                "--source",
+                "legacy.pt",
+                "--output",
+                "weights.ebl.pt",
+            ],
+            14,
+        ),
+    )
+    for argv, expected in cases:
+        assert main(argv) == expected
+
+    assert [command_name for command_name, _request in seen] == [
+        "train",
+        "linspace",
+        "validate",
+        "checkpoint import-legacy",
+    ]
+    assert isinstance(seen[0][1], TrainRequest)
+    assert isinstance(seen[3][1], ImportLegacyCheckpointRequest)
 
 
 def test_scientific_cli_override_is_not_part_of_public_surface(

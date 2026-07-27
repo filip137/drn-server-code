@@ -1,8 +1,9 @@
 """Public ``ebl`` command line.
 
 This module owns argument parsing and experiment selection.  Numerical
-execution is injected through :class:`CommandHandlers`, keeping the stable CLI
-independent from legacy scripts while the runtime adapters are migrated.
+execution is connected lazily after configuration validation, while
+:class:`CommandHandlers` keeps the execution boundary explicitly injectable
+for embedding and tests.
 """
 
 from __future__ import annotations
@@ -544,6 +545,43 @@ def _handler_result(handler: Handler, request: Any) -> int:
     return result
 
 
+def _default_train_handler(request: TrainRequest) -> Optional[int]:
+    from experiments.small_network.runtime import run_train
+
+    return run_train(request)
+
+
+def _default_linspace_handler(request: LinspaceRequest) -> Optional[int]:
+    from experiments.small_network.runtime import run_linspace
+
+    return run_linspace(request)
+
+
+def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
+    from experiments.small_network.runtime import run_validate
+
+    return run_validate(request)
+
+
+def _default_checkpoint_import_legacy_handler(
+    request: ImportLegacyCheckpointRequest,
+) -> Optional[int]:
+    from experiments.small_network.runtime import import_legacy_checkpoint
+
+    return import_legacy_checkpoint(request)
+
+
+def _default_command_handlers() -> CommandHandlers:
+    """Build handlers without importing the numerical runtime."""
+
+    return CommandHandlers(
+        train=_default_train_handler,
+        linspace=_default_linspace_handler,
+        validate=_default_validate_handler,
+        checkpoint_import_legacy=_default_checkpoint_import_legacy_handler,
+    )
+
+
 def _default_campaign_handler(request: CampaignRunRequest) -> int:
     """Lazily execute a campaign without connecting numerical handlers."""
 
@@ -708,9 +746,10 @@ def main(
 ) -> int:
     """Parse and dispatch one CLI invocation.
 
-    ``handlers`` is injectable for the runtime composition root and for tests.
-    Until a handler is connected, execution commands fail only after the
-    selected config has been fully validated.
+    ``handlers=None`` connects the default numerical runtime lazily.  An
+    explicitly supplied :class:`CommandHandlers` remains authoritative, so a
+    missing injected handler fails clearly after the selected config has been
+    fully validated.
     """
 
     output = stdout if stdout is not None else sys.stdout
@@ -721,7 +760,11 @@ def main(
         parsed = parser.parse_args(raw_argv)
         return _dispatch(
             parsed,
-            handlers=handlers or CommandHandlers(),
+            handlers=(
+                _default_command_handlers()
+                if handlers is None
+                else handlers
+            ),
             command=("ebl",) + raw_argv,
             stdout=output,
         )
