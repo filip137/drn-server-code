@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from typing import Any, Callable, Mapping, Sequence
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from experiments.mnist_conv.io import atomic_write_json, read_json
+from experiments.mnist_conv.io import atomic_create_json, read_json
 from experiments.submit_mnist_conv_perfectdiode_successor_confirmation_jeanzay import (
     ACCOUNT,
     CONSTRAINT,
@@ -29,12 +30,11 @@ from experiments.submit_mnist_conv_perfectdiode_successor_confirmation_jeanzay i
 )
 
 
-OFFICIAL_CANARY_VERIFIER = Path(
-    "/home/filip/.codex/skills/jean-zay-pre-submit-gate/"
-    "scripts/verify_canary.py"
+OFFICIAL_CANARY_VERIFIER = (
+    Path(__file__).resolve().with_name("verify_jeanzay_canary.py")
 )
 OFFICIAL_CANARY_VERIFIER_SHA256 = (
-    "f3f8bcc89922b6f8faf79b6b9d3d1e9e26a5a8f3db3062fce357297cad009698"
+    "032979ace766382941a769db205df1c7fd2576e846e59873645cfe7ad894b5b0"
 )
 SMOKE_SCHEMA_VERSION = (
     "mnist-conv-perfectdiode-successor-smoke-receipt/v1"
@@ -1439,13 +1439,24 @@ def verify_canary(
             f"Provided value: expected={expected_official_verifier_sha256!r}, "
             f"observed={observed_verifier_hash!r}, path={verifier}."
         )
-    official_path = Path(official_receipt).expanduser().resolve()
-    final_path = Path(receipt).expanduser().resolve()
+    official_path = Path(
+        os.path.abspath(Path(official_receipt).expanduser())
+    )
+    final_path = Path(os.path.abspath(Path(receipt).expanduser()))
     if official_path == final_path:
         raise _error(
             "official and successor semantic receipt paths to differ",
             final_path,
         )
+    for path, label in (
+        (official_path, "official canary receipt"),
+        (final_path, "successor semantic receipt"),
+    ):
+        if path.exists() or path.is_symlink():
+            raise _error(
+                f"{label} path not to exist before verification",
+                path,
+            )
     official = _run_official_verifier(
         job_id=job_id,
         required_artifacts=[
@@ -1472,7 +1483,7 @@ def verify_canary(
         "successor_semantics": semantic,
         "canary_logs": canary_logs,
     }
-    atomic_write_json(final_path, result, canonical=True)
+    atomic_create_json(final_path, result, canonical=True)
     return {
         **result,
         "receipt_path": str(final_path),
@@ -1487,7 +1498,13 @@ def validate_canary_gate_receipt(
 ) -> dict[str, Any]:
     """Fail closed before any production scheduler call."""
 
-    source = Path(path).expanduser().resolve()
+    source = Path(os.path.abspath(Path(path).expanduser()))
+    if source.is_symlink():
+        raise _error(
+            "successor canary gate receipt not to be a symlink",
+            source,
+        )
+    source = source.resolve()
     value = read_json(source)
     if not isinstance(value, dict):
         raise _error("successor canary gate receipt to be a JSON object", value)

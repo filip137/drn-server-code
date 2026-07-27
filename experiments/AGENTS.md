@@ -19,3 +19,40 @@ This guidance applies to experiment scripts, launchers, collectors, and monitors
 - Preserve the same launcher/config contract across local tmux lanes and Jean Zay whenever possible.
 - For large batches, follow the root `AGENTS.md` launch policy for checking `tmux main`, `tmux akibscomputer`, `tmux trex`, and then using Jean Zay R3 `fmu@v100` for the remainder.
 - Keep Jean Zay result outputs under `/lustre/fsn1/projects/rech/fmu/$USER/server_code/results` unless the user explicitly requests another project/account.
+- Dispatch already approved long simulations on `tmux main` or Trex through
+  `experiments.local_dispatch` and its checked-in profiles. Preserve its
+  schema-validated preflight, one-SSH, fresh-window/session,
+  immutable-attempt, and no-fallback contract.
+
+## Fail-Stop Implementation
+- Apply the root Long-Run Simulation Fail-Stop-Report policy only after a
+  long-run attempt is explicitly armed. Ordinary implementation work, tests,
+  environment setup, plan-only commands, and bounded developer probes may be
+  diagnosed and corrected in the same turn.
+- A controller supervising an armed long-run attempt may catch a first
+  unexpected failure only to persist one immutable failure report and a
+  terminal failed state, then exit nonzero. Catch-and-continue and automatic
+  corrective retries are prohibited inside that armed attempt.
+- Long-run polling and reconciliation must propagate the first exception and
+  use a hard deadline. Default CLI behavior must be one bounded reconciliation
+  pass; persistent following must be explicit and bounded.
+- Before any scheduler side effect for an armed long-run attempt, reject an
+  existing terminal failure report or failed state. A failed state cannot
+  submit or resume. A new attempt requires a new state/receipt path and a new
+  user message after the prior report.
+- Keep the exact tracker entry `preflighting` through the payload canary and
+  require that state immediately before its scheduler side effect. Stop at
+  the successful canary boundary. Only a later invocation may launch
+  production, and immediately before that production scheduler side effect it
+  must validate the canonical tracker entry as `launch-ready`. Remote
+  controllers consume a short-lived, hash-bound receipt created by the
+  canonical tracker validator; they must never treat a staged Markdown copy
+  as current authority. After live production readback, the external workflow
+  changes it to `queued` or `running`. Within an armed attempt, missing,
+  malformed, duplicate, blocked, or stale entries are terminal pre-launch
+  failures.
+- For the perfect-diode Conv1/Conv2 successor, staged Jean Zay source and
+  bootstrap validation is part of its armed long-run launch gate and must run
+  exactly once through
+  `validate_mnist_conv_perfectdiode_successor_staged_jeanzay.sh`. Do not
+  reconstruct or selectively retry its SSH subcommands.

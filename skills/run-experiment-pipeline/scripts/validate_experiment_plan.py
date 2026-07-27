@@ -15,6 +15,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+SOURCE_ID_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 JSON_BLOCK_RE = re.compile(r"```json[ \t]*\n(.*?)\n```", re.DOTALL)
 PLACEHOLDER_RE = re.compile(r"(?:REPLACE_ME|replace-me|TODO|TBD|<[^>]+>)")
@@ -23,6 +24,11 @@ SUPPORTED_CARD_SCHEMAS = {
     "drn-optimizer-screen-card/v1",
     "drn-rho-corner-diagnostic-card/v1",
     "drn-initialization-rho-comparison-card/v1",
+}
+PREFLIGHT_ROLES = {
+    "smoke",
+    "tk_reference",
+    "scheduled_run_preflight",
 }
 
 
@@ -135,6 +141,153 @@ def reject_placeholders(value: Any, context: str = "plan") -> None:
             f"no placeholder in {context}",
             value,
         )
+
+
+def validate_preflight_contract(
+    value: Any,
+) -> tuple[Path, dict[str, dict[str, Any] | None]]:
+    """Validate and normalize the exact preflight receipt authority."""
+
+    preflight = require_keys(
+        value,
+        required={
+            "smoke_required",
+            "tk_reference_required",
+            "scheduled_run_preflight_required",
+            "receipt_path",
+            "receipt_schemas",
+            "receipt_bindings",
+        },
+        context="execution.preflight",
+    )
+    require(
+        preflight["smoke_required"] is True,
+        "smoke_required=true",
+        preflight["smoke_required"],
+    )
+    for key in ("tk_reference_required", "scheduled_run_preflight_required"):
+        require(
+            isinstance(preflight[key], bool),
+            f"a boolean preflight.{key}",
+            preflight[key],
+        )
+    receipt_schemas = require_keys(
+        preflight["receipt_schemas"],
+        required=PREFLIGHT_ROLES,
+        context="execution.preflight.receipt_schemas",
+    )
+    receipt_bindings = require_keys(
+        preflight["receipt_bindings"],
+        required=PREFLIGHT_ROLES,
+        context="execution.preflight.receipt_bindings",
+    )
+    required_by_role = {
+        "smoke": True,
+        "tk_reference": preflight["tk_reference_required"],
+        "scheduled_run_preflight": preflight[
+            "scheduled_run_preflight_required"
+        ],
+    }
+    normalized_bindings: dict[str, dict[str, Any] | None] = {}
+    bound_paths: list[Path] = []
+    for role, required in required_by_role.items():
+        schema = receipt_schemas[role]
+        binding = receipt_bindings[role]
+        if not required:
+            require(
+                schema is None,
+                f"null execution.preflight.receipt_schemas.{role} "
+                "when the role is not required",
+                schema,
+            )
+            require(
+                binding is None,
+                f"null execution.preflight.receipt_bindings.{role} "
+                "when the role is not required",
+                binding,
+            )
+            normalized_bindings[role] = None
+            continue
+        require_text(
+            schema,
+            f"execution.preflight.receipt_schemas.{role}",
+        )
+        binding = require_keys(
+            binding,
+            required={
+                "receipt_path",
+                "subject_id",
+                "producer_source_id",
+            },
+            context=f"execution.preflight.receipt_bindings.{role}",
+        )
+        inner_path = relative_repo_path(
+            binding["receipt_path"],
+            f"execution.preflight.receipt_bindings.{role}.receipt_path",
+        )
+        require(
+            len(inner_path.parts) > 1 and inner_path.parts[0] == "results",
+            f"a {role} receipt below results/",
+            str(inner_path),
+        )
+        subject_id = binding["subject_id"]
+        producer_source_id = binding["producer_source_id"]
+        if role == "scheduled_run_preflight":
+            require(
+                subject_id is None,
+                "null scheduled_run_preflight subject_id",
+                subject_id,
+            )
+            require(
+                producer_source_id is None,
+                "null scheduled_run_preflight producer_source_id",
+                producer_source_id,
+            )
+        else:
+            subject_id = require_text(
+                subject_id,
+                f"execution.preflight.receipt_bindings.{role}.subject_id",
+            )
+            require(
+                ID_RE.fullmatch(subject_id) is not None,
+                f"a filesystem-safe {role} subject_id",
+                subject_id,
+            )
+            require(
+                isinstance(producer_source_id, str)
+                and (
+                    SOURCE_ID_RE.fullmatch(producer_source_id) is not None
+                    or PLACEHOLDER_RE.search(producer_source_id) is not None
+                ),
+                f"a lowercase 40-character producer_source_id for {role}",
+                producer_source_id,
+            )
+        normalized_bindings[role] = {
+            "receipt_path": inner_path,
+            "subject_id": subject_id,
+            "producer_source_id": producer_source_id,
+        }
+        bound_paths.append(inner_path)
+    receipt_path = relative_repo_path(
+        preflight["receipt_path"],
+        "execution.preflight.receipt_path",
+    )
+    require(
+        len(receipt_path.parts) > 1 and receipt_path.parts[0] == "results",
+        "a preflight receipt below results/",
+        str(receipt_path),
+    )
+    require(
+        receipt_path not in bound_paths,
+        "the outer preflight receipt path to differ from every inner receipt",
+        str(receipt_path),
+    )
+    require(
+        len(bound_paths) == len(set(bound_paths)),
+        "distinct inner preflight receipt paths",
+        [str(path) for path in bound_paths],
+    )
+    return receipt_path, normalized_bindings
 
 
 def validate_plan(
@@ -321,21 +474,9 @@ def validate_plan(
     )
     for key in ("launcher", "collector", "validator"):
         require_string_list(execution[key], f"execution.{key}")
-    preflight = require_keys(
-        execution["preflight"],
-        required={
-            "smoke_required",
-            "tk_reference_required",
-            "scheduled_run_preflight_required",
-            "receipt_path",
-        },
-        context="execution.preflight",
+    receipt_path, _receipt_bindings = validate_preflight_contract(
+        execution["preflight"]
     )
-    require(preflight["smoke_required"] is True, "smoke_required=true", preflight["smoke_required"])
-    for key in ("tk_reference_required", "scheduled_run_preflight_required"):
-        require(isinstance(preflight[key], bool), f"a boolean preflight.{key}", preflight[key])
-    receipt_path = relative_repo_path(preflight["receipt_path"], "execution.preflight.receipt_path")
-    require(receipt_path.parts[0] == "results", "a preflight receipt below results/", str(receipt_path))
 
     storage = require_keys(
         plan["storage"],
@@ -346,7 +487,20 @@ def validate_plan(
     local_root = relative_repo_path(storage["local_results_root"], "storage.local_results_root")
     local_bundle = relative_repo_path(storage["local_bundle_path"], "storage.local_bundle_path")
     require(local_root == Path("results"), "canonical local results root 'results'", str(local_root))
-    require(local_bundle.parts[0] == "results" and len(local_bundle.parts) > 1, "a run-specific local bundle below results/", str(local_bundle))
+    require(
+        len(local_bundle.parts) > 1 and local_bundle.parts[0] == "results",
+        "a run-specific local bundle below results/",
+        str(local_bundle),
+    )
+    try:
+        receipt_path.relative_to(local_bundle)
+    except ValueError:
+        require(
+            False,
+            "execution.preflight.receipt_path below "
+            "storage.local_bundle_path",
+            str(receipt_path),
+        )
     require(isinstance(storage["remote_staging"], list), "a remote_staging list", storage["remote_staging"])
     for remote in storage["remote_staging"]:
         remote = require_keys(

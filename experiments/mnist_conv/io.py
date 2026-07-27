@@ -45,12 +45,60 @@ def atomic_write_bytes(path: str | Path, data: bytes) -> Path:
     return target
 
 
+def atomic_create_bytes(path: str | Path, data: bytes) -> Path:
+    """Publish fully written bytes exactly once without replacing evidence."""
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() or target.is_symlink():
+        raise FileExistsError(
+            f"Expected immutable output path not to exist. Provided value: "
+            f"{target}."
+        )
+    temporary = target.with_name(
+        f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # A hard link is atomic and fails if another writer won the exact
+        # destination; unlike os.replace, it never destroys prior evidence.
+        os.link(temporary, target)
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(target.parent, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return target
+
+
 def atomic_write_json(path: str | Path, value: Any, *, canonical: bool = False) -> Path:
     if canonical:
         data = canonical_json_bytes(value) + b"\n"
     else:
         data = (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
     return atomic_write_bytes(path, data)
+
+
+def atomic_create_json(
+    path: str | Path,
+    value: Any,
+    *,
+    canonical: bool = False,
+) -> Path:
+    if canonical:
+        data = canonical_json_bytes(value) + b"\n"
+    else:
+        data = (
+            json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
+        ).encode("utf-8")
+    return atomic_create_bytes(path, data)
 
 
 def atomic_write_csv(

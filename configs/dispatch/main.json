@@ -1,0 +1,39 @@
+{
+  "schema_version": "server-code-local-dispatch-profile/v2",
+  "target": "main",
+  "transport": "local",
+  "python_path_template": "/home/{user}/miniconda3/envs/py312/bin/python",
+  "helper_path_template": "/home/{user}/server_code/experiments/local_dispatch.py",
+  "profile_path_template": "/home/{user}/server_code/configs/dispatch/main.json",
+  "repo_root_template": "/home/{user}/server_code",
+  "state_root_template": "/home/{user}/server_code/simulation_results/local_dispatch/main",
+  "allowed_cwd_roots": [
+    "/home/{user}/server_code"
+  ],
+  "allowed_executable_roots": [
+    "/home/{user}/miniconda3/envs/py312/bin",
+    "/home/{user}/server_code"
+  ],
+  "base_env": {
+    "HOME": "/home/{user}",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "LOGNAME": "{user}",
+    "PATH": "/home/{user}/miniconda3/envs/py312/bin:/usr/local/bin:/usr/bin:/bin",
+    "PYTHONNOUSERSITE": "1",
+    "TMPDIR": "/tmp",
+    "TZ": "UTC",
+    "USER": "{user}"
+  },
+  "tmux": {
+    "mode": "existing_session",
+    "session": "main",
+    "session_prefix": ""
+  },
+  "gpu": {
+    "require_no_compute_processes": true,
+    "device_index": 0
+  },
+  "ssh": null,
+  "command_timeout_seconds": 20
+}

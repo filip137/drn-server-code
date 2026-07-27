@@ -91,6 +91,12 @@ PREFLIGHT_SHA256_PLACEHOLDER = (
 LAUNCH_AUTHORIZATION_SHA256_PLACEHOLDER = (
     "__PD_SUCCESSOR_LAUNCH_AUTHORIZATION_SHA256__"
 )
+TRACKER_GATE_RECEIPT_PATH_PLACEHOLDER = (
+    "__PD_SUCCESSOR_TRACKER_GATE_RECEIPT_PATH__"
+)
+TRACKER_GATE_RECEIPT_SHA256_PLACEHOLDER = (
+    "__PD_SUCCESSOR_TRACKER_GATE_RECEIPT_SHA256__"
+)
 CANARY_RECEIPT_PATH_PLACEHOLDER = (
     "__PD_SUCCESSOR_CANARY_RECEIPT_PATH__"
 )
@@ -98,6 +104,7 @@ CANARY_RECEIPT_SHA256_PLACEHOLDER = (
     "__PD_SUCCESSOR_CANARY_RECEIPT_SHA256__"
 )
 RESULT_JSON_MARKER = "PD_SUCCESSOR_RESULT_JSON="
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300.0
 
 
 def _error(expected: str, provided: Any) -> ValueError:
@@ -489,7 +496,7 @@ def load_environment_contract(path: str | Path) -> dict[str, Any]:
             "launch_tools/verify_canary.py"
         ),
         "official_canary_verifier_sha256": (
-            "f3f8bcc89922b6f8faf79b6b9d3d1e9e26a5a8f3db3062fce357297cad009698"
+            "032979ace766382941a769db205df1c7fd2576e846e59873645cfe7ad894b5b0"
         ),
     }
     if value["verification"] != expected_verification:
@@ -507,6 +514,42 @@ def load_environment_contract(path: str | Path) -> dict[str, Any]:
             value["walltime"],
         )
     return value
+
+
+def expected_official_canary_verifier_path(
+    contract: Mapping[str, Any],
+    *,
+    remote_user: str,
+) -> Path:
+    """Resolve the one verifier location authorized by the environment."""
+
+    user = remote_user.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", user):
+        raise _error("remote-user to be a safe non-empty login name", user)
+    try:
+        template = contract["verification"][
+            "official_canary_verifier_path_template"
+        ]
+    except (KeyError, TypeError) as exc:
+        raise _error(
+            "environment verification to define "
+            "official_canary_verifier_path_template",
+            contract.get("verification")
+            if isinstance(contract, Mapping)
+            else contract,
+        ) from exc
+    if not isinstance(template, str) or "{user}" not in template:
+        raise _error(
+            "official canary verifier path template to contain '{user}'",
+            template,
+        )
+    resolved = Path(template.format(user=user))
+    if not resolved.is_absolute():
+        raise _error(
+            "official canary verifier path template to resolve absolutely",
+            resolved,
+        )
+    return resolved
 
 
 def _resolve_existing(
@@ -1058,8 +1101,18 @@ def prepare_submission(
         label="official experiment-plan validator",
         kind="file",
     )
+    remote_user = args.remote_user.strip()
+    expected_verifier_path = expected_official_canary_verifier_path(
+        contract,
+        remote_user=remote_user,
+    )
+    supplied_verifier = getattr(args, "official_verifier", None)
     official_verifier = _resolve_existing(
-        args.official_verifier,
+        (
+            expected_verifier_path
+            if supplied_verifier in {None, ""}
+            else supplied_verifier
+        ),
         label="staged official Jean Zay canary verifier",
         kind="file",
     )
@@ -1078,9 +1131,6 @@ def prepare_submission(
             "successor input bundle and output root to be distinct",
             output,
         )
-    remote_user = args.remote_user.strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", remote_user):
-        raise _error("remote-user to be a safe non-empty login name", remote_user)
     storage = contract["storage"]
     source_root = Path(
         storage["source_root_template"].format(user=remote_user)
@@ -1108,11 +1158,6 @@ def prepare_submission(
                 f"ordinary-MNIST data root to be exactly {data_root}",
                 data,
             )
-        expected_verifier_path = Path(
-            contract["verification"][
-                "official_canary_verifier_path_template"
-            ].format(user=remote_user)
-        )
         if official_verifier != expected_verifier_path:
             raise _error(
                 "staged official canary verifier to be exactly "
@@ -1729,6 +1774,10 @@ def _expected_plan_supervisor_launcher(
         str(metadata["scheduled_preflight_receipt"]),
         "--preflight-receipt",
         str(metadata["preflight_receipt"]),
+        "--tracker-gate-receipt",
+        TRACKER_GATE_RECEIPT_PATH_PLACEHOLDER,
+        "--tracker-gate-receipt-sha256",
+        TRACKER_GATE_RECEIPT_SHA256_PLACEHOLDER,
         "--official-canary-receipt",
         str(metadata["official_canary_receipt"]),
         "--canary-receipt",
@@ -1743,6 +1792,7 @@ def _expected_plan_supervisor_launcher(
         str(metadata["canary_pack_index"]),
         "--poll-seconds",
         "60",
+        "--arm-long-run",
         "--enable-submit",
     ]
 
@@ -1753,6 +1803,7 @@ def validate_launch_authorization_receipt(
     expected_sha256: str,
     metadata: Mapping[str, Any],
     runtime_preflight: Mapping[str, Any],
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> dict[str, Any]:
     source = Path(path).expanduser().absolute()
     if source.is_symlink():
@@ -1952,7 +2003,7 @@ def validate_launch_authorization_receipt(
             "repo experiment-plan validator to be an existing file",
             plan_validator,
         )
-    validated_plan = subprocess.run(
+    validated_plan = runner(
         [
             sys.executable,
             str(plan_validator),
@@ -2260,6 +2311,30 @@ def dispatch(
     ),
     enforce_storage_roots: bool = True,
 ) -> dict[str, Any]:
+    timeout_value = getattr(
+        args,
+        "command_timeout_seconds",
+        DEFAULT_COMMAND_TIMEOUT_SECONDS,
+    )
+    if (
+        isinstance(timeout_value, bool)
+        or not isinstance(timeout_value, (int, float))
+        or not 1 <= float(timeout_value) <= 24 * 60 * 60
+    ):
+        raise _error(
+            "command-timeout-seconds to be a number from 1 through 86400",
+            timeout_value,
+        )
+    raw_runner = runner
+
+    def bounded_runner(
+        command: Sequence[str],
+        **kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        kwargs.setdefault("timeout", float(timeout_value))
+        return raw_runner(list(command), **kwargs)
+
+    runner = bounded_runner
     if args.submit:
         raise RuntimeError(
             "Expected real sbatch submission to occur only through the "
@@ -2333,6 +2408,7 @@ def dispatch(
             expected_sha256=args.launch_authorization_receipt_sha256,
             metadata=metadata,
             runtime_preflight=runtime_preflight,
+            runner=runner,
         )
     scheduled: tuple[Path, str] | None = None
     if args.scheduled_preflight_receipt:
@@ -2627,13 +2703,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--python", default=PYTHON_EXECUTABLE)
     parser.add_argument(
         "--official-verifier",
-        default=(
-            "/home/filip/.codex/skills/jean-zay-pre-submit-gate/"
-            "scripts/verify_canary.py"
-        ),
+        default=None,
         help=(
-            "Exact verifier staged on Jean Zay; its reviewed SHA-256 is "
-            "frozen in the environment contract."
+            "Exact verifier staged on Jean Zay. By default, derive the "
+            "reviewed launch_tools path from the environment contract and "
+            "--remote-user."
         ),
     )
     parser.add_argument(
@@ -2645,6 +2719,12 @@ def _parser() -> argparse.ArgumentParser:
         "--canary-pack-index",
         type=int,
         default=DEFAULT_CANARY_PACK_INDEX,
+    )
+    parser.add_argument(
+        "--command-timeout-seconds",
+        type=float,
+        default=DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        help="Hard timeout for each external validation command.",
     )
     action = parser.add_mutually_exclusive_group()
     action.add_argument(

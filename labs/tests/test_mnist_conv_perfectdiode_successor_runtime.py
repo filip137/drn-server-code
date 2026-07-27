@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import copy
+import errno
 import json
+import os
+import signal
+import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -126,6 +131,58 @@ def test_source_archive_fingerprint_honors_job_tmpdir(
     assert len(created) == 1
     assert created[0].parent == jobscratch
     assert not created[0].exists()
+
+
+def test_external_source_diagnostics_preserve_archive_enospc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = tmp_path / "source.tar.gz"
+    archive.write_bytes(b"archive")
+    environment = tmp_path / "environment.json"
+    environment.write_text("{}\n", encoding="utf-8")
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text("# launcher\n", encoding="utf-8")
+    runtime = tmp_path / "runtime.py"
+    runtime.write_text("# runtime\n", encoding="utf-8")
+    monkeypatch.setattr(successor, "WORKER_LAUNCHER", launcher)
+    monkeypatch.setattr(successor, "RUNTIME_MODULE", runtime)
+    monkeypatch.setattr(
+        successor,
+        "_source_archive_fingerprint",
+        lambda _path: (_ for _ in ()).throw(
+            OSError(errno.ENOSPC, "No space left on device", "/tmp")
+        ),
+    )
+    monkeypatch.setattr(
+        successor,
+        "code_fingerprint",
+        lambda _path: "f" * 64,
+    )
+    manifest = {
+        "execution_source": {
+            "source_commit": "a" * 40,
+            "source_archive_sha256": sha256_file(archive),
+            "effective_code_fingerprint": "f" * 64,
+            "environment_contract_sha256": sha256_file(environment),
+            "worker_launcher_sha256": sha256_file(launcher),
+            "runtime_module_sha256": sha256_file(runtime),
+        }
+    }
+    diagnostics: dict[str, object] = {}
+    checks = successor._validate_external_execution_inputs(
+        manifest,
+        source_archive=archive,
+        environment_contract=environment,
+        diagnostics=diagnostics,
+    )
+    assert checks["source_archive_valid"] is True
+    assert checks["source_archive_fingerprint_valid"] is False
+    chain = diagnostics["source_archive_fingerprint"]["exception_chain"]  # type: ignore[index]
+    assert chain[0]["error_type"] == "OSError"
+    assert chain[0]["errno"] == errno.ENOSPC
+    assert chain[0]["filename"] == "/tmp"
+    assert "No space left on device" in chain[0]["message"]
 
 
 def test_bundle_config_copy_preserves_source_bytes_and_hash_domain(
@@ -303,32 +360,33 @@ def test_fixed_pack_contract_covers_entries_once_in_optimizer_pairs() -> None:
         successor.fixed_pack_entries(6)
 
 
-def test_concurrent_children_start_both_before_wait_and_bind_logs(
+def test_concurrent_children_start_both_before_polling_and_bind_logs(
     tmp_path: Path,
 ) -> None:
     started: list[int] = []
-    waited: list[int] = []
+    polled: list[int] = []
+    new_session_flags: list[bool] = []
 
     class FakeProcess:
         def __init__(self, index: int):
             self.index = index
-
-        def wait(self) -> int:
-            assert started == [0, 1]
-            waited.append(self.index)
-            return 0
+            self.pid = 10_000 + index
 
         def poll(self) -> int:
+            assert started == [0, 1]
+            polled.append(self.index)
             return 0
 
     def factory(
         command: list[str],
         *,
         stdout: object,
+        start_new_session: bool,
         **_kwargs: object,
     ) -> FakeProcess:
         index = len(started)
         started.append(index)
+        new_session_flags.append(start_new_session)
         terminal = {"status": "complete", "entry_index": index}
         stdout.write(  # type: ignore[attr-defined]
             successor.RESULT_JSON_MARKER
@@ -347,7 +405,8 @@ def test_concurrent_children_start_both_before_wait_and_bind_logs(
         popen_factory=factory,
     )
     assert started == [0, 1]
-    assert waited == [0, 1]
+    assert new_session_flags == [True, True]
+    assert polled == [0, 1]
     assert elapsed > 0
     assert [record["terminal_result"]["entry_index"] for record in records] == [
         0,
@@ -356,23 +415,26 @@ def test_concurrent_children_start_both_before_wait_and_bind_logs(
     assert all(record["returncode"] == 0 for record in records)
 
 
-def test_concurrent_children_wait_for_sibling_then_fail(
+def test_concurrent_children_terminate_hanging_sibling_on_first_failure(
     tmp_path: Path,
 ) -> None:
     started: list[int] = []
-    waited: list[int] = []
+    group_signals: list[tuple[int, int]] = []
+    waited: list[tuple[int, float]] = []
 
     class FakeProcess:
         def __init__(self, index: int):
             self.index = index
+            self.pid = 11_000 + index
 
-        def wait(self) -> int:
-            assert started == [0, 1]
-            waited.append(self.index)
-            return 1 if self.index == 0 else 0
+        def poll(self) -> int | None:
+            if self.index == 1:
+                return 7
+            return None
 
-        def poll(self) -> int:
-            return 0
+        def wait(self, timeout: float) -> int:
+            waited.append((self.index, timeout))
+            return -15
 
     def factory(
         _command: list[str], *, stdout: object, **_kwargs: object
@@ -381,6 +443,9 @@ def test_concurrent_children_wait_for_sibling_then_fail(
         started.append(index)
         stdout.write("{}\n")  # type: ignore[attr-defined]
         return FakeProcess(index)
+
+    def signal_group(process_group_id: int, value: int) -> None:
+        group_signals.append((process_group_id, value))
 
     with pytest.raises(RuntimeError, match="both concurrent packed children"):
         successor._run_concurrent_children(
@@ -399,8 +464,350 @@ def test_concurrent_children_wait_for_sibling_then_fail(
             log_root=tmp_path / "logs",
             artifact_root=tmp_path,
             popen_factory=factory,
+            process_group_signaler=signal_group,
         )
-    assert waited == [0, 1]
+    assert group_signals == [
+        (11_000, signal.SIGTERM),
+        (11_001, signal.SIGTERM),
+        (11_000, signal.SIGKILL),
+        (11_001, signal.SIGKILL),
+    ]
+    assert waited == [(0, 10.0)]
+
+
+def test_concurrent_children_kill_sibling_that_ignores_termination(
+    tmp_path: Path,
+) -> None:
+    group_signals: list[tuple[int, int]] = []
+    killed_groups: set[int] = set()
+
+    class FakeProcess:
+        def __init__(self, index: int):
+            self.index = index
+            self.pid = 12_000 + index
+
+        def poll(self) -> int | None:
+            if self.index == 1:
+                return 2
+            return -9 if self.pid in killed_groups else None
+
+        def wait(self, timeout: float) -> int:
+            if self.pid not in killed_groups:
+                raise subprocess.TimeoutExpired(["child"], timeout)
+            return -9
+
+    started = 0
+
+    def factory(
+        _command: list[str], *, stdout: object, **_kwargs: object
+    ) -> FakeProcess:
+        nonlocal started
+        process = FakeProcess(started)
+        started += 1
+        stdout.write("{}\n")  # type: ignore[attr-defined]
+        return process
+
+    def signal_group(process_group_id: int, value: int) -> None:
+        group_signals.append((process_group_id, value))
+        if value == signal.SIGKILL:
+            killed_groups.add(process_group_id)
+
+    with pytest.raises(RuntimeError, match="both concurrent packed children"):
+        successor._run_concurrent_children(
+            [
+                {"label": "left", "entry_index": 0, "command": ["left"]},
+                {"label": "right", "entry_index": 1, "command": ["right"]},
+            ],
+            log_root=tmp_path / "logs",
+            artifact_root=tmp_path,
+            popen_factory=factory,
+            process_group_signaler=signal_group,
+        )
+    assert group_signals == [
+        (12_000, signal.SIGTERM),
+        (12_001, signal.SIGTERM),
+        (12_000, signal.SIGKILL),
+        (12_001, signal.SIGKILL),
+    ]
+
+
+def test_concurrent_children_have_a_hard_wait_deadline(
+    tmp_path: Path,
+) -> None:
+    now = [0.0]
+    group_signals: list[tuple[int, int]] = []
+
+    class FakeProcess:
+        def __init__(self, index: int):
+            self.index = index
+            self.pid = 13_000 + index
+
+        def poll(self) -> int | None:
+            return None
+
+        def wait(self, timeout: float) -> int:
+            return -15
+
+    started = 0
+
+    def factory(
+        _command: list[str], *, stdout: object, **_kwargs: object
+    ) -> FakeProcess:
+        nonlocal started
+        process = FakeProcess(started)
+        started += 1
+        stdout.write("{}\n")  # type: ignore[attr-defined]
+        return process
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    def signal_group(process_group_id: int, value: int) -> None:
+        group_signals.append((process_group_id, value))
+
+    with pytest.raises(RuntimeError, match="hard deadline"):
+        successor._run_concurrent_children(
+            [
+                {"label": "left", "entry_index": 0, "command": ["left"]},
+                {"label": "right", "entry_index": 1, "command": ["right"]},
+            ],
+            log_root=tmp_path / "logs",
+            artifact_root=tmp_path,
+            popen_factory=factory,
+            process_group_signaler=signal_group,
+            sleeper=sleep,
+            clock=lambda: now[0],
+            poll_interval_seconds=0.25,
+            max_wait_seconds=1.0,
+        )
+    assert group_signals == [
+        (13_000, signal.SIGTERM),
+        (13_001, signal.SIGTERM),
+        (13_000, signal.SIGKILL),
+        (13_001, signal.SIGKILL),
+    ]
+
+
+def test_stage_child_deadlines_leave_cleanup_margin_before_slurm_walltime() -> None:
+    margin = successor.CONCURRENT_CHILD_CLEANUP_MARGIN_SECONDS
+    assert margin == 15 * 60
+    assert (
+        successor.CANARY_SLURM_WALLTIME_SECONDS - margin
+        == 1 * 60 * 60 + 45 * 60
+    )
+    assert (
+        successor.PRODUCTION_SLURM_WALLTIME_SECONDS - margin
+        == 7 * 60 * 60 + 45 * 60
+    )
+    assert (
+        successor._run_concurrent_children.__kwdefaults__["max_wait_seconds"]
+        == successor.PRODUCTION_SLURM_WALLTIME_SECONDS - margin
+    )
+    remaining = successor._remaining_concurrent_child_wait_seconds(
+        stage_started=100.0,
+        stage_walltime_seconds=successor.CANARY_SLURM_WALLTIME_SECONDS,
+        cleanup_margin_seconds=margin,
+        clock=lambda: 700.0,
+    )
+    assert remaining == 5_700.0
+    with pytest.raises(
+        successor.PerfectDiodeSuccessorError,
+        match="positive time remaining",
+    ):
+        successor._remaining_concurrent_child_wait_seconds(
+            stage_started=100.0,
+            stage_walltime_seconds=successor.CANARY_SLURM_WALLTIME_SECONDS,
+            cleanup_margin_seconds=margin,
+            clock=lambda: 6_400.0,
+        )
+    assert "PRODUCTION_SLURM_WALLTIME_SECONDS" in successor.run_pack.__code__.co_names
+    assert "CANARY_SLURM_WALLTIME_SECONDS" in (
+        successor.run_smoke_pack.__code__.co_names
+    )
+
+
+@pytest.mark.parametrize(
+    ("failing_action", "diagnostic_action"),
+    [
+        ("sigterm", "signal_process_group_sigterm"),
+        ("wait", "wait_after_process_group_sigterm"),
+        ("sigkill", "signal_process_group_sigkill"),
+    ],
+)
+def test_concurrent_children_cleanup_attempts_every_child_after_one_raises(
+    tmp_path: Path,
+    failing_action: str,
+    diagnostic_action: str,
+) -> None:
+    now = [0.0]
+    calls: list[tuple[int, str]] = []
+
+    class FakeProcess:
+        def __init__(self, index: int):
+            self.index = index
+            self.pid = 14_000 + index
+
+        def poll(self) -> None:
+            calls.append((self.index, "poll"))
+            return None
+
+        def wait(self, timeout: float) -> int:
+            calls.append((self.index, "wait"))
+            if self.index == 0 and failing_action == "wait":
+                raise RuntimeError("wait failed")
+            return -15
+
+    started = 0
+
+    def factory(
+        _command: list[str], *, stdout: object, **_kwargs: object
+    ) -> FakeProcess:
+        nonlocal started
+        process = FakeProcess(started)
+        started += 1
+        stdout.write("{}\n")  # type: ignore[attr-defined]
+        return process
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    def signal_group(process_group_id: int, value: int) -> None:
+        index = process_group_id - 14_000
+        action = "sigterm" if value == signal.SIGTERM else "sigkill"
+        calls.append((index, action))
+        if index == 0 and failing_action == action:
+            raise RuntimeError(f"{action} failed")
+
+    with pytest.raises(RuntimeError, match="cleanup_errors") as caught:
+        successor._run_concurrent_children(
+            [
+                {"label": "left", "entry_index": 0, "command": ["left"]},
+                {"label": "right", "entry_index": 1, "command": ["right"]},
+            ],
+            log_root=tmp_path / "logs",
+            artifact_root=tmp_path,
+            popen_factory=factory,
+            process_group_signaler=signal_group,
+            sleeper=sleep,
+            clock=lambda: now[0],
+            poll_interval_seconds=0.25,
+            max_wait_seconds=0.25,
+        )
+
+    assert f"'action': '{diagnostic_action}'" in str(caught.value)
+    assert (0, failing_action) in calls
+    assert (1, "sigterm") in calls
+    assert (1, "sigkill") in calls
+    assert (1, "wait") in calls
+
+
+@pytest.mark.skipif(not hasattr(os, "killpg"), reason="requires POSIX process groups")
+def test_concurrent_children_kill_term_ignoring_descendant_group(
+    tmp_path: Path,
+) -> None:
+    descendant_pid_path = tmp_path / "descendant.pid"
+    descendant_ready_path = tmp_path / "descendant.ready"
+    grandchild_code = (
+        "import pathlib, signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "pathlib.Path(sys.argv[1]).write_text('ready', encoding='utf-8')\n"
+        "time.sleep(60)\n"
+    )
+    leader_code = (
+        "import pathlib, subprocess, sys, time\n"
+        "pid_path = pathlib.Path(sys.argv[1])\n"
+        "ready_path = pathlib.Path(sys.argv[2])\n"
+        "child = subprocess.Popen("
+        "[sys.executable, '-c', sys.argv[3], str(ready_path)])\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not ready_path.is_file() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "if not ready_path.is_file():\n"
+        "    raise SystemExit(3)\n"
+        "pid_path.write_text(str(child.pid), encoding='utf-8')\n"
+        "time.sleep(60)\n"
+    )
+    failing_code = (
+        "import pathlib, sys, time\n"
+        "pid_path = pathlib.Path(sys.argv[1])\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not pid_path.is_file() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "raise SystemExit(7 if pid_path.is_file() else 8)\n"
+    )
+    processes: list[subprocess.Popen[str]] = []
+
+    def factory(
+        command: list[str], **kwargs: object
+    ) -> subprocess.Popen[str]:
+        assert kwargs["start_new_session"] is True
+        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]
+        processes.append(process)
+        return process
+
+    def process_is_live(process_id: int) -> bool:
+        stat_path = Path(f"/proc/{process_id}/stat")
+        try:
+            fields = stat_path.read_text(encoding="utf-8").split()
+        except FileNotFoundError:
+            return False
+        return len(fields) > 2 and fields[2] != "Z"
+
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="both concurrent packed children",
+        ):
+            successor._run_concurrent_children(
+                [
+                    {
+                        "label": "leader",
+                        "entry_index": 0,
+                        "command": [
+                            sys.executable,
+                            "-c",
+                            leader_code,
+                            str(descendant_pid_path),
+                            str(descendant_ready_path),
+                            grandchild_code,
+                        ],
+                    },
+                    {
+                        "label": "failure",
+                        "entry_index": 1,
+                        "command": [
+                            sys.executable,
+                            "-c",
+                            failing_code,
+                            str(descendant_pid_path),
+                        ],
+                    },
+                ],
+                log_root=tmp_path / "logs",
+                artifact_root=tmp_path,
+                popen_factory=factory,
+                poll_interval_seconds=0.02,
+                max_wait_seconds=5.0,
+                terminate_timeout_seconds=0.5,
+            )
+        descendant_pid = int(
+            descendant_pid_path.read_text(encoding="utf-8")
+        )
+        deadline = time.monotonic() + 5.0
+        while process_is_live(descendant_pid) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not process_is_live(descendant_pid)
+    finally:
+        for process in processes:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1.0)
 
 
 def _admission_record(

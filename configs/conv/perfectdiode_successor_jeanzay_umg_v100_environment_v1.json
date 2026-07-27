@@ -72,7 +72,7 @@
   },
   "verification": {
     "official_canary_verifier_path_template": "/lustre/fswork/projects/rech/umg/{user}/server_code/launch_tools/verify_canary.py",
-    "official_canary_verifier_sha256": "f3f8bcc89922b6f8faf79b6b9d3d1e9e26a5a8f3db3062fce357297cad009698"
+    "official_canary_verifier_sha256": "032979ace766382941a769db205df1c7fd2576e846e59873645cfe7ad894b5b0"
   },
   "walltime": {
     "canary": "02:00:00",

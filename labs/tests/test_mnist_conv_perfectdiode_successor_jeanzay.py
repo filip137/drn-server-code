@@ -1,20 +1,31 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+import fcntl
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
 import tarfile
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 import experiments.submit_mnist_conv_perfectdiode_successor_confirmation_jeanzay as submitter
 import experiments.supervise_mnist_conv_perfectdiode_successor_confirmation_jeanzay as supervisor
+import experiments.verify_jeanzay_canary as official_canary
 import experiments.verify_mnist_conv_perfectdiode_successor_canary as canary
-from experiments.mnist_conv.io import atomic_write_json, read_json
+from experiments.mnist_conv.io import (
+    atomic_create_json,
+    atomic_write_json,
+    read_json,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -111,14 +122,55 @@ def _fixture_repo(tmp_path: Path) -> dict[str, Path]:
         submitter.SUBMITTER_NAME,
         submitter.SUPERVISOR_NAME,
         submitter.SEMANTIC_CANARY_VERIFIER_NAME,
+        "verify_jeanzay_canary.py",
     ):
         shutil.copy2(REPO_ROOT / "experiments" / name, experiments / name)
     shutil.copy2(
         REPO_ROOT / submitter.EXPERIMENT_PLAN_VALIDATOR_RELATIVE,
         repo / submitter.EXPERIMENT_PLAN_VALIDATOR_RELATIVE,
     )
-    bundle = tmp_path / "bundle"
+    tracker_validator = (
+        plan_skill_scripts / "validate_current_experiments.py"
+    )
+    shutil.copy2(
+        REPO_ROOT / supervisor.TRACKER_VALIDATOR_RELATIVE,
+        tracker_validator,
+    )
+    tracker = repo / supervisor.TRACKER_RELATIVE
+    tracker.parent.mkdir(parents=True)
+    tracker.write_text(
+        "# Current Experiments\n\n"
+        f"<!-- experiment-id: {supervisor.EXPERIMENT_ID} -->\n"
+        "### Perfect-diode successor\n\n"
+        "- **Testing:** Exact approved Conv1/Conv2 confirmation.\n"
+        "- **Where:** Immutable Jean Zay staging paths are assigned.\n"
+        "- **Status:** `preflighting` — payload canary gates are active.\n",
+        encoding="utf-8",
+    )
+    tracker_gate_receipt = tmp_path / "tracker-canary-gate.json"
     output = tmp_path / "output"
+    supervisor_state = tmp_path / "supervisor-state.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(tracker_validator),
+            str(tracker),
+            "--require-experiment-id",
+            supervisor.EXPERIMENT_ID,
+            "--write-gate-receipt",
+            str(tracker_gate_receipt),
+            "--gate-stage",
+            "canary",
+            "--gate-state",
+            str(supervisor_state),
+            "--gate-output-root",
+            str(output),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    bundle = tmp_path / "bundle"
     production_output = tmp_path / "production-output"
     data = tmp_path / "mnist"
     for path in (bundle, output, production_output, data):
@@ -153,6 +205,10 @@ def _fixture_repo(tmp_path: Path) -> dict[str, Path]:
         "data": data,
         "archive": archive,
         "environment": environment,
+        "tracker": tracker,
+        "tracker_validator": tracker_validator,
+        "tracker_gate_receipt": tracker_gate_receipt,
+        "supervisor_state": supervisor_state,
     }
 
 
@@ -182,13 +238,22 @@ def _args(
             paths["output"].parent / "official-canary-gate.json"
         ),
         supervisor_state=str(
-            paths["output"].parent / "supervisor-state.json"
+            paths["supervisor_state"]
         ),
         repo_root=str(paths["repo"]),
         python=sys.executable,
-        official_verifier=str(canary.OFFICIAL_CANARY_VERIFIER),
+        official_verifier=str(
+            paths["repo"] / "experiments" / "verify_jeanzay_canary.py"
+        ),
         remote_user="testuser",
         canary_pack_index=4,
+        tracker=str(paths["tracker"]),
+        tracker_validator=str(paths["tracker_validator"]),
+        tracker_gate_receipt=str(paths["tracker_gate_receipt"]),
+        tracker_gate_receipt_sha256=submitter.sha256_file(
+            paths["tracker_gate_receipt"]
+        ),
+        command_timeout_seconds=30.0,
         submit=submit,
         test_only=test_only,
     )
@@ -200,6 +265,357 @@ def _tree_snapshot(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def test_official_canary_verifier_is_repo_local_and_hash_bound(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    args = _args(paths)
+    args.state = str(paths["supervisor_state"])
+    verifier = Path(args.official_verifier).resolve()
+    assert verifier == (
+        paths["repo"] / "experiments" / "verify_jeanzay_canary.py"
+    ).resolve()
+    assert ".codex" not in verifier.parts
+    assert submitter.sha256_file(verifier) == (
+        canary.OFFICIAL_CANARY_VERIFIER_SHA256
+    )
+
+
+def test_default_official_verifier_comes_from_environment_contract() -> None:
+    contract = submitter.load_environment_contract(ENVIRONMENT_CONTRACT)
+    assert submitter.expected_official_canary_verifier_path(
+        contract,
+        remote_user="testuser",
+    ) == Path(
+        "/lustre/fswork/projects/rech/umg/testuser/server_code/"
+        "launch_tools/verify_canary.py"
+    )
+    submitter_args = submitter._parser().parse_args(
+        [
+            "--kind",
+            "canary",
+            "--bundle-dir",
+            "/tmp/bundle",
+            "--output-root",
+            "/tmp/output",
+            "--data-root",
+            "/tmp/data",
+            "--source-archive",
+            "/tmp/source.tar.gz",
+            "--environment-contract",
+            "/tmp/environment.json",
+        ]
+    )
+    assert submitter_args.official_verifier is None
+
+
+def test_prepare_submission_resolves_default_verifier_with_storage_enforced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    launch_tools = tmp_path / "testuser" / "repo" / "launch_tools"
+    launch_tools.mkdir(parents=True)
+    staged_verifier = launch_tools / "verify_canary.py"
+    shutil.copy2(
+        REPO_ROOT / "experiments" / "verify_jeanzay_canary.py",
+        staged_verifier,
+    )
+    contract = submitter.load_environment_contract(ENVIRONMENT_CONTRACT)
+    contract["resources"]["python_executable"] = submitter.PYTHON_EXECUTABLE
+    contract["storage"] = {
+        "source_root_template": str(tmp_path),
+        "data_root_template": str(paths["data"]),
+        "result_root_template": str(tmp_path),
+    }
+    contract["verification"][
+        "official_canary_verifier_path_template"
+    ] = str(tmp_path / "{user}" / "repo" / "launch_tools" / "verify_canary.py")
+    monkeypatch.setattr(
+        submitter,
+        "load_environment_contract",
+        lambda _path: contract,
+    )
+    args = _args(paths)
+    args.python = submitter.PYTHON_EXECUTABLE
+    args.official_verifier = None
+    _command, metadata = submitter.prepare_submission(
+        args,
+        enforce_storage_roots=True,
+    )
+    assert metadata["official_canary_verifier"] == str(
+        staged_verifier.resolve()
+    )
+    assert metadata["hashes"][
+        "official_canary_verifier_sha256"
+    ] == submitter.sha256_file(staged_verifier)
+
+
+def test_canary_receipts_are_first_write_wins(
+    tmp_path: Path,
+) -> None:
+    official_path = tmp_path / "official.json"
+    original = {"status": "original"}
+    official_canary.write_receipt_exclusive(official_path, original)
+    original_bytes = official_path.read_bytes()
+    with pytest.raises(ValueError, match="not to exist"):
+        official_canary.write_receipt_exclusive(
+            official_path,
+            {"status": "replacement"},
+        )
+    assert official_path.read_bytes() == original_bytes
+
+    semantic_path = tmp_path / "semantic.json"
+    atomic_create_json(semantic_path, original, canonical=True)
+    semantic_bytes = semantic_path.read_bytes()
+    with pytest.raises(FileExistsError, match="not to exist"):
+        atomic_create_json(
+            semantic_path,
+            {"status": "replacement"},
+            canonical=True,
+        )
+    assert semantic_path.read_bytes() == semantic_bytes
+
+
+@pytest.mark.parametrize(
+    "receipt_argument",
+    ["official_canary_receipt", "canary_receipt"],
+)
+def test_new_supervisor_attempt_rejects_preexisting_canary_receipt(
+    tmp_path: Path,
+    receipt_argument: str,
+) -> None:
+    official_path = tmp_path / "official.json"
+    semantic_path = tmp_path / "semantic.json"
+    selected = (
+        official_path
+        if receipt_argument == "official_canary_receipt"
+        else semantic_path
+    )
+    selected.write_text("prior evidence\n", encoding="utf-8")
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            official_canary_receipt=str(official_path),
+            canary_receipt=str(semantic_path),
+        ),
+    )
+    with pytest.raises(ValueError, match="new-attempt"):
+        value._require_fresh_canary_receipt_paths()
+    assert selected.read_text(encoding="utf-8") == "prior evidence\n"
+
+
+def test_remote_tracker_gate_uses_canonical_hash_bound_receipt(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    args = _args(paths)
+    args.state = str(paths["supervisor_state"])
+    # A staged Markdown copy is not live authority after the canonical
+    # workflow has emitted its immutable receipt.
+    paths["tracker"].write_text(
+        paths["tracker"].read_text(encoding="utf-8").replace(
+            "`preflighting`",
+            "`blocked`",
+        ),
+        encoding="utf-8",
+    )
+    value = supervisor.SuccessorJeanZaySupervisor(args=args)
+    gate = value._validate_tracker(required_status="preflighting")
+    assert gate["status"] == "preflighting"
+    assert gate["receipt_sha256"] == args.tracker_gate_receipt_sha256
+    assert gate["validator_sha256"] == supervisor.TRACKER_VALIDATOR_SHA256
+    assert gate["tracker_sha256"] != submitter.sha256_file(paths["tracker"])
+
+
+@pytest.mark.parametrize(
+    ("changed_argument", "expected_fragment"),
+    [
+        ("state", "state_path"),
+        ("output_root", "output_root"),
+    ],
+)
+def test_tracker_gate_receipt_is_bound_to_exact_attempt(
+    tmp_path: Path,
+    changed_argument: str,
+    expected_fragment: str,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    args = _args(paths)
+    args.state = str(paths["supervisor_state"])
+    setattr(args, changed_argument, str(tmp_path / f"other-{changed_argument}"))
+    value = supervisor.SuccessorJeanZaySupervisor(args=args)
+    with pytest.raises(RuntimeError, match=expected_fragment):
+        value._validate_tracker(required_status="preflighting")
+
+
+def test_stale_tracker_gate_receipt_is_rejected_before_submission(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    stale_path = tmp_path / "stale-tracker-gate.json"
+    stale = read_json(paths["tracker_gate_receipt"])
+    stale["generated_at_utc"] = (
+        datetime.now(timezone.utc)
+        - timedelta(seconds=supervisor.TRACKER_GATE_MAX_AGE_SECONDS + 1)
+    ).isoformat()
+    atomic_write_json(stale_path, stale, canonical=True)
+    args = _args(paths)
+    args.state = str(paths["supervisor_state"])
+    args.tracker_gate_receipt = str(stale_path)
+    args.tracker_gate_receipt_sha256 = submitter.sha256_file(stale_path)
+    value = supervisor.SuccessorJeanZaySupervisor(args=args)
+    with pytest.raises(RuntimeError, match="fresh"):
+        value._validate_tracker(required_status="preflighting")
+
+
+def test_canonical_validator_emits_production_launch_ready_receipt(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    paths["tracker"].write_text(
+        paths["tracker"].read_text(encoding="utf-8").replace(
+            "`preflighting` — payload canary gates are active.",
+            "`launch-ready` — canary passed; production is authorized.",
+        ),
+        encoding="utf-8",
+    )
+    production_receipt = tmp_path / "tracker-production-gate.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(paths["tracker_validator"]),
+            str(paths["tracker"]),
+            "--require-experiment-id",
+            supervisor.EXPERIMENT_ID,
+            "--require-launch-ready",
+            "--write-gate-receipt",
+            str(production_receipt),
+            "--gate-stage",
+            "production",
+            "--gate-state",
+            str(paths["supervisor_state"]),
+            "--gate-output-root",
+            str(paths["output"]),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    args = _args(paths)
+    args.state = str(paths["supervisor_state"])
+    args.tracker_gate_receipt = str(production_receipt)
+    args.tracker_gate_receipt_sha256 = submitter.sha256_file(
+        production_receipt
+    )
+    value = supervisor.SuccessorJeanZaySupervisor(args=args)
+    gate = value._validate_tracker(required_status="launch-ready")
+    assert gate["gate_stage"] == "production"
+    assert gate["status"] == "launch-ready"
+
+
+def test_tracker_receipt_publication_is_atomic_first_write_wins(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    destination = tmp_path / "contended-tracker-gate.json"
+    command = [
+        sys.executable,
+        str(paths["tracker_validator"]),
+        str(paths["tracker"]),
+        "--require-experiment-id",
+        supervisor.EXPERIMENT_ID,
+        "--write-gate-receipt",
+        str(destination),
+        "--gate-stage",
+        "canary",
+        "--gate-state",
+        str(paths["supervisor_state"]),
+        "--gate-output-root",
+        str(paths["output"]),
+    ]
+
+    def invoke() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: invoke(), range(2)))
+    assert sorted(result.returncode for result in results) == [0, 1]
+    receipt = read_json(destination)
+    assert receipt["experiment_id"] == supervisor.EXPERIMENT_ID
+    assert receipt["state_path"] == str(paths["supervisor_state"])
+    assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
+
+
+def test_canary_to_production_uses_distinct_receipt_and_new_invocation(
+    tmp_path: Path,
+) -> None:
+    paths = _fixture_repo(tmp_path)
+    canary_args = _args(paths)
+    canary_args.state = str(paths["supervisor_state"])
+    canary_supervisor = supervisor.SuccessorJeanZaySupervisor(
+        args=canary_args
+    )
+    assert canary_supervisor._validate_tracker(
+        required_status="preflighting"
+    )["gate_stage"] == "canary"
+
+    paths["tracker"].write_text(
+        paths["tracker"].read_text(encoding="utf-8").replace(
+            "`preflighting` — payload canary gates are active.",
+            "`launch-ready` — canary passed; production is authorized.",
+        ),
+        encoding="utf-8",
+    )
+    production_receipt = tmp_path / "tracker-production-handoff.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(paths["tracker_validator"]),
+            str(paths["tracker"]),
+            "--require-experiment-id",
+            supervisor.EXPERIMENT_ID,
+            "--require-launch-ready",
+            "--write-gate-receipt",
+            str(production_receipt),
+            "--gate-stage",
+            "production",
+            "--gate-state",
+            str(paths["supervisor_state"]),
+            "--gate-output-root",
+            str(paths["output"]),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    production_args = _args(paths)
+    production_args.state = str(paths["supervisor_state"])
+    production_args.tracker_gate_receipt = str(production_receipt)
+    production_args.tracker_gate_receipt_sha256 = submitter.sha256_file(
+        production_receipt
+    )
+    production_supervisor = supervisor.SuccessorJeanZaySupervisor(
+        args=production_args
+    )
+    resumed_gate = production_supervisor._validate_tracker(
+        required_status=None
+    )
+    assert resumed_gate["gate_stage"] == "production"
+    assert production_supervisor._validate_tracker(
+        required_status="launch-ready"
+    )["status"] == "launch-ready"
+    assert production_receipt != paths["tracker_gate_receipt"]
+    assert production_args.tracker_gate_receipt_sha256 != (
+        canary_args.tracker_gate_receipt_sha256
+    )
 
 
 def _enable_fake_jeanzay_environment(
@@ -236,6 +652,13 @@ def _allocation(**unused: object) -> dict[str, object]:
         "partition": "gpu_p13",
         "qos": "qos_gpu-t3",
         "constraint": "v100-32g",
+    }
+
+
+def _tracker_gate() -> dict[str, object]:
+    return {
+        "status": "preflighting",
+        "experiment_id": supervisor.EXPERIMENT_ID,
     }
 
 
@@ -1203,6 +1626,7 @@ def test_supervisor_ambiguous_submission_never_retries(
         args=args,
         runner=ambiguous,
         allocation_verifier=_allocation,
+        tracker_validator=_tracker_gate,
     )
     value.state_path = tmp_path / "state.json"
     value.state = {
@@ -1230,6 +1654,1274 @@ def test_supervisor_ambiguous_submission_never_retries(
     with pytest.raises(RuntimeError, match="duplicate submission"):
         value._submit_once("canary", ["sbatch", "wrapper.slurm"])
     assert called is False
+
+
+def test_failed_sbatch_test_only_is_terminal_and_never_retried(
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def rejected(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(list(command))
+        raise subprocess.CalledProcessError(
+            2,
+            command,
+            output="",
+            stderr="invalid request",
+        )
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            enable_submit=True,
+            state=str(tmp_path / "state.json"),
+        ),
+        runner=rejected,
+        allocation_verifier=_allocation,
+        tracker_validator=_tracker_gate,
+    )
+    value.state = {
+        "status": "active",
+        "binding": {"gate_binding_sha256": "a" * 64},
+        "stages": {
+            "canary": {"status": "ready"},
+            "production": {"status": "blocked"},
+        },
+    }
+    value.gate_binding = {"bundle_id": "bundle"}
+    command = ["sbatch", "--array=0-0", "worker.slurm"]
+    with pytest.raises(subprocess.CalledProcessError):
+        value._submit_once("canary", command)
+    assert len(calls) == 1
+    assert value.state["stages"]["canary"]["status"] == (
+        "failed_sbatch_test_only"
+    )
+
+    with pytest.raises(RuntimeError, match="failed stage"):
+        value._submit_once("canary", command)
+    assert len(calls) == 1
+
+
+def test_blocked_tracker_prevents_allocation_audit_and_sbatch(
+    tmp_path: Path,
+) -> None:
+    runner_called = False
+    allocation_called = False
+
+    def forbidden_runner(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal runner_called
+        runner_called = True
+        raise AssertionError(command)
+
+    def forbidden_allocation(**unused: object) -> dict[str, object]:
+        nonlocal allocation_called
+        allocation_called = True
+        raise AssertionError("allocation audit must not run")
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            enable_submit=True,
+            state=str(tmp_path / "state.json"),
+        ),
+        runner=forbidden_runner,
+        allocation_verifier=forbidden_allocation,
+        tracker_validator=lambda: {
+            "status": "blocked",
+            "experiment_id": supervisor.EXPERIMENT_ID,
+        },
+    )
+    value.state = {
+        "status": "active",
+        "binding": {"gate_binding_sha256": "a" * 64},
+        "stages": {
+            "canary": {"status": "ready"},
+            "production": {"status": "blocked"},
+        },
+    }
+    value.gate_binding = {"bundle_id": "bundle"}
+    with pytest.raises(ValueError, match="preflighting"):
+        value._submit_once(
+            "canary",
+            ["sbatch", "--array=0-0", "worker.slurm"],
+        )
+    assert runner_called is False
+    assert allocation_called is False
+
+
+def test_tracker_is_rechecked_after_test_only_before_live_sbatch(
+    tmp_path: Path,
+) -> None:
+    observed: list[list[str]] = []
+    statuses = iter(("preflighting", "blocked"))
+
+    def runner(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        observed.append(list(command))
+        if "--test-only" not in command:
+            raise AssertionError("live sbatch must remain unreachable")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="accepted\n",
+            stderr="",
+        )
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            enable_submit=True,
+            state=str(tmp_path / "state.json"),
+        ),
+        runner=runner,
+        allocation_verifier=_allocation,
+        tracker_validator=lambda: {
+            "status": next(statuses),
+            "experiment_id": supervisor.EXPERIMENT_ID,
+        },
+    )
+    value.state = {
+        "status": "active",
+        "binding": {"gate_binding_sha256": "a" * 64},
+        "stages": {
+            "canary": {"status": "ready"},
+            "production": {"status": "blocked_on_canary"},
+        },
+    }
+    value.gate_binding = {"bundle_id": "bundle"}
+    with pytest.raises(ValueError, match="preflighting"):
+        value._submit_once(
+            "canary",
+            ["sbatch", "--array=0-0", "worker.slurm"],
+        )
+    assert len(observed) == 1
+    assert "--test-only" in observed[0]
+    assert value.state["stages"]["canary"].get(
+        "submission_status"
+    ) is None
+
+
+def test_failure_report_is_first_write_wins_and_complete(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    report_path = tmp_path / "failure.json"
+    state = {
+        "status": "active",
+        "binding": {
+            "preflight_receipt_path": str(tmp_path / "preflight.json"),
+            "preflight_receipt_sha256": "a" * 64,
+        },
+        "last_tracker_gate": {
+            "receipt_path": str(tmp_path / "tracker-canary.json"),
+            "receipt_sha256": "b" * 64,
+            "tracker_path": str(tmp_path / "current-experiments.md"),
+            "tracker_sha256": "c" * 64,
+        },
+        "stages": {
+            "canary": {
+                "status": "failed_accounting_validation",
+                "job_id": "311193",
+                "last_array_state": {"status": "failed"},
+                "command": ["sbatch", "worker.slurm"],
+                "live_submission_tracker_gate": {
+                    "receipt_path": str(
+                        tmp_path / "tracker-canary-live.json"
+                    ),
+                    "receipt_sha256": "d" * 64,
+                },
+            },
+            "production": {"status": "blocked_on_canary"},
+        },
+    }
+    first = supervisor.write_failure_report(
+        report_path,
+        error=RuntimeError("allocation mismatch"),
+        state_path=state_path,
+        state=state,
+    )
+    first_hash = submitter.sha256_file(report_path)
+    second = supervisor.write_failure_report(
+        report_path,
+        error=RuntimeError("must not replace first failure"),
+        state_path=state_path,
+        state=state,
+    )
+    assert second == first
+    assert submitter.sha256_file(report_path) == first_hash
+    assert first["stage"] == "canary"
+    assert first["launched_job_count"] == 1
+    assert first["launched_jobs"][0]["job_id"] == "311193"
+    assert first["completed_stages"] == []
+    assert first["last_valid_artifacts"]["preflight_receipt_sha256"] == (
+        "a" * 64
+    )
+    assert first["last_valid_artifacts"][
+        "last_tracker_gate.receipt_sha256"
+    ] == "b" * 64
+    assert first["last_valid_artifacts"][
+        "canary.live_submission_tracker_gate.receipt_sha256"
+    ] == "d" * 64
+    assert first["retry_authorized"] is False
+    assert "wait for a new user message" in first["smallest_next_action"]
+
+
+def test_failure_report_is_first_write_wins_under_concurrency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "failure.json"
+    state_path = tmp_path / "state.json"
+    barrier = threading.Barrier(2)
+    real_atomic_write_json = supervisor.atomic_write_json
+
+    def synchronized_write(
+        path: str | Path,
+        value: object,
+        *,
+        canonical: bool = False,
+    ) -> Path:
+        barrier.wait(timeout=5)
+        return real_atomic_write_json(path, value, canonical=canonical)
+
+    monkeypatch.setattr(
+        supervisor,
+        "atomic_write_json",
+        synchronized_write,
+    )
+
+    def write(message: str) -> dict[str, object]:
+        return supervisor.write_failure_report(
+            destination,
+            error=RuntimeError(message),
+            state_path=state_path,
+            state=None,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(write, "first contender"),
+            executor.submit(write, "second contender"),
+        ]
+        reports = [future.result(timeout=10) for future in futures]
+    persisted = read_json(destination)
+    assert reports[0] == reports[1] == persisted
+    assert persisted["failure"]["message"] in {
+        "first contender",
+        "second contender",
+    }
+
+
+def test_timeout_failure_report_preserves_command_and_streams(
+    tmp_path: Path,
+) -> None:
+    error = subprocess.TimeoutExpired(
+        ["ssh", "jean-zay"],
+        17,
+        output=b"partial stdout\xff",
+        stderr=b"partial stderr",
+    )
+    report = supervisor.write_failure_report(
+        tmp_path / "failure.json",
+        error=error,
+        state_path=tmp_path / "state.json",
+        state=None,
+    )
+    assert report["failure"]["error_type"] == "TimeoutExpired"
+    assert report["failure"]["command"] == ["ssh", "jean-zay"]
+    assert report["failure"]["timeout_seconds"] == 17
+    assert report["failure"]["stdout"].startswith("partial stdout")
+    assert report["failure"]["stderr"] == "partial stderr"
+    json.dumps(report, allow_nan=False)
+
+
+def test_ambiguous_submission_report_never_claims_zero_jobs(
+    tmp_path: Path,
+) -> None:
+    report = supervisor.write_failure_report(
+        tmp_path / "failure.json",
+        error=subprocess.TimeoutExpired(["sbatch", "worker.slurm"], 30),
+        state_path=tmp_path / "state.json",
+        state={
+            "status": "active",
+            "binding": {},
+            "stages": {
+                "canary": {
+                    "status": "ready",
+                    "submission_status": "ambiguous",
+                    "command": ["sbatch", "worker.slurm"],
+                },
+                "production": {"status": "blocked_on_canary"},
+            },
+        },
+        scheduler_readback={
+            "attempted": False,
+            "jobs": {},
+            "ambiguous_submissions": [
+                {
+                    "stage": "canary",
+                    "reason": "sbatch may have created an unknown job",
+                }
+            ],
+        },
+    )
+    assert report["launched_job_count"] is None
+    assert report["launched_job_count_status"] == (
+        "unknown_due_to_ambiguous_submission"
+    )
+
+
+def test_dangling_failure_report_symlink_is_rejected(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "failure.json"
+    target = tmp_path / "elsewhere.json"
+    report_path.symlink_to(target)
+    with pytest.raises(ValueError, match="non-symlink"):
+        supervisor.write_failure_report(
+            report_path,
+            error=RuntimeError("must not follow"),
+            state_path=tmp_path / "state.json",
+            state=None,
+        )
+    assert not target.exists()
+
+
+def test_record_failure_reads_live_scheduler_state_and_worker_log(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    log_root = output_root / "slurm"
+    log_root.mkdir(parents=True)
+    stderr_log = log_root / "pd-successor-canary-311705_0.err"
+    stderr_log.write_text(
+        "archive check failed: [Errno 28] No space left on device\n",
+        encoding="utf-8",
+    )
+    tracker_gate = tmp_path / "tracker-canary-gate.json"
+    tracker_gate.write_text('{"status":"preflighting"}\n', encoding="utf-8")
+
+    def runner(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert command[:5] == ["sacct", "-n", "-X", "-j", "311705"]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="311705|311705|FAILED|1:0|\n",
+            stderr="",
+        )
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            output_root=str(output_root),
+            tracker_gate_receipt=str(tracker_gate),
+        ),
+        runner=runner,
+    )
+    value.state = {
+        "status": "active",
+        "binding": {},
+        "stages": {
+            "canary": {
+                "status": "failed_accounting_validation",
+                "job_id": "311705",
+            },
+            "production": {"status": "blocked_on_canary"},
+        },
+    }
+    value._note_failure_operation(
+        name="scheduler_accounting",
+        stage="canary",
+        command=["sacct", "-j", "311705"],
+    )
+    report = value.record_failure(
+        RuntimeError("canary task entered FAILED")
+    )
+    readback = report["launched_jobs"][0]["failure_readback"]
+    assert readback["rows"][0]["state"] == "FAILED"
+    assert report["failure_operation"]["name"] == "scheduler_accounting"
+    assert report["failure"]["command"] == [
+        "sacct",
+        "-j",
+        "311705",
+    ]
+    assert any(
+        "No space left on device" in item.get("tail", "")
+        for item in report["diagnostic_evidence"]["slurm_logs"]
+    )
+    observed_tracker = report["files_or_external_state_changed"][
+        "observed_attempt_paths"
+    ]["tracker_gate_receipt"]
+    assert observed_tracker["path"] == str(tracker_gate)
+    assert observed_tracker["sha256"] == submitter.sha256_file(tracker_gate)
+    assert read_json(value.state_path)["status"] == "failed"
+
+
+def test_record_failure_recovers_existing_state_before_reporting(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    atomic_write_json(
+        state_path,
+        {
+            "status": "active",
+            "binding": {},
+            "stages": {
+                "canary": {
+                    "status": "waiting",
+                    "job_id": "8123",
+                },
+                "production": {"status": "blocked_on_canary"},
+            },
+        },
+        canonical=True,
+    )
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(state_path),
+            output_root=str(tmp_path / "output"),
+        ),
+        runner=lambda command, **unused: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="8123|8123|RUNNING|0:0|\n",
+            stderr="",
+        ),
+    )
+    report = value.record_failure(TimeoutError("preflight timed out"))
+    assert report["launched_job_count"] == 1
+    assert report["launched_jobs"][0]["job_id"] == "8123"
+    assert read_json(state_path)["status"] == "failed"
+
+
+def test_existing_failure_report_blocks_restart_before_any_command(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    failure_path = tmp_path / "state-failure.json"
+    supervisor.write_failure_report(
+        failure_path,
+        error=RuntimeError("first failure"),
+        state_path=state_path,
+        state=None,
+    )
+    called = False
+
+    def forbidden(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal called
+        called = True
+        raise AssertionError(command)
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(state_path),
+        ),
+        runner=forbidden,
+    )
+    with pytest.raises(RuntimeError, match="new immutable attempt path"):
+        value.initialize()
+    assert called is False
+
+
+def test_failed_state_without_report_still_blocks_restart(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    atomic_write_json(
+        state_path,
+        {
+            "schema_version": supervisor.STATE_SCHEMA_VERSION,
+            "status": "failed",
+            "binding": {},
+            "stages": {
+                "canary": {"status": "failed"},
+                "production": {"status": "blocked_on_canary"},
+            },
+        },
+        canonical=True,
+    )
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(state=str(state_path)),
+    )
+    with pytest.raises(RuntimeError, match="never to resume"):
+        value.initialize()
+    assert not value.failure_report_path.exists()
+
+
+@pytest.mark.parametrize("occupied_kind", ["directory", "dangling_symlink"])
+def test_invalid_occupied_failure_report_path_blocks_before_any_command(
+    tmp_path: Path,
+    occupied_kind: str,
+) -> None:
+    state_path = tmp_path / "state.json"
+    failure_path = tmp_path / "state-failure.json"
+    if occupied_kind == "directory":
+        failure_path.mkdir()
+    else:
+        failure_path.symlink_to(tmp_path / "missing-failure.json")
+    runner_called = False
+    allocation_called = False
+
+    def forbidden_runner(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal runner_called
+        runner_called = True
+        raise AssertionError(command)
+
+    def forbidden_allocation(**unused: object) -> dict[str, object]:
+        nonlocal allocation_called
+        allocation_called = True
+        raise AssertionError("allocation audit must not run")
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(state=str(state_path)),
+        runner=forbidden_runner,
+        allocation_verifier=forbidden_allocation,
+    )
+    with pytest.raises(ValueError, match="non-symlink regular JSON file"):
+        value.initialize()
+    assert runner_called is False
+    assert allocation_called is False
+
+
+@pytest.mark.parametrize("occupied_kind", ["directory", "dangling_symlink"])
+def test_public_main_rejects_invalid_failure_path_before_arming_or_commands(
+    tmp_path: Path,
+    occupied_kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state_path = tmp_path / "state.json"
+    failure_path = tmp_path / "state-failure.json"
+    if occupied_kind == "directory":
+        failure_path.mkdir()
+    else:
+        failure_path.symlink_to(tmp_path / "missing-failure.json")
+    runner_called = False
+    initialize_called = False
+
+    def forbidden_runner(
+        command: list[str], **unused: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal runner_called
+        runner_called = True
+        raise AssertionError(command)
+
+    def forbidden_initialize(
+        unused_self: supervisor.SuccessorJeanZaySupervisor,
+    ) -> None:
+        nonlocal initialize_called
+        initialize_called = True
+        raise AssertionError("initialize must not run")
+
+    monkeypatch.setattr(supervisor, "_run_process_group", forbidden_runner)
+    monkeypatch.setattr(
+        supervisor.SuccessorJeanZaySupervisor,
+        "initialize",
+        forbidden_initialize,
+    )
+    required = [
+        "--state",
+        str(state_path),
+        "--bundle-dir",
+        str(tmp_path / "bundle"),
+        "--output-root",
+        str(tmp_path / "output"),
+        "--data-root",
+        str(tmp_path / "data"),
+        "--source-archive",
+        str(tmp_path / "source.tar.gz"),
+        "--environment-contract",
+        str(tmp_path / "environment.json"),
+        "--launch-authorization-receipt",
+        str(tmp_path / "authorization.json"),
+        "--launch-authorization-receipt-sha256",
+        "a" * 64,
+        "--scheduled-preflight-receipt",
+        str(tmp_path / "scheduled.json"),
+        "--preflight-receipt",
+        str(tmp_path / "preflight.json"),
+        "--tracker-gate-receipt",
+        str(tmp_path / "tracker-gate.json"),
+        "--tracker-gate-receipt-sha256",
+        "b" * 64,
+        "--official-canary-receipt",
+        str(tmp_path / "official.json"),
+        "--canary-receipt",
+        str(tmp_path / "canary.json"),
+        "--arm-long-run",
+    ]
+
+    with pytest.raises(ValueError, match="non-symlink regular JSON file"):
+        supervisor.main(required)
+
+    assert "LONG-RUN ATTEMPT ARMED" not in capsys.readouterr().err
+    assert runner_called is False
+    assert initialize_called is False
+    if occupied_kind == "directory":
+        assert failure_path.is_dir()
+    else:
+        assert failure_path.is_symlink()
+
+
+def test_lock_contender_does_not_poison_active_attempt(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state_path = tmp_path / "state.json"
+    lock_path = state_path.with_name(state_path.name + ".lock")
+    required = [
+        "--state",
+        str(state_path),
+        "--bundle-dir",
+        str(tmp_path / "bundle"),
+        "--output-root",
+        str(tmp_path / "output"),
+        "--data-root",
+        str(tmp_path / "data"),
+        "--source-archive",
+        str(tmp_path / "source.tar.gz"),
+        "--environment-contract",
+        str(tmp_path / "environment.json"),
+        "--launch-authorization-receipt",
+        str(tmp_path / "authorization.json"),
+        "--launch-authorization-receipt-sha256",
+        "a" * 64,
+        "--scheduled-preflight-receipt",
+        str(tmp_path / "scheduled.json"),
+        "--preflight-receipt",
+        str(tmp_path / "preflight.json"),
+        "--tracker-gate-receipt",
+        str(tmp_path / "tracker-gate.json"),
+        "--tracker-gate-receipt-sha256",
+        "b" * 64,
+        "--official-canary-receipt",
+        str(tmp_path / "official.json"),
+        "--canary-receipt",
+        str(tmp_path / "canary.json"),
+        "--arm-long-run",
+    ]
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(RuntimeError, match="exactly one active"):
+            supervisor.main(required)
+    assert "LONG-RUN ATTEMPT ARMED" not in capsys.readouterr().err
+    assert not state_path.exists()
+    assert not (tmp_path / "state-failure.json").exists()
+
+
+def test_supervisor_commands_receive_a_hard_timeout(
+    tmp_path: Path,
+) -> None:
+    observed: dict[str, object] = {}
+
+    def runner(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        observed.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            command_timeout_seconds=17,
+        ),
+        runner=runner,
+    )
+    value.runner(["probe"], check=True)
+    assert observed["timeout"] == 17.0
+
+
+def test_follow_deadline_limits_each_external_command(
+    tmp_path: Path,
+) -> None:
+    now = [10.0]
+    observed_timeouts: list[float] = []
+
+    def runner(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        timeout = float(kwargs["timeout"])
+        observed_timeouts.append(timeout)
+        now[0] += timeout
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            command_timeout_seconds=60,
+        ),
+        runner=runner,
+        clock=lambda: now[0],
+    )
+    value.state = {
+        "status": "active",
+        "binding": {},
+        "stages": {
+            "canary": {"status": "waiting"},
+            "production": {"status": "blocked_on_canary"},
+        },
+    }
+    value.gate_binding = {"bundle_id": "bundle"}
+
+    def advance() -> dict[str, object]:
+        value.runner(["slow-command"], check=True)
+        return {"status": "waiting", "stage": "canary"}
+
+    value.advance_once = advance  # type: ignore[method-assign]
+    with pytest.raises(TimeoutError, match="terminal progress"):
+        value.run(
+            poll_seconds=1,
+            once=False,
+            max_follow_seconds=2,
+        )
+    assert observed_timeouts == [2.0]
+
+
+def test_supervisor_rejects_command_timeout_above_observability_interval(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="observability interval"):
+        supervisor.SuccessorJeanZaySupervisor(
+            args=argparse.Namespace(
+                state=str(tmp_path / "state.json"),
+                command_timeout_seconds=(
+                    supervisor.MAX_ARMED_COMMAND_TIMEOUT_SECONDS + 1
+                ),
+            ),
+        )
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "killpg"),
+    reason="requires POSIX process groups",
+)
+def test_supervisor_timeout_kills_term_ignoring_descendant_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    descendant_pid_path = tmp_path / "descendant.pid"
+    descendant_ready_path = tmp_path / "descendant.ready"
+    descendant_code = (
+        "import pathlib, signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "pathlib.Path(sys.argv[1]).write_text('ready', encoding='utf-8')\n"
+        "time.sleep(60)\n"
+    )
+    leader_code = (
+        "import pathlib, signal, subprocess, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "pid_path = pathlib.Path(sys.argv[1])\n"
+        "ready_path = pathlib.Path(sys.argv[2])\n"
+        "child = subprocess.Popen("
+        "[sys.executable, '-c', sys.argv[3], str(ready_path)])\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not ready_path.is_file() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "pid_path.write_text(str(child.pid), encoding='utf-8')\n"
+        "time.sleep(60)\n"
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "PROCESS_GROUP_TERMINATE_SECONDS",
+        0.2,
+    )
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            command_timeout_seconds=1,
+        ),
+    )
+    def process_is_live(process_id: int) -> bool:
+        try:
+            fields = Path(
+                f"/proc/{process_id}/stat"
+            ).read_text(encoding="utf-8").split()
+        except FileNotFoundError:
+            return False
+        return len(fields) > 2 and fields[2] != "Z"
+    descendant_pid: int | None = None
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            value.runner(
+                [
+                    sys.executable,
+                    "-c",
+                    leader_code,
+                    str(descendant_pid_path),
+                    str(descendant_ready_path),
+                    descendant_code,
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        descendant_pid = int(
+            descendant_pid_path.read_text(encoding="utf-8")
+        )
+        deadline = time.monotonic() + 5
+        while (
+            process_is_live(descendant_pid)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.02)
+        assert not process_is_live(descendant_pid)
+    finally:
+        if descendant_pid is not None and process_is_live(descendant_pid):
+            os.kill(descendant_pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "killpg"),
+    reason="requires POSIX process groups",
+)
+def test_supervisor_timeout_cleanup_is_bounded_when_escaped_child_keeps_pipe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    escaped_pid_path = tmp_path / "escaped.pid"
+    escaped_code = (
+        "import pathlib, signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(__import__('os').getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    leader_code = (
+        "import pathlib, subprocess, sys, time\n"
+        "pid_path = pathlib.Path(sys.argv[1])\n"
+        "subprocess.Popen("
+        "[sys.executable, '-c', sys.argv[2], str(pid_path)], "
+        "start_new_session=True)\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not pid_path.is_file() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "time.sleep(60)\n"
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "PROCESS_GROUP_TERMINATE_SECONDS",
+        0.1,
+    )
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            command_timeout_seconds=1,
+        ),
+    )
+    started = time.monotonic()
+    escaped_pid: int | None = None
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            value.runner(
+                [
+                    sys.executable,
+                    "-c",
+                    leader_code,
+                    str(escaped_pid_path),
+                    escaped_code,
+                ],
+                timeout=0.2,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        assert time.monotonic() - started < 2
+        escaped_pid = int(escaped_pid_path.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                fields = Path(
+                    f"/proc/{escaped_pid}/stat"
+                ).read_text(encoding="utf-8").split()
+            except FileNotFoundError:
+                break
+            if len(fields) > 2 and fields[2] == "Z":
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("escaped descendant remained live after cleanup")
+    finally:
+        if escaped_pid is not None:
+            try:
+                os.kill(escaped_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "killpg"),
+    reason="requires POSIX process groups",
+)
+def test_supervisor_rejects_and_kills_successful_background_descendant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child_pid_path = tmp_path / "background.pid"
+    child_code = (
+        "import os, pathlib, signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    leader_code = (
+        "import pathlib, subprocess, sys, time\n"
+        "pid_path = pathlib.Path(sys.argv[1])\n"
+        "subprocess.Popen("
+        "[sys.executable, '-c', sys.argv[2], str(pid_path)], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, "
+        "stderr=subprocess.DEVNULL)\n"
+        "deadline = time.monotonic() + 5\n"
+        "while not pid_path.is_file() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "PROCESS_GROUP_TERMINATE_SECONDS",
+        0.1,
+    )
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            command_timeout_seconds=2,
+        ),
+    )
+    child_pid: int | None = None
+    try:
+        with pytest.raises(RuntimeError, match="background descendants"):
+            value.runner(
+                [
+                    sys.executable,
+                    "-c",
+                    leader_code,
+                    str(child_pid_path),
+                    child_code,
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                fields = Path(
+                    f"/proc/{child_pid}/stat"
+                ).read_text(encoding="utf-8").split()
+            except FileNotFoundError:
+                break
+            if len(fields) > 2 and fields[2] == "Z":
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("background descendant remained live after cleanup")
+    finally:
+        if child_pid is not None:
+            try:
+                os.kill(child_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def test_supervisor_defaults_to_one_pass_and_bounds_explicit_follow() -> None:
+    parser = supervisor._parser()
+    required = [
+        "--state",
+        "/tmp/state.json",
+        "--bundle-dir",
+        "/tmp/bundle",
+        "--output-root",
+        "/tmp/output",
+        "--data-root",
+        "/tmp/data",
+        "--source-archive",
+        "/tmp/source.tar.gz",
+        "--environment-contract",
+        "/tmp/environment.json",
+        "--launch-authorization-receipt",
+        "/tmp/authorization.json",
+        "--launch-authorization-receipt-sha256",
+        "a" * 64,
+        "--scheduled-preflight-receipt",
+        "/tmp/scheduled.json",
+        "--preflight-receipt",
+        "/tmp/preflight.json",
+        "--tracker-gate-receipt",
+        "/tmp/tracker-gate.json",
+        "--tracker-gate-receipt-sha256",
+        "b" * 64,
+        "--official-canary-receipt",
+        "/tmp/official.json",
+        "--canary-receipt",
+        "/tmp/canary.json",
+    ]
+    assert parser.parse_args(required).once is True
+    assert parser.parse_args([*required, "--follow"]).once is False
+    assert parser.parse_args(required).max_follow_seconds == (
+        supervisor.DEFAULT_MAX_FOLLOW_SECONDS
+    )
+    assert parser.parse_args(required).official_verifier is None
+    assert parser.parse_args(required).arm_long_run is False
+
+
+def test_supervisor_arm_marker_follows_lock_and_reports_actual_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.json"
+    events: list[str] = []
+
+    class MarkerStream:
+        def __init__(self) -> None:
+            self.text = ""
+
+        def write(self, value: str) -> int:
+            if "LONG-RUN ATTEMPT ARMED" in value:
+                assert "lock" in events
+                events.append("arm")
+            self.text += value
+            return len(value)
+
+        def flush(self) -> None:
+            pass
+
+    class FakeSupervisor:
+        def __init__(self, *, args: argparse.Namespace):
+            self.args = args
+            self.failure_report_path = state.with_name("state-failure.json")
+
+        def _reject_terminal_attempt(self) -> None:
+            assert "lock" in events
+            events.append("precheck")
+
+        def initialize(self) -> None:
+            events.append("initialize")
+
+        def run(self, **kwargs: object) -> dict[str, object]:
+            events.append("run")
+            assert kwargs["max_follow_seconds"] == 123.0
+            return {"status": "waiting"}
+
+    real_flock = supervisor.fcntl.flock
+
+    def observed_flock(descriptor: int, operation: int) -> None:
+        real_flock(descriptor, operation)
+        events.append("lock")
+
+    stream = MarkerStream()
+    monkeypatch.setattr(supervisor.fcntl, "flock", observed_flock)
+    monkeypatch.setattr(
+        supervisor,
+        "SuccessorJeanZaySupervisor",
+        FakeSupervisor,
+    )
+    monkeypatch.setattr(supervisor.sys, "stderr", stream)
+    required = [
+        "--state",
+        str(state),
+        "--bundle-dir",
+        str(tmp_path / "bundle"),
+        "--output-root",
+        str(tmp_path / "output"),
+        "--data-root",
+        str(tmp_path / "data"),
+        "--source-archive",
+        str(tmp_path / "source.tar.gz"),
+        "--environment-contract",
+        str(tmp_path / "environment.json"),
+        "--launch-authorization-receipt",
+        str(tmp_path / "authorization.json"),
+        "--launch-authorization-receipt-sha256",
+        "a" * 64,
+        "--scheduled-preflight-receipt",
+        str(tmp_path / "scheduled.json"),
+        "--preflight-receipt",
+        str(tmp_path / "preflight.json"),
+        "--tracker-gate-receipt",
+        str(tmp_path / "tracker-gate.json"),
+        "--tracker-gate-receipt-sha256",
+        "b" * 64,
+        "--official-canary-receipt",
+        str(tmp_path / "official.json"),
+        "--canary-receipt",
+        str(tmp_path / "canary.json"),
+        "--max-follow-seconds",
+        "123",
+        "--arm-long-run",
+    ]
+
+    assert supervisor.main(required) == 0
+    assert events == ["lock", "precheck", "arm", "initialize", "run"]
+    assert "hard_deadline_seconds=123" in stream.text
+
+
+def test_supervisor_rejects_follow_beyond_declared_hard_deadline(
+    tmp_path: Path,
+) -> None:
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(
+            state=str(tmp_path / "state.json"),
+            command_timeout_seconds=1,
+        ),
+    )
+    with pytest.raises(ValueError, match="no greater than"):
+        value.run(
+            poll_seconds=1,
+            once=False,
+            max_follow_seconds=(
+                supervisor.LONG_RUN_HARD_DEADLINE_SECONDS + 1
+            ),
+        )
+
+
+def test_supervisor_requires_explicit_arm_before_state_mutation(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.json"
+    required = [
+        "--state",
+        str(state),
+        "--bundle-dir",
+        str(tmp_path / "bundle"),
+        "--output-root",
+        str(tmp_path / "output"),
+        "--data-root",
+        str(tmp_path / "data"),
+        "--source-archive",
+        str(tmp_path / "source.tar.gz"),
+        "--environment-contract",
+        str(tmp_path / "environment.json"),
+        "--launch-authorization-receipt",
+        str(tmp_path / "authorization.json"),
+        "--launch-authorization-receipt-sha256",
+        "a" * 64,
+        "--scheduled-preflight-receipt",
+        str(tmp_path / "scheduled.json"),
+        "--preflight-receipt",
+        str(tmp_path / "preflight.json"),
+        "--tracker-gate-receipt",
+        str(tmp_path / "tracker-gate.json"),
+        "--tracker-gate-receipt-sha256",
+        "b" * 64,
+        "--official-canary-receipt",
+        str(tmp_path / "official.json"),
+        "--canary-receipt",
+        str(tmp_path / "canary.json"),
+    ]
+
+    with pytest.raises(ValueError, match="--arm-long-run"):
+        supervisor.main(required)
+
+    assert not state.exists()
+    assert not state.with_name("state-failure.json").exists()
+
+
+def test_approved_plan_launcher_covers_every_required_supervisor_argument() -> None:
+    metadata: dict[str, object] = {
+        "resources": {"python_executable": "/opt/reviewed/bin/python"},
+        "supervisor": "/staging/repo/experiments/supervisor.py",
+        "supervisor_state": "/results/attempt/state.json",
+        "bundle_dir": "/results/bundle",
+        "output_root": "/results/attempt/output",
+        "data_root": "/datasets/mnist",
+        "source_archive": "/staging/source.tar.gz",
+        "environment_contract": "/staging/environment.json",
+        "launch_authorization_receipt": "/results/attempt/authorization.json",
+        "scheduled_preflight_receipt": "/results/attempt/scheduled.json",
+        "preflight_receipt": "/results/attempt/preflight.json",
+        "official_canary_receipt": "/results/attempt/official-canary.json",
+        "successor_canary_receipt": "/results/attempt/canary.json",
+        "repo_root": "/staging/repo",
+        "remote_user": "testuser",
+        "official_canary_verifier": (
+            "/staging/repo/launch_tools/verify_canary.py"
+        ),
+        "canary_pack_index": 4,
+    }
+    launcher = submitter._expected_plan_supervisor_launcher(metadata)
+    actualized = [
+        (
+            "/results/attempt/tracker-canary.json"
+            if value
+            == submitter.TRACKER_GATE_RECEIPT_PATH_PLACEHOLDER
+            else "a" * 64
+            if value
+            == submitter.TRACKER_GATE_RECEIPT_SHA256_PLACEHOLDER
+            else "b" * 64
+            if value
+            == submitter.LAUNCH_AUTHORIZATION_SHA256_PLACEHOLDER
+            else value
+        )
+        for value in launcher
+    ]
+    parsed = supervisor._parser().parse_args(actualized[2:])
+    assert parsed.state == metadata["supervisor_state"]
+    assert parsed.tracker_gate_receipt == (
+        "/results/attempt/tracker-canary.json"
+    )
+    assert parsed.tracker_gate_receipt_sha256 == "a" * 64
+    assert parsed.arm_long_run is True
+    assert parsed.enable_submit is True
+
+
+def test_explicit_follow_stops_at_hard_deadline(
+    tmp_path: Path,
+) -> None:
+    now = [0.0]
+    sleeps: list[float] = []
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(state=str(tmp_path / "state.json")),
+        clock=lambda: now[0],
+        sleeper=lambda seconds: (
+            sleeps.append(seconds),
+            now.__setitem__(0, now[0] + seconds),
+        )[-1],
+    )
+    value.state = {
+        "status": "active",
+        "binding": {},
+        "stages": {
+            "canary": {"status": "waiting"},
+            "production": {"status": "blocked_on_canary"},
+        },
+    }
+    value.gate_binding = {"bundle_id": "bundle"}
+    value.advance_once = lambda: {"status": "waiting", "stage": "canary"}  # type: ignore[method-assign]
+    with pytest.raises(TimeoutError, match="terminal progress"):
+        value.run(
+            poll_seconds=1,
+            once=False,
+            max_follow_seconds=2,
+        )
+    assert sleeps == [1.0, 1.0]
+
+
+def test_follow_stops_at_canary_stage_boundary() -> None:
+    value = supervisor.SuccessorJeanZaySupervisor(
+        args=argparse.Namespace(state="/tmp/stage-boundary-state.json"),
+    )
+    calls = 0
+
+    def advance() -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {"status": "stage_complete", "stage": "canary"}
+
+    value.advance_once = advance  # type: ignore[method-assign]
+    result = value.run(
+        poll_seconds=1,
+        once=False,
+        max_follow_seconds=10,
+    )
+    assert result == {"status": "stage_complete", "stage": "canary"}
+    assert calls == 1
 
 
 def test_supervisor_runs_fresh_test_only_before_both_submissions(
@@ -1273,6 +2965,19 @@ def test_supervisor_runs_fresh_test_only_before_both_submissions(
         args=args,
         runner=runner,
         allocation_verifier=_allocation,
+        tracker_validator=(
+            lambda statuses=iter(
+                (
+                    "preflighting",
+                    "preflighting",
+                    "launch-ready",
+                    "launch-ready",
+                )
+            ): {
+                "status": next(statuses),
+                "experiment_id": supervisor.EXPERIMENT_ID,
+            }
+        ),
     )
     value.state_path = tmp_path / "state.json"
     value.state = {
@@ -1366,6 +3071,8 @@ def test_supervisor_initialization_creates_shared_slurm_log_directory(
     assert value.state["binding"]["output_root"] == str(
         paths["output"].resolve()
     )
+    assert "tracker_gate" not in value.state["binding"]
+    assert value.state["last_tracker_gate"]["status"] == "preflighting"
     for command in (
         value.state["binding"]["canary_command"],
         value.state["binding"]["production_command"],
@@ -1567,6 +3274,7 @@ def test_supervisor_resume_reaudits_submitted_unverified_job(
         ),
         runner=runner,
         allocation_verifier=_allocation,
+        tracker_validator=_tracker_gate,
     )
     value.state = {
         "binding": {"gate_binding_sha256": "a" * 64},

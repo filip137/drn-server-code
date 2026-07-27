@@ -86,7 +86,25 @@ mutable run status into this plan.
       "smoke_required": true,
       "tk_reference_required": true,
       "scheduled_run_preflight_required": false,
-      "receipt_path": "results/REPLACE_ME/preflight/receipt.json"
+      "receipt_path": "results/REPLACE_ME/preflight/receipt.json",
+      "receipt_schemas": {
+        "smoke": "REPLACE_ME_SMOKE_RECEIPT_SCHEMA",
+        "tk_reference": "REPLACE_ME_TK_REFERENCE_RECEIPT_SCHEMA",
+        "scheduled_run_preflight": null
+      },
+      "receipt_bindings": {
+        "smoke": {
+          "receipt_path": "results/REPLACE_ME/preflight/smoke/receipt.json",
+          "subject_id": "replace-me-smoke-subject",
+          "producer_source_id": "REPLACE_ME_SMOKE_PRODUCER_SOURCE_ID"
+        },
+        "tk_reference": {
+          "receipt_path": "results/REPLACE_ME/preflight/tk/selection.json",
+          "subject_id": "replace-me-tk-subject",
+          "producer_source_id": "REPLACE_ME_TK_PRODUCER_SOURCE_ID"
+        },
+        "scheduled_run_preflight": null
+      }
     }
   },
   "storage": {

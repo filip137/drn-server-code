@@ -133,27 +133,73 @@ root and experiment guidance. A plan-only command is not a payload smoke test.
 For Conv amplification, run the active `T/K` reference gate for every unique
 resolved architecture × nonlinearity × amplification configuration.
 
+The approved plan must bind every required gate to an exact supported receipt
+schema in `execution.preflight.receipt_schemas` and an exact
+`{receipt_path, subject_id, producer_source_id}` entry in
+`execution.preflight.receipt_bindings`. Smoke and T/K subject IDs identify
+their producer studies and need not equal the downstream experiment ID;
+the producer source ID pins the exact 40-character Git commit that created the
+receipt. Smoke uses the downstream launch commit, while an upstream T/K study
+may use an older explicitly approved commit. Scheduled-run subject and
+producer source IDs are null. Both schema and binding are null for a role the
+plan does not require. Receipt paths are repository-relative below the
+experiment result bundle and must exactly match the inner receipts passed to
+the dispatcher. Amend and reapprove a legacy plan rather than inferring these
+values. For a local/Trex long simulation, create the outer
+`server-code-long-run-preflight/v2` receipt only through the
+`python -m experiments.local_dispatch build-preflight` command, then confirm
+it with the read-only `verify-preflight` command. Do not hand-author the
+envelope or substitute a generic success-like JSON receipt.
+
 If execution is scheduled, delayed, unattended, remote-batch, or Slurm-based,
 read and apply `../scheduled-run-preflight/SKILL.md`. Store its receipt and
 runner hash with the result bundle and tracker entry. Do not duplicate or
 weaken that skill's scheduler checks.
 
-After all required gates pass, change the exact entry to `launch-ready` and
-run this fail-closed gate immediately before the production launch:
+For a remote payload canary, keep the tracker `preflighting` and create one
+new canonical gate receipt immediately before staging/submission:
 
 ```bash
 python skills/run-experiment-pipeline/scripts/validate_current_experiments.py \
   docs/current_experiments.md \
   --require-experiment-id <experiment-id> \
-  --require-launch-ready
+  --write-gate-receipt <new-attempt-path>/tracker-canary-gate.json \
+  --gate-stage canary \
+  --gate-state <new-attempt-path>/supervisor-state.json \
+  --gate-output-root <remote-result-root>
+sha256sum <new-attempt-path>/tracker-canary-gate.json
 ```
 
-Launch only the immutable manifest through the canonical public launcher.
+Pass both that receipt and its SHA-256 to the remote supervisor. The receipt
+is a short-lived, exact-state/output bearer snapshot; a staged copy of
+`docs/current_experiments.md` is not live authority. If the canonical tracker
+changes after receipt creation, stop the attempt and do not use that receipt.
+
+After all required gates pass, change the exact entry to `launch-ready` and
+let the canary supervisor exit at its `stage_complete` boundary. Run this
+fail-closed gate immediately before production:
+
+```bash
+python skills/run-experiment-pipeline/scripts/validate_current_experiments.py \
+  docs/current_experiments.md \
+  --require-experiment-id <experiment-id> \
+  --require-launch-ready \
+  --write-gate-receipt <new-stage-path>/tracker-production-gate.json \
+  --gate-stage production \
+  --gate-state <new-attempt-path>/supervisor-state.json \
+  --gate-output-root <remote-result-root>
+sha256sum <new-stage-path>/tracker-production-gate.json
+```
+
+Resume the same terminal-free supervisor state in a new process with the
+distinct production receipt/hash. Never make one process cross the canary
+boundary, reuse the canary receipt for production, or overwrite either
+receipt. Launch only the immutable manifest through the canonical public launcher.
 No launcher or submission controller may perform its first production-launch
-side effect unless this exact-ID gate passes. Use the repository
-compute-allocation rules. After a live scheduler or process readback, change
-the same entry to `queued` or `running` and update `Where`; do not create a
-second entry.
+side effect unless this exact-ID gate passes and the short-lived receipt/hash
+remain valid. Use the repository compute-allocation rules. After a live
+scheduler or process readback, change the same entry to `queued` or `running`
+and update `Where`; do not create a second entry.
 
 ## 5. Monitor, collect, and repatriate
 
@@ -222,3 +268,21 @@ current tracker because `docs/results/index.md` is the durable history.
   roots after a gate fails.
 - A material code, config, environment, initializer, architecture,
   nonlinearity, gain, or `T/K` change returns the plan to preflight required.
+- Before final launch staging, explicitly declare the long-run attempt armed
+  as required by the root policy. Planning, implementation, unit tests,
+  environment setup, plan-only commands, and bounded developer probes before
+  that declaration may be diagnosed, corrected, and retested normally.
+- After an armed long-run attempt begins, its first unexpected staging,
+  final gate-revalidation, submission, readback, or active-monitoring failure
+  is terminal for that attempt and launch turn. Short smoke/scientific gate
+  execution completed before `start` remains ordinary bounded preflight work
+  unless that gate is itself a long or scheduled simulation. Preserve
+  evidence, perform only bounded read-only inspection, issue the root-policy
+  failure report, and wait for a new user message.
+- A later authorized long-run attempt must use a new immutable attempt ID and
+  receipt paths. Retry mechanics written in a plan do not authorize the agent
+  to initiate that retry.
+- Long-run supervisors must write one first-write-wins structured failure
+  report and exit nonzero. Failed states are terminal, and polling or
+  reconciliation loops must be explicitly requested and bounded by a hard
+  deadline.

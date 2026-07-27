@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -154,6 +155,13 @@ PAIRED_CANARY_GPU_MEMORY_BYTES = 32 * 1024**3
 PAIRED_CANARY_MAX_PEAK_NUMERATOR = 4
 PAIRED_CANARY_MAX_PEAK_DENOMINATOR = 5
 PAIRED_CANARY_MAX_PROJECTED_SECONDS = 8 * 60 * 60
+CANARY_SLURM_WALLTIME_SECONDS = 2 * 60 * 60
+PRODUCTION_SLURM_WALLTIME_SECONDS = 8 * 60 * 60
+CONCURRENT_CHILD_CLEANUP_MARGIN_SECONDS = 15 * 60
+DEFAULT_CONCURRENT_CHILD_MAX_WAIT_SECONDS = (
+    PRODUCTION_SLURM_WALLTIME_SECONDS
+    - CONCURRENT_CHILD_CLEANUP_MARGIN_SECONDS
+)
 _FROZEN_V1_TRAINING_CONTRACT = _hparam_runtime.training_contract
 _SUCCESSOR_TRAINING_CONTRACT_LOCK = threading.RLock()
 EXPECTED_ENTRY_ORDER = tuple(
@@ -2326,11 +2334,33 @@ def validate_input_bundle(bundle_dir: str | Path) -> dict[str, Any]:
     return manifest
 
 
+def _exception_diagnostic(error: BaseException) -> dict[str, Any]:
+    """Return a JSON-safe exception chain without discarding an OS errno."""
+
+    chain: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        item: dict[str, Any] = {
+            "error_type": type(current).__name__,
+            "message": str(current),
+        }
+        if isinstance(current, OSError):
+            item["errno"] = current.errno
+            if current.filename is not None:
+                item["filename"] = str(current.filename)
+        chain.append(item)
+        current = current.__cause__ or current.__context__
+    return {"exception_chain": chain}
+
+
 def _validate_external_execution_inputs(
     manifest: Mapping[str, Any],
     *,
     source_archive: str | Path,
     environment_contract: str | Path,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, bool]:
     source = _mapping(
         manifest.get("execution_source"), "manifest.execution_source"
@@ -2349,15 +2379,23 @@ def _validate_external_execution_inputs(
                 _source_archive_fingerprint(archive)
                 == source.get("effective_code_fingerprint")
             )
-        except (OSError, PerfectDiodeSuccessorError, tarfile.TarError):
+        except (OSError, PerfectDiodeSuccessorError, tarfile.TarError) as exc:
             archive_fingerprint_valid = False
+            if diagnostics is not None:
+                diagnostics["source_archive_fingerprint"] = (
+                    _exception_diagnostic(exc)
+                )
     try:
         checkout_fingerprint_valid = (
             code_fingerprint(REPO_ROOT)
             == source.get("effective_code_fingerprint")
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
         checkout_fingerprint_valid = False
+        if diagnostics is not None:
+            diagnostics["source_checkout_fingerprint"] = (
+                _exception_diagnostic(exc)
+            )
     checks = {
         "source_archive_valid": archive_hash_valid,
         "source_archive_fingerprint_valid": archive_fingerprint_valid,
@@ -2403,10 +2441,12 @@ def preflight_bundle(
     manifest = validate_input_bundle(root)
     config = validate_config(read_json(root / "config.json"))
     approvals = _approval_state(config)
+    external_diagnostics: dict[str, Any] = {}
     external = _validate_external_execution_inputs(
         manifest,
         source_archive=source_archive,
         environment_contract=environment_contract,
+        diagnostics=external_diagnostics,
     )
     checks = {
         # This is the config's explicit approval state.  The final plan hash
@@ -2442,6 +2482,7 @@ def preflight_bundle(
         "external_launch_authorization_required": True,
         "expected_entry_count": 12,
         "checks": checks,
+        "diagnostics": external_diagnostics,
     }
 
 
@@ -3845,14 +3886,80 @@ def _terminal_result_from_log(path: Path, *, label: str) -> dict[str, Any]:
     return _mapping(value, label)
 
 
+def _remaining_concurrent_child_wait_seconds(
+    *,
+    stage_started: float,
+    stage_walltime_seconds: float,
+    cleanup_margin_seconds: float,
+    clock: Callable[[], float] = time.monotonic,
+) -> float:
+    for label, value in (
+        ("stage_started", stage_started),
+        ("stage_walltime_seconds", stage_walltime_seconds),
+        ("cleanup_margin_seconds", cleanup_margin_seconds),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < 0
+        ):
+            raise _error(label, "a finite non-negative number", value)
+    if stage_walltime_seconds <= cleanup_margin_seconds:
+        raise _error(
+            "stage walltime and cleanup margin",
+            "walltime greater than the cleanup margin",
+            {
+                "stage_walltime_seconds": stage_walltime_seconds,
+                "cleanup_margin_seconds": cleanup_margin_seconds,
+            },
+        )
+    observed = clock()
+    if (
+        isinstance(observed, bool)
+        or not isinstance(observed, (int, float))
+        or not math.isfinite(float(observed))
+        or float(observed) < float(stage_started)
+    ):
+        raise _error(
+            "concurrent-child deadline clock",
+            "a finite monotonic value at or after stage start",
+            observed,
+        )
+    elapsed = float(observed) - float(stage_started)
+    remaining = (
+        float(stage_walltime_seconds)
+        - float(cleanup_margin_seconds)
+        - elapsed
+    )
+    if remaining <= 0:
+        raise _error(
+            "concurrent-child launch budget",
+            "positive time remaining before the stage cleanup margin",
+            {
+                "elapsed_seconds": elapsed,
+                "stage_walltime_seconds": stage_walltime_seconds,
+                "cleanup_margin_seconds": cleanup_margin_seconds,
+                "remaining_seconds": remaining,
+            },
+        )
+    return remaining
+
+
 def _run_concurrent_children(
     specs: Sequence[Mapping[str, Any]],
     *,
     log_root: Path,
     artifact_root: Path,
     popen_factory: Callable[..., Any] = subprocess.Popen,
+    process_group_signaler: Callable[[int, int], None] = os.killpg,
+    sleeper: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+    poll_interval_seconds: float = 0.1,
+    max_wait_seconds: float = DEFAULT_CONCURRENT_CHILD_MAX_WAIT_SECONDS,
+    terminate_timeout_seconds: float = 10.0,
 ) -> tuple[list[dict[str, Any]], float]:
-    """Start every child before waiting and bind its terminal result/logs."""
+    """Run a pair fail-fast, killing the sibling after the first failure."""
 
     if len(specs) != RUNS_PER_GPU:
         raise _error(
@@ -3860,10 +3967,172 @@ def _run_concurrent_children(
             f"exactly {RUNS_PER_GPU} children",
             len(specs),
         )
+    for label, value in (
+        ("poll_interval_seconds", poll_interval_seconds),
+        ("max_wait_seconds", max_wait_seconds),
+        ("terminate_timeout_seconds", terminate_timeout_seconds),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0
+        ):
+            raise _error(label, "a positive finite number", value)
     log_root.mkdir(parents=True, exist_ok=False)
     active: list[dict[str, Any]] = []
     handles: list[Any] = []
-    window_started = time.monotonic()
+    window_started = clock()
+    cleanup_errors: list[dict[str, Any]] = []
+
+    def record_cleanup_error(
+        record: Mapping[str, Any],
+        *,
+        action: str,
+        error: BaseException,
+    ) -> None:
+        cleanup_errors.append(
+            {
+                "label": record.get("label"),
+                "entry_index": record.get("entry_index"),
+                "action": action,
+                **_exception_diagnostic(error),
+            }
+        )
+
+    def record_elapsed(record: dict[str, Any]) -> None:
+        try:
+            elapsed = clock() - float(record["started"])
+        except BaseException as exc:
+            record_cleanup_error(record, action="clock", error=exc)
+            elapsed = 0.0
+        record["process_elapsed_seconds"] = max(elapsed, 1.0e-12)
+
+    def process_group_id(record: Mapping[str, Any]) -> int:
+        value = record["process"].pid
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value <= 0
+        ):
+            raise _error(
+                "concurrent child process-group id",
+                "a positive integer equal to the session-leading child PID",
+                value,
+            )
+        return value
+
+    def poll_leader(record: dict[str, Any], *, action: str) -> None:
+        if record.get("returncode") is not None:
+            return
+        try:
+            observed = record["process"].poll()
+        except BaseException as exc:
+            record_cleanup_error(record, action=action, error=exc)
+            return
+        if observed is None:
+            return
+        try:
+            record["returncode"] = int(observed)
+        except BaseException as exc:
+            record["returncode"] = None
+            record_cleanup_error(record, action=f"{action}_returncode", error=exc)
+
+    def signal_process_group(
+        record: dict[str, Any],
+        *,
+        value: int,
+        action: str,
+    ) -> None:
+        try:
+            process_group_signaler(process_group_id(record), value)
+        except ProcessLookupError:
+            return
+        except BaseException as exc:
+            record_cleanup_error(record, action=action, error=exc)
+
+    def wait_for_leader(
+        record: dict[str, Any],
+        *,
+        action: str,
+        timeout_is_error: bool,
+    ) -> None:
+        if record.get("returncode") is not None:
+            return
+        try:
+            returncode = record["process"].wait(
+                timeout=terminate_timeout_seconds
+            )
+        except subprocess.TimeoutExpired as exc:
+            if timeout_is_error:
+                record_cleanup_error(record, action=action, error=exc)
+        except BaseException as exc:
+            record_cleanup_error(record, action=action, error=exc)
+        else:
+            try:
+                record["returncode"] = int(returncode)
+            except BaseException as exc:
+                record["returncode"] = None
+                record_cleanup_error(
+                    record,
+                    action=f"{action}_returncode",
+                    error=exc,
+                )
+
+    def stop_running_children() -> None:
+        # Broadcast to every independently owned process group before waiting
+        # on any one leader. One broken cleanup operation must not delay or
+        # prevent cleanup of the sibling group.
+        for record in active:
+            poll_leader(record, action="cleanup_initial_poll")
+        for record in active:
+            record["terminated_after_sibling_failure"] = True
+            signal_process_group(
+                record,
+                value=signal.SIGTERM,
+                action="signal_process_group_sigterm",
+            )
+        for record in active:
+            wait_for_leader(
+                record,
+                action="wait_after_process_group_sigterm",
+                timeout_is_error=False,
+            )
+        # A session leader may exit on SIGTERM while a descendant ignores it.
+        # Always signal the group with SIGKILL, even when the leader already
+        # has a return code, so no descendant can outlive this cleanup.
+        for record in active:
+            signal_process_group(
+                record,
+                value=signal.SIGKILL,
+                action="signal_process_group_sigkill",
+            )
+        for record in active:
+            wait_for_leader(
+                record,
+                action="wait_after_process_group_sigkill",
+                timeout_is_error=True,
+            )
+        for record in active:
+            poll_leader(record, action="cleanup_final_poll")
+            record_elapsed(record)
+        # Defensive containment for bookkeeping bugs must also remain
+        # per-record, rather than aborting the cleanup sweep.
+        for record in active:
+            try:
+                if record.get("returncode") is None:
+                    raise RuntimeError(
+                        "child session leader remained unreaped after "
+                        "process-group SIGKILL"
+                    )
+            except BaseException as exc:
+                record_cleanup_error(
+                    record,
+                    action="unexpected_cleanup_error",
+                    error=exc,
+                )
+
+    timeout_failure: dict[str, Any] | None = None
     try:
         for raw in specs:
             spec = _mapping(raw, "concurrent child spec")
@@ -3886,7 +4155,7 @@ def _run_concurrent_children(
             stdout_handle = stdout_path.open("x", encoding="utf-8")
             stderr_handle = stderr_path.open("x", encoding="utf-8")
             handles.extend((stdout_handle, stderr_handle))
-            started = time.monotonic()
+            started = clock()
             process = popen_factory(
                 command,
                 cwd=str(REPO_ROOT.resolve()),
@@ -3894,6 +4163,7 @@ def _run_concurrent_children(
                 stdout=stdout_handle,
                 stderr=stderr_handle,
                 text=True,
+                start_new_session=True,
             )
             active.append(
                 {
@@ -3902,30 +4172,57 @@ def _run_concurrent_children(
                     "command": list(command),
                     "process": process,
                     "started": started,
+                    "returncode": None,
                     "stdout_path": stdout_path,
                     "stderr_path": stderr_path,
                 }
             )
-        for record in active:
-            record["returncode"] = int(record["process"].wait())
-            record["process_elapsed_seconds"] = max(
-                time.monotonic() - float(record["started"]),
-                1.0e-12,
+        while True:
+            running: list[dict[str, Any]] = []
+            for record in active:
+                if record.get("returncode") is not None:
+                    continue
+                returncode = record["process"].poll()
+                if returncode is None:
+                    running.append(record)
+                    continue
+                record["returncode"] = int(returncode)
+                record["process_elapsed_seconds"] = max(
+                    clock() - float(record["started"]),
+                    1.0e-12,
+                )
+            if any(
+                record.get("returncode") not in {None, 0}
+                for record in active
+            ):
+                stop_running_children()
+                break
+            if not running:
+                break
+            elapsed = max(clock() - window_started, 0.0)
+            if elapsed >= max_wait_seconds:
+                timeout_failure = {
+                    "max_wait_seconds": max_wait_seconds,
+                    "elapsed_seconds": elapsed,
+                    "running_entries": [
+                        record["entry_index"] for record in running
+                    ],
+                }
+                stop_running_children()
+                break
+            sleeper(min(poll_interval_seconds, max_wait_seconds - elapsed))
+    except BaseException as exc:
+        stop_running_children()
+        if cleanup_errors:
+            exc.add_note(
+                "Concurrent-child cleanup also encountered errors: "
+                f"{cleanup_errors!r}"
             )
-    except BaseException:
-        for record in active:
-            process = record["process"]
-            try:
-                if process.poll() is None:
-                    process.terminate()
-                    process.wait()
-            except BaseException:
-                pass
         raise
     finally:
         for handle in handles:
             handle.close()
-    wall_elapsed = max(time.monotonic() - window_started, 1.0e-12)
+    wall_elapsed = max(clock() - window_started, 1.0e-12)
     failures = [
         {
             "label": record["label"],
@@ -3937,10 +4234,12 @@ def _run_concurrent_children(
         for record in active
         if record["returncode"] != 0
     ]
-    if failures:
+    if failures or timeout_failure is not None:
         raise RuntimeError(
-            "Expected both concurrent packed children to exit successfully. "
-            f"Provided failures: {failures!r}."
+            "Expected both concurrent packed children to exit successfully "
+            "within the hard deadline. "
+            f"Provided failures: {failures!r}; timeout={timeout_failure!r}; "
+            f"cleanup_errors={cleanup_errors!r}."
         )
     results = []
     for record in active:
@@ -4259,9 +4558,11 @@ def run_pack(
     download: bool = False,
     python_executable: str | Path | None = None,
     popen_factory: Callable[..., Any] = subprocess.Popen,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     """Run one immutable two-entry pack as concurrent ordinary processes."""
 
+    stage_started = clock()
     entry_indices = fixed_pack_entries(pack_index)
     if download:
         raise _error(
@@ -4361,11 +4662,19 @@ def run_pack(
                 ),
             }
         )
+    child_max_wait_seconds = _remaining_concurrent_child_wait_seconds(
+        stage_started=stage_started,
+        stage_walltime_seconds=PRODUCTION_SLURM_WALLTIME_SECONDS,
+        cleanup_margin_seconds=CONCURRENT_CHILD_CLEANUP_MARGIN_SECONDS,
+        clock=clock,
+    )
     children, wall_elapsed = _run_concurrent_children(
         specs,
         log_root=pack_dir / "child_logs",
         artifact_root=pack_dir,
         popen_factory=popen_factory,
+        clock=clock,
+        max_wait_seconds=child_max_wait_seconds,
     )
     enriched_children = []
     for offset, child in enumerate(children):
@@ -5456,9 +5765,11 @@ def run_smoke_pack(
     python_executable: str | Path | None = None,
     stage_executor: Callable[..., Mapping[str, Any]] = execute_successor_stage_entry,
     popen_factory: Callable[..., Any] = subprocess.Popen,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     """Run six T/K gates once, then concurrent one-epoch entries 8 and 9."""
 
+    stage_started = clock()
     if pack_index != CANARY_PACK_INDEX or isinstance(pack_index, bool):
         raise _error(
             "smoke pack_index",
@@ -5554,11 +5865,19 @@ def run_smoke_pack(
         }
         for entry_index in CANARY_ENTRY_INDICES
     ]
+    child_max_wait_seconds = _remaining_concurrent_child_wait_seconds(
+        stage_started=stage_started,
+        stage_walltime_seconds=CANARY_SLURM_WALLTIME_SECONDS,
+        cleanup_margin_seconds=CONCURRENT_CHILD_CLEANUP_MARGIN_SECONDS,
+        clock=clock,
+    )
     child_processes, wall_elapsed = _run_concurrent_children(
         specs,
         log_root=smoke_dir / "child_logs",
         artifact_root=smoke_dir,
         popen_factory=popen_factory,
+        clock=clock,
+        max_wait_seconds=child_max_wait_seconds,
     )
     training_canaries = []
     enriched_children = []

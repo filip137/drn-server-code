@@ -118,8 +118,20 @@ ready merely because the scheduler accepted it.
 ## Failure handling
 
 - Fail before queueing on any preflight or smoke-test error.
-- Preserve the failing command and logs.
+- Preserve any failed receipt, the failing command, and all diagnostic logs.
 - State that no job was queued, or identify and remove a stale queued job when
   removal is authorized.
-- Correct the root cause and repeat the full procedure. Do not bypass the
-  failing check with a looser command.
+- For an explicitly armed long-running simulation launch, treat the first
+  unexpected final revalidation, staging, queueing, readback, or monitoring
+  failure as terminal for that attempt and launch turn. After bounded
+  read-only inspection, report the exact stage and error, completed work,
+  launched jobs and states, last valid artifacts, and the smallest proposed
+  next action, then wait.
+- Short preflight and smoke execution completed before `start` remains
+  ordinary repairable work, as do setup and validation for scheduled payloads
+  that are not simulations. Diagnose, correct, and retest with bounded work;
+  never loosen or bypass a failing gate. A preflight or smoke that is itself a
+  long or scheduled simulation must be armed as its own long-run attempt and
+  then uses the terminal rule above.
+- A later authorized long-run attempt must use new immutable attempt and
+  receipt paths.
