@@ -51,6 +51,31 @@ _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
         "experimental",
         "Tiki-taka backend with backpropagation.",
     ),
+    ValidatedCombination(
+        ExtensionSelection("none", "add_normal", "direct", "ep"),
+        "experimental",
+        "Additive Gaussian weight noise with equilibrium propagation.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection("none", "add_normal", "direct", "backprop"),
+        "experimental",
+        "Additive Gaussian weight noise with backpropagation.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection("none", "add_normal", "tiki_taka", "ep"),
+        "experimental",
+        "Additive Gaussian weight noise with Tiki-Taka and EqProp.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "none",
+            "add_normal",
+            "tiki_taka",
+            "backprop",
+        ),
+        "experimental",
+        "Additive Gaussian weight noise with Tiki-Taka and backpropagation.",
+    ),
 )
 
 

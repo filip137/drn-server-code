@@ -22,6 +22,7 @@ from experiments.schema import (
 
 EXPERIMENT_ID = "small_drn.v1"
 SCHEMA_VERSION = 1
+_MAX_TORCH_SEED = 2**64 - 1
 
 
 @dataclass(frozen=True)
@@ -421,6 +422,69 @@ def _component(
             parameters,
             path=f"{path}.parameters",
         ),
+    )
+
+
+def _weight_modifier(value: Any, path: str) -> ComponentSettings:
+    """Parse and normalize the focused training weight-modifier seam."""
+
+    parsed = _object(value, path)
+    _check_keys(
+        parsed,
+        path,
+        required=("type", "parameters"),
+    )
+    modifier_type = _string(
+        parsed["type"],
+        f"{path}.type",
+        choices=("none", "add_normal"),
+    )
+    parameters_path = f"{path}.parameters"
+    parameters = _object(parsed["parameters"], parameters_path)
+    if modifier_type == "none":
+        if parameters:
+            raise config_error(
+                parameters_path,
+                "to be an empty object when type is 'none'",
+                dict(parameters),
+            )
+        return ComponentSettings(
+            type="none",
+            parameters=freeze_json({}, path=parameters_path),
+        )
+
+    _check_keys(
+        parameters,
+        parameters_path,
+        required=("std_dev",),
+        optional=("seed", "noisy_evaluation"),
+    )
+    seed = _optional_integer(
+        parameters.get("seed"),
+        f"{parameters_path}.seed",
+        minimum=0,
+    )
+    if seed is not None and seed > _MAX_TORCH_SEED:
+        raise config_error(
+            f"{parameters_path}.seed",
+            f"to be an integer in [0, {_MAX_TORCH_SEED}] or null",
+            seed,
+        )
+    normalized = {
+        "std_dev": _number(
+            parameters["std_dev"],
+            f"{parameters_path}.std_dev",
+            minimum=0.0,
+        ),
+        "seed": seed,
+        "noisy_evaluation": _boolean(
+            parameters.get("noisy_evaluation", False),
+            f"{parameters_path}.noisy_evaluation",
+        ),
+    }
+    return ComponentSettings(
+        type="add_normal",
+        parameters=freeze_json(normalized, path=parameters_path),
     )
 
 
@@ -988,10 +1052,9 @@ def _parse_train(value: Any, *, layer_count: int) -> TrainSettings:
             f"{path}.max_validation_batches",
             minimum=1,
         ),
-        weight_modifier=_component(
+        weight_modifier=_weight_modifier(
             parsed["weight_modifier"],
             f"{path}.weight_modifier",
-            allowed_types=("none", "add_normal"),
         ),
         update_backend=_component(
             parsed["update_backend"],

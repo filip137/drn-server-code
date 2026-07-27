@@ -242,6 +242,53 @@ def test_solver_constraints_fail_before_numerical_construction() -> None:
         parse_small_drn_config(payload)
 
 
+def test_add_normal_parameters_are_strict_and_normalized() -> None:
+    payload = _config()
+    payload["modes"]["train"]["weight_modifier"] = {
+        "type": "add_normal",
+        "parameters": {"std_dev": 0.06},
+    }
+
+    document = parse_small_drn_config(payload)
+
+    assert dict(document.train.weight_modifier.parameters) == {
+        "std_dev": 0.06,
+        "seed": None,
+        "noisy_evaluation": False,
+    }
+    with pytest.raises(TypeError):
+        document.train.weight_modifier.parameters["std_dev"] = 0.2
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {},
+        {"std": 0.06},
+        {"std_dev": 0.06, "unknown": 1},
+        {"std_dev": -0.01},
+        {"std_dev": float("nan")},
+        {"std_dev": True},
+        {"std_dev": 0.06, "seed": -1},
+        {"std_dev": 0.06, "seed": 2**64},
+        {"std_dev": 0.06, "seed": True},
+        {"std_dev": 0.06, "noisy_evaluation": 1},
+    ],
+)
+def test_add_normal_rejects_invalid_parameters(parameters: dict) -> None:
+    payload = _config()
+    payload["modes"]["train"]["weight_modifier"] = {
+        "type": "add_normal",
+        "parameters": parameters,
+    }
+
+    with pytest.raises(ConfigError) as exc_info:
+        parse_small_drn_config(payload)
+
+    assert str(exc_info.value).startswith("Expected")
+    assert "Provided value:" in str(exc_info.value)
+
+
 def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
     payload = _config()
     payload["model"]["adapter"] = {
@@ -250,7 +297,7 @@ def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
     }
     payload["modes"]["train"]["weight_modifier"] = {
         "type": "add_normal",
-        "parameters": {"std": 0.01},
+        "parameters": {"std_dev": 0.01},
     }
     path = _write_config(tmp_path, payload)
 
@@ -261,26 +308,38 @@ def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
         resolve_experiment_config(path, RunMode.TRAIN)
 
 
-def test_feature_combination_unavailable_in_this_worktree_fails_closed(
+@pytest.mark.parametrize("backend", ["direct", "tiki_taka"])
+@pytest.mark.parametrize("algorithm", ["ep", "backprop"])
+def test_hardware_aware_training_combinations_are_advertised(
     tmp_path: Path,
+    backend: str,
+    algorithm: str,
 ) -> None:
     payload = _config()
-    payload["modes"]["train"]["algorithm"] = "backprop"
+    payload["modes"]["train"]["algorithm"] = algorithm
     payload["modes"]["train"]["weight_modifier"] = {
         "type": "add_normal",
-        "parameters": {"std": 0.01},
+        "parameters": {
+            "std_dev": 0.01,
+            "seed": 13,
+            "noisy_evaluation": True,
+        },
     }
     payload["modes"]["train"]["update_backend"] = {
-        "type": "tiki_taka",
-        "parameters": {"implementation": "ideal"},
+        "type": backend,
+        "parameters": {},
     }
     path = _write_config(tmp_path, payload)
 
-    with pytest.raises(
-        ConfigError,
-        match="listed explicitly by the 'small_drn.v1' definition",
-    ):
-        resolve_experiment_config(path, RunMode.TRAIN)
+    definition, spec = resolve_experiment_config(path, RunMode.TRAIN)
+
+    assert spec.extensions.weight_modifier == "add_normal"
+    assert spec.extensions.update_backend == backend
+    assert spec.extensions.algorithm == algorithm
+    assert any(
+        combination.selection == spec.extensions
+        for combination in definition.combinations
+    )
 
 
 def test_lora_hardware_aware_tiki_triple_is_rejected(
@@ -293,11 +352,11 @@ def test_lora_hardware_aware_tiki_triple_is_rejected(
     }
     payload["modes"]["train"]["weight_modifier"] = {
         "type": "add_normal",
-        "parameters": {"std": 0.01},
+        "parameters": {"std_dev": 0.01},
     }
     payload["modes"]["train"]["update_backend"] = {
         "type": "tiki_taka",
-        "parameters": {"implementation": "ideal"},
+        "parameters": {},
     }
     path = _write_config(tmp_path, payload)
 

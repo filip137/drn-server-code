@@ -159,6 +159,13 @@ def execute_train(
             "selection_evaluation": "clean",
             "validation_requested": "validation",
             "validation_effective": "held_out_test",
+            "parameter_modifier": {
+                "type": spec.settings.weight_modifier.type,
+                "parameters": dict(
+                    spec.settings.weight_modifier.parameters
+                ),
+            },
+            "noisy_evaluation_order": "before_clean",
             "checkpoint_weights": "checkpoints/weights.pt",
             "checkpoint_resume": "checkpoints/resume.pt",
         },
@@ -337,7 +344,7 @@ def _execute_training(
             request.resume,
             catalog=catalog,
             optimizer=runtime.optimizer,
-            modifier=None,
+            modifier=runtime.modifier,
             scheduler=None,
             runtime_state=runtime.runtime_state,
             dataloader_generators=generators,
@@ -395,6 +402,7 @@ def _execute_training(
         load_named_weights(request.base_weights, catalog)
 
     last_validation: dict[str, Any] | None = None
+    last_noisy_validation: dict[str, Any] | None = None
     completed_epoch = start_epoch
     for epoch in range(start_epoch, spec.settings.num_epochs):
         train_metrics = _TrainingMetrics()
@@ -405,7 +413,7 @@ def _execute_training(
         trained = train_epoch(
             runtime.training_components,
             training_loader,
-            modifier=None,
+            modifier=runtime.modifier,
             event_handlers=(train_metrics, _FiniteGradientGuard()),
             epoch=epoch,
             start_global_step=global_step,
@@ -413,6 +421,23 @@ def _execute_training(
         )
         global_step = trained.next_global_step
         completed_epoch = epoch + 1
+
+        if runtime.noisy_evaluation:
+            noisy_validation = evaluate(
+                runtime.evaluation_components,
+                _limit_batches(
+                    runtime.data.held_out_loader,
+                    spec.settings.max_validation_batches,
+                ),
+                modifier=runtime.modifier,
+                probes=(MeanCostProbe(), MeanErrorProbe()),
+                epoch=epoch,
+                split="validation_noisy",
+                reset_input=True,
+            )
+            last_noisy_validation = _classification_metrics(
+                noisy_validation
+            )
 
         validation = evaluate(
             runtime.evaluation_components,
@@ -474,7 +499,7 @@ def _execute_training(
             epoch=completed_epoch,
             global_step=global_step,
             optimizer=runtime.optimizer,
-            modifier=None,
+            modifier=runtime.modifier,
             scheduler=None,
             runtime_state=runtime.runtime_state,
             progress_state=progress_state,
@@ -510,6 +535,7 @@ def _execute_training(
                     "global_step": global_step,
                     "train": train_values,
                     "validation": last_validation,
+                    "validation_noisy": last_noisy_validation,
                     "selected": improved,
                     "selected_epoch": selected_epoch,
                     "selected_cost": selected_cost,
@@ -533,7 +559,7 @@ def _execute_training(
             epoch=completed_epoch,
             global_step=global_step,
             optimizer=runtime.optimizer,
-            modifier=None,
+            modifier=runtime.modifier,
             scheduler=None,
             runtime_state=runtime.runtime_state,
             progress_state=_selection_progress(
@@ -560,10 +586,13 @@ def _execute_training(
             "evaluation": "clean",
         },
         "last_validation": last_validation,
+        "last_noisy_validation": last_noisy_validation,
         "evaluation_protocol": {
             "validation_requested": "validation",
             "validation_effective": "held_out_test",
-            "parameter_modifier": "none",
+            "selection_evaluation": "clean",
+            "noisy_evaluation_order": "before_clean",
+            "parameter_modifier": _modifier_provenance(spec, runtime),
         },
         "resume_capability": runtime.resume_capability,
     }
@@ -885,6 +914,23 @@ def _selection_from_progress(
         name="resume progress selected_accuracy",
     )
     return float(value), epoch, error_fraction, accuracy
+
+
+def _modifier_provenance(
+    spec: TrainSpec,
+    runtime: TrainRuntime,
+) -> dict[str, Any]:
+    parameters = dict(spec.settings.weight_modifier.parameters)
+    return {
+        "type": spec.settings.weight_modifier.type,
+        "parameters": parameters,
+        "active_during_training": runtime.modifier is not None,
+        "resolved_seed": runtime.modifier_resolved_seed,
+        "noisy_evaluation_requested": bool(
+            parameters.get("noisy_evaluation", False)
+        ),
+        "noisy_evaluation_executed": runtime.noisy_evaluation,
+    }
 
 
 def _selection_progress(
