@@ -342,6 +342,12 @@ def test_environment_contract_and_exact_array_resources(
         ],
     }
     paths = _fixture_repo(tmp_path)
+    wrapper_text = (
+        REPO_ROOT / "experiments" / submitter.WRAPPER_NAME
+    ).read_text(encoding="utf-8")
+    assert "#SBATCH --mem=" not in wrapper_text
+    assert "#SBATCH --mem-per-cpu=" not in wrapper_text
+    assert "#SBATCH --mem-per-gpu=" not in wrapper_text
     canary_command, canary_metadata = submitter.prepare_submission(
         _args(paths), enforce_storage_roots=False
     )
