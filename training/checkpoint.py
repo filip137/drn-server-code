@@ -74,6 +74,7 @@ class EpochBoundaryResume:
     restored_keys: tuple[str, ...]
     metadata: Mapping[str, Any]
     progress_state: Mapping[str, Any]
+    selected_weights: Optional[Mapping[str, Any]]
     resume_capability: str
     optimizer_restored: bool
     modifier_restored: bool
@@ -493,6 +494,25 @@ def _stage_named_weights(
     return staged, metadata
 
 
+def _clone_validated_named_weights(
+    payload: Any,
+    catalog: ParameterCatalog,
+) -> dict[str, Any]:
+    staged, metadata = _stage_named_weights(payload, catalog)
+    return {
+        "schema": NAMED_WEIGHTS_SCHEMA,
+        "schema_version": NAMED_WEIGHTS_SCHEMA_VERSION,
+        "catalog": [
+            _structural_descriptor(binding) for binding, _value in staged
+        ],
+        "weights": {
+            binding.key: value.detach().cpu().clone()
+            for binding, value in staged
+        },
+        "metadata": metadata,
+    }
+
+
 def save_named_weights(
     path: Path | str,
     catalog: ParameterCatalog,
@@ -503,6 +523,18 @@ def save_named_weights(
         encode_named_weights(catalog, metadata=metadata),
         path,
     )
+
+
+def save_encoded_named_weights(
+    path: Path | str,
+    payload: Mapping[str, Any],
+    *,
+    catalog: ParameterCatalog,
+) -> Path:
+    """Atomically persist validated named weights without applying them."""
+
+    validated = _clone_validated_named_weights(payload, catalog)
+    return _atomic_torch_save(validated, path)
 
 
 def load_named_weights(
@@ -707,6 +739,7 @@ def save_epoch_boundary_checkpoint(
     scheduler: Optional[Any] = None,
     progress: Optional[Any] = None,
     progress_state: Optional[Mapping[str, Any]] = None,
+    selected_weights: Optional[Mapping[str, Any]] = None,
     dataloader_generators: Optional[
         Mapping[str, torch.Generator]
     ] = None,
@@ -728,6 +761,11 @@ def save_epoch_boundary_checkpoint(
             "Expected include_rng to be a bool. "
             f"Provided value: {include_rng!r}."
         )
+    normalized_selected_weights = (
+        _clone_validated_named_weights(selected_weights, catalog)
+        if selected_weights is not None
+        else None
+    )
     if progress is not None and progress_state is not None:
         raise CheckpointError(
             "Expected at most one of progress or progress_state when saving "
@@ -772,6 +810,7 @@ def save_epoch_boundary_checkpoint(
         "modifier_state": modifier_state,
         "scheduler_state": scheduler_state,
         "progress_state": normalized_progress,
+        "selected_weights": normalized_selected_weights,
         "rng_state": capture_rng_state() if include_rng else None,
         "dataloader_generator_states": generator_states,
         "resume_capability": resume_capability,
@@ -911,6 +950,12 @@ def load_epoch_boundary_checkpoint(
     staged, _weight_metadata = _stage_named_weights(
         payload.get("weights"),
         catalog,
+    )
+    selected_weights = payload.get("selected_weights")
+    normalized_selected_weights = (
+        _clone_validated_named_weights(selected_weights, catalog)
+        if selected_weights is not None
+        else None
     )
     metadata = _normalize_metadata(
         payload.get("metadata"),
@@ -1054,6 +1099,7 @@ def load_epoch_boundary_checkpoint(
         restored_keys=restored_keys,
         metadata=metadata,
         progress_state=normalized_progress,
+        selected_weights=normalized_selected_weights,
         resume_capability=resume_capability,
         optimizer_restored=optimizer is not None,
         modifier_restored=modifier is not None,
@@ -1084,6 +1130,7 @@ __all__ = [
     "load_legacy_positional_weights",
     "load_named_weights",
     "restore_rng_state",
+    "save_encoded_named_weights",
     "save_epoch_boundary_checkpoint",
     "save_named_weights",
 ]

@@ -15,9 +15,11 @@ from training.checkpoint import (
     LEGACY_BASE_ONLY,
     LEGACY_FULL,
     NAMED_WEIGHTS_SCHEMA,
+    encode_named_weights,
     load_epoch_boundary_checkpoint,
     load_legacy_positional_weights,
     load_named_weights,
+    save_encoded_named_weights,
     save_epoch_boundary_checkpoint,
     save_named_weights,
 )
@@ -642,3 +644,185 @@ def test_epoch_boundary_rolls_back_every_mutable_component(tmp_path, monkeypatch
     assert random.random() == expected_python
     assert float(np.random.rand()) == expected_numpy
     torch.testing.assert_close(torch.rand(3), expected_torch)
+
+
+def test_epoch_resume_preserves_distinct_latest_and_selected_weights(tmp_path):
+    catalog, base, adapter = _catalog()
+    selected_metadata = {
+        "epoch": 2,
+        "metric": 0.125,
+        "metric_name": "validation_error",
+    }
+    selected_weights = encode_named_weights(
+        catalog,
+        metadata=selected_metadata,
+    )
+    selected_states = {
+        key: value.clone()
+        for key, value in selected_weights["weights"].items()
+    }
+
+    base.state.fill_(0.55)
+    adapter.state.fill_(0.65)
+    latest_states = {
+        binding.key: binding.state.clone() for binding in catalog
+    }
+    assert any(
+        not torch.equal(latest_states[key], selected_states[key])
+        for key in latest_states
+    )
+
+    resume_path = tmp_path / "checkpoints" / "resume.pt"
+    save_epoch_boundary_checkpoint(
+        resume_path,
+        catalog=catalog,
+        epoch=4,
+        global_step=20,
+        selected_weights=selected_weights,
+        include_rng=False,
+    )
+
+    base.state.fill_(0.05)
+    adapter.state.fill_(0.15)
+    resume = load_epoch_boundary_checkpoint(
+        resume_path,
+        catalog=catalog,
+        restore_rng=False,
+    )
+
+    for binding in catalog:
+        torch.testing.assert_close(
+            binding.state,
+            latest_states[binding.key],
+            rtol=0.0,
+            atol=0.0,
+        )
+    assert resume.selected_weights is not None
+    assert resume.selected_weights["metadata"] == selected_metadata
+    for key, expected in selected_states.items():
+        torch.testing.assert_close(
+            resume.selected_weights["weights"][key],
+            expected,
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    latest_before_materializing = {
+        binding.key: binding.state.clone() for binding in catalog
+    }
+    weights_path = tmp_path / "checkpoints" / "weights.pt"
+    save_encoded_named_weights(
+        weights_path,
+        resume.selected_weights,
+        catalog=catalog,
+    )
+    for binding in catalog:
+        torch.testing.assert_close(
+            binding.state,
+            latest_before_materializing[binding.key],
+            rtol=0.0,
+            atol=0.0,
+        )
+    materialized = torch.load(
+        weights_path,
+        map_location="cpu",
+        weights_only=True,
+    )
+    assert materialized["metadata"] == selected_metadata
+    for key, expected in selected_states.items():
+        torch.testing.assert_close(
+            materialized["weights"][key],
+            expected,
+            rtol=0.0,
+            atol=0.0,
+        )
+
+
+def test_invalid_selected_weights_fail_before_resume_or_weights_write(tmp_path):
+    catalog, base, adapter = _catalog()
+    invalid = encode_named_weights(catalog, metadata={"epoch": 1})
+    invalid["weights"]["adapter.factor.0"] = torch.ones(3)
+    states_before = {
+        binding.key: binding.state.clone() for binding in catalog
+    }
+
+    resume_path = tmp_path / "resume.pt"
+    weights_path = tmp_path / "weights.pt"
+    resume_path.write_bytes(b"existing resume")
+    weights_path.write_bytes(b"existing weights")
+
+    with pytest.raises(CheckpointError, match="shape"):
+        save_epoch_boundary_checkpoint(
+            resume_path,
+            catalog=catalog,
+            epoch=2,
+            selected_weights=invalid,
+            include_rng=False,
+        )
+    with pytest.raises(CheckpointError, match="shape"):
+        save_encoded_named_weights(
+            weights_path,
+            invalid,
+            catalog=catalog,
+        )
+
+    assert resume_path.read_bytes() == b"existing resume"
+    assert weights_path.read_bytes() == b"existing weights"
+    torch.testing.assert_close(base.state, states_before["base.weight.0"])
+    torch.testing.assert_close(
+        adapter.state,
+        states_before["adapter.factor.0"],
+    )
+
+
+def test_invalid_selected_weights_fail_before_resume_load_mutation(tmp_path):
+    catalog, base, adapter = _catalog()
+    selected = encode_named_weights(catalog, metadata={"epoch": 1})
+    path = tmp_path / "resume.pt"
+    save_epoch_boundary_checkpoint(
+        path,
+        catalog=catalog,
+        epoch=2,
+        selected_weights=selected,
+        include_rng=False,
+    )
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    payload["selected_weights"]["weights"]["adapter.factor.0"] = torch.ones(3)
+    torch.save(payload, path)
+
+    base.state.fill_(0.45)
+    adapter.state.fill_(0.35)
+    base_before = base.state.clone()
+    adapter_before = adapter.state.clone()
+
+    with pytest.raises(CheckpointError, match="shape"):
+        load_epoch_boundary_checkpoint(
+            path,
+            catalog=catalog,
+            restore_rng=False,
+        )
+
+    torch.testing.assert_close(base.state, base_before)
+    torch.testing.assert_close(adapter.state, adapter_before)
+
+
+def test_resume_v2_without_selected_weights_remains_loadable(tmp_path):
+    catalog, _base, _adapter = _catalog()
+    path = tmp_path / "resume.pt"
+    save_epoch_boundary_checkpoint(
+        path,
+        catalog=catalog,
+        epoch=1,
+        include_rng=False,
+    )
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    payload.pop("selected_weights")
+    torch.save(payload, path)
+
+    result = load_epoch_boundary_checkpoint(
+        path,
+        catalog=catalog,
+        restore_rng=False,
+    )
+
+    assert result.selected_weights is None
