@@ -108,9 +108,15 @@ def test_quadratic_gradient_matches_autograd_on_all_four_conv3_layers() -> None:
         device="cpu",
         learning_rate=1.0,
     )
+    torch.manual_seed(123)
     runtime.network.set_input(
         torch.randn(1, 1, 28, 28, dtype=torch.float32),
         reset=True,
+    )
+    runtime.minimizer_inference.compute_equilibrium()
+    assert any(
+        bool(torch.count_nonzero(layer.state).item())
+        for layer in runtime.free_layers
     )
     energy = getattr(runtime.minimizer_inference, "_fn", runtime.energy_fn)
     assert len(runtime.free_layers) == 4
