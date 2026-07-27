@@ -31,6 +31,72 @@ def _bounded_uniform_(tensor, clamp_min, clamp_max):
     torch.nn.init.uniform_(tensor, lower, upper)
 
 
+def _bounded_kaiming_uniform_(
+    tensor,
+    clamp_min,
+    clamp_max,
+    *,
+    fan_in,
+    gain,
+):
+    """Apply He-uniform scaling to centered, normalized bounded weights."""
+
+    provided = {
+        "clamp_min": clamp_min,
+        "clamp_max": clamp_max,
+        "fan_in": fan_in,
+        "gain": gain,
+    }
+    try:
+        lower = float(clamp_min)
+        upper = float(clamp_max)
+        normalized_fan_in = float(fan_in)
+        normalized_gain = float(gain)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "Expected bounded_kaiming_uniform initialization to receive finite "
+            "bounds with clamp_min < clamp_max, fan_in > 0, finite gain >= 0, "
+            "and a scaled support inside the bounds. "
+            f"Provided value: {provided!r}."
+        ) from None
+
+    valid = (
+        math.isfinite(lower)
+        and math.isfinite(upper)
+        and lower < upper
+        and math.isfinite(normalized_fan_in)
+        and normalized_fan_in > 0.0
+        and math.isfinite(normalized_gain)
+        and normalized_gain >= 0.0
+    )
+    midpoint = 0.5 * (lower + upper)
+    half_span = 0.5 * (upper - lower)
+    scaled_half_width = (
+        half_span
+        * normalized_gain
+        * math.sqrt(6.0 / normalized_fan_in)
+        if valid
+        else float("nan")
+    )
+    if (
+        not valid
+        or not math.isfinite(scaled_half_width)
+        or scaled_half_width > half_span
+    ):
+        raise ValueError(
+            "Expected bounded_kaiming_uniform initialization to receive finite "
+            "bounds with clamp_min < clamp_max, fan_in > 0, finite gain >= 0, "
+            "and a scaled support inside the bounds. "
+            f"Provided value: {provided!r}."
+        )
+
+    torch.nn.init.uniform_(
+        tensor,
+        midpoint - scaled_half_width,
+        midpoint + scaled_half_width,
+    )
+
+
 def _unsupported_init_mode(mode, supported_modes):
     raise ValueError(
         f"Expected init_mode to be one of {sorted(supported_modes)!r}. "
@@ -214,9 +280,12 @@ class DenseWeight(Parameter):
             gain (float32): Number used to scale the weight tensor (~ proportional to the standard deviations of the weight)
             mode (str, optional): method to initialize the weight tensor. One of
                 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
-                'kaiming_normal', 'bounded_uniform', or 'Kendall'.
+                'kaiming_normal', 'bounded_uniform',
+                'bounded_kaiming_uniform', or 'Kendall'.
                 'bounded_uniform' samples directly from [clamp_min, clamp_max]
-                and does not use gain. Default: 'kaiming_uniform'.
+                and does not use gain. 'bounded_kaiming_uniform' applies
+                He-uniform fan-in scaling to centered, normalized deviations
+                inside those bounds. Default: 'kaiming_uniform'.
         """
 
         size_pre = 1
@@ -239,6 +308,14 @@ class DenseWeight(Parameter):
             torch.nn.init.uniform_(self._state, -scale, +scale)
         elif mode == 'bounded_uniform':
             _bounded_uniform_(self._state, self.min_cond, self.max_cond)
+        elif mode == 'bounded_kaiming_uniform':
+            _bounded_kaiming_uniform_(
+                self._state,
+                self.min_cond,
+                self.max_cond,
+                fan_in=size_pre,
+                gain=gain,
+            )
         elif mode == 'Kendall':
             lower = 1e-7
             upper = 0.08 / np.sqrt(size_pre + size_post)
@@ -256,6 +333,7 @@ class DenseWeight(Parameter):
                     'kaiming_uniform',
                     'kaiming_normal',
                     'bounded_uniform',
+                    'bounded_kaiming_uniform',
                     'Kendall',
                 },
             )
@@ -283,9 +361,11 @@ class ConvWeight(Parameter):
             clamp (bool, optional): whether the range of permissible values for the parameter's state is [0,infty] (True) or [-infty, +infty] (False). Default: False
             init_mode (str, optional): initialization mode ('xavier_uniform',
                 'xavier_normal', 'kaiming_uniform', 'kaiming_normal', or
-                'bounded_uniform'). 'bounded_uniform' samples directly from
-                [clamp_min, clamp_max] and does not use gain. Default:
-                'kaiming_uniform'.
+                'bounded_uniform', or 'bounded_kaiming_uniform').
+                'bounded_uniform' samples directly from [clamp_min, clamp_max]
+                and does not use gain. 'bounded_kaiming_uniform' applies
+                He-uniform fan-in scaling to centered, normalized deviations
+                inside those bounds. Default: 'kaiming_uniform'.
         """
 
         Parameter.__init__(self, shape, device=device, non_negative=clamp,
@@ -304,7 +384,8 @@ class ConvWeight(Parameter):
             gain (float32): Number used to scale the weight tensor (~ proportional to the standard deviations of the weight)
             init_mode (str, optional): method to initialize the weight tensor.
                 One of 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
-                'kaiming_normal', or 'bounded_uniform'.
+                'kaiming_normal', 'bounded_uniform', or
+                'bounded_kaiming_uniform'.
         """
 
         (channels_out, channels_in, width, height) = self._shape
@@ -326,6 +407,14 @@ class ConvWeight(Parameter):
             torch.nn.init.uniform_(self._state, -scale, +scale)
         elif init_mode == 'bounded_uniform':
             _bounded_uniform_(self._state, self.min_cond, self.max_cond)
+        elif init_mode == 'bounded_kaiming_uniform':
+            _bounded_kaiming_uniform_(
+                self._state,
+                self.min_cond,
+                self.max_cond,
+                fan_in=size_pre,
+                gain=gain,
+            )
         elif init_mode == 'kaiming_normal':
             # half kaiming normal
             scale = gain * 0.5 * np.sqrt(1. / size_pre)
@@ -339,6 +428,7 @@ class ConvWeight(Parameter):
                     'kaiming_uniform',
                     'kaiming_normal',
                     'bounded_uniform',
+                    'bounded_kaiming_uniform',
                 },
             )
 

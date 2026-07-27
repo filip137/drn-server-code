@@ -31,6 +31,7 @@ LR_STAGE_RUN_SCHEMA_VERSIONS = frozenset(
 )
 SWEEP_SCHEMA_VERSION = "mnist-conv-sweep/v1"
 WEIGHT_INIT_MODES = {
+    "bounded_kaiming_uniform",
     "bounded_uniform",
     "kaiming_normal",
     "kaiming_uniform",
@@ -490,9 +491,12 @@ def _normalize_model(value: Any, depth: int) -> dict[str, Any]:
             weight_init_mode,
             "run.model.weight_init_mode",
         )
-    if weight_init_mode == "bounded_uniform" and weight_min >= weight_max:
+    if (
+        weight_init_mode in {"bounded_uniform", "bounded_kaiming_uniform"}
+        and weight_min >= weight_max
+    ):
         raise _error(
-            "< weight_max for bounded_uniform initialization",
+            "< weight_max for bounded initialization",
             weight_min,
             "run.model.weight_min",
         )

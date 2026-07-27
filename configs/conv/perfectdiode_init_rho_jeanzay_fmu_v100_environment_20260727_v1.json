@@ -1,0 +1,49 @@
+{
+  "schema_version": "perfectdiode-init-rho-jeanzay-environment/v1",
+  "allocation": {
+    "dossier": "AD010913993R3",
+    "project": "fmu",
+    "account": "fmu@v100",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100-16g"
+  },
+  "resources": {
+    "nodes": 1,
+    "tasks": 1,
+    "gpus_per_task": 1,
+    "cpus_per_task": 16,
+    "memory_policy": "jean_zay_node_default_no_explicit_mem_request",
+    "hint": "nomultithread",
+    "module": "pytorch-gpu/py3/2.5.0",
+    "python_executable": "/lustre/fshomisc/sup/hpe/pub/miniforge/24.9.0/envs/pytorch-gpu-2.5.0+py3.12.7/bin/python",
+    "device": "cuda",
+    "thread_limits": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "arrays": {
+    "gate_canary": "0-0",
+    "gate_production": "0-11%12",
+    "surface_canary": "0-0",
+    "surface_canary_task_index": 6,
+    "surface_production": "0-21%24",
+    "gate_task_count": 12,
+    "surface_task_count": 22,
+    "maximum_processes_per_gpu": 1,
+    "maximum_concurrent_gpus": 24
+  },
+  "storage": {
+    "source_root_template": "/lustre/fswork/projects/rech/umg/{user}/server_code/init-rho-20260727-v1/source",
+    "source_archive_template": "/lustre/fswork/projects/rech/umg/{user}/server_code/init-rho-20260727-v1/source.tar",
+    "data_root_template": "/lustre/fsn1/projects/rech/umg/{user}/datasets/mnist",
+    "result_root_template": "/lustre/fsn1/projects/rech/fmu/{user}/server_code/results/perfectdiode-conv12-initialization-rho-comparison-20260727-v1"
+  },
+  "walltime": {
+    "gate": "03:00:00",
+    "surface": "03:00:00"
+  }
+}

@@ -176,15 +176,21 @@ def test_complete_schema_accepts_only_supported_conv_profiles(depth, non_lineari
     assert spec.data["run"]["model"]["non_linearity"] == non_linearity
 
 
-def test_model_schema_accepts_bounded_uniform_and_rejects_invalid_initialization():
+@pytest.mark.parametrize(
+    "weight_init_mode",
+    ["bounded_uniform", "bounded_kaiming_uniform"],
+)
+def test_model_schema_accepts_bounded_uniform_and_rejects_invalid_initialization(
+    weight_init_mode,
+):
     bounded = run_value()
     bounded["run"]["model"].update({
         "weight_min": 179e-6,
         "weight_max": 180e-6,
-        "weight_init_mode": "bounded_uniform",
+        "weight_init_mode": weight_init_mode,
     })
     spec = RunSpec.from_dict(bounded)
-    assert spec.data["run"]["model"]["weight_init_mode"] == "bounded_uniform"
+    assert spec.data["run"]["model"]["weight_init_mode"] == weight_init_mode
 
     invalid_mode = run_value()
     invalid_mode["run"]["model"]["weight_init_mode"] = "kaiming_unifrom"
@@ -195,7 +201,7 @@ def test_model_schema_accepts_bounded_uniform_and_rejects_invalid_initialization
     degenerate["run"]["model"].update({
         "weight_min": 180e-6,
         "weight_max": 180e-6,
-        "weight_init_mode": "bounded_uniform",
+        "weight_init_mode": weight_init_mode,
     })
     with pytest.raises(SpecValidationError, match="weight_min.*< weight_max"):
         RunSpec.from_dict(degenerate)

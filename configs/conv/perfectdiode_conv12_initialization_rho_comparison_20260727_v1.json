@@ -1,0 +1,248 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-initialization-rho-comparison/v1",
+  "experiment_id": "perfectdiode-conv12-initialization-rho-comparison-20260727-v1",
+  "title": "Perfect-diode Conv1/Conv2 rho robustness across bounded initializations",
+  "protocol_id": "conv-perfectdiode-conv12-bounded-init-rho-sgd-adam-ordinary-mnist-v1",
+  "evidence_scope": "diagnostic",
+  "base_contract": {
+    "path": "perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json",
+    "file_sha256": "647f92e01c8619951367d71cadd6320c6924c0223a2f5ed344f7ff1739bac5c1",
+    "canonical_sha256": "699804e1f7c35f65f50656db4af0b120dd3a3d0f2fb95e3a17b65ebfe7b78535",
+    "inherit_exactly": [
+      "dataset",
+      "solver",
+      "optimizer",
+      "optimizer_arms",
+      "optimizer_probe",
+      "safety",
+      "candidate_training",
+      "selection",
+      "rows"
+    ]
+  },
+  "parent_lineage": {
+    "study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+    "comparison_cards": [
+      "result_registry/cards/diagnostics/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv1.json",
+      "result_registry/cards/diagnostics/perfectdiode-conv2-high-rho-corner-20260727-v1.json"
+    ],
+    "reuse_numerical_outputs": false,
+    "rerun_under_parent_identity": false
+  },
+  "initializers": [
+    {
+      "initializer_id": "bounded-uniform-1e-5-1e-4",
+      "weight_initialization": "bounded_uniform",
+      "conductance_bounds": [
+        1e-05,
+        0.0001
+      ],
+      "weight_gain": 1.0,
+      "definition": "Independent uniform draws on the full closed physical interval; endpoint probability is zero."
+    },
+    {
+      "initializer_id": "bounded-kaiming-uniform-1e-5-1e-4",
+      "weight_initialization": "bounded_kaiming_uniform",
+      "conductance_bounds": [
+        1e-05,
+        0.0001
+      ],
+      "weight_gain": 1.0,
+      "definition": "For midpoint m and half-span h, draw G=m+h*U[-sqrt(6/fan_in),sqrt(6/fan_in)]."
+    }
+  ],
+  "surfaces": [
+    {
+      "row_id": "conv1_baseline_v1_c1",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.001,
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.0033333333333333335,
+        0.01,
+        0.03
+      ]
+    },
+    {
+      "row_id": "conv1_baseline_v1_c1",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.001,
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.0033333333333333335,
+        0.01,
+        0.03
+      ]
+    },
+    {
+      "row_id": "conv1_ours_v4_c1",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.001,
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.0033333333333333335,
+        0.01,
+        0.03
+      ]
+    },
+    {
+      "row_id": "conv1_ours_v4_c1",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.001,
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.0033333333333333335,
+        0.01,
+        0.03
+      ]
+    },
+    {
+      "row_id": "conv1_legacy_v4_c0p25",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.001,
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.0033333333333333335,
+        0.01,
+        0.03
+      ]
+    },
+    {
+      "row_id": "conv1_legacy_v4_c0p25",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.001,
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.0033333333333333335,
+        0.01,
+        0.03
+      ]
+    },
+    {
+      "row_id": "conv2_baseline_v1_c1",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.009,
+        0.027
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ]
+    },
+    {
+      "row_id": "conv2_baseline_v1_c1",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.009,
+        0.027
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ]
+    },
+    {
+      "row_id": "conv2_ours_v4_c1",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.009,
+        0.027
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ]
+    },
+    {
+      "row_id": "conv2_ours_v4_c1",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.009,
+        0.027
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ]
+    },
+    {
+      "row_id": "conv2_legacy_v4_c0p25",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.003,
+        0.009
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ]
+    }
+  ],
+  "decision": {
+    "metric": "final_epoch_validation_loss",
+    "accuracy_gate": 0.9,
+    "candidate_epochs": 3,
+    "candidate_steps": 10314,
+    "inclusive_loss_plateau": 0.02,
+    "surface_tie_breakers": [
+      "higher_final_validation_accuracy",
+      "higher_median_projection_efficiency",
+      "lower_maximum_target",
+      "lower_target_sum",
+      "lower_rho_conv",
+      "lower_rho_dense",
+      "deterministic_candidate_identity"
+    ],
+    "initializer_concordance": "Each initializer's diagnostic-best rho pair must lie inside the other initializer's inclusive 2% loss plateau.",
+    "overall_support": "All eleven referenced surfaces satisfy initializer concordance.",
+    "overall_inconclusive": "Any required gate, probe, canary, candidate outcome, validation metric, or artifact hash is missing or unverifiable."
+  },
+  "execution": {
+    "model_seed": 0,
+    "train_shuffle_seed": 0,
+    "fresh_assets_per_initializer_architecture_scheme": true,
+    "fixed_tk_security_required": true,
+    "optimizer_probe_required": true,
+    "canary_steps": 640,
+    "promote_only_safety_clean_canaries": true,
+    "official_test_read": false,
+    "slurm": {
+      "account": "fmu@v100",
+      "partition": "gpu_p13",
+      "qos": "qos_gpu-t3",
+      "constraint": "v100-16g",
+      "gpus_per_task": 1,
+      "cpus_per_task": 16,
+      "memory_policy": "jean_zay_node_default_no_explicit_mem_request",
+      "time_limit": "03:00:00",
+      "module": "pytorch-gpu/py3/2.5.0",
+      "python": "/lustre/fshomisc/sup/hpe/pub/miniforge/24.9.0/envs/pytorch-gpu-2.5.0+py3.12.7/bin/python",
+      "array_concurrency": 24
+    }
+  },
+  "approval": {
+    "status": "approved",
+    "approved_by": "Filip",
+    "approved_at": "2026-07-27",
+    "source": "User message requesting both bounded initializers, Conv1/Conv2, SGD/Adam, and the referenced rho ranges."
+  }
+}
