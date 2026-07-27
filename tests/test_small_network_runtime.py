@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 import json
 from pathlib import Path
 
@@ -22,6 +22,9 @@ from experiments.small_network.config import (
     parse_small_drn_config,
 )
 from experiments.small_network.runtime import (
+    TrainingEpochReport,
+    TrainingOutcome,
+    execute_train,
     import_legacy_checkpoint,
     run_linspace,
     run_train,
@@ -197,6 +200,92 @@ def test_public_handlers_complete_tiny_cpu_pipeline_and_exact_continuation(
         "effective": "held_out_test",
     }
     assert validate_result["metrics"]["examples"] <= 4
+
+
+def test_execute_train_reports_every_epoch_independent_of_log_every(
+    tmp_path: Path,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    document = _document()
+    document = replace(
+        document,
+        train=replace(document.train, num_epochs=3, log_every=10),
+    )
+    spec = definition.resolve(document, RunMode.TRAIN)
+    reports: list[TrainingEpochReport] = []
+
+    outcome = execute_train(
+        TrainRequest(
+            definition=definition,
+            spec=spec,
+            config_path=tmp_path / "config.json",
+            output_dir=tmp_path / "runs",
+            weights=None,
+            base_weights=None,
+            resume=None,
+            command=("agent", "train"),
+        ),
+        observers=(reports.append,),
+    )
+
+    assert isinstance(outcome, TrainingOutcome)
+    assert [report.completed_epochs for report in reports] == [1, 2, 3]
+    assert [report.epoch_index for report in reports] == [0, 1, 2]
+    assert outcome.last_epoch_report is reports[-1]
+    assert outcome.selected_validation_accuracy is not None
+    assert 0.0 <= outcome.selected_validation_accuracy <= 1.0
+    assert all(
+        0.0 <= report.validation_error_fraction <= 1.0
+        and 0.0 <= report.validation_accuracy <= 1.0
+        for report in reports
+    )
+    # log_every=10 still writes the terminal metric only; observers are
+    # deliberately independent and saw all three epoch boundaries.
+    assert (outcome.run_dir / "metrics.jsonl").read_text(
+        encoding="utf-8"
+    ).count("\n") == 1
+    with pytest.raises(FrozenInstanceError):
+        reports[0].completed_epochs = 99
+
+
+def test_observer_exception_marks_run_failed_and_is_reraised(
+    tmp_path: Path,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    spec = definition.resolve(_document(), RunMode.TRAIN)
+
+    class StopTrial(RuntimeError):
+        pass
+
+    def stop(_report: TrainingEpochReport) -> None:
+        raise StopTrial("pruned by observer")
+
+    output_root = tmp_path / "runs"
+    with pytest.raises(StopTrial, match="pruned by observer"):
+        execute_train(
+            TrainRequest(
+                definition=definition,
+                spec=spec,
+                config_path=tmp_path / "config.json",
+                output_dir=output_root,
+                weights=None,
+                base_weights=None,
+                resume=None,
+                command=("agent", "train"),
+            ),
+            observers=(stop,),
+        )
+
+    run_dir = _runs(output_root)[0]
+    status = _read_json(run_dir / "status.json")
+    assert status["status"] == "failed"
+    assert status["error"] == {
+        "type": "StopTrial",
+        "message": "pruned by observer",
+    }
+    assert not (run_dir / "result.json").exists()
+    # The callback runs after the completed epoch boundary is resumable.
+    assert (run_dir / "checkpoints" / "resume.pt").is_file()
 
 
 def test_legacy_import_is_explicit_and_produces_named_weights(

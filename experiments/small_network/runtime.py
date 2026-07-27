@@ -14,7 +14,7 @@ import math
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Iterable, Mapping, TYPE_CHECKING
+from typing import Any, Callable, Iterable, Mapping, TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -79,10 +79,76 @@ if TYPE_CHECKING:
     )
 
 
+@dataclass(frozen=True)
+class TrainingEpochReport:
+    """Typed, immutable measurements available after one completed epoch.
+
+    Error and accuracy values are fractions in ``[0, 1]``.  Selection fields
+    always describe the global clean-validation best known at this boundary,
+    including a best restored from a resume checkpoint.
+    """
+
+    epoch_index: int
+    completed_epochs: int
+    global_step: int
+    train_examples: int
+    train_mean_cost: float | None
+    train_error_fraction: float | None
+    train_accuracy: float | None
+    validation_examples: int
+    validation_mean_cost: float
+    validation_error_fraction: float
+    validation_accuracy: float
+    selected_this_epoch: bool
+    selected_epoch_index: int
+    selected_validation_cost: float
+    selected_validation_error_fraction: float | None
+    selected_validation_accuracy: float | None
+
+
+@dataclass(frozen=True)
+class TrainingOutcome:
+    """Typed completion record for programmatic training callers."""
+
+    run_dir: Path
+    result_path: Path
+    weights_path: Path
+    resume_path: Path
+    completed_epochs: int
+    global_step: int
+    selected_epoch_index: int
+    selected_validation_cost: float
+    selected_validation_error_fraction: float | None
+    selected_validation_accuracy: float | None
+    last_epoch_report: TrainingEpochReport | None
+    resume_capability: str
+
+
+TrainingObserver = Callable[[TrainingEpochReport], None]
+
+
 def run_train(request: "TrainRequest") -> int:
-    """Train one run, selecting weights only with clean held-out evaluation."""
+    """CLI-compatible wrapper around :func:`execute_train`."""
+
+    execute_train(request)
+    return 0
+
+
+def execute_train(
+    request: "TrainRequest",
+    observers: Iterable[TrainingObserver] = (),
+) -> TrainingOutcome:
+    """Train one run and return typed results to programmatic callers.
+
+    Observers run exactly once after every completed epoch, after clean
+    validation, global-best selection, resume persistence, and normal metric
+    logging for that boundary.  Their cadence is independent of
+    ``settings.log_every``.  An observer exception is recorded as the run's
+    terminal failure and then re-raised unchanged.
+    """
 
     spec = _expect_spec(request.spec, TrainSpec, mode="train")
+    active_observers = _validated_observers(observers)
     resume_capability = configured_resume_capability(spec)
     store = _create_run_store(
         request,
@@ -107,17 +173,36 @@ def run_train(request: "TrainRequest") -> int:
                 f"preflight={resume_capability!r}, "
                 f"numerical={runtime.resume_capability!r}."
             )
-        metrics, artifacts = _execute_training(
+        metrics, artifacts, last_epoch_report = _execute_training(
             request,
             spec,
             runtime,
             store,
+            observers=active_observers,
         )
-        store.complete(metrics=metrics, artifacts=artifacts)
+        result_path = store.complete(metrics=metrics, artifacts=artifacts)
     except Exception as exc:
         store.fail(exc)
         raise
-    return 0
+    selected = metrics["selected"]
+    return TrainingOutcome(
+        run_dir=store.run_dir,
+        result_path=result_path,
+        weights_path=store.run_dir / "checkpoints" / "weights.pt",
+        resume_path=store.run_dir / "checkpoints" / "resume.pt",
+        completed_epochs=int(metrics["completed_epochs"]),
+        global_step=int(metrics["global_step"]),
+        selected_epoch_index=int(selected["epoch"]),
+        selected_validation_cost=float(selected["value"]),
+        selected_validation_error_fraction=_optional_float(
+            selected.get("error_fraction")
+        ),
+        selected_validation_accuracy=_optional_float(
+            selected.get("accuracy")
+        ),
+        last_epoch_report=last_epoch_report,
+        resume_capability=str(metrics["resume_capability"]),
+    )
 
 
 def run_linspace(request: "LinspaceRequest") -> int:
@@ -226,7 +311,13 @@ def _execute_training(
     spec: TrainSpec,
     runtime: TrainRuntime,
     store: RunStore,
-) -> tuple[dict[str, Any], tuple[ArtifactRecord, ...]]:
+    *,
+    observers: tuple[TrainingObserver, ...],
+) -> tuple[
+    dict[str, Any],
+    tuple[ArtifactRecord, ...],
+    TrainingEpochReport | None,
+]:
     catalog = runtime.stack.bundle.catalog
     weights_path = store.run_dir / "checkpoints" / "weights.pt"
     resume_path = store.run_dir / "checkpoints" / "resume.pt"
@@ -236,7 +327,10 @@ def _execute_training(
     global_step = 0
     selected_cost: float | None = None
     selected_epoch: int | None = None
+    selected_error: float | None = None
+    selected_accuracy: float | None = None
     selected_weights: Mapping[str, Any] | None = None
+    last_epoch_report: TrainingEpochReport | None = None
 
     if request.resume is not None:
         resumed = load_epoch_boundary_checkpoint(
@@ -280,9 +374,12 @@ def _execute_training(
                 "Provided value: null."
             )
         selected_weights = resumed.selected_weights
-        selected_cost, selected_epoch = _selection_from_progress(
-            resumed.progress_state
-        )
+        (
+            selected_cost,
+            selected_epoch,
+            selected_error,
+            selected_accuracy,
+        ) = _selection_from_progress(resumed.progress_state)
         save_encoded_named_weights(
             weights_path,
             selected_weights,
@@ -341,6 +438,8 @@ def _execute_training(
         if improved:
             selected_cost = validation_cost
             selected_epoch = epoch
+            selected_error = last_validation["mean_error"]
+            selected_accuracy = last_validation["accuracy"]
             selected_weights = encode_named_weights(
                 catalog,
                 metadata={
@@ -348,6 +447,8 @@ def _execute_training(
                     "selection_metric": "validation.mean_cost",
                     "selection_value": selected_cost,
                     "selection_epoch": selected_epoch,
+                    "selection_error_fraction": selected_error,
+                    "selection_accuracy": selected_accuracy,
                 },
             )
             save_encoded_named_weights(
@@ -361,11 +462,12 @@ def _execute_training(
                 "Expected clean validation to select a named-weights snapshot. "
                 "Provided value: no selected snapshot."
             )
-        progress_state = {
-            "selected_metric": "validation.mean_cost",
-            "selected_value": selected_cost,
-            "selected_epoch": selected_epoch,
-        }
+        progress_state = _selection_progress(
+            cost=selected_cost,
+            epoch=selected_epoch,
+            error_fraction=selected_error,
+            accuracy=selected_accuracy,
+        )
         save_epoch_boundary_checkpoint(
             resume_path,
             catalog=catalog,
@@ -386,6 +488,19 @@ def _execute_training(
             completed_epoch % spec.settings.log_every == 0
             or completed_epoch == spec.settings.num_epochs
         )
+        train_values = train_metrics.result()
+        last_epoch_report = _epoch_report(
+            epoch=epoch,
+            completed_epoch=completed_epoch,
+            global_step=global_step,
+            train=train_values,
+            validation=last_validation,
+            improved=improved,
+            selected_epoch=selected_epoch,
+            selected_cost=selected_cost,
+            selected_error=selected_error,
+            selected_accuracy=selected_accuracy,
+        )
         if should_log:
             store.append_metric(
                 {
@@ -393,13 +508,15 @@ def _execute_training(
                     "epoch": epoch,
                     "completed_epochs": completed_epoch,
                     "global_step": global_step,
-                    "train": train_metrics.result(),
+                    "train": train_values,
                     "validation": last_validation,
                     "selected": improved,
                     "selected_epoch": selected_epoch,
                     "selected_cost": selected_cost,
                 }
             )
+        for observer in observers:
+            observer(last_epoch_report)
 
     if selected_weights is None:
         raise ValueError(
@@ -419,11 +536,12 @@ def _execute_training(
             modifier=None,
             scheduler=None,
             runtime_state=runtime.runtime_state,
-            progress_state={
-                "selected_metric": "validation.mean_cost",
-                "selected_value": selected_cost,
-                "selected_epoch": selected_epoch,
-            },
+            progress_state=_selection_progress(
+                cost=selected_cost,
+                epoch=selected_epoch,
+                error_fraction=selected_error,
+                accuracy=selected_accuracy,
+            ),
             selected_weights=selected_weights,
             dataloader_generators=generators,
             resume_capability=runtime.resume_capability,
@@ -437,6 +555,8 @@ def _execute_training(
             "metric": "validation.mean_cost",
             "value": selected_cost,
             "epoch": selected_epoch,
+            "error_fraction": selected_error,
+            "accuracy": selected_accuracy,
             "evaluation": "clean",
         },
         "last_validation": last_validation,
@@ -451,7 +571,7 @@ def _execute_training(
         store.artifact_record(weights_path, kind="weights"),
         store.artifact_record(resume_path, kind="resume"),
     )
-    return metrics, artifacts
+    return metrics, artifacts, last_epoch_report
 
 
 def _execute_linspace(
@@ -738,7 +858,7 @@ class _BatchCapture:
 
 def _selection_from_progress(
     progress: Mapping[str, Any],
-) -> tuple[float, int]:
+) -> tuple[float, int, float | None, float | None]:
     metric = progress.get("selected_metric")
     value = progress.get("selected_value")
     epoch = progress.get("selected_epoch")
@@ -756,7 +876,136 @@ def _selection_from_progress(
             "selection with keys selected_metric, selected_value, and "
             f"selected_epoch. Provided value: {dict(progress)!r}."
         )
-    return float(value), epoch
+    error_fraction = _optional_fraction(
+        progress.get("selected_error_fraction"),
+        name="resume progress selected_error_fraction",
+    )
+    accuracy = _optional_fraction(
+        progress.get("selected_accuracy"),
+        name="resume progress selected_accuracy",
+    )
+    return float(value), epoch, error_fraction, accuracy
+
+
+def _selection_progress(
+    *,
+    cost: float | None,
+    epoch: int | None,
+    error_fraction: float | None,
+    accuracy: float | None,
+) -> dict[str, Any]:
+    if cost is None or epoch is None:
+        raise RuntimeError(
+            "Expected selected clean-validation cost and epoch before "
+            "persisting progress. "
+            f"Provided value: cost={cost!r}, epoch={epoch!r}."
+        )
+    return {
+        "selected_metric": "validation.mean_cost",
+        "selected_value": float(cost),
+        "selected_epoch": int(epoch),
+        "selected_error_fraction": error_fraction,
+        "selected_accuracy": accuracy,
+    }
+
+
+def _epoch_report(
+    *,
+    epoch: int,
+    completed_epoch: int,
+    global_step: int,
+    train: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    improved: bool,
+    selected_epoch: int | None,
+    selected_cost: float | None,
+    selected_error: float | None,
+    selected_accuracy: float | None,
+) -> TrainingEpochReport:
+    if selected_epoch is None or selected_cost is None:
+        raise RuntimeError(
+            "Expected clean validation to define selection fields before "
+            "reporting an epoch. "
+            f"Provided value: epoch={selected_epoch!r}, cost={selected_cost!r}."
+        )
+    validation_cost = validation.get("mean_cost")
+    validation_error = validation.get("mean_error")
+    validation_accuracy = validation.get("accuracy")
+    if (
+        validation_cost is None
+        or validation_error is None
+        or validation_accuracy is None
+    ):
+        raise RuntimeError(
+            "Expected completed clean validation metrics to include cost, "
+            "error fraction, and accuracy. "
+            f"Provided value: {dict(validation)!r}."
+        )
+    return TrainingEpochReport(
+        epoch_index=epoch,
+        completed_epochs=completed_epoch,
+        global_step=global_step,
+        train_examples=int(train["examples"]),
+        train_mean_cost=_optional_float(train.get("mean_cost")),
+        train_error_fraction=_optional_fraction(
+            train.get("mean_error"),
+            name="training error fraction",
+        ),
+        train_accuracy=_optional_fraction(
+            train.get("accuracy"),
+            name="training accuracy",
+        ),
+        validation_examples=int(validation["examples"]),
+        validation_mean_cost=float(validation_cost),
+        validation_error_fraction=float(validation_error),
+        validation_accuracy=float(validation_accuracy),
+        selected_this_epoch=improved,
+        selected_epoch_index=selected_epoch,
+        selected_validation_cost=float(selected_cost),
+        selected_validation_error_fraction=selected_error,
+        selected_validation_accuracy=selected_accuracy,
+    )
+
+
+def _validated_observers(
+    observers: Iterable[TrainingObserver],
+) -> tuple[TrainingObserver, ...]:
+    try:
+        resolved = tuple(observers)
+    except TypeError as exc:
+        raise TypeError(
+            "Expected observers to be an iterable of callables accepting one "
+            f"TrainingEpochReport. Provided value: {observers!r}."
+        ) from exc
+    for index, observer in enumerate(resolved):
+        if not callable(observer):
+            raise TypeError(
+                "Expected every observer to be callable with one "
+                f"TrainingEpochReport. Provided value: observers[{index}]="
+                f"{observer!r}."
+            )
+    return resolved
+
+
+def _optional_float(value: Any) -> float | None:
+    return None if value is None else float(value)
+
+
+def _optional_fraction(value: Any, *, name: str) -> float | None:
+    if value is None:
+        return None
+    valid = (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and 0.0 <= float(value) <= 1.0
+    )
+    if not valid:
+        raise ValueError(
+            f"Expected {name} to be a finite fraction in [0, 1] or null. "
+            f"Provided value: {value!r}."
+        )
+    return float(value)
 
 
 def _resume_metadata(spec: TrainSpec) -> dict[str, Any]:
@@ -975,6 +1224,10 @@ def _concatenate(values: list[np.ndarray]) -> np.ndarray:
 
 
 __all__ = [
+    "TrainingEpochReport",
+    "TrainingObserver",
+    "TrainingOutcome",
+    "execute_train",
     "import_legacy_checkpoint",
     "run_linspace",
     "run_train",
