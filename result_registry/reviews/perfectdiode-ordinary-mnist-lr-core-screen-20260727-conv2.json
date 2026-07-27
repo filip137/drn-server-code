@@ -1,0 +1,50 @@
+{
+  "schema_version": "drn-result-review/v1",
+  "review_id": "review-perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2",
+  "card_id": "perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2",
+  "review_status": "reviewed",
+  "reviewed_at": "2026-07-27",
+  "evidence_class": "ordinary_mnist_optimizer_diagnostic",
+  "conclusion": {
+    "headline": "All Conv2 surfaces remain boundary-unresolved; five form the requested expansion batch.",
+    "observation": "All six Conv2 surfaces produced a passing diagnostic core candidate between 95.70% and 97.78% final validation accuracy, but every passing 2% loss plateau touches an upper rho boundary. Only baseline SGD was published before the selector failed; the other five decisions are read-only reconstructions.",
+    "interpretation": "The high three-epoch accuracies support testing the next factor-of-three rho values, not freezing the current candidates. The 97.78% legacy-Adam row is still boundary-unresolved and lies outside the requested five-surface continuation. The user-fixed gain 100 and T/K 6/6 remain ordinary-MNIST diagnostic inputs.",
+    "decision": "Keep the core evidence as a reviewed diagnostic. Continue only with the requested Conv2 baseline and ours surfaces under SGD and Adam plus legacy SGD, adding rho_conv=0.027 and rho_dense=0.09 as specified. Freeze no learning rate before final selection.",
+    "limitations": [
+      "One model seed only.",
+      "Ordinary MNIST rather than deterministic medium affine MNIST.",
+      "Three-epoch optimizer screen rather than authorized final training.",
+      "Five of six selector decisions are read-only reconstructions.",
+      "All six surfaces remain on a search boundary.",
+      "The official test set was not read."
+    ]
+  },
+  "claims": [
+    {
+      "claim_id": "conv2_core_measurements_complete",
+      "support": "supported_direct_evidence",
+      "statement": "The Conv2 shard contains a hash-verified completion chain for all 53 promoted core candidates."
+    },
+    {
+      "claim_id": "conv2_all_surfaces_need_expansion",
+      "support": "supported_direct_evidence",
+      "statement": "Read-only application of the intended selector marks all six Conv2 surfaces as needing an upward rho expansion."
+    },
+    {
+      "claim_id": "conv2_requested_five_surface_batch",
+      "support": "supported_direct_evidence",
+      "statement": "The requested continuation contains baseline and ours under both optimizers plus legacy SGD, with up to seven new cells per surface."
+    },
+    {
+      "claim_id": "conv2_highest_observed_accuracy",
+      "support": "descriptive_only",
+      "statement": "Legacy Adam has the highest observed Conv2 core validation accuracy at 97.78%, but its loss plateau remains boundary-unresolved."
+    },
+    {
+      "claim_id": "conv2_learning_rate_or_paper_handoff",
+      "support": "not_supported",
+      "statement": "This incomplete ordinary-MNIST core screen does not freeze a Conv2 learning rate or support a final-paper accuracy claim."
+    }
+  ],
+  "supersedes": []
+}

@@ -1,0 +1,81 @@
+{
+  "schema_version": "perfectdiode-successor-jeanzay-environment/v1",
+  "allocation": {
+    "dossier": "AD011016471R1",
+    "project": "umg",
+    "account": "umg@v100",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100-32g"
+  },
+  "resources": {
+    "nodes": 1,
+    "tasks": 1,
+    "gpus_per_task": 1,
+    "cpus_per_task": 16,
+    "memory_mb": 64000,
+    "hint": "nomultithread",
+    "module": "pytorch-gpu/py3/2.5.0",
+    "python_executable": "/lustre/fshomisc/sup/hpe/pub/miniforge/24.9.0/envs/pytorch-gpu-2.5.0+py3.12.7/bin/python",
+    "device": "cuda",
+    "thread_limits": {
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "arrays": {
+    "canary": "0-0",
+    "canary_task_count": 1,
+    "canary_pack_index": 4,
+    "canary_entry_indices": [
+      8,
+      9
+    ],
+    "production": "0-5%6",
+    "production_task_count": 6,
+    "logical_entry_count": 12,
+    "runs_per_gpu": 2,
+    "concurrent_within_pack": true,
+    "fixed_entry_packs": [
+      [
+        0,
+        1
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        8,
+        9
+      ],
+      [
+        10,
+        11
+      ]
+    ]
+  },
+  "storage": {
+    "source_root_template": "/lustre/fswork/projects/rech/umg/{user}/server_code",
+    "data_root_template": "/lustre/fsn1/projects/rech/umg/{user}/datasets/mnist",
+    "result_root_template": "/lustre/fsn1/projects/rech/umg/{user}/server_code/results"
+  },
+  "verification": {
+    "official_canary_verifier_path_template": "/lustre/fswork/projects/rech/umg/{user}/server_code/launch_tools/verify_canary.py",
+    "official_canary_verifier_sha256": "f3f8bcc89922b6f8faf79b6b9d3d1e9e26a5a8f3db3062fce357297cad009698"
+  },
+  "walltime": {
+    "canary": "02:00:00",
+    "production": "08:00:00"
+  }
+}

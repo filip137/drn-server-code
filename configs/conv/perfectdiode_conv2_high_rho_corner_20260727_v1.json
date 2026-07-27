@@ -1,0 +1,177 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-high-rho-continuation/v1",
+  "name": "perfectdiode-conv2-high-rho-corner-20260727-v1",
+  "evidence_scope": "ordinary_mnist_optimization_diagnostic",
+  "parent": {
+    "study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+    "host": "trex",
+    "architecture": "conv2",
+    "source_commit": "093d3bc325a5ecb92262639798408a845d9767f1",
+    "source_archive_sha256": "f291478bfc50f741ec31c65cf135b5ecc5ef2b109b18659decddf4300c179f28",
+    "effective_code_fingerprint": "3ee0c7168e25f6171025450072f44297fc18bab8eff9df580fb9a9a963463aa1",
+    "config_sha256": "699804e1f7c35f65f50656db4af0b120dd3a3d0f2fb95e3a17b65ebfe7b78535",
+    "environment_sha256": "3581399f48835c2e2e559a10b48028d9cf404c4b066fd9a1450421f754461413",
+    "anchor_sha256": {
+      "study.resolved.json": "16629bd03d3adf9e26fcbaedf09741d20551d38a565f28e7bfcc0516da3162ef",
+      "shard.resolved.json": "d072dd1ebcfecb6d1bf8c98245d2c898408f2e899f2883c2f2c0c17f7e91db8c",
+      "stages/assets/manifest.json": "f363803fd3cb53099753f5a8d2066c9881594b509b184bb540be75f17f69e1fd",
+      "stages/assets/complete.json": "73356f3573d1edd2b45fb6e860b7efb94c3ce1802939f3ba4dcfdc927faa1747",
+      "stages/fixed_tk_gradient_security/manifest.json": "720bafe9154dc7d50e274596000444b798b951d4a638f2392d31729b1d9c5dce",
+      "stages/fixed_tk_gradient_security/complete.json": "e509a2ea4f6608ba253096451415138337d3b49e6dcaf408c449ef03dbaed0b8",
+      "stages/optimizer_probe/manifest.json": "7928e4e47d943d57c1a5f35c1a8acfef9d4b15e2d3912f4debc88012a3e95e5c",
+      "stages/optimizer_probe/complete.json": "97c5723389f145ef6cfb7775e5f4b98cbec98fd5a71210aeea9f061c660b2991",
+      "stages/rho_canary_core/manifest.json": "78744ae7a22832acc5d0bf5e7f32a254e772c948fcb7d9e1fd0b29009eabb67a",
+      "stages/rho_canary_core/complete.json": "d9b2c76efc315a2f1fba60aeace28359f28d3b852d1ea848d44f122c13f72995",
+      "stages/rho_core_candidates/manifest.json": "5f80b48ca04388cfa559512822c3928c842b630ddc4b00062e1e9656cc1c9f63",
+      "stages/rho_core_candidates/complete.json": "9a6bd3faddcfff530e9d8eb6eec8a70b3bcb491e4a42fa7ec6001942bc66074e"
+    }
+  },
+  "surfaces": [
+    {
+      "row_id": "conv2_baseline_v1_c1",
+      "scheme": "baseline",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.009000000000000001,
+        0.027000000000000003
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ],
+      "reused_cells": [
+        {
+          "rho_conv": 0.009000000000000001,
+          "rho_dense": 0.03,
+          "role": "valid_candidate_control"
+        }
+      ]
+    },
+    {
+      "row_id": "conv2_baseline_v1_c1",
+      "scheme": "baseline",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.009000000000000001,
+        0.027000000000000003
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ],
+      "reused_cells": [
+        {
+          "rho_conv": 0.009000000000000001,
+          "rho_dense": 0.03,
+          "role": "valid_candidate_control"
+        }
+      ]
+    },
+    {
+      "row_id": "conv2_ours_v4_c1",
+      "scheme": "ours",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.009000000000000001,
+        0.027000000000000003
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ],
+      "reused_cells": [
+        {
+          "rho_conv": 0.009000000000000001,
+          "rho_dense": 0.03,
+          "role": "valid_candidate_control"
+        }
+      ]
+    },
+    {
+      "row_id": "conv2_ours_v4_c1",
+      "scheme": "ours",
+      "optimizer": "adam",
+      "rho_conv": [
+        0.009000000000000001,
+        0.027000000000000003
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ],
+      "reused_cells": [
+        {
+          "rho_conv": 0.009000000000000001,
+          "rho_dense": 0.03,
+          "role": "valid_candidate_control"
+        }
+      ]
+    },
+    {
+      "row_id": "conv2_legacy_v4_c0p25",
+      "scheme": "legacy",
+      "optimizer": "sgd",
+      "rho_conv": [
+        0.003,
+        0.009000000000000001
+      ],
+      "rho_dense": [
+        0.03,
+        0.09
+      ],
+      "reused_cells": [
+        {
+          "rho_conv": 0.003,
+          "rho_dense": 0.03,
+          "role": "valid_candidate_control"
+        },
+        {
+          "rho_conv": 0.009000000000000001,
+          "rho_dense": 0.03,
+          "role": "failed_canary_control"
+        }
+      ]
+    }
+  ],
+  "execution": {
+    "model_seed": 0,
+    "train_shuffle_seed": 0,
+    "input_gain": 100.0,
+    "inference_iterations": 6,
+    "training_iterations": 6,
+    "validation_size": 5000,
+    "canary_steps": 640,
+    "candidate_epochs": 3,
+    "candidate_steps": 10314,
+    "maximum_new_cells": 14,
+    "workers": 1,
+    "device_type": "cuda",
+    "host": "trex",
+    "official_test_read": false
+  },
+  "decision": {
+    "primary_metric": "final_epoch_validation_loss",
+    "minimum_final_validation_accuracy": 0.9,
+    "plateau_relative_tolerance": 0.02,
+    "plateau_boundary": "inclusive",
+    "tie_break_order": [
+      "higher_accuracy",
+      "higher_projection_efficiency",
+      "lower_maximum_target",
+      "lower_target_sum",
+      "lower_rho_conv",
+      "lower_rho_dense",
+      "candidate_id"
+    ],
+    "higher_rho_support_rule": "new_best_passes_and_valid_control_outside_inclusive_plateau",
+    "missing_coverage_status": "inconclusive",
+    "report_surfaces_independently": true
+  },
+  "prohibitions": {
+    "freeze_learning_rate": false,
+    "select_final": false,
+    "long_confirm": false,
+    "paper_facing_evidence": false,
+    "cross_scheme_superiority": false
+  }
+}

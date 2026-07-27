@@ -1,0 +1,481 @@
+{
+  "schema_version": "drn-optimizer-screen-card/v1",
+  "card_id": "perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2",
+  "study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+  "title": "Conv2 perfect-diode ordinary-MNIST optimizer core screen",
+  "project": "conv_amplification",
+  "completed_at": "2026-07-27T05:03:17.508735932+02:00",
+  "completed_at_source": "source_completion_marker_mtime",
+  "question": "What did the completed Conv2 perfect-diode SGD/Adam core screen measure, and which surfaces require the requested one-wave boundary expansion before any learning rate can be frozen?",
+  "focal_row_id": "legacy-adam",
+  "status": {
+    "coverage": "complete",
+    "curation": "diagnostic_valid",
+    "comparison": "incomplete",
+    "review": "reviewed"
+  },
+  "scope": {
+    "dataset": {
+      "name": "mnist",
+      "variant": "ordinary",
+      "affine_enabled": false,
+      "evaluation_split": {
+        "name": "validation",
+        "source": "mnist_train",
+        "sample_count": 5000,
+        "seed": 0,
+        "stratified": true,
+        "indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4"
+      },
+      "official_test_read": false
+    },
+    "architecture": {
+      "profile": "conv2",
+      "channels": [
+        64,
+        128
+      ],
+      "kernel_sizes": [
+        3,
+        3
+      ],
+      "strides": [
+        2,
+        2
+      ],
+      "paddings": [
+        1,
+        1
+      ],
+      "pooling": "none",
+      "output_dim": 20,
+      "loss": "squared_error_paired_20"
+    },
+    "nonlinearity": {
+      "name": "perfect_diode",
+      "parameters": {
+        "clamp_epsilon": 1e-08
+      },
+      "clamped_convergence_criterion": "projected_kkt_residual"
+    },
+    "operating_point": {
+      "input_gain": {
+        "value": 100.0,
+        "status": "user_fixed_ordinary_mnist_diagnostic",
+        "shared_across_schemes": true
+      },
+      "solver": {
+        "T": 6,
+        "K": 6,
+        "status": "user_fixed_ordinary_mnist_diagnostic",
+        "security_reference": {
+          "T": 64,
+          "K": 64
+        },
+        "security_check": "passed"
+      }
+    },
+    "training": {
+      "model_seed": 0,
+      "epochs": 3,
+      "batch_size": 16,
+      "validation_batch_size": 64,
+      "accuracy_gate": {
+        "metric": "final_validation_accuracy",
+        "minimum": 0.9,
+        "boundary": "greater_than_or_equal"
+      },
+      "selection_metric": "minimum_final_validation_loss_with_2pct_plateau"
+    },
+    "schemes": [
+      {
+        "name": "baseline",
+        "voltage_amplification": 1.0,
+        "current_amplification": 1.0
+      },
+      {
+        "name": "ours",
+        "voltage_amplification": 4.0,
+        "current_amplification": 1.0
+      },
+      {
+        "name": "legacy",
+        "voltage_amplification": 4.0,
+        "current_amplification": 0.25
+      }
+    ],
+    "optimizer_arms": [
+      "sgd",
+      "adam"
+    ]
+  },
+  "rows": [
+    {
+      "row_id": "baseline-sgd",
+      "label": "Baseline v1/c1, SGD",
+      "role": "surface_summary",
+      "scheme": "baseline",
+      "optimizer": "sgd",
+      "candidate_counts": {
+        "trained": 9,
+        "admissible": 9,
+        "accuracy_gate_passes": 9
+      },
+      "diagnostic_rho": {
+        "conv": 0.009,
+        "dense": 0.03
+      },
+      "final_validation": {
+        "metric": "validation_accuracy",
+        "accuracy": 0.957,
+        "loss": 0.08552010254859925,
+        "checkpoint_role": "final_epoch",
+        "epoch": 3,
+        "trained_epochs": 3,
+        "sample_count": 5000,
+        "seed_count": 1,
+        "official_test_read": false
+      },
+      "selection": {
+        "state": "needs_expansion",
+        "selector_source": "published_select_core",
+        "select_core_published": true,
+        "expansion_rho": {
+          "conv": 0.027,
+          "dense": 0.09
+        },
+        "planned_next_scope": true,
+        "handoff_status": "not_frozen",
+        "freezes_learning_rate": false
+      },
+      "artifact_ids": [
+        "core_summary_csv",
+        "trex_core_stage_completion",
+        "candidate_baseline_sgd"
+      ]
+    },
+    {
+      "row_id": "baseline-adam",
+      "label": "Baseline v1/c1, Adam",
+      "role": "surface_summary",
+      "scheme": "baseline",
+      "optimizer": "adam",
+      "candidate_counts": {
+        "trained": 9,
+        "admissible": 8,
+        "accuracy_gate_passes": 8
+      },
+      "diagnostic_rho": {
+        "conv": 0.009,
+        "dense": 0.03
+      },
+      "final_validation": {
+        "metric": "validation_accuracy",
+        "accuracy": 0.959,
+        "loss": 0.08505717210769653,
+        "checkpoint_role": "final_epoch",
+        "epoch": 3,
+        "trained_epochs": 3,
+        "sample_count": 5000,
+        "seed_count": 1,
+        "official_test_read": false
+      },
+      "selection": {
+        "state": "needs_expansion",
+        "selector_source": "read_only_reconstruction",
+        "select_core_published": false,
+        "expansion_rho": {
+          "conv": 0.027,
+          "dense": 0.09
+        },
+        "planned_next_scope": true,
+        "handoff_status": "not_frozen",
+        "freezes_learning_rate": false
+      },
+      "artifact_ids": [
+        "core_summary_csv",
+        "trex_core_stage_completion",
+        "candidate_baseline_adam"
+      ]
+    },
+    {
+      "row_id": "ours-sgd",
+      "label": "Ours v4/c1, SGD",
+      "role": "surface_summary",
+      "scheme": "ours",
+      "optimizer": "sgd",
+      "candidate_counts": {
+        "trained": 9,
+        "admissible": 9,
+        "accuracy_gate_passes": 9
+      },
+      "diagnostic_rho": {
+        "conv": 0.009,
+        "dense": 0.03
+      },
+      "final_validation": {
+        "metric": "validation_accuracy",
+        "accuracy": 0.9718,
+        "loss": 0.06503381167054176,
+        "checkpoint_role": "final_epoch",
+        "epoch": 3,
+        "trained_epochs": 3,
+        "sample_count": 5000,
+        "seed_count": 1,
+        "official_test_read": false
+      },
+      "selection": {
+        "state": "needs_expansion",
+        "selector_source": "read_only_reconstruction",
+        "select_core_published": false,
+        "expansion_rho": {
+          "conv": 0.027,
+          "dense": 0.09
+        },
+        "planned_next_scope": true,
+        "handoff_status": "not_frozen",
+        "freezes_learning_rate": false
+      },
+      "artifact_ids": [
+        "core_summary_csv",
+        "trex_core_stage_completion",
+        "candidate_ours_sgd"
+      ]
+    },
+    {
+      "row_id": "ours-adam",
+      "label": "Ours v4/c1, Adam",
+      "role": "surface_summary",
+      "scheme": "ours",
+      "optimizer": "adam",
+      "candidate_counts": {
+        "trained": 9,
+        "admissible": 9,
+        "accuracy_gate_passes": 9
+      },
+      "diagnostic_rho": {
+        "conv": 0.009,
+        "dense": 0.03
+      },
+      "final_validation": {
+        "metric": "validation_accuracy",
+        "accuracy": 0.9718,
+        "loss": 0.06219475623369217,
+        "checkpoint_role": "final_epoch",
+        "epoch": 3,
+        "trained_epochs": 3,
+        "sample_count": 5000,
+        "seed_count": 1,
+        "official_test_read": false
+      },
+      "selection": {
+        "state": "needs_expansion",
+        "selector_source": "read_only_reconstruction",
+        "select_core_published": false,
+        "expansion_rho": {
+          "conv": 0.027,
+          "dense": 0.09
+        },
+        "planned_next_scope": true,
+        "handoff_status": "not_frozen",
+        "freezes_learning_rate": false
+      },
+      "artifact_ids": [
+        "core_summary_csv",
+        "trex_core_stage_completion",
+        "candidate_ours_adam"
+      ]
+    },
+    {
+      "row_id": "legacy-sgd",
+      "label": "Legacy v4/c0.25, SGD",
+      "role": "surface_summary",
+      "scheme": "legacy",
+      "optimizer": "sgd",
+      "candidate_counts": {
+        "trained": 8,
+        "admissible": 8,
+        "accuracy_gate_passes": 8
+      },
+      "diagnostic_rho": {
+        "conv": 0.003,
+        "dense": 0.03
+      },
+      "final_validation": {
+        "metric": "validation_accuracy",
+        "accuracy": 0.9678,
+        "loss": 0.07388557366132736,
+        "checkpoint_role": "final_epoch",
+        "epoch": 3,
+        "trained_epochs": 3,
+        "sample_count": 5000,
+        "seed_count": 1,
+        "official_test_read": false
+      },
+      "selection": {
+        "state": "needs_expansion",
+        "selector_source": "read_only_reconstruction",
+        "select_core_published": false,
+        "expansion_rho": {
+          "conv": 0.027,
+          "dense": 0.09
+        },
+        "planned_next_scope": true,
+        "handoff_status": "not_frozen",
+        "freezes_learning_rate": false
+      },
+      "artifact_ids": [
+        "core_summary_csv",
+        "trex_core_stage_completion",
+        "candidate_legacy_sgd"
+      ]
+    },
+    {
+      "row_id": "legacy-adam",
+      "label": "Legacy v4/c0.25, Adam",
+      "role": "highest_observed_core_candidate",
+      "scheme": "legacy",
+      "optimizer": "adam",
+      "candidate_counts": {
+        "trained": 9,
+        "admissible": 9,
+        "accuracy_gate_passes": 9
+      },
+      "diagnostic_rho": {
+        "conv": 0.009,
+        "dense": 0.01
+      },
+      "final_validation": {
+        "metric": "validation_accuracy",
+        "accuracy": 0.9778,
+        "loss": 0.05470466657280922,
+        "checkpoint_role": "final_epoch",
+        "epoch": 3,
+        "trained_epochs": 3,
+        "sample_count": 5000,
+        "seed_count": 1,
+        "official_test_read": false
+      },
+      "selection": {
+        "state": "needs_expansion",
+        "selector_source": "read_only_reconstruction",
+        "select_core_published": false,
+        "expansion_rho": {
+          "conv": 0.027,
+          "dense": null
+        },
+        "planned_next_scope": false,
+        "handoff_status": "not_frozen",
+        "freezes_learning_rate": false
+      },
+      "artifact_ids": [
+        "core_summary_csv",
+        "trex_core_stage_completion",
+        "candidate_legacy_adam"
+      ]
+    }
+  ],
+  "evidence": {
+    "class": "ordinary_mnist_optimizer_diagnostic",
+    "paper_eligibility": "ineligible",
+    "ineligibility_reasons": [
+      "ordinary_mnist_not_deterministic_medium_affine",
+      "single_model_seed",
+      "three_epoch_optimizer_screen",
+      "all_conv2_surfaces_boundary_unresolved",
+      "learning_rate_handoff_not_frozen",
+      "perfect_diode_paper_calibration_and_tk_pending",
+      "final_paper_training_not_authorized"
+    ]
+  },
+  "review_id": "review-perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2",
+  "provenance": {
+    "root_alias": "REPO_ROOT",
+    "study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+    "protocol_id": "conv-perfectdiode-conv12-two-rho-sgd-adam-ordinary-mnist-bs16-v1",
+    "code": {
+      "git_revision": "093d3bc325a5ecb92262639798408a845d9767f1",
+      "effective_code_fingerprint": "3ee0c7168e25f6171025450072f44297fc18bab8eff9df580fb9a9a963463aa1"
+    },
+    "artifacts": [
+      {
+        "artifact_id": "core_summary_csv",
+        "role": "tracked_reconstructed_core_summary",
+        "path": "docs/conv_perfectdiode_lr_core_screen_20260727.csv",
+        "sha256": "cd8228bcc1096b733ef7c729622fc5e9f53911489767822a9ca6fb84012da870"
+      },
+      {
+        "artifact_id": "tracked_config",
+        "role": "canonical_launch_config",
+        "path": "configs/conv/perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json",
+        "sha256": "647f92e01c8619951367d71cadd6320c6924c0223a2f5ed344f7ff1739bac5c1"
+      },
+      {
+        "artifact_id": "protocol_record",
+        "role": "reviewed_protocol_and_conclusion",
+        "path": "docs/perfectdiode_learning_protocol.md",
+        "sha256": "c61e46628ec6808851827b619ad7fd0b94a50156cc6d7e15166ea93febb240a7"
+      },
+      {
+        "artifact_id": "repatriation_receipt",
+        "role": "byte_verified_host_shard_copy_receipt",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/repatriation_receipt.json",
+        "sha256": "c592518226f8e790b431a74bf02f9607f21087773cf8426d6bb8d8ed4203b40a"
+      },
+      {
+        "artifact_id": "trex_shard_descriptor",
+        "role": "conv2_immutable_shard_descriptor",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/shard.resolved.json",
+        "sha256": "d072dd1ebcfecb6d1bf8c98245d2c898408f2e899f2883c2f2c0c17f7e91db8c"
+      },
+      {
+        "artifact_id": "trex_core_stage_completion",
+        "role": "conv2_core_candidate_stage_completion_chain",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/complete.json",
+        "sha256": "9a6bd3faddcfff530e9d8eb6eec8a70b3bcb491e4a42fa7ec6001942bc66074e"
+      },
+      {
+        "artifact_id": "trex_select_core_manifest",
+        "role": "conv2_incomplete_selector_manifest",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/select_core/manifest.json",
+        "sha256": "a3437eb6b70d43ba8086bb7ab090cb7bedf9887914903130c46c018bfa8321e3"
+      },
+      {
+        "artifact_id": "candidate_baseline_sgd",
+        "role": "baseline_sgd_diagnostic_core_candidate",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_d78e4ac22f3ca3879748a9f3b62decae7f2f2d10fc2bfcd2b4729a19ae408f20/result.json",
+        "sha256": "f9a03be82c44c29f033214621cfe2a6ee1b3fb574f9aee65f764de4a9a2b2890"
+      },
+      {
+        "artifact_id": "candidate_baseline_adam",
+        "role": "baseline_adam_diagnostic_core_candidate",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_df5cafb80124c54839afe44bb95f5295e493686f6cc0e852aa7df96a3169b379/result.json",
+        "sha256": "bfa4b71edd068da2d72378d17c6af495eeca02e01763d0482a438b8f32991341"
+      },
+      {
+        "artifact_id": "candidate_ours_sgd",
+        "role": "ours_sgd_diagnostic_core_candidate",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06/result.json",
+        "sha256": "f5dab05604a705ffdd8be796c286ef1969e24b84a6e72c9e42d7af2fe3857d9f"
+      },
+      {
+        "artifact_id": "candidate_ours_adam",
+        "role": "ours_adam_diagnostic_core_candidate",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_ours_v4_c1--adam--pdcell_6cd61f63e8c35413d748128ab07b07047ec0d15b39ef00a2af8b8136ea4ad994/result.json",
+        "sha256": "59f0cb07fce8e281e2f2ed569185a071f0138a3003c934d7e5e4a631df1a946a"
+      },
+      {
+        "artifact_id": "candidate_legacy_sgd",
+        "role": "legacy_sgd_diagnostic_core_candidate",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e/result.json",
+        "sha256": "9c74f4c7afbe638261df2176c4c636af5d7d3b4bfa3faf6ff448f272329927c8"
+      },
+      {
+        "artifact_id": "candidate_legacy_adam",
+        "role": "legacy_adam_diagnostic_core_candidate",
+        "path": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--adam--pdcell_b141e151e6d06b7f3c7ac128d02312bb0f13e70f2a944ed6e5726ce3387d5c70/result.json",
+        "sha256": "e032791b2ba4a87468859fb20711b76ed128458cfc2be824c55c83e7f54ecc6e"
+      }
+    ]
+  }
+}

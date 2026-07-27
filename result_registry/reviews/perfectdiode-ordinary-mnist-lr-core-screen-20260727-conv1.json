@@ -1,0 +1,45 @@
+{
+  "schema_version": "drn-result-review/v1",
+  "review_id": "review-perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv1",
+  "card_id": "perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv1",
+  "review_status": "reviewed",
+  "reviewed_at": "2026-07-27",
+  "evidence_class": "ordinary_mnist_optimizer_diagnostic",
+  "conclusion": {
+    "headline": "Only Conv1 legacy Adam is core-bracketed; no Conv1 learning rate is frozen.",
+    "observation": "All six Conv1 surfaces produced a passing diagnostic core candidate between 94.46% and 96.18% final validation accuracy. Five surfaces have a passing 2% loss plateau on an upper rho boundary; legacy Adam is the only core-bracketed surface. Only baseline SGD was published before the selector failed, so the other five decisions are read-only reconstructions.",
+    "interpretation": "The core measurements show that the diagnostic optimizer setup can train every Conv1 surface above the 90% gate. They do not establish a cross-scheme or cross-optimizer winner. The user-fixed gain 40 and T/K 4/4 are ordinary-MNIST diagnostic inputs, and the incomplete selector prevents a frozen learning-rate handoff.",
+    "decision": "Keep the complete core evidence as a reviewed diagnostic. Freeze no Conv1 learning rate and do not treat 96.18% as final-paper accuracy. Conv1 expansion remains outside the currently requested next batch.",
+    "limitations": [
+      "One model seed only.",
+      "Ordinary MNIST rather than deterministic medium affine MNIST.",
+      "Three-epoch optimizer screen rather than authorized final training.",
+      "Five of six selector decisions are read-only reconstructions.",
+      "Five surfaces remain on a search boundary.",
+      "The official test set was not read."
+    ]
+  },
+  "claims": [
+    {
+      "claim_id": "conv1_core_measurements_complete",
+      "support": "supported_direct_evidence",
+      "statement": "The Conv1 shard contains a hash-verified completion chain for all 53 promoted core candidates."
+    },
+    {
+      "claim_id": "conv1_legacy_adam_core_bracketed",
+      "support": "supported_direct_evidence",
+      "statement": "Read-only application of the intended selector brackets the Conv1 legacy-Adam core surface at rho_conv=0.003 and rho_dense=0.01."
+    },
+    {
+      "claim_id": "conv1_highest_observed_accuracy",
+      "support": "descriptive_only",
+      "statement": "Legacy Adam has the highest observed Conv1 core validation accuracy at 96.18%, but this is not a general optimizer or scheme comparison."
+    },
+    {
+      "claim_id": "conv1_learning_rate_or_paper_handoff",
+      "support": "not_supported",
+      "statement": "This incomplete ordinary-MNIST core screen does not freeze a Conv1 learning rate or support a final-paper accuracy claim."
+    }
+  ],
+  "supersedes": []
+}
