@@ -1,0 +1,270 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-hparam-template/v2",
+  "name": "perfect-diode-conv3-ordinary-mnist-sgd-adam-high-rho-screen",
+  "protocol_id": "conv-perfectdiode-conv3-two-rho-sgd-adam-ordinary-mnist-bs16-v2",
+  "base_contract": {
+    "path": "perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json",
+    "canonical_sha256": "699804e1f7c35f65f50656db4af0b120dd3a3d0f2fb95e3a17b65ebfe7b78535",
+    "inherit_exactly": [
+      "dataset",
+      "solver",
+      "optimizer",
+      "optimizer_arms",
+      "optimizer_probe",
+      "safety",
+      "candidate_training",
+      "selection"
+    ]
+  },
+  "study_contract": {
+    "schema_version": "mnist-conv-perfectdiode-hparam-study/v2",
+    "run_schema_version": "mnist-conv-perfectdiode-hparam-run/v2",
+    "study_role": "ordinary_mnist_optimization_diagnostic",
+    "medium_affine_paper_handoff": "unresolved",
+    "final_paper_training_authorized": false,
+    "official_test_read": false
+  },
+  "architecture": {
+    "name": "conv3",
+    "channels": [
+      64,
+      128,
+      256
+    ],
+    "kernel_sizes": [
+      3,
+      3,
+      3
+    ],
+    "strides": [
+      2,
+      2,
+      1
+    ],
+    "paddings": [
+      1,
+      1,
+      1
+    ],
+    "pooling": "none",
+    "output_dim": 20,
+    "bounded_weight_order": [
+      "ConvWeight_0",
+      "ConvWeight_1",
+      "ConvWeight_2",
+      "DenseWeight_0"
+    ],
+    "trainable_parameter_order": [
+      "ConvWeight_0",
+      "Bias_0",
+      "ConvWeight_1",
+      "Bias_1",
+      "ConvWeight_2",
+      "Bias_2",
+      "DenseWeight_0"
+    ]
+  },
+  "input_gain": {
+    "value": 360.0,
+    "shared_across_schemes": true,
+    "recalibrate": false,
+    "provenance": "user_fixed_ordinary_mnist_diagnostic"
+  },
+  "upstream_tk": {
+    "required_schema_version": "mnist-conv-perfectdiode-tk-selection/v1",
+    "required_study_id": "tkstudy_407b09b9a5bb6127224ece23361c1f350a05b2e3bcc950a41cffd5d51744ef30",
+    "required_config_sha256": "bd5cc81c63ed4362aea3506a38e98b2f4a600ed6e75fbdc1d9b63ceb2b8a955e",
+    "selection_path": "upstream_tk/selection.json",
+    "manifest_path": "upstream_tk/manifest.json",
+    "resolved_config_path": "upstream_tk/resolved_config.json",
+    "shared_assets_path": "upstream_tk/shared_assets",
+    "producer_shared_assets_dirname": "shared_assets",
+    "source_archive_path": "upstream_tk/source/source.tar",
+    "require_self_contained_producer_bundle": true,
+    "bind_whole_selection_sha256": true,
+    "bind_whole_manifest_sha256": true,
+    "bind_each_row_result_sha256": true,
+    "bind_each_row_completion_sha256": true,
+    "bind_each_row_environment_sha256": true,
+    "bind_each_row_t_measurements_sha256": true,
+    "bind_each_row_k_measurements_sha256": true,
+    "bind_each_row_operating_point_audit_sha256": true,
+    "bind_shared_asset_metadata_sha256": true,
+    "bind_shared_asset_completion_sha256": true,
+    "bind_initialization_checkpoint_sha256": true,
+    "bind_producer_source_archive_sha256": true,
+    "bind_producer_effective_code_fingerprint": true,
+    "require_exact_candidate_grids_and_sentinels": true,
+    "require_each_selected_row_operating_point_audit_passed": true,
+    "selected_rows_are_lr_eligible": true,
+    "unresolved_rows_are_explicit_zero_work": true,
+    "exact_execution_hosts": {
+      "baseline": "main",
+      "ours": "akibscomputer",
+      "legacy": "main"
+    }
+  },
+  "row_templates": [
+    {
+      "row_id": "conv3_baseline_v1_c1",
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_name": "mnist_bp_amp_v1_c1",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0
+    },
+    {
+      "row_id": "conv3_ours_v4_c1",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_name": "mnist_bp_amp_v4_c1",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0
+    },
+    {
+      "row_id": "conv3_legacy_v4_c0p25",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_name": "mnist_bp_amp_v4_c0p25",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25
+    }
+  ],
+  "rho_search": {
+    "independent_by": [
+      "scheme",
+      "optimizer"
+    ],
+    "surface_policies": {
+      "baseline": {
+        "core_mode": "fixed_high_3x3",
+        "rho_conv": [
+          0.009,
+          0.027,
+          0.081
+        ],
+        "rho_dense": [
+          0.03,
+          0.09,
+          0.27
+        ],
+        "automatic_lower_center_search": false
+      },
+      "ours": {
+        "core_mode": "fixed_high_3x3",
+        "rho_conv": [
+          0.009,
+          0.027,
+          0.081
+        ],
+        "rho_dense": [
+          0.03,
+          0.09,
+          0.27
+        ],
+        "automatic_lower_center_search": false
+      },
+      "legacy": {
+        "core_mode": "adaptive_safe_center_factor_three_3x3",
+        "initial_rho_conv": 0.003,
+        "initial_rho_dense": 0.01,
+        "failure_scale_divisor": 3.0,
+        "maximum_center_attempts": 6,
+        "first_safe_center_wins": true
+      }
+    },
+    "core": {
+      "candidate_count_per_surface": 9,
+      "ordering": "rho_conv_then_rho_dense",
+      "canary_steps_per_cell": 640,
+      "every_cell_restarted_from_shared_initialization": true
+    },
+    "expansion": {
+      "factor": 3.0,
+      "trigger": "passing_plateau_confined_to_one_or_two_outer_edges",
+      "expand_only_implicated_axes": true,
+      "include_corner_when_both_axes_expand": true,
+      "maximum_waves": 1,
+      "maximum_added_values_per_axis": 1,
+      "maximum_cells_per_surface": 16,
+      "maximum_new_cells_per_surface": 7,
+      "reuse_existing_cells_by_hash": true,
+      "second_expansion_allowed": false,
+      "no_passing_core_candidate_expands": false,
+      "still_boundary_status": "unresolved_boundary",
+      "fallback_lr_allowed": false
+    }
+  },
+  "long_confirm": {
+    "enabled": false,
+    "maximum_run_count": 0,
+    "terminal_handoff": "three_epoch_selection_or_explicit_unresolved"
+  },
+  "training_data_contract": {
+    "training_batch_size": 16,
+    "validation_batch_size": 64,
+    "candidate_epochs": 3,
+    "steps_per_epoch": 3438,
+    "candidate_total_steps": 10314,
+    "bind_each_epoch_train_batch_order_sha256": true,
+    "tk_diagnostic_batching_is_not_inherited": true
+  },
+  "stages": {
+    "public_sequence": [
+      "audit",
+      "import_tk",
+      "optimizer_probe",
+      "rho_canary_core",
+      "rho_core_candidates",
+      "select_core",
+      "rho_canary_expansion",
+      "rho_expansion_candidates",
+      "select_expanded",
+      "post_training_tk",
+      "finalize_lr"
+    ],
+    "conditional_zero_work_completion_stages": [
+      "optimizer_probe",
+      "rho_canary_core",
+      "rho_core_candidates",
+      "select_core",
+      "rho_canary_expansion",
+      "rho_expansion_candidates",
+      "select_expanded",
+      "post_training_tk"
+    ],
+    "completion_marker_written_last": true,
+    "resume_policy": "skip_only_hash_verified_immutable_complete_entries",
+    "incomplete_adam_policy": "restart_from_shared_initialization"
+  },
+  "execution": {
+    "allowed_hosts": [
+      "main",
+      "akibscomputer"
+    ],
+    "routing_mode": "explicit_one_host_per_complete_surface",
+    "cell_mixing_across_hosts": false,
+    "one_process_per_gpu": true,
+    "shared_asset_hashes_required_across_hosts": [
+      "train_indices_sha256",
+      "validation_indices_sha256",
+      "initialization_checkpoint_sha256",
+      "initialization_tensor_sha256",
+      "t_cohort_indices_sha256",
+      "k_cohort_indices_sha256",
+      "train_batch_order_epoch_1_sha256",
+      "train_batch_order_epoch_2_sha256",
+      "train_batch_order_epoch_3_sha256"
+    ],
+    "same_scheme_tk_execution_host_required": true,
+    "default_surface_routes": {
+      "conv3_baseline_v1_c1--sgd": "main",
+      "conv3_baseline_v1_c1--adam": "main",
+      "conv3_ours_v4_c1--sgd": "akibscomputer",
+      "conv3_ours_v4_c1--adam": "akibscomputer",
+      "conv3_legacy_v4_c0p25--sgd": "main",
+      "conv3_legacy_v4_c0p25--adam": "main"
+    },
+    "large_run_launch_authorized_by_template": false
+  }
+}
