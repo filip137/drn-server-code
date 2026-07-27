@@ -14,7 +14,7 @@ RUNNER = (
 T8K8_RUNNER = (
     REPO_ROOT
     / "experiments"
-    / "run_mnist_conv_perfectdiode_conv3_hparam_t8k8_local_20260727_v3.sh"
+    / "run_mnist_conv_perfectdiode_conv3_hparam_t8k8_local_20260727_v4.sh"
 )
 
 
@@ -120,20 +120,20 @@ def test_t8k8_runner_has_strict_versioned_shell_contract() -> None:
     assert text.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
     subprocess.run(["bash", "-n", str(T8K8_RUNNER)], check=True)
     assert (
-        "results/perfectdiode_conv3_lr_t8k8_20260727_v4"
+        "results/perfectdiode_conv3_lr_t8k8_20260727_v5"
         in text
     )
     assert (
         "lrstudy_294f233afd76a4075482d5e6d43c36f74739e63b88ecdf5cc8b6e3091fa323f6"
         in text
     )
-    assert "/tmp/pd_conv3_lr_t8k8_20260727_source_v4" in text
+    assert "/tmp/pd_conv3_lr_t8k8_20260727_source_v5" in text
     assert (
-        "/home/filiposana/staged/pd_conv3_lr_t8k8_20260727_source_v4"
+        "/home/filiposana/staged/pd_conv3_lr_t8k8_20260727_source_v5"
         in text
     )
     assert (
-        "perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v4.md"
+        "perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v5.md"
         in text
     )
 
@@ -204,6 +204,10 @@ def test_t8k8_preflight_is_read_only_and_strictly_validates_receipts() -> None:
     assert "mkdir " not in preflight
     assert "tee " not in preflight
     assert "tmux send-keys" not in preflight
+    assert "--validate-preflight-tk-gate" in text
+    assert "--validate-preflight-canary" in text
+    assert "tk_gate_main >/dev/null" not in text
+    assert "smoke_main >/dev/null" not in text
 
 
 def test_t8k8_lanes_validate_gate_and_tracker_before_writes() -> None:
@@ -235,7 +239,7 @@ def test_t8k8_dispatch_gates_first_side_effect_on_exact_tracker_entry() -> None:
     assert "--require-experiment-id \"${experiment_id}\"" in tracker_gate
     assert "--require-launch-ready" in tracker_gate
     assert (
-        "experiment_id=perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v4"
+        "experiment_id=perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v5"
         in text
     )
     for required in (
