@@ -10,57 +10,138 @@ Iterative Anderson parameter search:
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 import math
 import os
-import random
-import re
-import subprocess
-from datetime import datetime
-import time
 from pathlib import Path
-from typing import Any
+import random
+import subprocess
+import sys
+import tempfile
+from typing import Any, Sequence
+
+from experiments.definitions import parse_experiment_config
+from experiments.schema import RunMode
 
 
-def _default_python_bin() -> str:
-    preferred = Path("/home/filip/miniconda3/envs/py312/bin/python")
-    if preferred.exists():
-        return str(preferred)
-    return "python3"
+EXPERIMENT_ID = "small_drn.v1"
 
 
-def _default_compare_script() -> str:
-    return "/home/filip/server_code/labs/tools/compare_npz.sh"
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
 
-def _default_small_network() -> str:
-    return "/home/filip/server_code/labs/small_network.py"
+def _compare_script_path() -> Path:
+    return Path(__file__).resolve().with_name("compare_npz.sh")
 
 
-def _parse_run_dir(output: str) -> Path | None:
-    # Look for: Saved metadata to <run_dir>/run_metadata.json
-    match = re.search(r"Saved metadata to (.+/run_metadata\\.json)", output)
-    if not match:
-        return None
-    meta_path = Path(match.group(1)).expanduser().resolve()
-    return meta_path.parent
+def _validate_base_config(payload: dict[str, Any]) -> None:
+    """Validate the complete versioned document with the public registry."""
+
+    definition, document = parse_experiment_config(payload)
+    if definition.experiment_id != EXPERIMENT_ID:
+        raise ValueError(
+            f"Expected --config to select {EXPERIMENT_ID!r}. "
+            f"Provided value: {definition.experiment_id!r}."
+        )
+    spec = definition.resolve(document, RunMode.LINSPACE)
+    if not spec.settings.record_states:
+        raise ValueError(
+            "Expected config.modes.linspace.record_states to be true so the "
+            "search can compare settled states. Provided value: false."
+        )
 
 
-def _find_latest_run_dir(output_root: Path, *, since_ts: float) -> Path | None:
-    if not output_root.exists():
-        return None
-    candidates = []
-    for run_dir in output_root.glob("*_linspace"):
-        meta = run_dir / "run_metadata.json"
-        if not meta.exists():
-            continue
-        mtime = meta.stat().st_mtime
-        if mtime >= since_ts - 1.0:
-            candidates.append((mtime, run_dir))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    return candidates[0][1]
+def _load_base_config(config_path: Path) -> dict[str, Any]:
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise ValueError(
+            "Expected --config to reference a readable JSON file. "
+            f"Provided value: {str(config_path)!r}. {error}"
+        ) from error
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            "Expected --config to contain valid JSON. "
+            f"Provided value: {str(config_path)!r} "
+            f"(line {error.lineno}, column {error.colno}: {error.msg})."
+        ) from error
+    if not isinstance(payload, dict):
+        raise ValueError(
+            "Expected --config to contain a JSON object. "
+            f"Provided value: {payload!r}."
+        )
+    _validate_base_config(payload)
+    return payload
+
+
+def _resolve_states_artifact(output_root: Path) -> tuple[Path, Path]:
+    """Resolve the states artifact from exactly one completed EBL run."""
+
+    result_paths = sorted(output_root.glob("*/result.json"))
+    if len(result_paths) != 1:
+        raise ValueError(
+            "Expected the step output directory to contain exactly one "
+            "completed run result.json. "
+            f"Provided value: {[str(path) for path in result_paths]!r}."
+        )
+
+    result_path = result_paths[0]
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            "Expected the completed run result.json to be readable valid "
+            f"JSON. Provided value: {str(result_path)!r}. {error}"
+        ) from error
+    if not isinstance(payload, dict) or payload.get("status") != "complete":
+        status = payload.get("status") if isinstance(payload, dict) else payload
+        raise ValueError(
+            "Expected result.json status to be 'complete'. "
+            f"Provided value: {status!r}."
+        )
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ValueError(
+            "Expected result.json artifacts to be a JSON array. "
+            f"Provided value: {artifacts!r}."
+        )
+    state_records = [
+        record
+        for record in artifacts
+        if isinstance(record, dict) and record.get("kind") == "states"
+    ]
+    if len(state_records) != 1:
+        raise ValueError(
+            "Expected result.json artifacts to contain exactly one artifact "
+            "with kind 'states'. "
+            f"Provided value: {state_records!r}."
+        )
+    relative_path = state_records[0].get("path")
+    if not isinstance(relative_path, str) or not relative_path:
+        raise ValueError(
+            "Expected the states artifact path to be a non-empty relative "
+            f"string. Provided value: {relative_path!r}."
+        )
+
+    run_dir = result_path.parent.resolve()
+    states_path = (run_dir / relative_path).resolve()
+    try:
+        states_path.relative_to(run_dir)
+    except ValueError as error:
+        raise ValueError(
+            "Expected the states artifact to remain inside its run "
+            f"directory. Provided value: {str(states_path)!r}."
+        ) from error
+    if not states_path.is_file():
+        raise ValueError(
+            "Expected the states artifact to reference an existing file. "
+            f"Provided value: {str(states_path)!r}."
+        )
+    return run_dir, states_path
 
 
 def _load_percentile(summary_path: Path, metric: str) -> float | None:
@@ -81,13 +162,14 @@ def _load_percentile(summary_path: Path, metric: str) -> float | None:
 def _write_markdown_header(md_path: Path) -> None:
     if md_path.exists():
         return
+    md_path.parent.mkdir(parents=True, exist_ok=True)
     header = (
         "# Anderson Search Log\n\n"
         "Run log for iterative Anderson sweeps (linspace + error vs SPICE).\n\n"
         "| step | m | omega | reg | run_dir | metric | value | decision |\n"
         "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
     )
-    md_path.write_text(header)
+    md_path.write_text(header, encoding="utf-8")
 
 
 def _append_markdown_row(
@@ -103,10 +185,15 @@ def _append_markdown_row(
     decision: str,
 ) -> None:
     run_dir_text = str(run_dir) if run_dir else "n/a"
-    value_text = "NaN" if value is not None and math.isnan(value) else (
-        f"{value:.6g}" if value is not None else "n/a"
+    value_text = (
+        "NaN"
+        if value is not None and math.isnan(value)
+        else (f"{value:.6g}" if value is not None else "n/a")
     )
-    line = f"| {step} | {m} | {omega:.3g} | {reg:.3g} | {run_dir_text} | {metric} | {value_text} | {decision} |\n"
+    line = (
+        f"| {step} | {m} | {omega:.3g} | {reg:.3g} | {run_dir_text} | "
+        f"{metric} | {value_text} | {decision} |\n"
+    )
     with md_path.open("a", encoding="utf-8") as handle:
         handle.write(line)
 
@@ -117,21 +204,55 @@ def _prepare_config(
     m: int,
     omega: float,
     reg: float,
-    linspace_samples: int | None,
+    batch_size: int,
+    linspace_samples: int,
 ) -> dict[str, Any]:
-    cfg = dict(base_cfg)
-    cfg["minimizer_impl"] = "andersson"
-    cfg["anderson_m"] = int(m)
-    cfg["anderson_omega"] = float(omega)
-    cfg["anderson_reg"] = float(reg)
-    cfg.setdefault("adaptive_equilibrium", True)
-    if linspace_samples is not None:
-        cfg["linspace_samples"] = int(linspace_samples)
+    cfg = deepcopy(base_cfg)
+    cfg["solver"]["minimizer_impl"] = "anderson"
+    cfg["solver"]["anderson"]["memory"] = int(m)
+    cfg["solver"]["anderson"]["omega"] = float(omega)
+    cfg["solver"]["anderson"]["regularization"] = float(reg)
+    cfg["data"]["batch_size"] = int(batch_size)
+    cfg["modes"]["linspace"]["samples"] = int(linspace_samples)
+    _validate_base_config(cfg)
     return cfg
 
 
-def _run_command(cmd: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, env=env)
+def _run_command(
+    cmd: list[str],
+    *,
+    env: dict[str, str],
+    cwd: Path,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        text=True,
+        capture_output=True,
+        env=env,
+        cwd=cwd,
+    )
+
+
+def _run_linspace(
+    *,
+    config_path: Path,
+    output_dir: Path,
+    weights_path: Path,
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "ebl",
+        "linspace",
+        "--config",
+        str(config_path),
+        "--output-dir",
+        str(output_dir),
+        "--weights",
+        str(weights_path),
+    ]
+    return _run_command(command, env=env, cwd=_repo_root())
 
 
 def _decide_next(
@@ -178,8 +299,19 @@ def _decide_next(
     return next_m, next_omega, next_reg, decision, next_best
 
 
-def _param_key(m: int, omega: float, reg: float, *, omega_digits: int = 6, reg_digits: int = 12) -> tuple[int, float, float]:
-    return (int(m), round(float(omega), omega_digits), round(float(reg), reg_digits))
+def _param_key(
+    m: int,
+    omega: float,
+    reg: float,
+    *,
+    omega_digits: int = 6,
+    reg_digits: int = 12,
+) -> tuple[int, float, float]:
+    return (
+        int(m),
+        round(float(omega), omega_digits),
+        round(float(reg), reg_digits),
+    )
 
 
 def _ensure_unique_params(
@@ -203,7 +335,9 @@ def _ensure_unique_params(
         key = _param_key(m, omega, reg)
         if key not in seen:
             return m, omega, reg, "duplicate -> random restart"
-    raise SystemExit("Unable to sample unique (m, omega, reg) after 50 attempts.")
+    raise SystemExit(
+        "Unable to sample unique (m, omega, reg) after 50 attempts."
+    )
 
 
 def _random_restart(
@@ -220,13 +354,28 @@ def _random_restart(
     return new_m, new_omega, reg, decision
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description="Iterative Anderson parameter search.")
-    p.add_argument("--config", required=True, help="Base config JSON path.")
-    p.add_argument("--weights", required=True, help="Model .pt path.")
+def main(argv: Sequence[str] | None = None) -> int:
+    p = argparse.ArgumentParser(
+        description="Iterative Anderson parameter search."
+    )
+    p.add_argument(
+        "--config",
+        required=True,
+        help="Strict nested small_drn.v1 base config JSON.",
+    )
+    p.add_argument("--weights", required=True, help="Named weights path.")
     p.add_argument("--spice-npz", required=True, help="Reference SPICE npz.")
+    p.add_argument(
+        "--output-dir",
+        required=True,
+        help="Operational root for this search's versioned EBL runs.",
+    )
     p.add_argument("--batch-size", type=int, default=1)
-    p.add_argument("--metric", default="p95", help="Percentile key to optimize (e.g., p90, p95, p99).")
+    p.add_argument(
+        "--metric",
+        default="p95",
+        help="Percentile key to optimize (for example p90, p95, or p99).",
+    )
     p.add_argument("--steps", type=int, default=6)
     p.add_argument("--m-start", type=int, default=None)
     p.add_argument("--omega-start", type=float, default=None)
@@ -235,39 +384,75 @@ def main() -> int:
         "--linspace-samples",
         type=int,
         default=None,
-        help="Override linspace_samples in the config (per-axis grid count).",
+        help="Override modes.linspace.samples (per-axis grid count).",
     )
     p.add_argument("--m-min", type=int, default=1)
     p.add_argument("--m-max", type=int, default=8)
     p.add_argument("--omega-min", type=float, default=0.1)
     p.add_argument("--omega-max", type=float, default=1.0)
     p.add_argument("--md-log", default=None, help="Markdown log path.")
-    p.add_argument("--python-bin", default=None)
-    p.add_argument("--compare-script", default=None)
-    p.add_argument("--small-network", default=None)
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     config_path = Path(args.config).expanduser().resolve()
     weights_path = Path(args.weights).expanduser().resolve()
     spice_path = Path(args.spice_npz).expanduser().resolve()
-    if not config_path.exists():
-        raise SystemExit(f"Expected config path to exist; got {config_path}")
-    if not weights_path.exists():
-        raise SystemExit(f"Expected weights path to exist; got {weights_path}")
-    if not spice_path.exists():
-        raise SystemExit(f"Expected spice npz path to exist; got {spice_path}")
+    output_root = Path(args.output_dir).expanduser().resolve()
+    if not weights_path.is_file():
+        raise SystemExit(
+            "Expected --weights to reference an existing file. "
+            f"Provided value: {str(weights_path)!r}."
+        )
+    if not spice_path.is_file():
+        raise SystemExit(
+            "Expected --spice-npz to reference an existing file. "
+            f"Provided value: {str(spice_path)!r}."
+        )
+    try:
+        base_cfg = _load_base_config(config_path)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
-    base_cfg = json.loads(config_path.read_text())
-    m = int(args.m_start) if args.m_start is not None else int(base_cfg.get("anderson_m", 4))
-    omega = float(args.omega_start) if args.omega_start is not None else float(base_cfg.get("anderson_omega", 0.5))
-    reg = float(args.reg) if args.reg is not None else float(base_cfg.get("anderson_reg", 1e-6))
+    anderson = base_cfg["solver"]["anderson"]
+    m = (
+        int(args.m_start)
+        if args.m_start is not None
+        else int(anderson["memory"])
+    )
+    omega = (
+        float(args.omega_start)
+        if args.omega_start is not None
+        else float(anderson["omega"])
+    )
+    reg = (
+        float(args.reg)
+        if args.reg is not None
+        else float(anderson["regularization"])
+    )
+    linspace_samples = (
+        int(args.linspace_samples)
+        if args.linspace_samples is not None
+        else int(base_cfg["modes"]["linspace"]["samples"])
+    )
 
-    md_path = Path(args.md_log) if args.md_log else config_path.parent / "anderson_search.md"
+    md_path = (
+        Path(args.md_log).expanduser().resolve()
+        if args.md_log
+        else config_path.parent / "anderson_search.md"
+    )
     _write_markdown_header(md_path)
 
-    python_bin = args.python_bin or _default_python_bin()
-    compare_script = args.compare_script or _default_compare_script()
-    small_network = args.small_network or _default_small_network()
+    compare_script = _compare_script_path()
+    if not compare_script.is_file():
+        raise SystemExit(
+            "Expected compare_npz.sh beside anderson_search.py. "
+            f"Provided value: {str(compare_script)!r}."
+        )
+    output_root.mkdir(parents=True, exist_ok=True)
+    search_root = Path(
+        tempfile.mkdtemp(prefix="anderson-search-", dir=output_root)
+    )
+    config_root = search_root / "configs"
+    config_root.mkdir()
 
     env = os.environ.copy()
     env.setdefault("KMP_DISABLE_SHM", "1")
@@ -297,31 +482,23 @@ def main() -> int:
             m=m,
             omega=omega,
             reg=reg,
-            linspace_samples=args.linspace_samples,
+            batch_size=args.batch_size,
+            linspace_samples=linspace_samples,
         )
-        tmp_cfg = Path("/tmp") / f"anderson_search_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{step}.json"
-        tmp_cfg.write_text(json.dumps(run_cfg, indent=2))
+        tmp_cfg = config_root / f"step-{step:03d}.json"
+        tmp_cfg.write_text(
+            json.dumps(run_cfg, allow_nan=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
-        cmd = [
-            python_bin,
-            small_network,
-            "--mode",
-            "linspace",
-            "--config",
-            str(tmp_cfg),
-            "--weights",
-            str(weights_path),
-            "--batch-size",
-            str(args.batch_size),
-        ]
-        start_ts = time.time()
-        res = _run_command(cmd, env=env)
-        combined_output = (res.stdout or "") + "\n" + (res.stderr or "")
-        run_dir = _parse_run_dir(combined_output)
-        if run_dir is None:
-            output_root = Path(base_cfg.get("output_dir", config_path.parent)).expanduser().resolve()
-            run_dir = _find_latest_run_dir(output_root, since_ts=start_ts)
-        if res.returncode != 0 or run_dir is None:
+        step_output = search_root / "runs" / f"step-{step:03d}"
+        res = _run_linspace(
+            config_path=tmp_cfg,
+            output_dir=step_output,
+            weights_path=weights_path,
+            env=env,
+        )
+        if res.returncode != 0:
             decision = f"run failed (code {res.returncode})"
             _append_markdown_row(
                 md_path,
@@ -329,7 +506,7 @@ def main() -> int:
                 m=m,
                 omega=omega,
                 reg=reg,
-                run_dir=run_dir,
+                run_dir=None,
                 metric=args.metric,
                 value=None,
                 decision=decision,
@@ -340,15 +517,36 @@ def main() -> int:
                 print(res.stderr)
             break
 
+        try:
+            run_dir, run_npz = _resolve_states_artifact(step_output)
+        except ValueError as error:
+            decision = f"run artifact resolution failed: {error}"
+            _append_markdown_row(
+                md_path,
+                step=step,
+                m=m,
+                omega=omega,
+                reg=reg,
+                run_dir=None,
+                metric=args.metric,
+                value=None,
+                decision=decision,
+            )
+            print(error)
+            break
+
         error_dir = run_dir / "error_npz"
-        run_npz = run_dir / "linspace_states.npz"
         compare_cmd = [
-            compare_script,
+            str(compare_script),
             str(run_npz),
             str(spice_path),
             str(error_dir),
         ]
-        res_cmp = _run_command(compare_cmd, env=env)
+        res_cmp = _run_command(
+            compare_cmd,
+            env=env,
+            cwd=_repo_root(),
+        )
         if res_cmp.returncode != 0:
             decision = f"error compare failed (code {res_cmp.returncode})"
             _append_markdown_row(
@@ -366,7 +564,10 @@ def main() -> int:
             print(res_cmp.stderr)
             break
 
-        summary_path = error_dir / "cross_layer_rel_l1_percentiles_node_weighted.json"
+        summary_path = (
+            error_dir
+            / "cross_layer_rel_l1_percentiles_node_weighted.json"
+        )
         metric_value = _load_percentile(summary_path, args.metric)
 
         next_m, next_omega, next_reg, decision, best_value = _decide_next(
@@ -382,14 +583,22 @@ def main() -> int:
         )
 
         if metric_value is not None and not math.isnan(metric_value):
-            if repeat_value is not None and abs(metric_value - repeat_value) <= repeat_eps:
+            if (
+                repeat_value is not None
+                and abs(metric_value - repeat_value) <= repeat_eps
+            ):
                 repeat_count += 1
             else:
                 repeat_value = metric_value
                 repeat_count = 1
 
             if repeat_count >= 5:
-                next_m, next_omega, next_reg, restart_decision = _random_restart(
+                (
+                    next_m,
+                    next_omega,
+                    next_reg,
+                    restart_decision,
+                ) = _random_restart(
                     min_m=args.m_min,
                     max_m=args.m_max,
                     min_omega=args.omega_min,
