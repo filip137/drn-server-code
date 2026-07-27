@@ -216,6 +216,79 @@ def perfect_diode_clamped_occupancy(
     }
 
 
+def analytical_quadratic_layer_gradient(energy: Any, layer: Any) -> Any:
+    """Evaluate the exact smooth Q-function gradient as ``2*a*z + b``.
+
+    Perfect-diode constraints are handled separately by the projected-KKT
+    residual.  The free-state energy itself is quadratic in each layer, and
+    the minimizer already uses these same coefficient functions.  Using them
+    here avoids ``ConvResistive.eval()``'s very large broadcast tensor while
+    preserving the mathematical gradient exactly.
+    """
+
+    import torch
+
+    a_factory = getattr(energy, "a_coef_fn", None)
+    b_factory = getattr(energy, "b_coef_fn", None)
+    if not callable(a_factory) or not callable(b_factory):
+        raise PerfectDiodeTKRuntimeError(
+            "Expected the T residual energy to expose callable quadratic "
+            "a_coef_fn and b_coef_fn methods."
+        )
+    a_fn = a_factory(layer)
+    b_fn = b_factory(layer)
+    if not callable(a_fn) or not callable(b_fn):
+        raise PerfectDiodeTKRuntimeError(
+            "Expected callable layer-specific quadratic coefficient functions."
+        )
+    state = layer.state.detach()
+    with torch.no_grad():
+        a = a_fn()
+        if not torch.is_tensor(a) or not bool(torch.isfinite(a).all()):
+            raise PerfectDiodeTKRuntimeError(
+                "Expected a finite tensor from the layer quadratic a coefficient."
+            )
+        try:
+            gradient = 2.0 * a * state
+        except RuntimeError as exc:
+            raise PerfectDiodeTKRuntimeError(
+                "Expected the layer quadratic a coefficient to broadcast to the "
+                f"state shape. Provided value: a={tuple(a.shape)!r}, "
+                f"state={tuple(state.shape)!r}."
+            ) from exc
+        del a
+        b = b_fn()
+        if not torch.is_tensor(b) or not bool(torch.isfinite(b).all()):
+            raise PerfectDiodeTKRuntimeError(
+                "Expected a finite tensor from the layer quadratic b coefficient."
+            )
+        try:
+            gradient.add_(b)
+        except RuntimeError as exc:
+            raise PerfectDiodeTKRuntimeError(
+                "Expected the layer quadratic b coefficient to broadcast to the "
+                f"state shape. Provided value: b={tuple(b.shape)!r}, "
+                f"state={tuple(state.shape)!r}."
+            ) from exc
+        del b
+    if tuple(gradient.shape) != tuple(state.shape) or not bool(
+        torch.isfinite(gradient).all()
+    ):
+        raise PerfectDiodeTKRuntimeError(
+            "Expected the analytical quadratic gradient to be finite and "
+            f"shape-matched. Provided value: gradient={tuple(gradient.shape)!r}, "
+            f"state={tuple(state.shape)!r}."
+        )
+    return gradient.detach()
+
+
+def _release_layer_residual_memory(device: Any) -> None:
+    import torch
+
+    if getattr(device, "type", None) == "cuda":
+        torch.cuda.empty_cache()
+
+
 def _tensor_sequence_digest(tensors: Iterable[Any]) -> str:
     digest = hashlib.sha256()
     for tensor in tensors:
@@ -653,7 +726,6 @@ def measure_t_candidate(
             f"Expected three hidden layers and one output layer. "
             f"Provided value: {len(runtime.free_layers)}."
         )
-    energy = getattr(runtime.minimizer_inference, "_fn", runtime.energy_fn)
     raw_values: list[list[float]] = [[] for _ in runtime.free_layers]
     selection_values: list[list[float]] = [[] for _ in runtime.free_layers]
     occupancy_totals = [
@@ -674,47 +746,48 @@ def measure_t_candidate(
         images = images.to(runtime.device)
         runtime.network.set_input(images, reset=True)
         runtime.minimizer_inference.compute_equilibrium()
-        gradients = [
-            energy.grad_layer_fn(layer)().detach()
-            for layer in runtime.free_layers
-        ]
-        for layer_index, (layer, gradient) in enumerate(
-            zip(runtime.free_layers, gradients)
-        ):
+        energy = getattr(runtime.minimizer_inference, "_fn", runtime.energy_fn)
+        for layer_index, layer in enumerate(runtime.free_layers):
+            gradient = analytical_quadratic_layer_gradient(energy, layer)
             if not bool(torch.isfinite(layer.state).all()) or not bool(
                 torch.isfinite(gradient).all()
             ):
                 raise PerfectDiodeTKRuntimeError(
                     f"Expected finite T={t} layer state and residual gradient."
                 )
-            raw = gradient.abs()
-            selection = (
-                perfect_diode_projected_kkt_residual(
-                    layer.state.detach(), gradient, epsilon=epsilon
-                )
-                if layer_index < 3
-                else raw
+            raw_maxima = (
+                gradient.abs()
+                .reshape(gradient.shape[0], -1)
+                .amax(dim=1)
+                .detach()
+                .cpu()
             )
             raw_values[layer_index].extend(
-                raw.reshape(raw.shape[0], -1)
-                .amax(dim=1)
-                .detach()
-                .cpu()
-                .tolist()
-            )
-            selection_values[layer_index].extend(
-                selection.reshape(selection.shape[0], -1)
-                .amax(dim=1)
-                .detach()
-                .cpu()
-                .tolist()
+                raw_maxima.tolist()
             )
             if layer_index < 3:
+                selection = perfect_diode_projected_kkt_residual(
+                    layer.state.detach(), gradient, epsilon=epsilon
+                )
+                selection_maxima = (
+                    selection.reshape(selection.shape[0], -1)
+                    .amax(dim=1)
+                    .detach()
+                    .cpu()
+                )
+                selection_values[layer_index].extend(
+                    selection_maxima.tolist()
+                )
                 occupancy = perfect_diode_clamped_occupancy(
                     layer.state.detach(), epsilon=epsilon
                 )
                 for key in occupancy_totals[layer_index]:
                     occupancy_totals[layer_index][key] += int(occupancy[key])
+                del selection_maxima, selection
+            else:
+                selection_values[layer_index].extend(raw_maxima.tolist())
+            del raw_maxima, gradient
+            _release_layer_residual_memory(runtime.device)
         seen += int(images.shape[0])
     if seen != T_EXAMPLES:
         raise PerfectDiodeTKRuntimeError(
@@ -757,6 +830,7 @@ def measure_t_candidate(
         "initialization_tensor_sha256": assets.parameter_tensor_sha256,
         "fixed_step_minimization": True,
         "batch_state_policy": "reset_each_batch",
+        "smooth_gradient_method": "quadratic_coefficients_2az_plus_b",
         "threshold": T_RESIDUAL_THRESHOLD,
         "comparison": "strictly_less_than",
         "layers": layers,
@@ -1449,31 +1523,40 @@ def run_tk_smoke(
         learning_rate=1.0,
     )
     _require_runtime_identity(runtime, assets)
-    energy = getattr(runtime.minimizer_inference, "_fn", runtime.energy_fn)
     t_images, _t_labels, t_indices = _unpack_batch(assets.t_batches[0])
     runtime.network.set_input(t_images.to(runtime.device), reset=True)
     runtime.minimizer_inference.compute_equilibrium()
     epsilon = float(spec.data["model"]["perfect_diode"]["clamp_epsilon"])
     residual_p90 = {}
     for index, layer in enumerate(runtime.free_layers):
-        gradient = energy.grad_layer_fn(layer)().detach()
-        residual = (
-            perfect_diode_projected_kkt_residual(
+        energy = getattr(runtime.minimizer_inference, "_fn", runtime.energy_fn)
+        gradient = analytical_quadratic_layer_gradient(energy, layer)
+        if index < 3:
+            residual = perfect_diode_projected_kkt_residual(
                 layer.state.detach(), gradient, epsilon=epsilon
             )
-            if index < 3
-            else gradient.abs()
-        )
-        values = (
-            residual.reshape(residual.shape[0], -1)
-            .amax(dim=1)
-            .detach()
-            .cpu()
-            .tolist()
-        )
+            values = (
+                residual.reshape(residual.shape[0], -1)
+                .amax(dim=1)
+                .detach()
+                .cpu()
+                .tolist()
+            )
+            del residual
+        else:
+            values = (
+                gradient.abs()
+                .reshape(gradient.shape[0], -1)
+                .amax(dim=1)
+                .detach()
+                .cpu()
+                .tolist()
+            )
         residual_p90[
             ("hidden_0", "hidden_1", "hidden_2", "output")[index]
         ] = _linear_quantile(values, 0.9)
+        del values, gradient
+        _release_layer_residual_memory(runtime.device)
 
     k_images, k_labels, k_indices = _unpack_batch(assets.k_batches[0])
     runtime.network.set_input(k_images.to(runtime.device), reset=True)
@@ -1511,6 +1594,7 @@ def run_tk_smoke(
         "t": {
             "iteration_count": T_CORE_GRID[0],
             "batch_size": len(t_indices),
+            "smooth_gradient_method": "quadratic_coefficients_2az_plus_b",
             "source_indices_sha256": sha256_json(list(t_indices)),
             "selection_residual_p90_by_layer": residual_p90,
         },
@@ -1548,6 +1632,7 @@ __all__ = [
     "TK_SMOKE_SCHEMA_VERSION",
     "TK_T_MEASUREMENTS_SCHEMA_VERSION",
     "compare_k_gradients",
+    "analytical_quadratic_layer_gradient",
     "execute_tk_row",
     "load_shared_assets",
     "measure_t_candidate",

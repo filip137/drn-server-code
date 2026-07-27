@@ -8,8 +8,10 @@ import torch
 
 from experiments.mnist_conv.identity import sha256_file, sha256_json
 from experiments.mnist_conv.io import atomic_write_json, read_json
+from experiments.mnist_conv.lr_engine import build_model_runtime
 from experiments.mnist_conv.perfectdiode_tk_runtime import (
     PerfectDiodeTKRuntimeError,
+    analytical_quadratic_layer_gradient,
     compare_k_gradients,
     parameters_in_contract_order,
     perfect_diode_clamped_occupancy,
@@ -87,6 +89,37 @@ def test_projected_kkt_residual_has_correct_excitation_and_inhibition_signs() ->
     assert occupancy["fraction"] == pytest.approx(0.5)
     assert occupancy["excitation_fraction"] == pytest.approx(0.5)
     assert occupancy["inhibition_fraction"] == pytest.approx(0.5)
+
+
+def test_quadratic_gradient_matches_autograd_on_all_four_conv3_layers() -> None:
+    spec = PerfectDiodeTKStudySpec.from_path(CONFIG)
+    row = copy.deepcopy(spec.rows[0])
+    row.update(
+        {
+            "inference_iterations": 4,
+            "training_iterations": 4,
+            "reference_inference_iterations": 64,
+            "reference_training_iterations": 64,
+        }
+    )
+    runtime = build_model_runtime(
+        spec.data,
+        row,
+        device="cpu",
+        learning_rate=1.0,
+    )
+    runtime.network.set_input(
+        torch.randn(1, 1, 28, 28, dtype=torch.float32),
+        reset=True,
+    )
+    energy = getattr(runtime.minimizer_inference, "_fn", runtime.energy_fn)
+    assert len(runtime.free_layers) == 4
+    for layer in runtime.free_layers:
+        expected = energy.grad_layer_fn(layer)().detach()
+        observed = analytical_quadratic_layer_gradient(energy, layer)
+        assert tuple(observed.shape) == tuple(layer.state.shape)
+        assert torch.allclose(observed, expected, rtol=2.0e-5, atol=2.0e-4)
+        del expected, observed
 
 
 def _gradient_collection(values: list[float]) -> dict:
