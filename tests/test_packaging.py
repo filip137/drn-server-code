@@ -31,11 +31,25 @@ def test_package_discovery_keeps_runtime_and_campaign_modules() -> None:
     distribution = Distribution()
     distribution.script_name = str(root / "pyproject.toml")
     command = build_py(distribution)
-    modules = {
+    labs_modules = {
         module
         for _package, module, _path in command.find_package_modules(
             "labs",
             str(root / "labs"),
         )
     }
-    assert {"datasets", "small_network_core"}.issubset(modules)
+    assert "datasets" in labs_modules
+    assert {
+        "small_network",
+        "small_network_config",
+        "small_network_core",
+    }.isdisjoint(labs_modules)
+
+    experiment_modules = {
+        module
+        for _package, module, _path in command.find_package_modules(
+            "experiments.small_network",
+            str(root / "experiments" / "small_network"),
+        )
+    }
+    assert {"components", "config", "runtime"}.issubset(experiment_modules)
