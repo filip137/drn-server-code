@@ -789,7 +789,6 @@ def verify_submitted_job_contract(
             "Partition": PARTITION,
             "QOS": QOS,
             "NumTasks": "1",
-            "NumCPUs": str(CPUS_PER_TASK),
             "TimeLimit": expected_time,
             "WorkDir": expected_repo,
             "Command": expected_wrapper,
@@ -803,6 +802,17 @@ def verify_submitted_job_contract(
             mismatches["NumNodes"] = {
                 "expected": "1 or the pending-range spelling 1-1",
                 "provided": row.get("NumNodes"),
+            }
+        if row.get("NumCPUs") not in {
+            str(CPUS_PER_TASK),
+            str(2 * CPUS_PER_TASK),
+        }:
+            mismatches["NumCPUs"] = {
+                "expected": (
+                    "16 while pending or 32 after Jean Zay expands "
+                    "16 physical CPUs to logical CPUs"
+                ),
+                "provided": row.get("NumCPUs"),
             }
         for field, suffix in (("StdOut", "out"), ("StdErr", "err")):
             value = row.get(field)
@@ -850,17 +860,23 @@ def verify_submitted_job_contract(
                 },
             }
         cpus_per_task = row.get("CPUs/Task")
-        if cpus_per_task is None:
-            cpu_match = re.search(
-                r"(?:^|,)cpu=([0-9]+)(?:,|$)", req_tres
-            )
-            cpus_per_task = (
-                None if cpu_match is None else cpu_match.group(1)
-            )
         if cpus_per_task != str(CPUS_PER_TASK):
             mismatches["cpus_per_task"] = {
                 "expected": str(CPUS_PER_TASK),
                 "provided": cpus_per_task,
+            }
+        requested_cpu_match = re.search(
+            r"(?:^|,)cpu=([0-9]+)(?:,|$)", req_tres
+        )
+        requested_cpus = (
+            None
+            if requested_cpu_match is None
+            else requested_cpu_match.group(1)
+        )
+        if requested_cpus != str(CPUS_PER_TASK):
+            mismatches["requested_cpus"] = {
+                "expected": str(CPUS_PER_TASK),
+                "provided": requested_cpus,
             }
         if row.get("ArrayJobId") != job_id:
             mismatches["ArrayJobId"] = {

@@ -383,13 +383,20 @@ elif [[ "${live_thread_spec}" =~ :([0-9]+)$ ]]; then
 else
   live_thread_count=""
 fi
-if [[ -z "${live_cpus_per_task}" && "${live_req_tres}" =~ (^|,)cpu=([0-9]+)($|,) ]]; then
-  live_cpus_per_task="${BASH_REMATCH[2]}"
+if [[ "${live_req_tres}" =~ (^|,)cpu=([0-9]+)($|,) ]]; then
+  live_requested_cpus="${BASH_REMATCH[2]}"
+else
+  live_requested_cpus=""
 fi
-if [[ "${live_thread_count}:${live_nodes}:${live_tasks}:${live_cpus}:${live_cpus_per_task}" != "1:1:1:16:16" ]]; then
+if [[ "${live_thread_count}:${live_nodes}:${live_tasks}:${live_cpus_per_task}:${live_requested_cpus}" != "1:1:1:16:16" ]]; then
   fail_value \
-    "the live job to use one task on one node, 16 physical CPUs, 16 CPUs/task, and one thread/core" \
-    "${live_thread_count}:${live_nodes}:${live_tasks}:${live_cpus}:${live_cpus_per_task}"
+    "the live job request to use one task on one node, 16 requested CPUs, 16 CPUs/task, and one thread/core" \
+    "${live_thread_count}:${live_nodes}:${live_tasks}:${live_cpus_per_task}:${live_requested_cpus}"
+fi
+if [[ "${live_cpus}" != "16" && "${live_cpus}" != "32" ]]; then
+  fail_value \
+    "the live NumCPUs accounting value to be 16 while pending or 32 after Jean Zay expands 16 physical CPUs to logical CPUs" \
+    "${live_cpus:-<unset>}"
 fi
 if [[ ",${live_tres_per_node}," != *",gres/gpu:1,"* && ",${live_req_tres}," != *",gres/gpu=1,"* ]]; then
   fail_value "the live Slurm job to request exactly one GPU per node" "${live_tres_per_node:-<unset>}"

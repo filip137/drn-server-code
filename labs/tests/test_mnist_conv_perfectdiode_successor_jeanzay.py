@@ -1082,6 +1082,9 @@ def _scontrol_submission_row(
     wrapper: Path,
     output_root: Path,
     nodes: str = "1-1",
+    num_cpus: str = "16",
+    cpus_per_task: str | None = "16",
+    requested_cpus: str | None = "16",
     time_limit: str | None = None,
     stdout_path: str | None = None,
 ) -> str:
@@ -1097,13 +1100,24 @@ def _scontrol_submission_row(
     stderr_value = str(
         output_root / "slurm" / f"{name}-{job_id}_%a.err"
     )
+    cpus_per_task_field = (
+        ""
+        if cpus_per_task is None
+        else f" CPUs/Task={cpus_per_task}"
+    )
+    req_tres = (
+        "gres/gpu=1"
+        if requested_cpus is None
+        else f"cpu={requested_cpus},gres/gpu=1"
+    )
     return (
         f"JobId={job_id} ArrayJobId={job_id} ArrayTaskId={array}"
         f"{throttle} Account=umg@v100 Partition=gpu_p13 "
         "QOS=qos_gpu-t3 Features=v100-32g "
-        f"NumNodes={nodes} NumTasks=1 NumCPUs=16 CPUs/Task=16 "
+        f"NumNodes={nodes} NumTasks=1 NumCPUs={num_cpus}"
+        f"{cpus_per_task_field} "
         "ReqB:S:C:T=0:0:*:1 "
-        "ReqTRES=cpu=16,gres/gpu=1 "
+        f"ReqTRES={req_tres} "
         f"TimeLimit={walltime} WorkDir={repo_root} Command={wrapper} "
         f"StdOut={stdout_value} StdErr={stderr_value}\n"
     )
@@ -1412,7 +1426,68 @@ def test_immediate_scontrol_readback_binds_pending_resources_and_paths(
     assert result["work_dir"] == str(repo)
     assert result["command_path"] == str(wrapper)
 
+    running_result = submitter.verify_submitted_job_contract(
+        job_id="8123",
+        kind="production",
+        metadata=metadata,
+        runner=lambda command, **unused: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=_scontrol_submission_row(
+                job_id="8123",
+                kind="production",
+                repo_root=repo,
+                wrapper=wrapper,
+                output_root=output,
+                nodes="1",
+                num_cpus="32",
+            ),
+            stderr="",
+        ),
+    )
+    assert running_result["array_indices"] == list(range(6))
+
     drift_rows = {
+        "allocated_cpus": _scontrol_submission_row(
+            job_id="8123",
+            kind="production",
+            repo_root=repo,
+            wrapper=wrapper,
+            output_root=output,
+            num_cpus="64",
+        ),
+        "requested_cpus": _scontrol_submission_row(
+            job_id="8123",
+            kind="production",
+            repo_root=repo,
+            wrapper=wrapper,
+            output_root=output,
+            requested_cpus="32",
+        ),
+        "missing_requested_cpus": _scontrol_submission_row(
+            job_id="8123",
+            kind="production",
+            repo_root=repo,
+            wrapper=wrapper,
+            output_root=output,
+            requested_cpus=None,
+        ),
+        "cpus_per_task": _scontrol_submission_row(
+            job_id="8123",
+            kind="production",
+            repo_root=repo,
+            wrapper=wrapper,
+            output_root=output,
+            cpus_per_task="32",
+        ),
+        "missing_cpus_per_task": _scontrol_submission_row(
+            job_id="8123",
+            kind="production",
+            repo_root=repo,
+            wrapper=wrapper,
+            output_root=output,
+            cpus_per_task=None,
+        ),
         "walltime": _scontrol_submission_row(
             job_id="8123",
             kind="production",
@@ -2082,3 +2157,16 @@ def test_wrapper_can_derive_optional_slurm_fields_and_hashes_canary_gate() -> No
         '${PD_SUCCESSOR_RUNS_PER_GPU}:'
         '${PD_SUCCESSOR_CONCURRENT_WITHIN_PACK}" != "6:12:2:true"'
     ) in wrapper
+    assert (
+        '"${live_thread_count}:${live_nodes}:${live_tasks}:'
+        '${live_cpus_per_task}:${live_requested_cpus}" != '
+        '"1:1:1:16:16"'
+    ) in wrapper
+    assert (
+        '[[ "${live_cpus}" != "16" && "${live_cpus}" != "32" ]]'
+        in wrapper
+    )
+    assert (
+        '[[ -z "${live_cpus_per_task}" && "${live_req_tres}"'
+        not in wrapper
+    )
