@@ -56,6 +56,9 @@ PD_CONV3_STUDY_ID_SCHEMA_VERSION = (
 PD_CONV3_SURFACE_MANIFEST_SCHEMA_VERSION = (
     "mnist-conv-perfectdiode-hparam-surface-manifest/v2"
 )
+LR_OPERATING_POINT_SCHEMA_VERSION = (
+    "mnist-conv-perfectdiode-lr-operating-point/v1"
+)
 TK_T_MEASUREMENTS_SCHEMA_VERSION = (
     "mnist-conv-perfectdiode-tk-t-measurements/v1"
 )
@@ -137,8 +140,17 @@ DEFAULT_TEMPLATE = (
     / "conv"
     / "perfectdiode_conv3_sgd_adam_hparam_ordinary_mnist_v2.template.json"
 )
+DEFAULT_OPERATING_POINT_CONTRACT = (
+    REPO_ROOT
+    / "configs"
+    / "conv"
+    / "perfectdiode_conv3_lr_operating_point_t8_k8_20260727_v1.json"
+)
 _FROZEN_TEMPLATE_SHA256 = (
     "5f81de60986c4c54328a1df0c41ec46c94261adc415ff50215a4f98dfe5fa211"
+)
+_FROZEN_OPERATING_POINT_CONTRACT_SHA256 = (
+    "e8426635c0c3d36b6d19412a97fad9ef8a631b79cb758000b70e8f66f8d64276"
 )
 _FROZEN_BASE_CONFIG_SHA256 = (
     "699804e1f7c35f65f50656db4af0b120dd3a3d0f2fb95e3a17b65ebfe7b78535"
@@ -1346,6 +1358,42 @@ def load_frozen_template(
     return data, source
 
 
+def load_frozen_operating_point_contract(
+    path: str | Path = DEFAULT_OPERATING_POINT_CONTRACT,
+) -> tuple[dict[str, Any], Path]:
+    """Load the user-fixed LR operating point without rewriting T/K evidence."""
+
+    source = Path(path).expanduser().resolve()
+    data = _mapping(_strict_json_load(source), "operating-point contract")
+    digest = sha256_json(data)
+    if digest != _FROZEN_OPERATING_POINT_CONTRACT_SHA256:
+        raise _error(
+            "operating-point contract",
+            "the immutable user-fixed T=8, K=8 contract with canonical "
+            f"SHA-256 {_FROZEN_OPERATING_POINT_CONTRACT_SHA256}",
+            digest,
+        )
+    expected = {
+        "schema_version": LR_OPERATING_POINT_SCHEMA_VERSION,
+        "mode": "user_fixed_after_residual_gradient_review",
+        "inference_iterations": 8,
+        "training_iterations": 8,
+        "reference_inference_iterations": 64,
+        "reference_training_iterations": 64,
+        "shared_across_schemes": True,
+        "retain_upstream_diagnostic_selection": True,
+        "require_fresh_manifest_bound_preflight_gate": True,
+        "provenance": "user_directed_2026-07-27",
+    }
+    if data != expected:
+        raise _error(
+            "operating-point contract",
+            f"exactly {expected!r}",
+            data,
+        )
+    return data, source
+
+
 def _load_frozen_base(
     template: Mapping[str, Any], template_path: Path
 ) -> dict[str, Any]:
@@ -1757,21 +1805,32 @@ def validate_tk_selection(
 
 
 def _materialized_rows(
-    template: Mapping[str, Any], binding: Mapping[str, Any]
+    template: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    operating_point: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     by_row_id = {row["row_id"]: row for row in binding["rows"]}
     result = []
     for raw in template["row_templates"]:
         row = copy.deepcopy(raw)
         upstream = copy.deepcopy(by_row_id[row["row_id"]])
+        eligible = bool(upstream["lr_eligible"])
         row.update(
             {
                 "input_gain": 360.0,
-                "inference_iterations": upstream["selected_t"],
-                "training_iterations": upstream["selected_k"],
+                "inference_iterations": (
+                    int(operating_point["inference_iterations"])
+                    if operating_point is not None and eligible
+                    else upstream["selected_t"]
+                ),
+                "training_iterations": (
+                    int(operating_point["training_iterations"])
+                    if operating_point is not None and eligible
+                    else upstream["selected_k"]
+                ),
                 "reference_inference_iterations": 64,
                 "reference_training_iterations": 64,
-                "lr_eligible": upstream["lr_eligible"],
+                "lr_eligible": eligible,
                 "zero_work_reason": upstream["zero_work_reason"],
                 "upstream_tk": upstream,
             }
@@ -1785,6 +1844,7 @@ def materialized_study_data(
     template: Mapping[str, Any],
     base: Mapping[str, Any],
     tk_binding: Mapping[str, Any],
+    operating_point: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Expand the v2 design and upstream T/K handoff into runtime-ready data."""
 
@@ -1825,7 +1885,16 @@ def materialized_study_data(
         "one_seed0_conv3_checkpoint_shared_across_schemes_optimizers_"
         "probes_canaries_and_candidates_on_both_hosts_by_sha256"
     )
-    data["rows"] = _materialized_rows(template, tk_binding)
+    data["rows"] = _materialized_rows(
+        template,
+        tk_binding,
+        operating_point=operating_point,
+    )
+    if operating_point is not None:
+        data["operating_point"] = copy.deepcopy(dict(operating_point))
+        data["operating_point_contract_sha256"] = (
+            _FROZEN_OPERATING_POINT_CONTRACT_SHA256
+        )
     data.pop("fixed_tk_gradient_security", None)
     data["upstream_tk"] = {
         "selection_artifact": template["upstream_tk"]["selection_path"],
@@ -1923,10 +1992,34 @@ class PerfectDiodeConv3HparamStudySpec(PerfectDiodeHparamStudySpec):
             verify_artifact_files=True,
             template=template,
         )
+        operating_point: dict[str, Any] | None = None
+        if (
+            "operating_point" in data
+            or "operating_point_contract_sha256" in data
+        ):
+            operating_point, _operating_point_source = (
+                load_frozen_operating_point_contract()
+            )
+            if (
+                data.get("operating_point") != operating_point
+                or data.get("operating_point_contract_sha256")
+                != _FROZEN_OPERATING_POINT_CONTRACT_SHA256
+            ):
+                raise _error(
+                    "resolved v2 study operating-point amendment",
+                    "the exact frozen T=8, K=8 contract and canonical digest",
+                    {
+                        "operating_point": data.get("operating_point"),
+                        "operating_point_contract_sha256": data.get(
+                            "operating_point_contract_sha256"
+                        ),
+                    },
+                )
         expected = materialized_study_data(
             template=template,
             base=base,
             tk_binding=binding,
+            operating_point=operating_point,
         )
         if data != expected:
             raise _error(
@@ -1969,6 +2062,7 @@ def materialize_study(
     tk_selection_sha256: str,
     tk_shared_assets_path: str | Path | None = None,
     tk_source_archive_path: str | Path | None = None,
+    operating_point_path: str | Path | None = None,
     output_dir: str | Path,
 ) -> PerfectDiodeConv3HparamStudySpec:
     """Verify and copy the T/K handoff, then publish an exact resolved study."""
@@ -1986,6 +2080,11 @@ def materialize_study(
         shared_assets_path=tk_shared_assets_path,
         source_archive_path=tk_source_archive_path,
     )
+    operating_point = None
+    if operating_point_path is not None:
+        operating_point, _operating_point_source = (
+            load_frozen_operating_point_contract(operating_point_path)
+        )
     destination = Path(output_dir).expanduser().resolve()
     copied_selection = destination / template["upstream_tk"]["selection_path"]
     copied_tk_root = copied_selection.parent
@@ -2057,6 +2156,7 @@ def materialize_study(
         template=template,
         base=base,
         tk_binding=copied_binding,
+        operating_point=operating_point,
     )
     resolved = destination / "study.resolved.json"
     if resolved.exists():
@@ -2644,6 +2744,7 @@ __all__ = [
     "ALLOWED_HOSTS",
     "CANARY_STEPS",
     "CANDIDATE_TOTAL_STEPS",
+    "DEFAULT_OPERATING_POINT_CONTRACT",
     "DEFAULT_TEMPLATE",
     "EXECUTION_AUTHORITY_KEYS",
     "FIXED_HIGH_GRID",
@@ -2653,6 +2754,7 @@ __all__ = [
     "FROZEN_TK_CONFIG_SHA256",
     "FROZEN_TK_STUDY_ID",
     "MAXIMUM_CELLS_PER_SURFACE",
+    "LR_OPERATING_POINT_SCHEMA_VERSION",
     "OPTIMIZER_ORDER",
     "PD_CONV3_RUN_SCHEMA_VERSION",
     "PD_CONV3_STUDY_SCHEMA_VERSION",
@@ -2664,6 +2766,7 @@ __all__ = [
     "PerfectDiodeConv3HparamValidationError",
     "build_surface_manifest",
     "load_frozen_template",
+    "load_frozen_operating_point_contract",
     "materialize_study",
     "materialized_study_data",
     "representative_preflight_plan",

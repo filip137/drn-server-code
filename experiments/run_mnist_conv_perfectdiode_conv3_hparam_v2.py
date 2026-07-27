@@ -20,6 +20,7 @@ if __package__ in {None, ""}:
 from experiments.mnist_conv.io import atomic_write_json
 from experiments.mnist_conv.identity import sha256_file
 from experiments.mnist_conv.perfectdiode_conv3_hparam_v2_spec import (
+    DEFAULT_OPERATING_POINT_CONTRACT,
     DEFAULT_TEMPLATE,
     PerfectDiodeConv3HparamStudySpec,
     build_surface_manifest,
@@ -63,6 +64,14 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help=(
             "Exact T/K producer source archive matching manifest.staged_source."
+        ),
+    )
+    materialize.add_argument(
+        "--operating-point-contract",
+        type=Path,
+        help=(
+            "Optional immutable LR-level operating-point amendment. The "
+            f"supported contract is {DEFAULT_OPERATING_POINT_CONTRACT.name}."
         ),
     )
     materialize.add_argument("--output-dir", type=Path, required=True)
@@ -192,11 +201,19 @@ def _plan(spec: PerfectDiodeConv3HparamStudySpec) -> dict[str, Any]:
                 "zero_work_reason": row["zero_work_reason"],
                 "T": row["inference_iterations"],
                 "K": row["training_iterations"],
+                "diagnostic_T": row["upstream_tk"]["selected_t"],
+                "diagnostic_K": row["upstream_tk"]["selected_k"],
                 "input_gain": row["input_gain"],
                 "tk_execution_host": row["upstream_tk"]["execution_host"],
-                "operating_point_audit_sha256": row["upstream_tk"][
+                "diagnostic_operating_point_audit_sha256": row["upstream_tk"][
                     "operating_point_audit_sha256"
                 ],
+                "fixed_operating_point_gate_required": (
+                    spec.data.get("operating_point", {}).get(
+                        "require_fresh_manifest_bound_preflight_gate"
+                    )
+                    is True
+                ),
             }
         )
     eligible_rows = sum(int(row["lr_eligible"]) for row in spec.rows)
@@ -218,6 +235,7 @@ def _plan(spec: PerfectDiodeConv3HparamStudySpec) -> dict[str, Any]:
         "shared_asset_manifest_required_before_execution": True,
         "long_confirmation": False,
         "official_test_read": False,
+        "operating_point": spec.data.get("operating_point"),
         "rows": rows,
         "launched_jobs": 0,
     }
@@ -232,6 +250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             tk_selection_sha256=args.tk_selection_sha256,
             tk_shared_assets_path=args.tk_shared_assets,
             tk_source_archive_path=args.tk_source_archive,
+            operating_point_path=args.operating_point_contract,
             output_dir=args.output_dir,
         )
         _print(

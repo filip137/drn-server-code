@@ -23,6 +23,7 @@ from experiments.mnist_conv.perfectdiode_conv3_hparam_v2_spec import (
     PUBLIC_STAGE_SEQUENCE,
 )
 from experiments.mnist_conv.perfectdiode_hparam_v2_execution import (
+    execute_fixed_operating_point_preflight_gate,
     execute_representative_preflight_canary,
     execute_surface_stage,
     load_execution_context,
@@ -47,6 +48,14 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Run only the manifest-selected isolated 640-step Adam smoke "
             "canary; write outside all public stage output directories."
+        ),
+    )
+    action.add_argument(
+        "--preflight-tk-gate",
+        action="store_true",
+        help=(
+            "Run only the manifest-bound user-fixed T/K residual and gradient "
+            "gate at initialization; T and K come from the resolved study."
         ),
     )
     parser.add_argument("--host", choices=ALLOWED_HOSTS, required=True)
@@ -94,7 +103,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         environment_contract_path=args.environment_contract,
         execution_environment_path=args.execution_environment,
     )
-    if args.preflight_canary:
+    if args.preflight_tk_gate:
+        result = execute_fixed_operating_point_preflight_gate(
+            context,
+            asset_dir=args.assets_dir,
+            data_root=args.data_root,
+            download=args.download,
+            device=args.device,
+        )
+    elif args.preflight_canary:
         result = execute_representative_preflight_canary(
             context,
             asset_dir=args.assets_dir,
@@ -114,7 +131,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
     return (
         0
-        if not args.preflight_canary or result.get("passed") is True
+        if (
+            not args.preflight_canary
+            and not args.preflight_tk_gate
+        )
+        or result.get("passed") is True
         else 2
     )
 

@@ -1,0 +1,12 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-lr-operating-point/v1",
+  "mode": "user_fixed_after_residual_gradient_review",
+  "inference_iterations": 8,
+  "training_iterations": 8,
+  "reference_inference_iterations": 64,
+  "reference_training_iterations": 64,
+  "shared_across_schemes": true,
+  "retain_upstream_diagnostic_selection": true,
+  "require_fresh_manifest_bound_preflight_gate": true,
+  "provenance": "user_directed_2026-07-27"
+}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
@@ -9,7 +11,9 @@ import pytest
 
 from experiments.mnist_conv.identity import sha256_file
 from experiments.mnist_conv.perfectdiode_conv3_hparam_v2_spec import (
+    FROZEN_TK_CONFIG,
     PUBLIC_STAGE_SEQUENCE,
+    load_frozen_template,
 )
 from experiments.mnist_conv.perfectdiode_hparam_v2_execution import (
     EPOCH_K_VIABILITY_SCHEMA_VERSION,
@@ -19,9 +23,11 @@ from experiments.mnist_conv.perfectdiode_hparam_v2_execution import (
     LoadedV2Assets,
     PerfectDiodeConv3ExecutionError,
     V1NumericalBackend,
+    _contract_parameter_tensor_digest,
     _validate_epoch_k_viability_evidence,
     _validate_surface,
     build_environment_contract,
+    execute_fixed_operating_point_preflight_gate,
     execute_representative_preflight_canary,
     execute_surface_stage,
     observe_execution_environment,
@@ -33,6 +39,14 @@ from experiments.mnist_conv.perfectdiode_hparam_v2_execution import (
 from experiments.mnist_conv.perfectdiode_tk_runtime import (
     TK_OPERATING_POINT_AUDIT_SCHEMA_VERSION,
     LoadedTKAssets,
+    parameters_in_contract_order,
+)
+from experiments.mnist_conv.lr_engine import (
+    build_model_runtime,
+    parameter_tensor_digest,
+)
+from experiments.mnist_conv.perfectdiode_tk_spec import (
+    PerfectDiodeTKStudySpec,
 )
 from experiments.run_mnist_conv_perfectdiode_hparam_v2_worker import (
     _parser as _worker_parser,
@@ -226,6 +240,111 @@ def _context(
             ),
         },
     )
+
+
+def test_contract_parameter_digest_accepts_model_native_conv3_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import torch
+
+    native_names = (
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2",
+    )
+    parameters = tuple(
+        SimpleNamespace(
+            name=name,
+            state=torch.tensor([float(index)], dtype=torch.float32),
+        )
+        for index, name in enumerate(native_names)
+    )
+    expected = parameter_tensor_digest(
+        parameters_in_contract_order(parameters)
+    )
+    assert parameter_tensor_digest(parameters) != expected
+    assert _contract_parameter_tensor_digest(parameters) == expected
+
+    runtime = SimpleNamespace(parameters=parameters)
+    monkeypatch.setattr(
+        "experiments.mnist_conv.perfectdiode_hparam_v2_execution."
+        "build_model_runtime",
+        lambda *args, **kwargs: runtime,
+    )
+    monkeypatch.setattr(
+        "experiments.mnist_conv.perfectdiode_hparam_v2_execution."
+        "_optimizer_contract",
+        lambda *args, **kwargs: {},
+    )
+    assets = SimpleNamespace(
+        checkpoint_path=tmp_path / "initialization.pt",
+        parameter_tensor_sha256=expected,
+    )
+    observed = V1NumericalBackend()._fresh_runtime(
+        _context(tmp_path),
+        assets,  # type: ignore[arg-type]
+        learning_rate=1.0,
+        device="cpu",
+    )
+    assert observed is runtime
+
+
+def test_real_conv3_checkpoint_reload_uses_contract_parameter_order_at_t8_k8(
+    tmp_path: Path,
+) -> None:
+    tk_spec = PerfectDiodeTKStudySpec.from_path(FROZEN_TK_CONFIG)
+    row = copy.deepcopy(tk_spec.rows[0])
+    row.update(
+        {
+            "inference_iterations": 8,
+            "training_iterations": 8,
+            "reference_inference_iterations": 64,
+            "reference_training_iterations": 64,
+        }
+    )
+
+    initialization = build_model_runtime(
+        tk_spec.data,
+        row,
+        device="cpu",
+        learning_rate=1.0,
+    )
+    checkpoint = tmp_path / "initialization.pt"
+    initialization.save(checkpoint)
+    expected = _contract_parameter_tensor_digest(initialization.parameters)
+    assert parameter_tensor_digest(initialization.parameters) != expected
+
+    template, template_path = load_frozen_template()
+    base_path = template_path.parent / template["base_contract"]["path"]
+    base = json.loads(base_path.read_text(encoding="utf-8"))
+    study = copy.deepcopy(tk_spec.data)
+    study["optimizer_arms"] = copy.deepcopy(base["optimizer_arms"])
+    context = replace(
+        _context(tmp_path, optimizer="adam"),
+        spec=SimpleNamespace(data=study),  # type: ignore[arg-type]
+        row=row,
+    )
+    assets = SimpleNamespace(
+        checkpoint_path=checkpoint,
+        parameter_tensor_sha256=expected,
+    )
+
+    reloaded = V1NumericalBackend()._fresh_runtime(
+        context,
+        assets,  # type: ignore[arg-type]
+        learning_rate=1.0,
+        device="cpu",
+    )
+
+    assert context.row["inference_iterations"] == 8
+    assert context.row["training_iterations"] == 8
+    assert parameter_tensor_digest(reloaded.parameters) != expected
+    assert _contract_parameter_tensor_digest(reloaded.parameters) == expected
 
 
 def _asset_dir(context: ExecutionContext) -> Path:
@@ -593,6 +712,142 @@ def _valid_t_measurement(
         "fixed_step_minimization": True,
         "batch_state_policy": "reset_each_batch",
         "layers": layers,
+    }
+
+
+def _fixed_tk_gate_context(tmp_path: Path) -> ExecutionContext:
+    context = _context(tmp_path, optimizer="adam")
+    context.row.update(
+        {
+            "inference_iterations": 8,
+            "training_iterations": 8,
+        }
+    )
+    context.row["upstream_tk"].update(
+        {
+            "selected_t": 4,
+            "selected_k": 4,
+        }
+    )
+    context.surface.update(
+        {
+            "inference_iterations": 8,
+            "training_iterations": 8,
+            "upstream_tk": copy.deepcopy(context.row["upstream_tk"]),
+        }
+    )
+    context.spec._row = copy.deepcopy(context.row)
+    context.spec._data["operating_point"] = {
+        "mode": "user_fixed_after_residual_gradient_review",
+        "inference_iterations": 8,
+        "training_iterations": 8,
+        "reference_inference_iterations": 64,
+        "reference_training_iterations": 64,
+        "shared_across_schemes": True,
+        "retain_upstream_diagnostic_selection": True,
+        "require_fresh_manifest_bound_preflight_gate": True,
+    }
+    context.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    context.manifest_path.write_text(
+        json.dumps(context.manifest, sort_keys=True),
+        encoding="utf-8",
+    )
+    return context
+
+
+def _fixed_tk_gate_assets(context: ExecutionContext) -> LoadedV2Assets:
+    asset_dir = _asset_dir(context)
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint = asset_dir / "initialization.pt"
+    checkpoint.write_bytes(b"fixed-tk-gate-initialization")
+    shared = context.surface["shared_asset_hashes"]
+    tk_assets = LoadedTKAssets(
+        root=asset_dir,
+        checkpoint=checkpoint,
+        checkpoint_sha256=shared["initialization_checkpoint_sha256"],
+        parameter_tensor_sha256=shared["initialization_tensor_sha256"],
+        train_indices_sha256=shared["train_indices_sha256"],
+        validation_indices_sha256=shared["validation_indices_sha256"],
+        t_indices_sha256=shared["t_cohort_indices_sha256"],
+        k_indices_sha256=shared["k_cohort_indices_sha256"],
+        t_batches=(),
+        k_batches=(),
+    )
+    tk_spec = SimpleNamespace(
+        rows=(
+            {
+                "row_id": context.row["row_id"],
+                "scheme": context.surface["scheme"],
+            },
+        )
+    )
+    return LoadedV2Assets(
+        asset_dir=asset_dir,
+        checkpoint_path=checkpoint,
+        checkpoint_sha256=shared["initialization_checkpoint_sha256"],
+        parameter_tensor_sha256=shared["initialization_tensor_sha256"],
+        bundle=SimpleNamespace(),
+        asset_metadata={},
+        epoch_order_sha256s=("9" * 64, "a" * 64, "b" * 64),
+        tk_spec=tk_spec,  # type: ignore[arg-type]
+        tk_assets=tk_assets,
+    )
+
+
+def _fixed_tk_gate_audit(
+    context: ExecutionContext,
+    *,
+    passed: bool,
+) -> dict[str, Any]:
+    shared = context.surface["shared_asset_hashes"]
+    checkpoint_sha = shared["initialization_checkpoint_sha256"]
+    tensor_sha = shared["initialization_tensor_sha256"]
+    upstream = context.spec.data["upstream_tk"]
+    return {
+        "schema_version": TK_OPERATING_POINT_AUDIT_SCHEMA_VERSION,
+        "study_id": upstream["study_id"],
+        "config_sha256": upstream["config_sha256"],
+        "entry_id": f"{context.row['row_id']}--lr-fixed-tk-gate",
+        "row_id": context.row["row_id"],
+        "architecture": "conv3",
+        "scheme": context.surface["scheme"],
+        "execution_backend": "tmux",
+        "execution_host": context.host,
+        "execution_environment_sha256": context.surface[
+            "execution_environment_sha256"
+        ],
+        "selected_t": 8,
+        "selected_k": 8,
+        "k_audit_reference": 64,
+        "status": "passed" if passed else "failed",
+        "passed": passed,
+        "failure_reasons": (
+            [] if passed else ["selected_k_gradient_gate_failed"]
+        ),
+        "fresh_replay_after_selection": True,
+        "official_test_read": False,
+        "t_measurement": _valid_t_measurement(
+            iteration_count=8,
+            checkpoint_sha256=checkpoint_sha,
+            tensor_sha256=tensor_sha,
+        ),
+        "t64_sentinel_measurement": _valid_t_measurement(
+            iteration_count=64,
+            checkpoint_sha256=checkpoint_sha,
+            tensor_sha256=tensor_sha,
+        ),
+        "t64_sentinel_passed": True,
+        "t256_extension_sentinel_measurement": None,
+        "t256_extension_sentinel_passed": None,
+        "t_extension_used": False,
+        "k_measurement": _valid_k_measurement(
+            checkpoint_sha256=checkpoint_sha,
+            tensor_sha256=tensor_sha,
+            selected_t=8,
+            candidate_k=8,
+            reference_k=64,
+            viable=passed,
+        ),
     }
 
 
@@ -1109,7 +1364,7 @@ def test_builtin_post_training_audit_replays_all_epoch_checkpoints(
     )
     monkeypatch.setattr(
         "experiments.mnist_conv.perfectdiode_hparam_v2_execution."
-        "parameter_tensor_digest",
+        "_contract_parameter_tensor_digest",
         lambda parameters: "7" * 64,
     )
 
@@ -1228,6 +1483,15 @@ def test_public_stage_and_worker_contract_expose_only_authoritative_names(
     assert tuple(stage_action.choices) == PUBLIC_STAGE_SEQUENCE
     assert "--post-tk-audit-result" not in parser._option_string_actions
     assert "--preflight-canary" in parser._option_string_actions
+    assert "--preflight-tk-gate" in parser._option_string_actions
+    assert {
+        "--t",
+        "--k",
+        "--selected-t",
+        "--selected-k",
+        "--inference-iterations",
+        "--training-iterations",
+    }.isdisjoint(parser._option_string_actions)
 
     context = _context(tmp_path)
     with pytest.raises(TypeError, match="tk_audit_result_path"):
@@ -1236,6 +1500,133 @@ def test_public_stage_and_worker_contract_expose_only_authoritative_names(
             "post_training_tk",
             tk_audit_result_path=tmp_path / "unbound.json",  # type: ignore[call-arg]
         )
+
+
+def test_fixed_tk_preflight_calls_exact_t8_k8_and_hash_resumes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _fixed_tk_gate_context(tmp_path)
+    assets = _fixed_tk_gate_assets(context)
+
+    class _GateBackend:
+        def __init__(self) -> None:
+            self.load_calls = 0
+
+        def load_assets(
+            self,
+            observed_context: ExecutionContext,
+            **kwargs: Any,
+        ) -> LoadedV2Assets:
+            assert observed_context is context
+            assert kwargs["asset_dir"] == assets.asset_dir
+            assert kwargs["device"] == "cpu"
+            self.load_calls += 1
+            return assets
+
+    backend = _GateBackend()
+    audit_calls: list[dict[str, Any]] = []
+
+    def operating_point_audit(
+        tk_spec: Any,
+        row: Mapping[str, Any],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        assert tk_spec is assets.tk_spec
+        assert row == assets.tk_spec.rows[0]
+        assert kwargs["assets"] is assets.tk_assets
+        audit_calls.append(dict(kwargs))
+        return _fixed_tk_gate_audit(context, passed=True)
+
+    monkeypatch.setattr(
+        "experiments.mnist_conv.perfectdiode_hparam_v2_execution."
+        "run_operating_point_audit",
+        operating_point_audit,
+    )
+    result = execute_fixed_operating_point_preflight_gate(
+        context,
+        backend=backend,
+        asset_dir=assets.asset_dir,
+        data_root=tmp_path / "mnist",
+        device="cpu",
+    )
+
+    assert result["status"] == "passed"
+    assert result["passed"] is True
+    assert result["selected_t"] == 8
+    assert result["selected_k"] == 8
+    assert result["diagnostic_selected_t"] == 4
+    assert result["diagnostic_selected_k"] == 4
+    assert backend.load_calls == 1
+    assert len(audit_calls) == 1
+    assert audit_calls[0]["selected_t"] == 8
+    assert audit_calls[0]["selected_k"] == 8
+    assert audit_calls[0]["entry_id"].endswith("--lr-fixed-tk-gate")
+
+    resumed = execute_fixed_operating_point_preflight_gate(
+        context,
+        backend=backend,
+        asset_dir=assets.asset_dir,
+        data_root=tmp_path / "mnist",
+        device="cpu",
+    )
+    assert resumed == result
+    assert backend.load_calls == 1
+    assert len(audit_calls) == 1
+
+    result_path = (
+        context.manifest_path.parent
+        / "preflight"
+        / "fixed_tk_gate"
+        / context.host
+        / context.row["row_id"]
+        / "result.json"
+    )
+    tampered = json.loads(result_path.read_text(encoding="utf-8"))
+    tampered["selected_t"] = 4
+    result_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(
+        PerfectDiodeConv3ExecutionError,
+        match="hash- and size-verified artifact",
+    ):
+        execute_fixed_operating_point_preflight_gate(
+            context,
+            backend=backend,
+            asset_dir=assets.asset_dir,
+            data_root=tmp_path / "mnist",
+            device="cpu",
+        )
+
+
+def test_failed_fixed_tk_preflight_is_complete_but_nonpassing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _fixed_tk_gate_context(tmp_path)
+    assets = _fixed_tk_gate_assets(context)
+    backend = SimpleNamespace(
+        load_assets=lambda observed_context, **kwargs: assets
+    )
+    monkeypatch.setattr(
+        "experiments.mnist_conv.perfectdiode_hparam_v2_execution."
+        "run_operating_point_audit",
+        lambda *args, **kwargs: _fixed_tk_gate_audit(
+            context, passed=False
+        ),
+    )
+
+    result = execute_fixed_operating_point_preflight_gate(
+        context,
+        backend=backend,  # type: ignore[arg-type]
+        asset_dir=assets.asset_dir,
+        data_root=tmp_path / "mnist",
+        device="cpu",
+    )
+
+    assert result["status"] == "failed"
+    assert result["passed"] is False
+    assert result["reason"] == "fixed_tk_residual_or_gradient_gate_failed"
+    assert result["operating_point_audit"]["passed"] is False
 
 
 def test_isolated_preflight_runs_one_exact_canary_and_hash_resumes(
@@ -1519,6 +1910,72 @@ def test_worker_returns_nonzero_for_failed_preflight(
     assert exit_code == 2
 
 
+def test_worker_returns_nonzero_for_failed_fixed_tk_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    context = _fixed_tk_gate_context(tmp_path)
+    monkeypatch.setattr(
+        "experiments.run_mnist_conv_perfectdiode_hparam_v2_worker."
+        "load_execution_context",
+        lambda **kwargs: context,
+    )
+    gate_calls: list[tuple[ExecutionContext, dict[str, Any]]] = []
+
+    def failed_gate(
+        observed_context: ExecutionContext,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        gate_calls.append((observed_context, dict(kwargs)))
+        return {
+            "status": "failed",
+            "passed": False,
+        }
+
+    monkeypatch.setattr(
+        "experiments.run_mnist_conv_perfectdiode_hparam_v2_worker."
+        "execute_fixed_operating_point_preflight_gate",
+        failed_gate,
+    )
+    exit_code = _worker_main(
+        [
+            "--study",
+            str(tmp_path / "study.json"),
+            "--surface-manifest",
+            str(tmp_path / "manifest.json"),
+            "--surface-id",
+            context.surface_id,
+            "--preflight-tk-gate",
+            "--host",
+            "main",
+            "--source-archive",
+            str(tmp_path / "source.tar"),
+            "--environment-contract",
+            str(tmp_path / "environment.json"),
+            "--execution-environment",
+            str(tmp_path / "main-environment.json"),
+            "--assets-dir",
+            str(_asset_dir(context)),
+            "--data-root",
+            str(tmp_path / "mnist"),
+            "--device",
+            "cpu",
+        ]
+    )
+
+    assert exit_code == 2
+    assert len(gate_calls) == 1
+    observed_context, kwargs = gate_calls[0]
+    assert observed_context is context
+    assert {"selected_t", "selected_k", "t", "k"}.isdisjoint(kwargs)
+    assert kwargs["device"] == "cpu"
+    assert json.loads(capsys.readouterr().out) == {
+        "passed": False,
+        "status": "failed",
+    }
+
+
 def test_runtime_rejects_manifest_rho_policy_not_exactly_template_derived(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1645,7 +2102,7 @@ def test_v1_candidate_replays_high_k_reference_after_each_epoch(
     )
     monkeypatch.setattr(
         "experiments.mnist_conv.perfectdiode_hparam_v2_execution."
-        "parameter_tensor_digest",
+        "_contract_parameter_tensor_digest",
         lambda parameters: "c" * 64,
     )
     replay_calls: list[tuple[str, int, int, str]] = []

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ from experiments.mnist_conv.io import (
 from experiments.mnist_conv.perfectdiode_conv3_hparam_v2_spec import (
     CANARY_STEPS,
     CANDIDATE_TOTAL_STEPS,
+    DEFAULT_OPERATING_POINT_CONTRACT,
     DEFAULT_TEMPLATE,
     FIXED_HIGH_GRID,
     FIXED_HIGH_RHO_CONV,
@@ -353,6 +355,8 @@ def _tk_selection(
     *,
     statuses: tuple[str, str, str] = ("selected", "selected", "selected"),
     audit_passed: bool = True,
+    selected_ts: tuple[int, int, int] = (8, 10, 16),
+    selected_ks: tuple[int, int, int] = (4, 6, 8),
 ) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     tk_spec = PerfectDiodeTKStudySpec.from_path(TK_CONFIG)
@@ -421,8 +425,6 @@ def _tk_selection(
         asset_binding["initialization_checkpoint_sha256"]
     )
     tensor_sha = str(asset_binding["initialization_tensor_sha256"])
-    selected_ts = (8, 10, 16)
-    selected_ks = (4, 6, 8)
     for index, (row, entry) in enumerate(zip(tk_spec.rows, entries)):
         requested_status = statuses[index]
         if requested_status not in {
@@ -774,15 +776,27 @@ def _materialize(
     *,
     statuses: tuple[str, str, str] = ("selected", "selected", "selected"),
     audit_passed: bool = True,
+    use_fixed_operating_point: bool = False,
+    selected_ts: tuple[int, int, int] = (8, 10, 16),
+    selected_ks: tuple[int, int, int] = (4, 6, 8),
 ) -> PerfectDiodeConv3HparamStudySpec:
     upstream = tmp_path / "tk"
     selection = _tk_selection(
-        upstream, statuses=statuses, audit_passed=audit_passed
+        upstream,
+        statuses=statuses,
+        audit_passed=audit_passed,
+        selected_ts=selected_ts,
+        selected_ks=selected_ks,
     )
     return materialize_study(
         template_path=DEFAULT_TEMPLATE,
         tk_selection_path=selection,
         tk_selection_sha256=sha256_file(selection),
+        operating_point_path=(
+            DEFAULT_OPERATING_POINT_CONTRACT
+            if use_fixed_operating_point
+            else None
+        ),
         output_dir=tmp_path / "lr",
     )
 
@@ -986,6 +1000,102 @@ def test_materialization_binds_tk_and_freezes_conv3_runtime_contract(
     )
     assert reloaded.study_id == spec.study_id
     assert reloaded.config_sha256 == spec.config_sha256
+
+
+def test_fixed_lr_operating_point_preserves_upstream_tk_provenance(
+    tmp_path: Path,
+) -> None:
+    spec = _materialize(
+        tmp_path,
+        use_fixed_operating_point=True,
+        selected_ts=(4, 4, 4),
+        selected_ks=(4, 4, 4),
+    )
+
+    assert spec.data["operating_point"] == {
+        "schema_version": "mnist-conv-perfectdiode-lr-operating-point/v1",
+        "mode": "user_fixed_after_residual_gradient_review",
+        "inference_iterations": 8,
+        "training_iterations": 8,
+        "reference_inference_iterations": 64,
+        "reference_training_iterations": 64,
+        "shared_across_schemes": True,
+        "retain_upstream_diagnostic_selection": True,
+        "require_fresh_manifest_bound_preflight_gate": True,
+        "provenance": "user_directed_2026-07-27",
+    }
+    assert len(spec.data["operating_point_contract_sha256"]) == 64
+    assert [
+        (row["inference_iterations"], row["training_iterations"])
+        for row in spec.rows
+    ] == [(8, 8), (8, 8), (8, 8)]
+    assert [
+        (
+            row["upstream_tk"]["selected_t"],
+            row["upstream_tk"]["selected_k"],
+        )
+        for row in spec.rows
+    ] == [(4, 4), (4, 4), (4, 4)]
+
+    manifest = build_surface_manifest(
+        spec,
+        shared_asset_hashes=_shared_assets(spec),
+        execution_source=_execution_source(tmp_path),
+    )
+    upstream_by_row = {
+        row["row_id"]: (
+            row["upstream_tk"]["selected_t"],
+            row["upstream_tk"]["selected_k"],
+        )
+        for row in spec.rows
+    }
+    for surface in manifest["surfaces"]:
+        assert (
+            surface["inference_iterations"],
+            surface["training_iterations"],
+        ) == (8, 8)
+        assert (
+            surface["upstream_tk"]["selected_t"],
+            surface["upstream_tk"]["selected_k"],
+        ) == upstream_by_row[surface["row_id"]]
+
+    reloaded = PerfectDiodeConv3HparamStudySpec.from_path(
+        tmp_path / "lr" / "study.resolved.json"
+    )
+    assert reloaded.study_id == spec.study_id
+    assert reloaded.config_sha256 == spec.config_sha256
+
+
+def test_fixed_lr_operating_point_tampering_fails_closed(
+    tmp_path: Path,
+) -> None:
+    _materialize(
+        tmp_path,
+        use_fixed_operating_point=True,
+        selected_ts=(4, 4, 4),
+        selected_ks=(4, 4, 4),
+    )
+    resolved = read_json(tmp_path / "lr" / "study.resolved.json")
+
+    contract_tamper = copy.deepcopy(resolved)
+    contract_tamper["operating_point"]["training_iterations"] = 6
+    contract_tamper_path = tmp_path / "lr" / "contract-tampered.json"
+    atomic_write_json(contract_tamper_path, contract_tamper, canonical=True)
+    with pytest.raises(
+        PerfectDiodeConv3HparamValidationError,
+        match="operating-point amendment",
+    ):
+        PerfectDiodeConv3HparamStudySpec.from_path(contract_tamper_path)
+
+    row_tamper = copy.deepcopy(resolved)
+    row_tamper["rows"][0]["inference_iterations"] = 4
+    row_tamper_path = tmp_path / "lr" / "row-tampered.json"
+    atomic_write_json(row_tamper_path, row_tamper, canonical=True)
+    with pytest.raises(
+        PerfectDiodeConv3HparamValidationError,
+        match="exact template-plus-T/K materialization",
+    ):
+        PerfectDiodeConv3HparamStudySpec.from_path(row_tamper_path)
 
 
 def test_selection_sha_and_selected_row_audit_fail_closed(tmp_path: Path) -> None:
@@ -1380,6 +1490,9 @@ def test_unresolved_tk_row_materializes_two_zero_work_surfaces(
             "unresolved_t_extension_sentinel",
             "selected",
         ),
+        use_fixed_operating_point=True,
+        selected_ts=(4, 4, 4),
+        selected_ks=(4, 4, 4),
     )
     ours = next(row for row in spec.rows if row["scheme"] == "ours")
     assert ours["lr_eligible"] is False
@@ -1388,6 +1501,11 @@ def test_unresolved_tk_row_materializes_two_zero_work_surfaces(
     assert ours["zero_work_reason"] == (
         "upstream_tk_unresolved_t_extension_sentinel"
     )
+    selected_rows = [row for row in spec.rows if row["lr_eligible"]]
+    assert {
+        (row["inference_iterations"], row["training_iterations"])
+        for row in selected_rows
+    } == {(8, 8)}
 
     manifest = build_surface_manifest(
         spec,
@@ -1405,14 +1523,28 @@ def test_unresolved_tk_row_materializes_two_zero_work_surfaces(
 def test_controller_plan_is_read_only_and_reports_no_launch(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _materialize(tmp_path)
+    _materialize(
+        tmp_path,
+        use_fixed_operating_point=True,
+        selected_ts=(4, 4, 4),
+        selected_ks=(4, 4, 4),
+    )
 
     assert main(["plan", "--study", str(tmp_path / "lr" / "study.resolved.json")]) == 0
-    output = capsys.readouterr().out
-    assert '"status": "planned"' in output
-    assert '"eligible_surfaces": 6' in output
-    assert '"launched_jobs": 0' in output
-    assert '"long_confirmation": false' in output
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "planned"
+    assert output["eligible_surfaces"] == 6
+    assert output["launched_jobs"] == 0
+    assert output["long_confirmation"] is False
+    assert output["operating_point"]["inference_iterations"] == 8
+    assert output["operating_point"]["training_iterations"] == 8
+    assert [
+        (row["T"], row["K"]) for row in output["rows"]
+    ] == [(8, 8), (8, 8), (8, 8)]
+    assert [
+        (row["diagnostic_T"], row["diagnostic_K"])
+        for row in output["rows"]
+    ] == [(4, 4), (4, 4), (4, 4)]
 
 
 def test_controller_derives_all_nine_shared_asset_hashes_idempotently(

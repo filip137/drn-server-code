@@ -23,6 +23,14 @@ from .perfectdiode_conv3_hparam_v2_spec import (
     PerfectDiodeConv3HparamStudySpec,
     validate_surface_manifest,
 )
+from .perfectdiode_hparam_v2_execution import (
+    FIXED_TK_GATE_COMPLETION_SCHEMA_VERSION,
+    FIXED_TK_GATE_RESULT_SCHEMA_VERSION,
+    _fixed_tk_audit_passed,
+)
+from .perfectdiode_tk_runtime import (
+    TK_OPERATING_POINT_AUDIT_SCHEMA_VERSION,
+)
 
 
 STUDY_FILENAME = "study.resolved.json"
@@ -449,6 +457,227 @@ def _assigned_ids(authority: _Authority, host: str) -> list[str]:
     ]
 
 
+def _fixed_tk_gate_required(authority: _Authority) -> bool:
+    operating_point = authority.spec.data.get("operating_point")
+    return (
+        isinstance(operating_point, Mapping)
+        and operating_point.get(
+            "require_fresh_manifest_bound_preflight_gate"
+        )
+        is True
+    )
+
+
+def _assigned_gate_surfaces(
+    authority: _Authority, host: str
+) -> list[dict[str, Any]]:
+    if not _fixed_tk_gate_required(authority):
+        return []
+    return [
+        copy.deepcopy(surface)
+        for surface in authority.surfaces.values()
+        if (
+            surface["host"] == host
+            and surface["optimizer"] == "adam"
+            and surface["lr_eligible"] is True
+        )
+    ]
+
+
+def _fixed_tk_gate_dir(
+    authority: _Authority,
+    host: str,
+    row_id: str,
+) -> Path:
+    return (
+        authority.root
+        / "preflight"
+        / "fixed_tk_gate"
+        / host
+        / row_id
+    )
+
+
+def _validate_fixed_tk_gate(
+    authority: _Authority,
+    surface: Mapping[str, Any],
+) -> dict[str, Any]:
+    host = str(surface["host"])
+    row_id = str(surface["row_id"])
+    gate_dir = _fixed_tk_gate_dir(authority, host, row_id)
+    result_path = gate_dir / "result.json"
+    completion_path = gate_dir / "completion.json"
+    if not result_path.is_file() or not completion_path.is_file():
+        raise _error(
+            str(gate_dir),
+            "a complete manifest-bound fixed T=8, K=8 gate",
+            str(gate_dir),
+        )
+    completion = _mapping(
+        read_json(completion_path), f"{row_id} fixed T/K gate completion"
+    )
+    expected_common = {
+        "study_id": authority.spec.study_id,
+        "config_sha256": authority.spec.config_sha256,
+        "manifest_id": authority.manifest_id,
+        "surface_id": surface["surface_id"],
+        "row_id": row_id,
+        "stage": "fixed_tk_gate",
+        "gate_id": f"{row_id}--t8-k8",
+        "representative_surface_id": surface["surface_id"],
+        "selected_t": 8,
+        "selected_k": 8,
+        "official_test_read": False,
+    }
+    _require_fields(
+        completion,
+        {
+            "schema_version": FIXED_TK_GATE_COMPLETION_SCHEMA_VERSION,
+            "state": "complete",
+            **expected_common,
+            "status": "passed",
+            "passed": True,
+        },
+        f"{row_id} fixed T/K gate completion",
+    )
+    _validate_records(
+        gate_dir,
+        completion.get("outputs"),
+        path=f"{row_id} fixed T/K gate completion.outputs",
+        expected_files=[result_path],
+    )
+    result = _mapping(read_json(result_path), f"{row_id} fixed T/K gate result")
+    _require_fields(
+        result,
+        {
+            "schema_version": FIXED_TK_GATE_RESULT_SCHEMA_VERSION,
+            **expected_common,
+            "host": host,
+            "optimizer": "adam",
+            "surface_manifest_sha256": sha256_file(
+                authority.root / MANIFEST_FILENAME
+            ),
+            "restart_from_shared_initialization": True,
+            "status": "passed",
+            "passed": True,
+        },
+        f"{row_id} fixed T/K gate result",
+    )
+    if (
+        result.get("shared_asset_hashes")
+        != surface["shared_asset_hashes"]
+        or result.get("execution_source") != surface["execution_source"]
+    ):
+        raise _error(
+            f"{row_id} fixed T/K gate authority",
+            "the exact manifest-bound shared assets and execution source",
+            {
+                "shared_asset_hashes": result.get("shared_asset_hashes"),
+                "execution_source": result.get("execution_source"),
+            },
+        )
+    rows = [
+        row
+        for row in authority.spec.rows
+        if row["row_id"] == row_id
+    ]
+    if len(rows) != 1:
+        raise _error(
+            f"{row_id} fixed T/K row",
+            "exactly one resolved study row",
+            rows,
+        )
+    row = rows[0]
+    _require_fields(
+        result,
+        {
+            "diagnostic_selected_t": row["upstream_tk"]["selected_t"],
+            "diagnostic_selected_k": row["upstream_tk"]["selected_k"],
+        },
+        f"{row_id} fixed T/K gate diagnostic provenance",
+    )
+    audit = _mapping(
+        result.get("operating_point_audit"),
+        f"{row_id} fixed T/K operating-point audit",
+    )
+    _require_fields(
+        audit,
+        {
+            "schema_version": TK_OPERATING_POINT_AUDIT_SCHEMA_VERSION,
+            "study_id": authority.spec.data["upstream_tk"]["study_id"],
+            "config_sha256": authority.spec.data["upstream_tk"][
+                "config_sha256"
+            ],
+            "entry_id": f"{row_id}--lr-fixed-tk-gate",
+            "row_id": row_id,
+            "scheme": surface["scheme"],
+            "execution_backend": "tmux",
+            "execution_host": host,
+            "execution_environment_sha256": surface[
+                "execution_environment_sha256"
+            ],
+            "selected_t": 8,
+            "selected_k": 8,
+            "k_audit_reference": 64,
+            "fresh_replay_after_selection": True,
+            "t_extension_used": False,
+            "official_test_read": False,
+        },
+        f"{row_id} fixed T/K operating-point audit",
+    )
+    shared = surface["shared_asset_hashes"]
+    for label, measurement_key, cohort_key in (
+        ("T=8", "t_measurement", "t_cohort_indices_sha256"),
+        (
+            "T=64",
+            "t64_sentinel_measurement",
+            "t_cohort_indices_sha256",
+        ),
+        ("K=8-vs-64", "k_measurement", "k_cohort_indices_sha256"),
+    ):
+        measurement = _mapping(
+            audit.get(measurement_key),
+            f"{row_id} fixed T/K {label} measurement",
+        )
+        _require_fields(
+            measurement,
+            {
+                "cohort_source_indices_sha256": shared[cohort_key],
+                "initialization_checkpoint_sha256": shared[
+                    "initialization_checkpoint_sha256"
+                ],
+                "initialization_tensor_sha256": shared[
+                    "initialization_tensor_sha256"
+                ],
+                "official_test_read": False,
+            },
+            f"{row_id} fixed T/K {label} measurement",
+        )
+    if (
+        audit.get("t256_extension_sentinel_measurement") is not None
+        or audit.get("t256_extension_sentinel_passed") is not None
+    ):
+        raise _error(
+            f"{row_id} fixed T/K T=256 extension",
+            "no extension measurement for T=8",
+            {
+                "measurement": audit.get(
+                    "t256_extension_sentinel_measurement"
+                ),
+                "passed": audit.get("t256_extension_sentinel_passed"),
+            },
+        )
+    if not _fixed_tk_audit_passed(audit, selected_t=8, selected_k=8):
+        raise _error(
+            f"{row_id} fixed T/K operating-point audit",
+            "a structurally complete passing T=8 residual, T=64 sentinel, "
+            "and K=8-vs-64 gradient comparison",
+            audit,
+        )
+    _require_official_test_false(result, f"{row_id} fixed T/K gate result")
+    return result
+
+
 def _host_artifacts(authority: _Authority, host: str) -> list[dict[str, Any]]:
     files = [
         authority.root / STUDY_FILENAME,
@@ -456,6 +685,14 @@ def _host_artifacts(authority: _Authority, host: str) -> list[dict[str, Any]]:
     ]
     for surface_id in _assigned_ids(authority, host):
         files.extend(_regular_files(authority.root / "surfaces" / surface_id))
+    for surface in _assigned_gate_surfaces(authority, host):
+        files.extend(
+            _regular_files(
+                _fixed_tk_gate_dir(
+                    authority, host, str(surface["row_id"])
+                )
+            )
+        )
     files = sorted(files, key=lambda item: item.relative_to(authority.root).as_posix())
     return [_record(item, base=authority.root) for item in files]
 
@@ -490,7 +727,40 @@ def _validate_host_layout(authority: _Authority, host: str, *, require_complete:
             f"only surfaces assigned to host {host!r}",
             cross_host,
         )
+    gate_host_root = authority.root / "preflight" / "fixed_tk_gate"
+    if gate_host_root.exists():
+        if gate_host_root.is_symlink() or not gate_host_root.is_dir():
+            raise _error(
+                str(gate_host_root),
+                "a non-symlink fixed T/K gate directory",
+                str(gate_host_root),
+            )
+        cross_host_gates = sorted(
+            item.name
+            for item in gate_host_root.iterdir()
+            if item.name != host
+        )
+        if cross_host_gates:
+            raise _error(
+                str(gate_host_root),
+                f"only gates assigned to host {host!r}",
+                cross_host_gates,
+            )
     surface_statuses: list[dict[str, Any]] = []
+    gate_statuses: list[dict[str, Any]] = []
+    for surface in _assigned_gate_surfaces(authority, host):
+        gate_dir = _fixed_tk_gate_dir(
+            authority, host, str(surface["row_id"])
+        )
+        if not gate_dir.is_dir():
+            gate_statuses.append(
+                {"row_id": surface["row_id"], "state": "missing"}
+            )
+            continue
+        _validate_fixed_tk_gate(authority, surface)
+        gate_statuses.append(
+            {"row_id": surface["row_id"], "state": "passed"}
+        )
     for surface_id in _assigned_ids(authority, host):
         surface_root = authority.root / "surfaces" / surface_id
         if not surface_root.is_dir():
@@ -541,6 +811,7 @@ def _validate_host_layout(authority: _Authority, host: str, *, require_complete:
     complete = (
         set(present) == assigned
         and all(item["state"] == "complete" for item in surface_statuses)
+        and all(item["state"] == "passed" for item in gate_statuses)
     )
     if require_complete and not complete:
         raise _error(
@@ -552,6 +823,7 @@ def _validate_host_layout(authority: _Authority, host: str, *, require_complete:
         "host": host,
         "assigned_surface_ids": _assigned_ids(authority, host),
         "surfaces": surface_statuses,
+        "fixed_tk_gates": gate_statuses,
         "complete": complete,
     }
 
@@ -850,7 +1122,7 @@ def _study_payload(authority: _Authority) -> dict[str, Any]:
                 row[key] = copy.deepcopy(final[key])
         rows.append(row)
     selected_count = sum(item["status"] == selected_status for item in rows)
-    return {
+    payload = {
         "schema_version": STUDY_RESULT_SCHEMA_VERSION,
         "state": "complete",
         "study_id": authority.spec.study_id,
@@ -865,6 +1137,40 @@ def _study_payload(authority: _Authority) -> dict[str, Any]:
         "official_test_read": False,
         "launched_jobs": 0,
     }
+    if _fixed_tk_gate_required(authority):
+        gates: list[dict[str, Any]] = []
+        for surface in authority.manifest["surfaces"]:
+            if (
+                surface["optimizer"] != "adam"
+                or surface["lr_eligible"] is not True
+            ):
+                continue
+            source = sources[surface["host"]]
+            result_path = _fixed_tk_gate_dir(
+                source, surface["host"], surface["row_id"]
+            ) / "result.json"
+            gate = _validate_fixed_tk_gate(source, surface)
+            gates.append(
+                {
+                    "gate_id": gate["gate_id"],
+                    "row_id": surface["row_id"],
+                    "scheme": surface["scheme"],
+                    "host": surface["host"],
+                    "representative_surface_id": surface["surface_id"],
+                    "selected_t": gate["selected_t"],
+                    "selected_k": gate["selected_k"],
+                    "diagnostic_selected_t": gate[
+                        "diagnostic_selected_t"
+                    ],
+                    "diagnostic_selected_k": gate[
+                        "diagnostic_selected_k"
+                    ],
+                    "passed": True,
+                    "result_sha256": sha256_file(result_path),
+                }
+            )
+        payload["fixed_operating_point_gates"] = gates
+    return payload
 
 
 def _study_completion_payload(authority: _Authority, result_path: Path) -> dict[str, Any]:

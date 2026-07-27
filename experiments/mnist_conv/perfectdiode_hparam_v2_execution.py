@@ -77,6 +77,7 @@ from .perfectdiode_tk_runtime import (
     _collect_gradients_for_k,
     compare_k_gradients,
     load_shared_assets as load_tk_shared_assets,
+    parameters_in_contract_order,
     run_operating_point_audit,
     validate_shared_assets as validate_tk_shared_assets,
 )
@@ -86,6 +87,7 @@ from .perfectdiode_tk_spec import (
     K_BATCH_SIZE,
     K_EXAMPLES,
     K_REFERENCE,
+    T_REFERENCE,
     PerfectDiodeTKStudySpec,
     _candidate_k_pass,
     _candidate_t_pass,
@@ -112,6 +114,12 @@ SURFACE_COMPLETION_SCHEMA_VERSION = (
 )
 PREFLIGHT_COMPLETION_SCHEMA_VERSION = (
     "mnist-conv-perfectdiode-hparam-preflight-completion/v2"
+)
+FIXED_TK_GATE_COMPLETION_SCHEMA_VERSION = (
+    "mnist-conv-perfectdiode-hparam-fixed-tk-gate-completion/v1"
+)
+FIXED_TK_GATE_RESULT_SCHEMA_VERSION = (
+    "mnist-conv-perfectdiode-hparam-fixed-tk-gate-result/v1"
 )
 ENVIRONMENT_RECEIPT_SCHEMA_VERSION = (
     "mnist-conv-perfectdiode-hparam-environment-receipt/v2"
@@ -947,6 +955,12 @@ class LoadedV2Assets:
     tk_assets: LoadedTKAssets
 
 
+def _contract_parameter_tensor_digest(parameters: Sequence[Any]) -> str:
+    """Hash Conv3 parameters in the frozen T/K scientific name order."""
+
+    return parameter_tensor_digest(parameters_in_contract_order(parameters))
+
+
 def _row_for_surface(
     spec: PerfectDiodeConv3HparamStudySpec, surface: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -1735,11 +1749,13 @@ class V1NumericalBackend:
                 context.spec.data, context.surface["optimizer"]
             ),
         )
-        digest = parameter_tensor_digest(runtime.parameters)
+        digest = _contract_parameter_tensor_digest(runtime.parameters)
         if digest != assets.parameter_tensor_sha256:
             raise PerfectDiodeConv3ExecutionError(
                 "Expected every numerical entry to restart from the shared "
-                "seed-0 Conv3 initialization."
+                "seed-0 Conv3 initialization with parameter tensor SHA-256 "
+                f"{assets.parameter_tensor_sha256!r}. Provided value: "
+                f"{digest!r}."
             )
         return runtime
 
@@ -1878,7 +1894,9 @@ class V1NumericalBackend:
                 }
             )
             checkpoint_sha = epoch_checkpoints[-1]["sha256"]
-            tensor_sha = parameter_tensor_digest(current_runtime.parameters)
+            tensor_sha = _contract_parameter_tensor_digest(
+                current_runtime.parameters
+            )
             trained_assets = replace(
                 assets.tk_assets,
                 checkpoint=path,
@@ -3151,7 +3169,7 @@ def run_builtin_post_training_tk_audit(
             initialization_checkpoint=checkpoint,
             learning_rate=1.0,
         )
-        tensor_sha = parameter_tensor_digest(runtime.parameters)
+        tensor_sha = _contract_parameter_tensor_digest(runtime.parameters)
         del runtime
         trained_assets: LoadedTKAssets = replace(
             base_assets,
@@ -3826,6 +3844,417 @@ def _preflight_dir(context: ExecutionContext) -> Path:
     )
 
 
+def _fixed_tk_gate_dir(context: ExecutionContext) -> Path:
+    return (
+        context.manifest_path.parent
+        / "preflight"
+        / "fixed_tk_gate"
+        / context.host
+        / context.row["row_id"]
+    )
+
+
+def _fixed_tk_audit_passed(
+    audit: Mapping[str, Any],
+    *,
+    selected_t: int,
+    selected_k: int,
+) -> bool:
+    t_passed, _t_reasons, t_complete = _candidate_t_pass(
+        _mapping(audit.get("t_measurement"), "fixed T/K gate T measurement"),
+        expected_iteration=selected_t,
+    )
+    t64_passed, _t64_reasons, t64_complete = _candidate_t_pass(
+        _mapping(
+            audit.get("t64_sentinel_measurement"),
+            "fixed T/K gate T=64 measurement",
+        ),
+        expected_iteration=T_REFERENCE,
+    )
+    k_measurement = _mapping(
+        audit.get("k_measurement"), "fixed T/K gate K measurement"
+    )
+    k_passed, _k_reasons, k_complete = _candidate_k_pass(
+        k_measurement, CONV3_CONV_WEIGHTS
+    )
+    return (
+        audit.get("selected_t") == selected_t
+        and audit.get("selected_k") == selected_k
+        and audit.get("k_audit_reference") == K_REFERENCE
+        and audit.get("fresh_replay_after_selection") is True
+        and audit.get("t64_sentinel_passed") is True
+        and t_passed
+        and t_complete
+        and t64_passed
+        and t64_complete
+        and k_passed
+        and k_complete
+        and k_measurement.get("candidate_k") == selected_k
+        and k_measurement.get("reference_k") == K_REFERENCE
+        and k_measurement.get("selected_t") == selected_t
+        and k_measurement.get("reference_viable") is True
+        and audit.get("passed") is True
+        and audit.get("status") == "passed"
+    )
+
+
+def _validate_fixed_tk_gate_completion(
+    context: ExecutionContext,
+    destination: Path,
+) -> dict[str, Any]:
+    completion_path = destination / "completion.json"
+    result_path = destination / "result.json"
+    if not completion_path.is_file() or not result_path.is_file():
+        raise PerfectDiodeConv3ExecutionError(
+            f"Expected a complete fixed T/K preflight gate: {destination}."
+        )
+    completion = _mapping(
+        read_json(completion_path), "fixed T/K gate completion"
+    )
+    expected_completion = {
+        "schema_version": FIXED_TK_GATE_COMPLETION_SCHEMA_VERSION,
+        "state": "complete",
+        "study_id": context.spec.study_id,
+        "config_sha256": context.spec.config_sha256,
+        "manifest_id": context.manifest_id,
+        "surface_id": context.surface_id,
+        "row_id": context.row["row_id"],
+        "stage": "fixed_tk_gate",
+        "gate_id": f"{context.row['row_id']}--t8-k8",
+        "representative_surface_id": context.surface_id,
+        "selected_t": context.surface["inference_iterations"],
+        "selected_k": context.surface["training_iterations"],
+        "official_test_read": False,
+    }
+    for key, expected_value in expected_completion.items():
+        if completion.get(key) != expected_value:
+            raise _error(
+                f"fixed T/K gate completion.{key}",
+                f"exactly {expected_value!r}",
+                completion.get(key),
+            )
+    _validate_artifacts(
+        destination,
+        completion.get("outputs"),
+        path="fixed T/K gate completion.outputs",
+    )
+    expected_outputs = [_artifact(result_path, base=destination)]
+    if completion.get("outputs") != expected_outputs:
+        raise _error(
+            "fixed T/K gate completion.outputs",
+            f"exactly {expected_outputs!r}",
+            completion.get("outputs"),
+        )
+    result = _mapping(read_json(result_path), "fixed T/K gate result")
+    audit = _mapping(
+        result.get("operating_point_audit"),
+        "fixed T/K gate result.operating_point_audit",
+    )
+    expected_result = {
+        "schema_version": FIXED_TK_GATE_RESULT_SCHEMA_VERSION,
+        "study_id": context.spec.study_id,
+        "config_sha256": context.spec.config_sha256,
+        "manifest_id": context.manifest_id,
+        "surface_id": context.surface_id,
+        "row_id": context.row["row_id"],
+        "scheme": context.surface["scheme"],
+        "optimizer": "adam",
+        "host": context.host,
+        "stage": "fixed_tk_gate",
+        "gate_id": f"{context.row['row_id']}--t8-k8",
+        "representative_surface_id": context.surface_id,
+        "surface_manifest_sha256": sha256_file(context.manifest_path),
+        "selected_t": context.surface["inference_iterations"],
+        "selected_k": context.surface["training_iterations"],
+        "diagnostic_selected_t": context.row["upstream_tk"]["selected_t"],
+        "diagnostic_selected_k": context.row["upstream_tk"]["selected_k"],
+        "official_test_read": False,
+    }
+    for key, expected_value in expected_result.items():
+        if result.get(key) != expected_value:
+            raise _error(
+                f"fixed T/K gate result.{key}",
+                f"exactly {expected_value!r}",
+                result.get(key),
+            )
+    if (
+        result.get("restart_from_shared_initialization") is not True
+        or result.get("shared_asset_hashes")
+        != context.surface["shared_asset_hashes"]
+        or result.get("execution_source")
+        != context.surface["execution_source"]
+    ):
+        raise PerfectDiodeConv3ExecutionError(
+            "Expected the fixed T/K gate result to preserve the exact "
+            "manifest-bound initialization, shared assets, and execution source."
+        )
+    expected_audit = {
+        "schema_version": TK_OPERATING_POINT_AUDIT_SCHEMA_VERSION,
+        "study_id": context.spec.data["upstream_tk"]["study_id"],
+        "config_sha256": context.spec.data["upstream_tk"]["config_sha256"],
+        "entry_id": f"{context.row['row_id']}--lr-fixed-tk-gate",
+        "row_id": context.row["row_id"],
+        "scheme": context.surface["scheme"],
+        "execution_backend": "tmux",
+        "execution_host": context.host,
+        "execution_environment_sha256": context.surface[
+            "execution_environment_sha256"
+        ],
+        "selected_t": context.surface["inference_iterations"],
+        "selected_k": context.surface["training_iterations"],
+        "k_audit_reference": K_REFERENCE,
+        "fresh_replay_after_selection": True,
+        "t_extension_used": False,
+        "official_test_read": False,
+    }
+    for key, expected_value in expected_audit.items():
+        if audit.get(key) != expected_value:
+            raise _error(
+                f"fixed T/K gate audit.{key}",
+                f"exactly {expected_value!r}",
+                audit.get(key),
+            )
+    shared = context.surface["shared_asset_hashes"]
+    t_measurement = _mapping(
+        audit.get("t_measurement"), "fixed T/K gate T measurement"
+    )
+    t64_measurement = _mapping(
+        audit.get("t64_sentinel_measurement"),
+        "fixed T/K gate T=64 measurement",
+    )
+    k_measurement = _mapping(
+        audit.get("k_measurement"), "fixed T/K gate K measurement"
+    )
+    for label, measurement, cohort_key in (
+        ("T=8", t_measurement, "t_cohort_indices_sha256"),
+        ("T=64", t64_measurement, "t_cohort_indices_sha256"),
+        ("K=8-vs-64", k_measurement, "k_cohort_indices_sha256"),
+    ):
+        expected_measurement = {
+            "cohort_source_indices_sha256": shared[cohort_key],
+            "initialization_checkpoint_sha256": shared[
+                "initialization_checkpoint_sha256"
+            ],
+            "initialization_tensor_sha256": shared[
+                "initialization_tensor_sha256"
+            ],
+            "official_test_read": False,
+        }
+        for key, expected_value in expected_measurement.items():
+            if measurement.get(key) != expected_value:
+                raise _error(
+                    f"fixed T/K gate {label} measurement.{key}",
+                    f"exactly {expected_value!r}",
+                    measurement.get(key),
+                )
+    if (
+        audit.get("t256_extension_sentinel_measurement") is not None
+        or audit.get("t256_extension_sentinel_passed") is not None
+    ):
+        raise _error(
+            "fixed T/K gate T=256 extension",
+            "no extension measurement for the fixed core-grid T=8 point",
+            {
+                "measurement": audit.get(
+                    "t256_extension_sentinel_measurement"
+                ),
+                "passed": audit.get("t256_extension_sentinel_passed"),
+            },
+        )
+    _require_official_test_false_recursive(
+        result, path="fixed T/K gate result"
+    )
+    passed = _fixed_tk_audit_passed(
+        audit,
+        selected_t=int(context.surface["inference_iterations"]),
+        selected_k=int(context.surface["training_iterations"]),
+    )
+    expected_status = "passed" if passed else "failed"
+    if (
+        result.get("passed") is not passed
+        or completion.get("passed") is not passed
+        or result.get("status") != expected_status
+        or completion.get("status") != expected_status
+    ):
+        raise _error(
+            "fixed T/K gate pass state",
+            f"passed={passed!r} and status={expected_status!r} from the "
+            "residual and gradient audit",
+            {
+                "result_passed": result.get("passed"),
+                "completion_passed": completion.get("passed"),
+                "result_status": result.get("status"),
+                "completion_status": completion.get("status"),
+            },
+        )
+    return result
+
+
+def execute_fixed_operating_point_preflight_gate(
+    context: ExecutionContext,
+    *,
+    backend: NumericalBackend | None = None,
+    asset_dir: str | Path | None = None,
+    data_root: str | Path | None = None,
+    download: bool = False,
+    device: str = "cuda",
+) -> dict[str, Any]:
+    """Audit the manifest-bound user-fixed T/K point at initialization."""
+
+    operating_point = context.spec.data.get("operating_point")
+    if not isinstance(operating_point, Mapping):
+        raise PerfectDiodeConv3ExecutionError(
+            "Expected a frozen LR operating-point amendment before running "
+            "the fixed T/K preflight gate. Provided value: None."
+        )
+    expected_operating_point = {
+        "mode": "user_fixed_after_residual_gradient_review",
+        "inference_iterations": 8,
+        "training_iterations": 8,
+        "reference_inference_iterations": 64,
+        "reference_training_iterations": 64,
+        "shared_across_schemes": True,
+        "retain_upstream_diagnostic_selection": True,
+        "require_fresh_manifest_bound_preflight_gate": True,
+    }
+    for key, expected_value in expected_operating_point.items():
+        if operating_point.get(key) != expected_value:
+            raise _error(
+                f"study.operating_point.{key}",
+                f"exactly {expected_value!r}",
+                operating_point.get(key),
+            )
+    if (
+        context.surface["optimizer"] != "adam"
+        or context.surface["inference_iterations"] != 8
+        or context.surface["training_iterations"] != 8
+    ):
+        raise _error(
+            "fixed T/K gate surface",
+            "the canonical Adam surface with manifest-bound T=8 and K=8",
+            {
+                "surface_id": context.surface_id,
+                "optimizer": context.surface["optimizer"],
+                "T": context.surface["inference_iterations"],
+                "K": context.surface["training_iterations"],
+            },
+        )
+    destination = _fixed_tk_gate_dir(context)
+    completion_path = destination / "completion.json"
+    result_path = destination / "result.json"
+    if completion_path.exists():
+        return _validate_fixed_tk_gate_completion(context, destination)
+    if result_path.exists():
+        raise PerfectDiodeConv3ExecutionError(
+            "Expected an interrupted fixed T/K gate with result.json but no "
+            f"completion to be inspected before retry: {destination}."
+        )
+    numerical = backend or V1NumericalBackend()
+    assets = _load_assets_for_stage(
+        context,
+        numerical,
+        asset_dir=(
+            None
+            if asset_dir is None
+            else Path(asset_dir).expanduser().resolve()
+        ),
+        data_root=(
+            None
+            if data_root is None
+            else Path(data_root).expanduser().resolve()
+        ),
+        download=download,
+        device=device,
+    )
+    if not isinstance(assets, LoadedV2Assets):
+        raise _error(
+            "fixed T/K gate assets",
+            "the validated LoadedV2Assets production bundle",
+            type(assets).__name__,
+        )
+    tk_rows = [
+        row
+        for row in assets.tk_spec.rows
+        if row.get("scheme") == context.surface["scheme"]
+    ]
+    if len(tk_rows) != 1:
+        raise _error(
+            "fixed T/K gate T/K row",
+            f"one row for scheme {context.surface['scheme']!r}",
+            tk_rows,
+        )
+    audit = run_operating_point_audit(
+        assets.tk_spec,
+        tk_rows[0],
+        selected_t=8,
+        selected_k=8,
+        assets=assets.tk_assets,
+        device=device,
+        entry_id=f"{context.row['row_id']}--lr-fixed-tk-gate",
+        execution_host=context.host,
+        t_extension_used=False,
+        execution_environment_sha256=context.surface[
+            "execution_environment_sha256"
+        ],
+    )
+    passed = _fixed_tk_audit_passed(
+        audit,
+        selected_t=8,
+        selected_k=8,
+    )
+    result = {
+        **_base_result(
+            context,
+            "fixed_tk_gate",
+            status="passed" if passed else "failed",
+            reason=None if passed else "fixed_tk_residual_or_gradient_gate_failed",
+        ),
+        "schema_version": FIXED_TK_GATE_RESULT_SCHEMA_VERSION,
+        "surface_manifest_sha256": sha256_file(context.manifest_path),
+        "gate_id": f"{context.row['row_id']}--t8-k8",
+        "representative_surface_id": context.surface_id,
+        "selected_t": 8,
+        "selected_k": 8,
+        "diagnostic_selected_t": context.row["upstream_tk"]["selected_t"],
+        "diagnostic_selected_k": context.row["upstream_tk"]["selected_k"],
+        "operating_point_mode": operating_point["mode"],
+        "restart_from_shared_initialization": True,
+        "shared_asset_hashes": copy.deepcopy(
+            context.surface["shared_asset_hashes"]
+        ),
+        "execution_source": copy.deepcopy(
+            context.surface["execution_source"]
+        ),
+        "passed": passed,
+        "operating_point_audit": audit,
+    }
+    require_official_test_excluded(result, require_result_marker=True)
+    destination.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(result_path, result, canonical=True)
+    completion = {
+        "schema_version": FIXED_TK_GATE_COMPLETION_SCHEMA_VERSION,
+        "state": "complete",
+        "study_id": context.spec.study_id,
+        "config_sha256": context.spec.config_sha256,
+        "manifest_id": context.manifest_id,
+        "surface_id": context.surface_id,
+        "row_id": context.row["row_id"],
+        "stage": "fixed_tk_gate",
+        "gate_id": f"{context.row['row_id']}--t8-k8",
+        "representative_surface_id": context.surface_id,
+        "selected_t": 8,
+        "selected_k": 8,
+        "status": result["status"],
+        "passed": passed,
+        "official_test_read": False,
+        "outputs": _all_artifacts(
+            destination, exclude=(completion_path,)
+        ),
+    }
+    atomic_write_json(completion_path, completion, canonical=True)
+    return _validate_fixed_tk_gate_completion(context, destination)
+
+
 def _validate_preflight_completion(
     context: ExecutionContext,
     destination: Path,
@@ -4148,6 +4577,8 @@ __all__ = [
     "EXECUTION_COMPLETION_SCHEMA_VERSION",
     "EXECUTION_STAGE_SCHEMA_VERSION",
     "ExecutionContext",
+    "FIXED_TK_GATE_COMPLETION_SCHEMA_VERSION",
+    "FIXED_TK_GATE_RESULT_SCHEMA_VERSION",
     "LoadedV2Assets",
     "NumericalBackend",
     "PREFLIGHT_COMPLETION_SCHEMA_VERSION",
@@ -4157,6 +4588,7 @@ __all__ = [
     "V1NumericalBackend",
     "build_environment_contract",
     "derive_shared_asset_hashes",
+    "execute_fixed_operating_point_preflight_gate",
     "execute_representative_preflight_canary",
     "execute_surface_stage",
     "load_execution_context",
