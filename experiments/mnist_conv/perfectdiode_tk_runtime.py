@@ -237,6 +237,38 @@ def _artifact(path: Path, *, base: Path) -> dict[str, Any]:
     }
 
 
+def parameters_in_contract_order(parameters: Iterable[Any]) -> tuple[Any, ...]:
+    """Return Conv3 parameters in the frozen scientific name order.
+
+    The model-native list legitimately groups all weights before all biases.
+    Artifact identities instead use ``CONV3_PARAMETER_ORDER``.  Resolve that
+    difference explicitly by name, while failing closed on duplicate, missing,
+    or unexpected scientific parameters.
+    """
+
+    values = tuple(parameters)
+    by_name: dict[str, Any] = {}
+    duplicates: list[str] = []
+    for parameter in values:
+        name = canonical_parameter_name(parameter)
+        if name in by_name:
+            duplicates.append(name)
+        else:
+            by_name[name] = parameter
+    expected = set(CONV3_PARAMETER_ORDER)
+    observed = set(by_name)
+    if duplicates or observed != expected or len(values) != len(expected):
+        raise PerfectDiodeTKRuntimeError(
+            "Expected exactly one scientific parameter for every frozen Conv3 "
+            "parameter name. Provided value: "
+            f"duplicates={sorted(duplicates)!r}, "
+            f"missing={sorted(expected - observed)!r}, "
+            f"unexpected={sorted(observed - expected)!r}, "
+            f"native_order={tuple(canonical_parameter_name(item) for item in values)!r}."
+        )
+    return tuple(by_name[name] for name in CONV3_PARAMETER_ORDER)
+
+
 def _combine_batches(batches: Sequence[Any]) -> tuple[Any, Any, Any]:
     import torch
 
@@ -363,15 +395,11 @@ def prepare_shared_assets(
         device=device,
         learning_rate=1.0,
     )
+    ordered_parameters = parameters_in_contract_order(runtime.parameters)
     parameter_names = tuple(
-        canonical_parameter_name(parameter) for parameter in runtime.parameters
+        canonical_parameter_name(parameter) for parameter in ordered_parameters
     )
-    if parameter_names != CONV3_PARAMETER_ORDER:
-        raise PerfectDiodeTKRuntimeError(
-            "Expected the Conv3 scientific parameter order to match the frozen "
-            f"contract. Provided value: {parameter_names!r}."
-        )
-    tensor_sha256 = parameter_tensor_digest(runtime.parameters)
+    tensor_sha256 = parameter_tensor_digest(ordered_parameters)
     _atomic_runtime_save(runtime, checkpoint_path)
     del runtime
 
@@ -585,14 +613,13 @@ def load_shared_assets(
 
 
 def _require_runtime_identity(runtime: Any, assets: LoadedTKAssets) -> None:
+    ordered_parameters = parameters_in_contract_order(runtime.parameters)
     names = tuple(
-        canonical_parameter_name(parameter) for parameter in runtime.parameters
+        canonical_parameter_name(parameter) for parameter in ordered_parameters
     )
     if names != CONV3_PARAMETER_ORDER:
-        raise PerfectDiodeTKRuntimeError(
-            f"Expected exact Conv3 parameter order. Provided value: {names!r}."
-        )
-    digest = parameter_tensor_digest(runtime.parameters)
+        raise AssertionError("canonical Conv3 parameter reordering drifted")
+    digest = parameter_tensor_digest(ordered_parameters)
     if digest != assets.parameter_tensor_sha256:
         raise PerfectDiodeTKRuntimeError(
             "Expected runtime parameters to load the exact shared initialization "
@@ -755,9 +782,10 @@ def _collect_gradients_for_k(
         learning_rate=1.0,
     )
     _require_runtime_identity(runtime, assets)
+    ordered_parameters = parameters_in_contract_order(runtime.parameters)
     parameters = {
         canonical_parameter_name(parameter): parameter
-        for parameter in runtime.parameters
+        for parameter in ordered_parameters
     }
     initial_weight_rms = {
         name: _rms(parameters[name].state) for name in CONV3_CONV_WEIGHTS
@@ -1523,6 +1551,7 @@ __all__ = [
     "execute_tk_row",
     "load_shared_assets",
     "measure_t_candidate",
+    "parameters_in_contract_order",
     "perfect_diode_clamped_occupancy",
     "perfect_diode_projected_kkt_residual",
     "prepare_shared_assets",

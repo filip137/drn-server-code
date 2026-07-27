@@ -9,7 +9,9 @@ import torch
 from experiments.mnist_conv.identity import sha256_file, sha256_json
 from experiments.mnist_conv.io import atomic_write_json, read_json
 from experiments.mnist_conv.perfectdiode_tk_runtime import (
+    PerfectDiodeTKRuntimeError,
     compare_k_gradients,
+    parameters_in_contract_order,
     perfect_diode_clamped_occupancy,
     perfect_diode_projected_kkt_residual,
 )
@@ -32,6 +34,38 @@ CONFIG = (
     / "conv"
     / "perfectdiode_conv3_tk_ordinary_mnist_v1.json"
 )
+
+
+class _NamedParameter:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.state = torch.nn.Parameter(torch.tensor([1.0]))
+
+
+def test_native_weights_then_biases_are_reordered_by_explicit_name() -> None:
+    native_names = (
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2",
+    )
+    native = tuple(_NamedParameter(name) for name in native_names)
+    ordered = parameters_in_contract_order(native)
+    assert tuple(parameter.name for parameter in ordered) == (
+        "ConvWeight_0",
+        "Bias_0",
+        "ConvWeight_1",
+        "Bias_1",
+        "ConvWeight_2",
+        "Bias_2",
+        "DenseWeight_0",
+    )
+    duplicate = (*native[:-1], _NamedParameter("Bias_1"))
+    with pytest.raises(PerfectDiodeTKRuntimeError, match="duplicates"):
+        parameters_in_contract_order(duplicate)
 
 
 def test_projected_kkt_residual_has_correct_excitation_and_inhibition_signs() -> None:
