@@ -29,7 +29,7 @@ from training.modifier import ParameterModifier
 NAMED_WEIGHTS_SCHEMA = "drn.named-weights"
 NAMED_WEIGHTS_SCHEMA_VERSION = 1
 EPOCH_BOUNDARY_SCHEMA = "drn.epoch-boundary-resume"
-EPOCH_BOUNDARY_SCHEMA_VERSION = 2
+EPOCH_BOUNDARY_SCHEMA_VERSION = 3
 RESUME_CAPABILITIES = frozenset({"exact", "stateful_nondeterministic"})
 
 
@@ -79,6 +79,7 @@ class EpochBoundaryResume:
     optimizer_restored: bool
     modifier_restored: bool
     scheduler_restored: bool
+    runtime_state_restored: bool
     progress_restored: bool
     rng_restored: bool
     dataloader_generators_restored: tuple[str, ...]
@@ -737,6 +738,7 @@ def save_epoch_boundary_checkpoint(
     optimizer: Optional[Any] = None,
     modifier: Optional[ParameterModifier] = None,
     scheduler: Optional[Any] = None,
+    runtime_state: Optional[Any] = None,
     progress: Optional[Any] = None,
     progress_state: Optional[Mapping[str, Any]] = None,
     selected_weights: Optional[Mapping[str, Any]] = None,
@@ -787,6 +789,11 @@ def save_epoch_boundary_checkpoint(
         if scheduler is not None
         else None
     )
+    runtime_state_state = (
+        _component_state_dict(runtime_state, name="runtime_state")
+        if runtime_state is not None
+        else None
+    )
     if progress is not None:
         normalized_progress = _normalize_metadata(
             _component_state_dict(progress, name="progress"),
@@ -809,6 +816,7 @@ def save_epoch_boundary_checkpoint(
         "optimizer_state": optimizer_state,
         "modifier_state": modifier_state,
         "scheduler_state": scheduler_state,
+        "runtime_state_state": runtime_state_state,
         "progress_state": normalized_progress,
         "selected_weights": normalized_selected_weights,
         "rng_state": capture_rng_state() if include_rng else None,
@@ -821,9 +829,9 @@ def save_epoch_boundary_checkpoint(
 
 def _resume_version(payload: Mapping[str, Any]) -> int:
     version = payload.get("schema_version")
-    if version not in (1, EPOCH_BOUNDARY_SCHEMA_VERSION):
+    if version not in (1, 2, EPOCH_BOUNDARY_SCHEMA_VERSION):
         raise CheckpointError(
-            "Expected resume schema_version to equal 1 or "
+            "Expected resume schema_version to equal 1, 2, or "
             f"{EPOCH_BOUNDARY_SCHEMA_VERSION}. Provided value: {version!r}."
         )
     return version
@@ -880,12 +888,17 @@ def _legacy_resume_fields(
     payload: Mapping[str, Any],
     *,
     version: int,
-) -> tuple[int, Any, Any, Any, str]:
+) -> tuple[int, Any, Any, Any, Any, str]:
     if version == 1:
-        return 0, None, {}, {}, "stateful_nondeterministic"
+        return 0, None, None, {}, {}, "stateful_nondeterministic"
     return (
         payload.get("global_step"),
         payload.get("modifier_state"),
+        (
+            payload.get("runtime_state_state")
+            if version >= 3
+            else None
+        ),
         payload.get("progress_state"),
         payload.get("dataloader_generator_states"),
         payload.get("resume_capability"),
@@ -899,6 +912,7 @@ def load_epoch_boundary_checkpoint(
     optimizer: Optional[Any] = None,
     modifier: Optional[ParameterModifier] = None,
     scheduler: Optional[Any] = None,
+    runtime_state: Optional[Any] = None,
     progress: Optional[Any] = None,
     dataloader_generators: Optional[
         Mapping[str, torch.Generator]
@@ -937,6 +951,7 @@ def load_epoch_boundary_checkpoint(
     (
         global_step,
         modifier_state,
+        runtime_state_state,
         progress_state,
         generator_states,
         resume_capability,
@@ -972,6 +987,7 @@ def load_epoch_boundary_checkpoint(
         ("optimizer", optimizer, optimizer_state),
         ("modifier", modifier, modifier_state),
         ("scheduler", scheduler, scheduler_state),
+        ("runtime_state", runtime_state, runtime_state_state),
     ):
         _validate_saved_component_state(
             saved,
@@ -1022,6 +1038,11 @@ def load_epoch_boundary_checkpoint(
         if scheduler is not None
         else None
     )
+    runtime_state_snapshot = (
+        _component_state_dict(runtime_state, name="runtime_state")
+        if runtime_state is not None
+        else None
+    )
     rng_snapshot = capture_rng_state() if restore_rng else None
     generator_snapshots = (
         _capture_generator_states(generators) if restore_generators else {}
@@ -1035,6 +1056,10 @@ def load_epoch_boundary_checkpoint(
             modifier.load_state_dict(copy.deepcopy(modifier_state))
         if scheduler is not None:
             scheduler.load_state_dict(copy.deepcopy(scheduler_state))
+        if runtime_state is not None:
+            runtime_state.load_state_dict(
+                copy.deepcopy(runtime_state_state)
+            )
         if progress is not None:
             progress.load_state_dict(copy.deepcopy(normalized_progress))
         if normalized_rng is not None:
@@ -1064,6 +1089,12 @@ def load_epoch_boundary_checkpoint(
             progress,
             current_progress,
             name="progress",
+            errors=rollback_errors,
+        )
+        _rollback_component(
+            runtime_state,
+            runtime_state_snapshot,
+            name="runtime_state",
             errors=rollback_errors,
         )
         _rollback_component(
@@ -1104,6 +1135,7 @@ def load_epoch_boundary_checkpoint(
         optimizer_restored=optimizer is not None,
         modifier_restored=modifier is not None,
         scheduler_restored=scheduler is not None,
+        runtime_state_restored=runtime_state is not None,
         progress_restored=progress is not None,
         rng_restored=normalized_rng is not None,
         dataloader_generators_restored=tuple(

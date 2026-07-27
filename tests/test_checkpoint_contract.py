@@ -295,6 +295,10 @@ def test_epoch_boundary_restores_weights_optimizer_scheduler_and_rng(tmp_path):
     saved_weights = [binding.state.detach().clone() for binding in catalog]
     saved_optimizer = copy.deepcopy(optimizer.state_dict())
     saved_scheduler = copy.deepcopy(scheduler.state_dict())
+    runtime_state = _StatefulComponent(
+        torch.tensor([[0.1, 0.2]], dtype=torch.float32)
+    )
+    saved_runtime_state = runtime_state.value.clone()
 
     random.seed(11)
     np.random.seed(12)
@@ -307,6 +311,7 @@ def test_epoch_boundary_restores_weights_optimizer_scheduler_and_rng(tmp_path):
         global_step=37,
         optimizer=optimizer,
         scheduler=scheduler,
+        runtime_state=runtime_state,
         progress_state={
             "checkpoint_selection": {
                 "best_epoch": 3,
@@ -331,6 +336,7 @@ def test_epoch_boundary_restores_weights_optimizer_scheduler_and_rng(tmp_path):
     optimizer.param_groups[0]["lr"] = 9.0
     optimizer.state.clear()
     scheduler.last_epoch = 99
+    runtime_state.value.fill_(9.0)
     random.seed(101)
     np.random.seed(102)
     torch.manual_seed(103)
@@ -340,6 +346,7 @@ def test_epoch_boundary_restores_weights_optimizer_scheduler_and_rng(tmp_path):
         catalog=catalog,
         optimizer=optimizer,
         scheduler=scheduler,
+        runtime_state=runtime_state,
     )
 
     assert result.epoch == 4
@@ -350,6 +357,7 @@ def test_epoch_boundary_restores_weights_optimizer_scheduler_and_rng(tmp_path):
     assert result.optimizer_restored
     assert not result.modifier_restored
     assert result.scheduler_restored
+    assert result.runtime_state_restored
     assert not result.progress_restored
     assert result.rng_restored
     assert result.dataloader_generators_restored == ()
@@ -359,6 +367,7 @@ def test_epoch_boundary_restores_weights_optimizer_scheduler_and_rng(tmp_path):
         "lr"
     ]
     assert scheduler.state_dict() == saved_scheduler
+    torch.testing.assert_close(runtime_state.value, saved_runtime_state)
     assert random.random() == expected_random
     assert float(np.random.rand()) == expected_numpy
     torch.testing.assert_close(torch.rand(3), expected_torch)
@@ -570,6 +579,9 @@ def test_epoch_boundary_rolls_back_every_mutable_component(tmp_path, monkeypatch
     optimizer = _StatefulComponent("saved optimizer")
     modifier = _CountingModifier(updates=4)
     scheduler = _StatefulComponent("saved scheduler")
+    runtime_state = _StatefulComponent(
+        torch.tensor([1.0, 2.0], dtype=torch.float32)
+    )
     generator = torch.Generator().manual_seed(23)
     torch.rand(2, generator=generator)
 
@@ -585,6 +597,7 @@ def test_epoch_boundary_rolls_back_every_mutable_component(tmp_path, monkeypatch
         optimizer=optimizer,
         modifier=modifier,
         scheduler=scheduler,
+        runtime_state=runtime_state,
         progress_state={"early_stop": {"bad_epochs": 2}},
         dataloader_generators={"train": generator},
     )
@@ -596,6 +609,8 @@ def test_epoch_boundary_rolls_back_every_mutable_component(tmp_path, monkeypatch
     optimizer.value = "runtime optimizer"
     modifier.updates = 99
     scheduler.value = "runtime scheduler"
+    runtime_state.value = torch.tensor([8.0, 9.0], dtype=torch.float32)
+    runtime_state_before = runtime_state.value.clone()
     progress = _ProgressComponent({"runtime": "progress"})
     runtime_generator = torch.Generator().manual_seed(71)
     torch.rand(3, generator=runtime_generator)
@@ -630,6 +645,7 @@ def test_epoch_boundary_rolls_back_every_mutable_component(tmp_path, monkeypatch
             optimizer=optimizer,
             modifier=modifier,
             scheduler=scheduler,
+            runtime_state=runtime_state,
             progress=progress,
             dataloader_generators={"train": runtime_generator},
         )
@@ -639,11 +655,43 @@ def test_epoch_boundary_rolls_back_every_mutable_component(tmp_path, monkeypatch
     assert optimizer.value == "runtime optimizer"
     assert modifier.updates == 99
     assert scheduler.value == "runtime scheduler"
+    torch.testing.assert_close(runtime_state.value, runtime_state_before)
     assert progress.state == {"runtime": "progress"}
     torch.testing.assert_close(runtime_generator.get_state(), generator_before)
     assert random.random() == expected_python
     assert float(np.random.rand()) == expected_numpy
     torch.testing.assert_close(torch.rand(3), expected_torch)
+
+
+def test_epoch_boundary_rejects_runtime_state_presence_mismatch_before_restore(
+    tmp_path,
+):
+    catalog, base, adapter = _catalog()
+    path = tmp_path / "resume.pt"
+    save_epoch_boundary_checkpoint(
+        path,
+        catalog=catalog,
+        epoch=1,
+        runtime_state=_StatefulComponent(
+            {"layer.0": torch.tensor([[0.2]], dtype=torch.float32)}
+        ),
+        include_rng=False,
+    )
+
+    base.state.fill_(0.7)
+    adapter.state.fill_(0.8)
+    base_before = base.state.clone()
+    adapter_before = adapter.state.clone()
+
+    with pytest.raises(CheckpointError, match="runtime_state presence"):
+        load_epoch_boundary_checkpoint(
+            path,
+            catalog=catalog,
+            restore_rng=False,
+        )
+
+    torch.testing.assert_close(base.state, base_before)
+    torch.testing.assert_close(adapter.state, adapter_before)
 
 
 def test_epoch_resume_preserves_distinct_latest_and_selected_weights(tmp_path):
