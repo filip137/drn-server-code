@@ -17,6 +17,41 @@ def _target(tmp_path: Path) -> dict:
     }
 
 
+def _complete_result(
+    run_dir: Path,
+    *,
+    artifacts: list[dict] | None = None,
+    **overrides,
+) -> Path:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "ebl.run",
+        "schema_version": 1,
+        "run_id": run_dir.name,
+        "experiment_id": "small_drn.v1",
+        "status": "complete",
+        "finished_at": "2026-07-27T00:00:00+00:00",
+        "duration_seconds": 0.0,
+        "metrics": {},
+        "artifacts": artifacts or [],
+        "error": None,
+        **overrides,
+    }
+    path = run_dir / "result.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _artifact(run_dir: Path, relative: str, *, kind: str) -> dict:
+    path = run_dir / relative
+    return {
+        "path": relative,
+        "sha256": runner.sha256_file(path),
+        "size_bytes": path.stat().st_size,
+        "kind": kind,
+    }
+
+
 def _preflight(_target, *, allow_dirty):
     return {
         "source": {
@@ -118,6 +153,111 @@ def test_dry_run_plans_stage_references_without_launching(
     assert records["train"]["target_source"]["commit"] == "abc123"
 
 
+def test_campaign_records_manifest_provenance_and_resolved_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "train.json").write_text("{}", encoding="utf-8")
+    manifest = {
+        "schema_version": 1,
+        "campaign_id": "provenance",
+        "targets": [_target(tmp_path)],
+        "stages": [
+            {
+                "id": "train",
+                "case_id": "case",
+                "target": "target",
+                "command": "train",
+                "config": "train.json",
+            }
+        ],
+    }
+    manifest_path = tmp_path / "campaign.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    spec = CampaignSpec.parse(manifest, base_dir=tmp_path)
+    monkeypatch.setattr(runner, "_preflight", _preflight)
+
+    runner.run_campaign(
+        spec,
+        output_root=tmp_path / "outputs",
+        manifest_path=manifest_path,
+        dry_run=True,
+    )
+    # An exact rerun is accepted and retains the same immutable contract.
+    runner.run_campaign(
+        spec,
+        output_root=tmp_path / "outputs",
+        manifest_path=manifest_path,
+        dry_run=True,
+        resume=True,
+    )
+
+    resolved_path = (
+        tmp_path
+        / "outputs"
+        / "provenance"
+        / "campaign.resolved.json"
+    )
+    resolved = json.loads(resolved_path.read_text(encoding="utf-8"))
+    contract = runner._resolved_campaign_contract(spec)
+    assert resolved["source_manifest"] == {
+        "path": str(manifest_path.resolve()),
+        "sha256": runner.sha256_file(manifest_path),
+    }
+    assert resolved["resolved_contract_sha256"] == runner.content_hash(contract)
+    assert {
+        key: resolved[key]
+        for key in ("schema_version", "campaign_id", "targets", "stages")
+    } == contract
+
+
+def test_campaign_refuses_changed_contract_for_existing_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "train.json").write_text("{}", encoding="utf-8")
+    manifest = {
+        "schema_version": 1,
+        "campaign_id": "immutable",
+        "targets": [_target(tmp_path)],
+        "stages": [
+            {
+                "id": "train",
+                "case_id": "first",
+                "target": "target",
+                "command": "train",
+                "config": "train.json",
+            }
+        ],
+    }
+    manifest_path = tmp_path / "campaign.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(runner, "_preflight", _preflight)
+    runner.run_campaign(
+        CampaignSpec.parse(manifest, base_dir=tmp_path),
+        output_root=tmp_path / "outputs",
+        manifest_path=manifest_path,
+        dry_run=True,
+    )
+    resolved_path = (
+        tmp_path / "outputs" / "immutable" / "campaign.resolved.json"
+    )
+    original = resolved_path.read_bytes()
+
+    changed = json.loads(json.dumps(manifest))
+    changed["stages"][0]["case_id"] = "changed"
+    manifest_path.write_text(json.dumps(changed), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="identical resolved contract"):
+        runner.run_campaign(
+            CampaignSpec.parse(changed, base_dir=tmp_path),
+            output_root=tmp_path / "outputs",
+            manifest_path=manifest_path,
+            dry_run=True,
+        )
+
+    assert resolved_path.read_bytes() == original
+
+
 def test_failure_skips_dependents_but_not_independent_stages(
     tmp_path: Path,
     monkeypatch,
@@ -170,16 +310,7 @@ def test_failure_skips_dependents_but_not_independent_stages(
                 stderr="intentional failure",
             )
         output_dir = Path(command[command.index("--output-dir") + 1])
-        run_dir = output_dir / "run"
-        run_dir.mkdir(parents=True)
-        (run_dir / "result.json").write_text(
-            json.dumps(
-                {
-                    "status": "complete",
-                    "artifacts": [],
-                }
-            )
-        )
+        _complete_result(output_dir / "run")
         return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
@@ -376,11 +507,7 @@ def test_resume_reuses_only_a_matching_complete_stage(
     def complete(command, **_kwargs):
         launches.append(command)
         output_dir = Path(command[command.index("--output-dir") + 1])
-        run_dir = output_dir / "run"
-        run_dir.mkdir(parents=True)
-        (run_dir / "result.json").write_text(
-            json.dumps({"status": "complete", "artifacts": []})
-        )
+        _complete_result(output_dir / "run")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(runner.subprocess, "run", complete)
@@ -398,6 +525,186 @@ def test_resume_reuses_only_a_matching_complete_stage(
     assert resumed["train"]["status"] == "complete"
     assert resumed["train"]["fingerprint"] == first["train"]["fingerprint"]
     assert len(launches) == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("schema", "other.run", "schema to be 'ebl.run'"),
+        ("schema_version", 2, "schema_version to be 1"),
+        ("status", "failed", "status to be 'complete'"),
+    ],
+)
+def test_child_result_rejects_invalid_protocol_fields(
+    tmp_path: Path,
+    field: str,
+    value,
+    message: str,
+) -> None:
+    output_dir = tmp_path / "runs"
+    _complete_result(output_dir / "run", **{field: value})
+
+    with pytest.raises(RuntimeError, match=message):
+        runner._find_run_result(output_dir)
+
+
+def test_child_result_requires_exact_keys(tmp_path: Path) -> None:
+    output_dir = tmp_path / "runs"
+    result_path = _complete_result(output_dir / "run")
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    payload["unexpected"] = True
+    result_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="keys to be exactly"):
+        runner._find_run_result(output_dir)
+
+
+def test_malformed_child_result_is_recorded_as_failed_stage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "train.json").write_text("{}", encoding="utf-8")
+    spec = CampaignSpec.parse(
+        {
+            "schema_version": 1,
+            "campaign_id": "malformed-child",
+            "targets": [_target(tmp_path)],
+            "stages": [
+                {
+                    "id": "train",
+                    "case_id": "case",
+                    "target": "target",
+                    "command": "train",
+                    "config": "train.json",
+                }
+            ],
+        },
+        base_dir=tmp_path,
+    )
+    monkeypatch.setattr(runner, "_preflight", _preflight)
+
+    def malformed(command, **_kwargs):
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        run_dir = output_dir / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "result.json").write_text(
+            json.dumps({"status": "complete"}),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", malformed)
+    records = runner.run_campaign(
+        spec,
+        output_root=tmp_path / "outputs",
+    )
+
+    assert records["train"]["status"] == "failed"
+    assert records["train"]["run_result"] is None
+    assert records["train"]["error"]["type"] == "RuntimeError"
+    assert "keys to be exactly" in records["train"]["error"]["message"]
+
+
+def test_child_result_rejects_artifact_path_traversal(tmp_path: Path) -> None:
+    output_dir = tmp_path / "runs"
+    run_dir = output_dir / "run"
+    output_dir.mkdir()
+    outside = output_dir / "outside.pt"
+    outside.write_bytes(b"outside")
+    record = {
+        "path": "../outside.pt",
+        "sha256": runner.sha256_file(outside),
+        "size_bytes": outside.stat().st_size,
+        "kind": "weights",
+    }
+    _complete_result(run_dir, artifacts=[record])
+
+    with pytest.raises(RuntimeError, match="normalized relative path"):
+        runner._find_run_result(output_dir)
+
+
+@pytest.mark.parametrize("duplicate", ["path", "kind"])
+def test_child_result_rejects_duplicate_artifacts(
+    tmp_path: Path,
+    duplicate: str,
+) -> None:
+    output_dir = tmp_path / "runs"
+    run_dir = output_dir / "run"
+    (run_dir / "artifacts").mkdir(parents=True)
+    first = run_dir / "artifacts" / "first.bin"
+    second = run_dir / "artifacts" / "second.bin"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    first_record = _artifact(run_dir, "artifacts/first.bin", kind="weights")
+    second_record = _artifact(
+        run_dir,
+        (
+            "artifacts/first.bin"
+            if duplicate == "path"
+            else "artifacts/second.bin"
+        ),
+        kind=("resume" if duplicate == "path" else "weights"),
+    )
+    _complete_result(
+        run_dir,
+        artifacts=[first_record, second_record],
+    )
+
+    with pytest.raises(RuntimeError, match=f"artifact {duplicate}s.*unique"):
+        runner._find_run_result(output_dir)
+
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    [
+        (b"other!!", "content to match sha256"),
+        (b"changed-size", "size to match size_bytes"),
+    ],
+)
+def test_child_result_rejects_tampered_artifact(
+    tmp_path: Path,
+    replacement: bytes,
+    message: str,
+) -> None:
+    output_dir = tmp_path / "runs"
+    run_dir = output_dir / "run"
+    (run_dir / "checkpoints").mkdir(parents=True)
+    weights = run_dir / "checkpoints" / "weights.pt"
+    weights.write_bytes(b"weights")
+    record = _artifact(run_dir, "checkpoints/weights.pt", kind="weights")
+    _complete_result(run_dir, artifacts=[record])
+    weights.write_bytes(replacement)
+
+    with pytest.raises(RuntimeError, match=message):
+        runner._find_run_result(output_dir)
+
+
+def test_upstream_artifact_is_reverified_before_use(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "run"
+    (run_dir / "checkpoints").mkdir(parents=True)
+    weights = run_dir / "checkpoints" / "weights.pt"
+    weights.write_bytes(b"weights")
+    result_path = _complete_result(
+        run_dir,
+        artifacts=[
+            _artifact(run_dir, "checkpoints/weights.pt", kind="weights")
+        ],
+    )
+    runner._validate_run_result(result_path)
+    stage_records = {
+        "train": {
+            "status": "complete",
+            "run_result": str(result_path),
+            "run_result_sha256": runner.sha256_file(result_path),
+        }
+    }
+
+    weights.write_bytes(b"altered")
+    with pytest.raises(RuntimeError, match="content to match sha256"):
+        runner._resolved_input(
+            runner.InputRef(stage="train", artifact_kind="weights"),
+            stage_records=stage_records,
+        )
 
 
 def test_dirty_identity_hashes_untracked_source_contents(

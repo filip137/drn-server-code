@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 from typing import Any, Mapping
 
@@ -19,6 +20,20 @@ from experiments.artifacts import (
 
 
 _SOURCE_SUFFIXES = {".json", ".md", ".py", ".toml", ".yaml", ".yml"}
+_RUN_RESULT_KEYS = {
+    "schema",
+    "schema_version",
+    "run_id",
+    "experiment_id",
+    "status",
+    "finished_at",
+    "duration_seconds",
+    "metrics",
+    "artifacts",
+    "error",
+}
+_ARTIFACT_KEYS = {"path", "sha256", "size_bytes", "kind"}
+_HEX_DIGITS = frozenset("0123456789abcdef")
 
 
 def _git_identity(target: TargetSpec) -> dict[str, Any]:
@@ -73,8 +88,276 @@ def _git_identity(target: TargetSpec) -> dict[str, Any]:
     }
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    duplicates = []
+    for key, item in pairs:
+        if key in value:
+            duplicates.append(key)
+        value[key] = item
+    if duplicates:
+        raise RuntimeError(
+            "Expected every JSON object key to be unique. "
+            f"Provided value: duplicate keys {sorted(set(duplicates))!r}."
+        )
+    return value
+
+
+def _reject_non_standard_constant(value: str) -> Any:
+    raise RuntimeError(
+        "Expected JSON numbers to use strict finite syntax. "
+        f"Provided value: {value!r}."
+    )
+
+
 def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text())
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(
+            "Expected a readable JSON file. "
+            f"Provided value: {str(path)!r}. {exc}"
+        ) from exc
+    try:
+        return json.loads(
+            contents,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_standard_constant,
+        )
+    except RuntimeError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "Expected a valid strict JSON document. "
+            f"Provided value: {str(path)!r} "
+            f"(line {exc.lineno}, column {exc.colno}: {exc.msg})."
+        ) from exc
+
+
+def _exact_keys(
+    value: Mapping[str, Any],
+    *,
+    expected: set[str],
+    name: str,
+) -> None:
+    missing = sorted(expected - set(value))
+    unknown = sorted(set(value) - expected)
+    if missing or unknown:
+        raise RuntimeError(
+            f"Expected {name} keys to be exactly {sorted(expected)!r}. "
+            f"Provided value: missing={missing!r}, unknown={unknown!r}."
+        )
+
+
+def _artifact_identifier(value: Any, *, name: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in {".", ".."}
+        or "/" in value
+        or "\\" in value
+    ):
+        raise RuntimeError(
+            f"Expected {name} to be one non-empty path-safe string. "
+            f"Provided value: {value!r}."
+        )
+    return value
+
+
+def _artifact_path(
+    run_dir: Path,
+    record: Any,
+    *,
+    index: int,
+) -> tuple[Path, str, str]:
+    if not isinstance(record, Mapping):
+        raise RuntimeError(
+            "Expected every stage result artifact to be an object. "
+            f"Provided value: artifacts[{index}]={record!r}."
+        )
+    _exact_keys(
+        record,
+        expected=_ARTIFACT_KEYS,
+        name=f"stage result artifacts[{index}]",
+    )
+
+    raw_path = record["path"]
+    if (
+        not isinstance(raw_path, str)
+        or not raw_path
+        or "\\" in raw_path
+    ):
+        raise RuntimeError(
+            "Expected stage result artifact.path to be a non-empty relative "
+            f"POSIX path. Provided value: {raw_path!r}."
+        )
+    relative = PurePosixPath(raw_path)
+    if (
+        relative.is_absolute()
+        or relative.as_posix() != raw_path
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        raise RuntimeError(
+            "Expected stage result artifact.path to be a normalized relative "
+            f"path confined to its run directory. Provided value: {raw_path!r}."
+        )
+
+    expected_sha = record["sha256"]
+    if (
+        not isinstance(expected_sha, str)
+        or len(expected_sha) != 64
+        or any(character not in _HEX_DIGITS for character in expected_sha)
+    ):
+        raise RuntimeError(
+            "Expected stage result artifact.sha256 to be 64 lowercase "
+            f"hexadecimal characters. Provided value: {expected_sha!r}."
+        )
+    expected_size = record["size_bytes"]
+    if (
+        isinstance(expected_size, bool)
+        or not isinstance(expected_size, int)
+        or expected_size < 0
+    ):
+        raise RuntimeError(
+            "Expected stage result artifact.size_bytes to be a non-negative "
+            f"integer. Provided value: {expected_size!r}."
+        )
+    kind = _artifact_identifier(
+        record["kind"],
+        name="stage result artifact.kind",
+    )
+
+    run_root = run_dir.resolve(strict=True)
+    candidate = run_dir.joinpath(*relative.parts)
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(run_root)
+    except (FileNotFoundError, ValueError) as exc:
+        raise RuntimeError(
+            "Expected stage result artifact.path to name an existing file "
+            "confined to its run directory. "
+            f"Provided value: {raw_path!r}."
+        ) from exc
+    if not resolved.is_file():
+        raise RuntimeError(
+            "Expected stage result artifact.path to name a file. "
+            f"Provided value: {raw_path!r}."
+        )
+
+    actual_size = resolved.stat().st_size
+    if actual_size != expected_size:
+        raise RuntimeError(
+            "Expected stage result artifact size to match size_bytes. "
+            f"Provided value: path={raw_path!r}, expected={expected_size}, "
+            f"actual={actual_size}."
+        )
+    actual_sha = sha256_file(resolved)
+    if actual_sha != expected_sha:
+        raise RuntimeError(
+            "Expected stage result artifact content to match sha256. "
+            f"Provided value: path={raw_path!r}, expected={expected_sha!r}, "
+            f"actual={actual_sha!r}."
+        )
+    return resolved, raw_path, kind
+
+
+def _validate_run_result(path: Path) -> Mapping[str, Any]:
+    result_path = path.resolve(strict=True)
+    result = _read_json(result_path)
+    if not isinstance(result, Mapping):
+        raise RuntimeError(
+            "Expected stage result.json to contain an object. "
+            f"Provided value: {result!r}."
+        )
+    _exact_keys(result, expected=_RUN_RESULT_KEYS, name="stage result.json")
+
+    if result["schema"] != "ebl.run":
+        raise RuntimeError(
+            "Expected stage result schema to be 'ebl.run'. "
+            f"Provided value: {result['schema']!r}."
+        )
+    version = result["schema_version"]
+    if isinstance(version, bool) or version != 1:
+        raise RuntimeError(
+            "Expected stage result schema_version to be 1. "
+            f"Provided value: {version!r}."
+        )
+    if result["status"] != "complete":
+        raise RuntimeError(
+            "Expected stage result status to be 'complete'. "
+            f"Provided value: {result['status']!r}."
+        )
+    run_id = _artifact_identifier(result["run_id"], name="stage result run_id")
+    if run_id != result_path.parent.name:
+        raise RuntimeError(
+            "Expected stage result run_id to match its run directory. "
+            f"Provided value: run_id={run_id!r}, "
+            f"directory={result_path.parent.name!r}."
+        )
+    if (
+        not isinstance(result["experiment_id"], str)
+        or not result["experiment_id"]
+    ):
+        raise RuntimeError(
+            "Expected stage result experiment_id to be a non-empty string. "
+            f"Provided value: {result['experiment_id']!r}."
+        )
+    if not isinstance(result["finished_at"], str) or not result["finished_at"]:
+        raise RuntimeError(
+            "Expected stage result finished_at to be a non-empty string. "
+            f"Provided value: {result['finished_at']!r}."
+        )
+    duration = result["duration_seconds"]
+    if (
+        isinstance(duration, bool)
+        or not isinstance(duration, (int, float))
+        or not math.isfinite(float(duration))
+        or duration < 0
+    ):
+        raise RuntimeError(
+            "Expected stage result duration_seconds to be finite and "
+            f"non-negative. Provided value: {duration!r}."
+        )
+    if not isinstance(result["metrics"], Mapping):
+        raise RuntimeError(
+            "Expected stage result metrics to be an object. "
+            f"Provided value: {result['metrics']!r}."
+        )
+    if result["error"] is not None:
+        raise RuntimeError(
+            "Expected a complete stage result error to be null. "
+            f"Provided value: {result['error']!r}."
+        )
+    artifacts = result["artifacts"]
+    if not isinstance(artifacts, list):
+        raise RuntimeError(
+            "Expected stage result artifacts to be a list. "
+            f"Provided value: {artifacts!r}."
+        )
+
+    seen_paths: set[str] = set()
+    seen_kinds: set[str] = set()
+    seen_files: set[Path] = set()
+    for index, record in enumerate(artifacts):
+        resolved, relative, kind = _artifact_path(
+            result_path.parent,
+            record,
+            index=index,
+        )
+        if relative in seen_paths or resolved in seen_files:
+            raise RuntimeError(
+                "Expected stage result artifact paths to identify unique "
+                f"files. Provided value: duplicate {relative!r}."
+            )
+        if kind in seen_kinds:
+            raise RuntimeError(
+                "Expected stage result artifact kinds to be unique. "
+                f"Provided value: duplicate {kind!r}."
+            )
+        seen_paths.add(relative)
+        seen_kinds.add(kind)
+        seen_files.add(resolved)
+    return result
 
 
 def _preflight(
@@ -287,10 +570,20 @@ def _resolved_input(
     else:
         source = stage_records[input_ref.stage]
         result_path = Path(source["run_result"])
-        result = _read_json(result_path)
+        if (
+            not result_path.is_file()
+            or sha256_file(result_path) != source.get("run_result_sha256")
+        ):
+            raise RuntimeError(
+                "Expected an upstream stage result to retain its recorded "
+                "content hash before resolving an input. "
+                f"Provided value: stage={input_ref.stage!r}, "
+                f"path={str(result_path)!r}."
+            )
+        result = _validate_run_result(result_path)
         matches = [
             artifact
-            for artifact in result.get("artifacts", ())
+            for artifact in result["artifacts"]
             if artifact.get("kind") == input_ref.artifact_kind
         ]
         if len(matches) != 1:
@@ -299,7 +592,11 @@ def _resolved_input(
                 f"Provided value: stage={input_ref.stage!r}, "
                 f"kind={input_ref.artifact_kind!r}, count={len(matches)}."
             )
-        path = result_path.parent / matches[0]["path"]
+        path, _relative, _kind = _artifact_path(
+            result_path.parent,
+            matches[0],
+            index=result["artifacts"].index(matches[0]),
+        )
     if not path.is_file():
         raise ValueError(
             "Expected campaign stage input to be an existing file. "
@@ -370,6 +667,7 @@ def _reusable_record(
             result_path.is_file()
             and sha256_file(result_path) == record.get("run_result_sha256")
         ):
+            _validate_run_result(result_path)
             return record
     return None
 
@@ -382,19 +680,111 @@ def _find_run_result(output_dir: Path) -> Path:
             f"Provided value: directory={str(output_dir)!r}, "
             f"matches={[str(path) for path in matches]!r}."
         )
-    result = _read_json(matches[0])
-    if result.get("status") != "complete":
+    output_root = output_dir.resolve(strict=True)
+    result_path = matches[0].resolve(strict=True)
+    try:
+        result_path.relative_to(output_root)
+    except ValueError as exc:
         raise RuntimeError(
-            "Expected stage result status to be 'complete'. "
-            f"Provided value: {result.get('status')!r}."
-        )
-    return matches[0].resolve()
+            "Expected stage result.json to be confined below its stage output "
+            f"directory. Provided value: {str(result_path)!r}."
+        ) from exc
+    _validate_run_result(result_path)
+    return result_path
+
+
+def _resolved_campaign_contract(spec: CampaignSpec) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "campaign_id": spec.campaign_id,
+        "targets": [
+            {
+                "id": item.target_id,
+                "worktree": str(item.worktree),
+                "python": str(item.python),
+            }
+            for item in spec.targets
+        ],
+        "stages": [
+            {
+                "id": item.stage_id,
+                "case_id": item.case_id,
+                "target": item.target_id,
+                "command": item.command,
+                "config": str(item.config),
+                "depends_on": list(item.depends_on),
+                "inputs": {
+                    key: {
+                        "path": (
+                            str(ref.path) if ref.path is not None else None
+                        ),
+                        "stage": ref.stage,
+                        "artifact_kind": ref.artifact_kind,
+                    }
+                    for key, ref in item.inputs.items()
+                },
+            }
+            for item in spec.stages
+        ],
+    }
+
+
+def _campaign_contract_record(
+    spec: CampaignSpec,
+    *,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    contract = _resolved_campaign_contract(spec)
+    source_manifest = None
+    if manifest_path is not None:
+        source = manifest_path.expanduser().resolve(strict=True)
+        if not source.is_file():
+            raise ValueError(
+                "Expected campaign manifest_path to name a file. "
+                f"Provided value: {str(source)!r}."
+            )
+        source_manifest = {
+            "path": str(source),
+            "sha256": sha256_file(source),
+        }
+    return {
+        **contract,
+        "source_manifest": source_manifest,
+        "resolved_contract_sha256": content_hash(contract),
+    }
+
+
+def _establish_campaign_contract(
+    campaign_root: Path,
+    record: Mapping[str, Any],
+) -> None:
+    path = campaign_root / "campaign.resolved.json"
+    if path.exists():
+        existing = _read_json(path)
+        if existing != record:
+            existing_hash = (
+                existing.get("resolved_contract_sha256")
+                if isinstance(existing, Mapping)
+                else None
+            )
+            raise RuntimeError(
+                "Expected an existing campaign ID to retain an identical "
+                "resolved contract and source manifest. "
+                f"Provided value: campaign_id={record['campaign_id']!r}, "
+                f"existing_resolved_contract_sha256={existing_hash!r}, "
+                "requested_resolved_contract_sha256="
+                f"{record['resolved_contract_sha256']!r}. Use a new campaign "
+                "ID or output root for a changed contract."
+            )
+        return
+    atomic_write_json(path, record)
 
 
 def run_campaign(
     spec: CampaignSpec,
     *,
     output_root: Path,
+    manifest_path: Path | None = None,
     resume: bool = False,
     dry_run: bool = False,
     allow_dirty: bool = False,
@@ -406,48 +796,15 @@ def run_campaign(
     as ``skipped_dependency`` without launching its target process.
     """
 
+    contract_record = _campaign_contract_record(
+        spec,
+        manifest_path=manifest_path,
+    )
     campaign_root = output_root.expanduser().resolve() / spec.campaign_id
     campaign_root.mkdir(parents=True, exist_ok=True)
+    _establish_campaign_contract(campaign_root, contract_record)
     (campaign_root / "stages").mkdir(exist_ok=True)
     (campaign_root / "aggregate").mkdir(exist_ok=True)
-    atomic_write_json(
-        campaign_root / "campaign.resolved.json",
-        {
-            "schema_version": 1,
-            "campaign_id": spec.campaign_id,
-            "targets": [
-                {
-                    "id": item.target_id,
-                    "worktree": str(item.worktree),
-                    "python": str(item.python),
-                }
-                for item in spec.targets
-            ],
-            "stages": [
-                {
-                    "id": item.stage_id,
-                    "case_id": item.case_id,
-                    "target": item.target_id,
-                    "command": item.command,
-                    "config": str(item.config),
-                    "depends_on": list(item.depends_on),
-                    "inputs": {
-                        key: {
-                            "path": (
-                                str(ref.path)
-                                if ref.path is not None
-                                else None
-                            ),
-                            "stage": ref.stage,
-                            "artifact_kind": ref.artifact_kind,
-                        }
-                        for key, ref in item.inputs.items()
-                    },
-                }
-                for item in spec.stages
-            ],
-        },
-    )
 
     targets = {item.target_id: item for item in spec.targets}
     target_info = {
@@ -585,6 +942,7 @@ def run_campaign(
             completed.stderr,
             encoding="utf-8",
         )
+        run_result: Path | None = None
         if completed.returncode == 0:
             try:
                 run_result = _find_run_result(output_dir)
