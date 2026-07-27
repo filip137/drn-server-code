@@ -1,10 +1,12 @@
 # Perfect-Diode Conv1/Conv2 Ordinary-MNIST Learning Protocol
 
-Updated: 2026-07-26
+Updated: 2026-07-27
 
-Status: protocol and implementation frozen and tested; measurements pending.
-The gains and Conv1/Conv2 `T/K` values below are user-fixed diagnostic choices,
-not calibration measurements.
+Status: protocol and implementation frozen and tested. Fixed-`T/K` security
+checks, probes, canaries, and promoted core candidates are measured. Selector
+publication, rho extensions, final selections, and long confirmations remain
+incomplete. The gains and Conv1/Conv2 `T/K` values below are user-fixed
+diagnostic choices, not calibration measurements.
 
 ## Scope
 
@@ -217,6 +219,62 @@ restarted canary. No passing core candidate means no automatic expansion.
 After that one wave, no passing candidate or a plateau still confined to an
 outer edge leaves the surface unresolved. There is no second expansion,
 cross-scheme transfer, optimizer transfer, or fallback LR.
+
+## Executed core screen and conclusion
+
+The seed-0 core execution used source commit
+`093d3bc325a5ecb92262639798408a845d9767f1` and the immutable study identity
+above. All six fixed-`T/K` security rows passed their comparison with
+`(T=64,K=64)`. Both hosts completed assets, optimizer probes, all core
+canaries, and 53 promoted candidate entries each. Across the two
+architectures, 104 candidates were safety-admissible and 101 reached the
+inclusive 90% accuracy gate.
+
+The selector then stopped during `select_core` because a structured
+projection-efficiency failure was passed to an interface that required a
+string. Before stopping, it published only the Conv1 baseline-SGD and Conv2
+baseline-SGD `needs_expansion` entries. Candidate measurements remain intact.
+The table below applies the intended selector read-only to all twelve
+surfaces: those two entries reproduce their published values, while the other
+ten are reconstructions. Every rho pair remains a diagnostic core winner
+rather than a frozen handoff.
+
+| Architecture | Scheme | Optimizer | Passing / trained | Diagnostic core rho `(conv,dense)` | Final validation loss / accuracy | Core decision |
+|---|---|---|---:|---:|---:|---|
+| Conv1 | baseline | SGD | `9/9` | `(0.009,0.03)` | `0.10242748 / 95.44%` | expand Dense upward |
+| Conv1 | baseline | Adam | `8/9` | `(0.009,0.03)` | `0.09903789 / 95.96%` | expand Dense upward |
+| Conv1 | proposed/ours | SGD | `9/9` | `(0.009,0.03)` | `0.09703515 / 95.94%` | expand Dense upward |
+| Conv1 | proposed/ours | Adam | `9/9` | `(0.009,0.03)` | `0.09543736 / 96.02%` | expand Conv upward |
+| Conv1 | legacy | SGD | `5/8` | `(0.003,0.03)` | `0.12925158 / 94.46%` | expand Dense upward |
+| Conv1 | legacy | Adam | `9/9` | `(0.003,0.01)` | `0.09618260 / 96.18%` | core bracketed |
+| Conv2 | baseline | SGD | `9/9` | `(0.009,0.03)` | `0.08552010 / 95.70%` | expand both upward |
+| Conv2 | baseline | Adam | `8/9` | `(0.009,0.03)` | `0.08505717 / 95.90%` | expand both upward |
+| Conv2 | proposed/ours | SGD | `9/9` | `(0.009,0.03)` | `0.06503381 / 97.18%` | expand both upward |
+| Conv2 | proposed/ours | Adam | `9/9` | `(0.009,0.03)` | `0.06219476 / 97.18%` | expand both upward |
+| Conv2 | legacy | SGD | `8/8` | `(0.003,0.03)` | `0.07388557 / 96.78%` | expand both upward |
+| Conv2 | legacy | Adam | `9/9` | `(0.009,0.01)` | `0.05470467 / 97.78%` | expand Conv upward |
+
+The core accuracies are generally strong: every diagnostic winner is above
+94%, and the requested five-row Conv2 continuation lies between 95.70% and
+97.18% after only three epochs. Eleven of the twelve surfaces nevertheless
+have a passing 2% loss plateau confined to an upper search edge. The useful
+rho region is therefore not bracketed. The evidence supports testing larger
+rho targets, but does not yet establish that the largest safe rho is optimal.
+
+The requested next diagnostic scope is deliberately limited to Conv2
+baseline and ours under both optimizers plus legacy SGD. Every one of those
+five surfaces adds `rho_conv=0.027` and `rho_dense=0.09`, producing seven new
+Cartesian cells per surface while reusing the nine core cells by hash. Conv2
+legacy Adam and all Conv1 extensions are outside this requested next batch.
+No extension, final selection, or long-confirmation run has been launched.
+
+The full-precision reconstructed table is
+[`conv_perfectdiode_lr_core_screen_20260727.csv`](conv_perfectdiode_lr_core_screen_20260727.csv).
+Its SHA-256 is
+`cd8228bcc1096b733ef7c729622fc5e9f53911489767822a9ca6fb84012da870`.
+These measurements remain ordinary-MNIST optimization diagnostics. They do
+not resolve deterministic-medium-affine perfect-diode gain calibration,
+operational `T/K`, optimizer choice, learning rates, or final paper training.
 
 ## Stages, resume, and output
 

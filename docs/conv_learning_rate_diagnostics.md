@@ -1,6 +1,6 @@
 # Conv Learning-Rate Diagnostic Ledger
 
-Updated: 2026-07-26
+Updated: 2026-07-27
 
 Status: diagnostic curation only. None of the studies in this file replaces
 the deterministic-medium-affine Conv1/Conv2 v1/v3 handoff, resolves the
@@ -29,7 +29,7 @@ scheduler-accounting, or wrapper-debug narration.
   remain tracked even after a diagnostic is retired. Obsolete job narration
   and duplicate artifacts do not.
 
-## Planned ordinary-MNIST learning protocols
+## Ordinary-MNIST learning protocols
 
 The design is separated by nonlinearity:
 
@@ -54,9 +54,44 @@ The canonical Conv1/Conv2 config is
 [`perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json`](../configs/conv/perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json),
 with study identity
 `lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46`.
-No measurements exist yet. These values do not replace the pending
-medium-affine paper calibration or handoff. Perfect-diode Conv3 is outside
-this v1 execution pipeline and remains unresolved.
+
+### Perfect-diode v1 core execution — incomplete boundary study
+
+The fixed-`T/K` security checks, probes, core canaries, and promoted
+three-epoch candidates completed. The diagnostic winners were generally
+strong, but the tested rho range was not sufficient to bracket eleven of the
+twelve surfaces. The five Conv2 surfaces requested for the next continuation
+are:
+
+| Scheme | Optimizer | Passing / trained | Provisional core winner `(rho_conv,rho_dense)` | Final validation accuracy | Core decision |
+|---|---|---:|---:|---:|---|
+| baseline | SGD | `9/9` | `(0.009,0.03)` | `95.70%` | expand both |
+| baseline | Adam | `8/9` | `(0.009,0.03)` | `95.90%` | expand both |
+| proposed/ours | SGD | `9/9` | `(0.009,0.03)` | `97.18%` | expand both |
+| proposed/ours | Adam | `9/9` | `(0.009,0.03)` | `97.18%` | expand both |
+| legacy | SGD | `8/8` | `(0.003,0.03)` | `96.78%` | expand both |
+
+The complete passing plateaus, rather than only the displayed winner cells,
+implicate both upper edges. The prescribed one-wave continuation adds
+`rho_conv=0.027` and `rho_dense=0.09`; each surface adds seven new Cartesian
+cells, including the corner, and reuses all existing cells by hash. These
+results suggest testing larger rho targets, not that a final optimum has
+already been found.
+
+Candidate measurements are intact, but `select_core` publication stopped on
+a structured safety-failure/schema mismatch. Only the Conv1 baseline-SGD and
+Conv2 baseline-SGD `needs_expansion` entries were published before the
+failure. The table applies the intended selector read-only to all surfaces;
+the other ten rows are reconstructions. None is a frozen LR handoff. No
+extension, `select_final`, or long confirmation has completed or been
+launched. The full twelve-surface, full-precision table is
+[`conv_perfectdiode_lr_core_screen_20260727.csv`](conv_perfectdiode_lr_core_screen_20260727.csv);
+the protocol-level interpretation is in
+[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md).
+
+These values do not replace the pending medium-affine paper calibration or
+handoff. Perfect-diode Conv3 is outside this v1 execution pipeline and remains
+unresolved.
 
 ## V4 Medium-Affine Layer-Wise Diagnostic — `retired_incomplete`
 

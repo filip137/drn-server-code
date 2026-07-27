@@ -1,0 +1,13 @@
+architecture,scheme,optimizer,trained_candidates,admissible_candidates,accuracy_gate_passes,diagnostic_rho_conv,diagnostic_rho_dense,final_validation_loss,final_validation_accuracy,reconstructed_core_selector_status,select_core_published,expansion_rho_conv,expansion_rho_dense,planned_next_scope,handoff_status,official_test_read
+conv1,baseline,sgd,9,9,9,0.009,0.03,0.10242747534513473,0.9544,needs_expansion,true,,0.09,false,not_frozen,false
+conv1,baseline,adam,9,8,8,0.009,0.03,0.09903789498806,0.9596,needs_expansion,false,,0.09,false,not_frozen,false
+conv1,ours,sgd,9,9,9,0.009,0.03,0.09703514560461045,0.9594,needs_expansion,false,,0.09,false,not_frozen,false
+conv1,ours,adam,9,9,9,0.009,0.03,0.09543735681772232,0.9602,needs_expansion,false,0.027,,false,not_frozen,false
+conv1,legacy,sgd,8,8,5,0.003,0.03,0.12925158367156983,0.9446,needs_expansion,false,,0.09,false,not_frozen,false
+conv1,legacy,adam,9,9,9,0.003,0.01,0.09618259881734847,0.9618,selected,false,,,false,not_frozen,false
+conv2,baseline,sgd,9,9,9,0.009,0.03,0.08552010254859925,0.957,needs_expansion,true,0.027,0.09,true,not_frozen,false
+conv2,baseline,adam,9,8,8,0.009,0.03,0.08505717210769653,0.959,needs_expansion,false,0.027,0.09,true,not_frozen,false
+conv2,ours,sgd,9,9,9,0.009,0.03,0.06503381167054176,0.9718,needs_expansion,false,0.027,0.09,true,not_frozen,false
+conv2,ours,adam,9,9,9,0.009,0.03,0.06219475623369217,0.9718,needs_expansion,false,0.027,0.09,true,not_frozen,false
+conv2,legacy,sgd,8,8,8,0.003,0.03,0.07388557366132736,0.9678,needs_expansion,false,0.027,0.09,true,not_frozen,false
+conv2,legacy,adam,9,9,9,0.009,0.01,0.05470466657280922,0.9778,needs_expansion,false,0.027,,false,not_frozen,false

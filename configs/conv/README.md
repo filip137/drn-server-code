@@ -29,13 +29,15 @@ They do not replace the active medium-affine handoff.
 
 | Config | Schema / role | Disposition |
 |---|---|---|
-| [`perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json`](perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json) | `mnist-conv-perfectdiode-hparam-study/v1`; Conv1/Conv2, three schemes, SGD/Adam, adaptive two-rho screen | protocol frozen; measurements pending |
+| [`perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json`](perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json) | `mnist-conv-perfectdiode-hparam-study/v1`; Conv1/Conv2, three schemes, SGD/Adam, adaptive two-rho screen | core candidates executed; selector, expansion, and finalization incomplete |
 
 Its immutable study identity is
 `lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46`.
 The user-fixed gains and `T/K`, security check, rho search, and conditional
 long confirmations are defined in
 [`docs/perfectdiode_learning_protocol.md`](../../docs/perfectdiode_learning_protocol.md).
+Core results are curated in
+[`docs/conv_learning_rate_diagnostics.md`](../../docs/conv_learning_rate_diagnostics.md).
 This config is an ordinary-MNIST diagnostic and does not resolve any
 medium-affine perfect-diode paper handoff.
 

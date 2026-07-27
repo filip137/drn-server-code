@@ -106,7 +106,7 @@ deterministic-medium-affine paper results. The newer ordinary-MNIST
 SGD-and-Adam protocol still has measurements pending; using the v5 selection
 there would have to be an explicit reuse rather than a new selection.
 
-## Perfect-diode Conv1/Conv2 operating points
+## Perfect-diode Conv1/Conv2 operating points and core status
 
 The current ordinary-MNIST perfect-diode protocol uses user-fixed diagnostic
 operating points shared across the three amplification schemes:
@@ -116,10 +116,23 @@ operating points shared across the three amplification schemes:
 | Conv1 | `40` | `4/4` |
 | Conv2 | `100` | `6/6` |
 
-These values are fixed inputs, not calibration measurements. Before its LR
-search, every scheme must pass the fixed-`T/K` gradient security comparison
-against the `(T=64,K=64)` reference: Conv1 compares `(4,4)` and Conv2 compares
-`(6,6)`. Perfect-diode learning rates are not yet selected.
+These values are fixed inputs, not calibration measurements. Every scheme
+passed the fixed-`T/K` gradient security comparison against the
+`(T=64,K=64)` reference: Conv1 compared `(4,4)` and Conv2 compared `(6,6)`.
+
+The three-epoch core candidates produced generally strong ordinary-MNIST
+validation accuracy. For the five Conv2 surfaces requested for continuation,
+the provisional core winners reached `95.70%--97.18%`. Their complete 2% loss
+plateaus implicated both upper rho edges, so the useful region is not yet
+bracketed. The next diagnostic wave is to add `rho_conv=0.027` and
+`rho_dense=0.09` for baseline and ours under SGD and Adam, plus legacy SGD.
+No extension run has been launched.
+
+The selector publication failed after the core measurements, so these remain
+provisional diagnostics rather than selected learning rates. Full results and
+failure provenance are in
+[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md) and
+[`conv_perfectdiode_lr_core_screen_20260727.csv`](conv_perfectdiode_lr_core_screen_20260727.csv).
 
 ## Learning-rate status
 
@@ -128,7 +141,7 @@ against the `(T=64,K=64)` reference: Conv1 compares `(4,4)` and Conv2 compares
 | Conv1/Conv2 hard sigmoid, deterministic medium affine | six row-specific peak LRs locked for the reviewed SGD schedule | no locked Adam handoff |
 | Conv1/Conv2 hard sigmoid, ordinary-MNIST v5 diagnostic | selected: Conv1 historical profile / `1e-3`; Conv2 strict equal / `3e-3` | not studied |
 | Conv1/Conv2 hard sigmoid, current ordinary-MNIST protocol | new optimizer-specific selection pending; v5 reuse must be explicit | pending optimizer-specific LR selection |
-| Conv1/Conv2 perfect diode, ordinary MNIST | pending optimizer-specific LR selection | pending optimizer-specific LR selection |
+| Conv1/Conv2 perfect diode, ordinary MNIST | core measured; upward expansion and final selection pending | core measured; upward expansion and final selection pending |
 
 The former v1-v7 studies and the Conv2 SGD/Adam boundary study remain useful
 diagnostic evidence in
@@ -140,8 +153,8 @@ they do not change this status table.
 | Decision | Status |
 |---|---|
 | Perfect-diode Conv1/Conv2 gains and `T/K` | fixed diagnostic inputs: Conv1 `40`, `4/4`; Conv2 `100`, `6/6` |
-| Perfect-diode Conv1/Conv2 SGD learning rates | pending |
-| Perfect-diode Conv1/Conv2 Adam learning rates | pending |
+| Perfect-diode Conv1/Conv2 SGD learning rates | core measured; no frozen handoff |
+| Perfect-diode Conv1/Conv2 Adam learning rates | core measured; no frozen handoff |
 | Hard-sigmoid Adam learning rates | pending |
 | Conv1 result budget | fixed at 10 epochs |
 | Conv2 result budget | fixed at 30 epochs |
@@ -155,7 +168,12 @@ they do not change this status table.
 ## Next actions
 
 1. Complete the missing optimizer-specific LR handoffs:
-   - select perfect-diode Conv1/Conv2 LRs separately for plain SGD and Adam;
+   - run the one-wave Conv2 perfect-diode expansion at
+     `rho_conv=0.027` and `rho_dense=0.09` for baseline/ours under SGD
+     and Adam plus legacy SGD, then perform final selection;
+   - resolve the remaining perfect-diode surfaces separately; the current
+     five-surface continuation is intentionally narrower than the full
+     Conv1/Conv2 protocol;
    - select hard-sigmoid Adam LRs, because the frozen SGD rates cannot be
      transferred to Adam.
 2. Run the unrestricted-weight result grid with both optimizers:
