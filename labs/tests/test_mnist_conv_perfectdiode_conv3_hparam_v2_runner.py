@@ -14,7 +14,7 @@ RUNNER = (
 T8K8_RUNNER = (
     REPO_ROOT
     / "experiments"
-    / "run_mnist_conv_perfectdiode_conv3_hparam_t8k8_local_20260727_v2.sh"
+    / "run_mnist_conv_perfectdiode_conv3_hparam_t8k8_local_20260727_v3.sh"
 )
 
 
@@ -120,20 +120,20 @@ def test_t8k8_runner_has_strict_versioned_shell_contract() -> None:
     assert text.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
     subprocess.run(["bash", "-n", str(T8K8_RUNNER)], check=True)
     assert (
-        "results/perfectdiode_conv3_lr_t8k8_20260727_v3"
+        "results/perfectdiode_conv3_lr_t8k8_20260727_v4"
         in text
     )
     assert (
         "lrstudy_294f233afd76a4075482d5e6d43c36f74739e63b88ecdf5cc8b6e3091fa323f6"
         in text
     )
-    assert "/tmp/pd_conv3_lr_t8k8_20260727_source" in text
+    assert "/tmp/pd_conv3_lr_t8k8_20260727_source_v4" in text
     assert (
-        "/home/filiposana/staged/pd_conv3_lr_t8k8_20260727_source"
+        "/home/filiposana/staged/pd_conv3_lr_t8k8_20260727_source_v4"
         in text
     )
     assert (
-        "perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v3.md"
+        "perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v4.md"
         in text
     )
 
@@ -235,7 +235,7 @@ def test_t8k8_dispatch_gates_first_side_effect_on_exact_tracker_entry() -> None:
     assert "--require-experiment-id \"${experiment_id}\"" in tracker_gate
     assert "--require-launch-ready" in tracker_gate
     assert (
-        "experiment_id=perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v3"
+        "experiment_id=perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v4"
         in text
     )
     for required in (
