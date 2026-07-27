@@ -1,276 +1,247 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
 
 import torch
 
-from labs.small_network_core import _build_energy_stack
-from model.function.cost import SquaredError
-from model.function.network import Network
-from model.resistive.builders import ModelBundle, build_deep_resistive_energy
+from experiments.small_network.components import build_model_stack, seed_runtime
+from experiments.small_network.config import parse_small_drn_config
 from model.resistive.minimizer import QuadraticMinimizer
 from training.monitor import Optimizer
 from training.sgd import AugmentedFunction, EquilibriumProp
 from training.tiki_taka import build_optimizer
 
 
-_SEED = 20260727
-_DEVICE = torch.device("cpu")
-_QUADRATIC_DIODE = {
-    "diode_conductance": 10.0,
-    "v_min": -1.0,
-    "v_max": 1.0,
-}
-_EXPONENTIAL_DIODE = {
-    "I_s": 1e-6,
-    "V_t": 0.05,
-    "V_off": 0.5,
-}
-_HARD_SIGMOID = {
-    "g_on": 10.0,
-    "g_off": 10.0,
-    "v_min": -1.0,
-    "v_max": 1.0,
-}
-_INPUTS = torch.tensor(
-    [[0.25, -0.75], [-0.4, 0.6]],
-    dtype=torch.float32,
+_ROOT = Path(__file__).parents[1]
+_ORACLE_PATH = (
+    Path(__file__).parent
+    / "fixtures"
+    / "small_network_legacy_oracle.json"
 )
-_LABELS = torch.tensor([0, 1], dtype=torch.long)
 
 
-@dataclass
-class _Composition:
-    energy: object
-    network: Network
-    free_layers: list
-    cost: SquaredError
-    output_layer: object
-    bundle: ModelBundle | None = None
+def _load_oracle() -> dict[str, Any]:
+    return json.loads(_ORACLE_PATH.read_text(encoding="utf-8"))
 
 
-def _build_compositions() -> tuple[_Composition, _Composition]:
-    legacy_kwargs = {
-        "device": _DEVICE,
-        "input_dim": 2,
-        "hidden_dims": (4,),
-        "output_dim": 2,
-        "non_linearity": "perfect_diode",
-        "voltage_amp": 1.0,
-        "current_amp": 1.0,
-        "quadratic_diode_param": _QUADRATIC_DIODE,
-        "exponential_diode_param": _EXPONENTIAL_DIODE,
-        "hard_sigmoid_param": _HARD_SIGMOID,
-        "input_gain": 1.0,
-        "weights_path": None,
-        "weight_gains": (0.2, 0.15),
-        "weight_min": 1e-5,
-        "weight_max": 1.0,
-        "dataset_name": "moons",
+def _build_stack(oracle: dict[str, Any]):
+    scenario = oracle["scenario"]
+    payload = json.loads(
+        (_ROOT / "examples" / "small_drn" / "base.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload["runtime"] = {
+        "seed": oracle["provenance"]["seed"],
+        "data_seed": oracle["provenance"]["seed"],
+        "device": oracle["provenance"]["device"],
+        "dtype": oracle["provenance"]["dtype"],
     }
+    payload["data"] = {
+        "dataset": scenario["dataset"],
+        "batch_size": len(scenario["inputs"]),
+        "num_points": len(scenario["inputs"]),
+        "shuffle": False,
+    }
+    payload["model"] = {
+        "dims": [
+            2 * scenario["logical_input_dim"],
+            *scenario["hidden_dims"],
+            scenario["output_dim"],
+        ],
+        "input_gain": scenario["input_gain"],
+        "weight_gains": scenario["weight_gains"],
+        "weight_min": scenario["weight_min"],
+        "weight_max": scenario["weight_max"],
+        "voltage_amp": scenario["voltage_amp"],
+        "current_amp": scenario["current_amp"],
+        "non_linearity": {
+            "type": scenario["non_linearity"],
+            "quadratic_diode_param": scenario["quadratic_diode_param"],
+            "exponential_diode_param": scenario["exponential_diode_param"],
+            "hard_sigmoid_param": scenario["hard_sigmoid_param"],
+            "iv_data_path": None,
+        },
+        "adapter": {"type": "none", "parameters": {}},
+    }
+    document = parse_small_drn_config(payload)
+    seed_runtime(oracle["provenance"]["seed"])
+    return build_model_stack(document.common)
 
-    torch.manual_seed(_SEED)
-    (
-        legacy_energy,
-        legacy_network,
-        legacy_free_layers,
-        legacy_cost,
-        legacy_output,
-        layer_shapes,
-        _input_gain,
-        _quadratic_params,
-        _exponential_params,
-        _hard_sigmoid_params,
-    ) = _build_energy_stack(**legacy_kwargs)
 
-    torch.manual_seed(_SEED)
-    bundle = build_deep_resistive_energy(
-        layer_shapes=layer_shapes,
-        weight_gains=list(legacy_kwargs["weight_gains"]),
-        input_gain=legacy_kwargs["input_gain"],
-        non_linearity=legacy_kwargs["non_linearity"],
-        exponential_diode_param=_EXPONENTIAL_DIODE,
-        quadratic_diode_param=_QUADRATIC_DIODE,
-        hard_sigmoid_param=_HARD_SIGMOID,
-        voltage_amp=legacy_kwargs["voltage_amp"],
-        current_amp=legacy_kwargs["current_amp"],
-        weight_min=legacy_kwargs["weight_min"],
-        weight_max=legacy_kwargs["weight_max"],
-    )
-    current_energy = bundle.energy
-    current_energy.set_device(_DEVICE)
-    current_network = Network(current_energy)
-    current_free_layers = current_network.free_layers()
-    current_output = current_energy.layers()[-1]
-    current_cost = SquaredError(current_output)
-
-    return (
-        _Composition(
-            energy=legacy_energy,
-            network=legacy_network,
-            free_layers=legacy_free_layers,
-            cost=legacy_cost,
-            output_layer=legacy_output,
-        ),
-        _Composition(
-            energy=current_energy,
-            network=current_network,
-            free_layers=current_free_layers,
-            cost=current_cost,
-            output_layer=current_output,
-            bundle=bundle,
-        ),
+def _inputs(oracle: dict[str, Any], stack) -> torch.Tensor:
+    return torch.tensor(
+        oracle["scenario"]["inputs"],
+        dtype=stack.dtype,
+        device=stack.device,
     )
 
 
-def _minimizer(function, free_layers):
+def _labels(oracle: dict[str, Any], stack) -> torch.Tensor:
+    return torch.tensor(
+        oracle["scenario"]["labels"],
+        dtype=torch.long,
+        device=stack.device,
+    )
+
+
+def _minimizer(oracle: dict[str, Any], function, free_layers):
+    scenario = oracle["scenario"]
+    settings = scenario["minimizer"]
     return QuadraticMinimizer(
         fn=function,
-        free_layers=free_layers,
-        num_iterations=5,
-        mode="asynchronous",
-        non_linearity="perfect_diode",
-        quadratic_diode_param=_QUADRATIC_DIODE,
-        exponential_diode_param=_EXPONENTIAL_DIODE,
-        hard_sigmoid_param=_HARD_SIGMOID,
-        voltage_amp=1.0,
-        current_amp=1.0,
+        free_layers=list(free_layers),
+        num_iterations=settings["num_iterations"],
+        mode=settings["mode"],
+        non_linearity=scenario["non_linearity"],
+        quadratic_diode_param=scenario["quadratic_diode_param"],
+        exponential_diode_param=scenario["exponential_diode_param"],
+        hard_sigmoid_param=scenario["hard_sigmoid_param"],
+        voltage_amp=scenario["voltage_amp"],
+        current_amp=scenario["current_amp"],
     )
 
 
-def _settle_free_phase(composition):
-    composition.network.set_input(_INPUTS, reset=True)
+def _settle_free_phase(oracle: dict[str, Any], stack) -> None:
+    stack.network.set_input(_inputs(oracle, stack), reset=True)
     _minimizer(
-        composition.energy,
-        composition.free_layers,
+        oracle,
+        stack.bundle.energy,
+        stack.free_layers,
     ).compute_equilibrium()
 
 
-def _assert_tensors_identical(actual, expected):
-    assert actual.dtype == expected.dtype
-    assert actual.device == expected.device
-    torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
-
-
-def test_builder_matches_legacy_parameters_catalog_and_free_equilibrium():
-    legacy, current = _build_compositions()
-
-    legacy_parameters = tuple(legacy.energy._all_params)
-    current_parameters = tuple(current.energy._all_params)
-    assert current.bundle is not None
-    assert current.bundle.parameters.all_parameters == current_parameters
-    assert current.bundle.parameters.trainable_parameters == tuple(
-        current.energy.params()
+def _assert_tensor_record(
+    actual: torch.Tensor,
+    expected: dict[str, Any],
+    oracle: dict[str, Any],
+) -> None:
+    dtype = getattr(torch, expected["dtype"])
+    assert actual.dtype == dtype
+    assert list(actual.shape) == expected["shape"]
+    expected_tensor = torch.tensor(
+        expected["values"],
+        dtype=dtype,
+        device=actual.device,
     )
-    assert [binding.key for binding in current.bundle.parameters.all] == [
-        "base.dense_weight.0",
-        "base.dense_weight.1",
-        "base.bias.0",
-    ]
-    assert [type(parameter) for parameter in current_parameters] == [
-        type(parameter) for parameter in legacy_parameters
-    ]
-    for current_parameter, legacy_parameter in zip(
-        current_parameters,
-        legacy_parameters,
-    ):
-        _assert_tensors_identical(
-            current_parameter.state,
-            legacy_parameter.state,
-        )
-
-    _settle_free_phase(legacy)
-    _settle_free_phase(current)
-
-    for current_layer, legacy_layer in zip(
-        current.energy.layers(),
-        legacy.energy.layers(),
-    ):
-        _assert_tensors_identical(current_layer.state, legacy_layer.state)
-    _assert_tensors_identical(
-        current.output_layer.state,
-        legacy.output_layer.state,
-    )
-    assert float(current.output_layer.state.abs().sum()) > 0.0
-
-
-def test_centered_ep_and_configured_direct_update_match_legacy_path():
-    legacy, current = _build_compositions()
-    _settle_free_phase(legacy)
-    _settle_free_phase(current)
-    legacy.cost.set_target(_LABELS)
-    current.cost.set_target(_LABELS)
-
-    legacy_augmented = AugmentedFunction(legacy.energy, legacy.cost)
-    current_augmented = AugmentedFunction(current.energy, current.cost)
-    legacy_estimator = EquilibriumProp(
-        legacy.energy.params(),
-        legacy.free_layers,
-        legacy_augmented,
-        legacy.cost,
-        _minimizer(legacy_augmented, legacy.free_layers),
-        variant="centered",
-        nudging=0.1,
-    )
-    current_estimator = EquilibriumProp(
-        current.energy.params(),
-        current.free_layers,
-        current_augmented,
-        current.cost,
-        _minimizer(current_augmented, current.free_layers),
-        variant="centered",
-        nudging=0.1,
+    comparison = oracle["provenance"]["comparison"]
+    torch.testing.assert_close(
+        actual,
+        expected_tensor,
+        rtol=comparison["rtol"],
+        atol=comparison["atol"],
     )
 
-    legacy_gradients = legacy_estimator.compute_gradient()
-    current_gradients = current_estimator.compute_gradient()
-    assert len(current_gradients) == len(legacy_gradients)
-    assert any(float(gradient.abs().sum()) > 0.0 for gradient in current_gradients)
-    for current_gradient, legacy_gradient in zip(
-        current_gradients,
-        legacy_gradients,
-    ):
-        _assert_tensors_identical(current_gradient, legacy_gradient)
 
-    for parameter, gradient in zip(
-        legacy.energy.params(),
-        legacy_gradients,
+def _centered_ep_gradients(oracle: dict[str, Any], stack):
+    _settle_free_phase(oracle, stack)
+    stack.cost_fn.set_target(_labels(oracle, stack))
+    augmented = AugmentedFunction(stack.bundle.energy, stack.cost_fn)
+    estimator = EquilibriumProp(
+        stack.bundle.energy.params(),
+        list(stack.free_layers),
+        augmented,
+        stack.cost_fn,
+        _minimizer(oracle, augmented, stack.free_layers),
+        variant=oracle["scenario"]["estimator"]["variant"],
+        nudging=oracle["scenario"]["estimator"]["nudging"],
+    )
+    return estimator.compute_gradient()
+
+
+def test_frozen_oracle_identifies_the_legacy_source() -> None:
+    oracle = _load_oracle()
+
+    assert oracle["oracle_schema_version"] == 1
+    assert oracle["provenance"]["implementation"] == (
+        "labs.small_network_core._build_energy_stack"
+    )
+    assert oracle["provenance"]["legacy_source_commit"] == (
+        "d640f61a4320bdda1d5a7a52bd4601ee1bd2df78"
+    )
+    assert oracle["provenance"]["seed"] == 20260727
+
+
+def test_composed_model_initialization_matches_frozen_legacy_oracle() -> None:
+    oracle = _load_oracle()
+    stack = _build_stack(oracle)
+    expected = oracle["expected"]
+    bindings = stack.bundle.catalog.all
+
+    assert [list(layer.shape) for layer in stack.bundle.energy.layers()] == (
+        expected["layer_shapes"]
+    )
+    assert [binding.key for binding in bindings] == expected["parameter_keys"]
+    assert stack.bundle.catalog.all_parameters == tuple(
+        stack.bundle.energy._all_params
+    )
+    assert stack.bundle.catalog.trainable_parameters == tuple(
+        stack.bundle.energy.params()
+    )
+    assert len(bindings) == len(expected["initial_parameters"])
+    for binding, record in zip(
+        bindings,
+        expected["initial_parameters"],
+        strict=True,
     ):
+        assert type(binding.parameter).__name__ == record["type"]
+        _assert_tensor_record(binding.parameter.state, record, oracle)
+
+
+def test_composed_model_free_settling_matches_frozen_legacy_oracle() -> None:
+    oracle = _load_oracle()
+    stack = _build_stack(oracle)
+    _settle_free_phase(oracle, stack)
+    expected_layers = oracle["expected"]["settled_layers"]
+    layers = stack.bundle.energy.layers()
+
+    assert len(layers) == len(expected_layers)
+    for layer, record in zip(layers, expected_layers, strict=True):
+        _assert_tensor_record(layer.state, record, oracle)
+    assert float(layers[-1].state.abs().sum()) > 0.0
+
+
+def test_composed_centered_ep_gradients_match_frozen_legacy_oracle() -> None:
+    oracle = _load_oracle()
+    stack = _build_stack(oracle)
+    gradients = _centered_ep_gradients(oracle, stack)
+    expected_gradients = oracle["expected"]["centered_ep_gradients"]
+
+    assert len(gradients) == len(expected_gradients)
+    assert any(float(gradient.abs().sum()) > 0.0 for gradient in gradients)
+    for gradient, record in zip(gradients, expected_gradients, strict=True):
+        _assert_tensor_record(gradient, record, oracle)
+
+
+def test_composed_direct_update_matches_frozen_legacy_oracle() -> None:
+    oracle = _load_oracle()
+    stack = _build_stack(oracle)
+    gradients = _centered_ep_gradients(oracle, stack)
+    parameters = tuple(stack.bundle.energy.params())
+    for parameter, gradient in zip(parameters, gradients, strict=True):
         parameter.state.grad = gradient
-    for parameter, gradient in zip(
-        current.energy.params(),
-        current_gradients,
-    ):
-        parameter.state.grad = gradient
 
-    learning_rates = [0.03] * len(legacy.energy.params())
-    legacy_optimizer = Optimizer(
-        legacy.energy,
-        legacy.cost,
-        learning_rates,
-        momentum=0.0,
-        weight_decay=0.0,
+    optimizer_settings = oracle["scenario"]["optimizer"]
+    optimizer = build_optimizer(
+        stack.bundle.energy,
+        stack.cost_fn,
+        [optimizer_settings["learning_rate"]] * len(parameters),
+        update_pipeline={"type": optimizer_settings["type"]},
+        momentum=optimizer_settings["momentum"],
+        weight_decay=optimizer_settings["weight_decay"],
     )
-    configured_direct_optimizer = build_optimizer(
-        current.energy,
-        current.cost,
-        learning_rates,
-        update_pipeline={"type": "direct"},
-        momentum=0.0,
-        weight_decay=0.0,
-    )
-    assert isinstance(configured_direct_optimizer, Optimizer)
-
-    legacy_optimizer.step()
-    configured_direct_optimizer.step()
-    for parameter in legacy.energy.params():
-        parameter.clamp_()
-    for parameter in current.energy.params():
+    assert isinstance(optimizer, Optimizer)
+    optimizer.step()
+    for parameter in parameters:
         parameter.clamp_()
 
-    for current_parameter, legacy_parameter in zip(
-        current.energy.params(),
-        legacy.energy.params(),
+    expected_parameters = oracle["expected"]["direct_update_parameters"]
+    assert len(parameters) == len(expected_parameters)
+    for parameter, record in zip(
+        parameters,
+        expected_parameters,
+        strict=True,
     ):
-        _assert_tensors_identical(
-            current_parameter.state,
-            legacy_parameter.state,
-        )
+        _assert_tensor_record(parameter.state, record, oracle)
