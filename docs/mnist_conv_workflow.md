@@ -161,6 +161,26 @@ dependency, so failed jobs are represented as missing/failed coverage rather
 than suppressing collection. Manifest paths and job indices are private worker
 plumbing rather than public scientific inputs.
 
+## Long simulations on main and Trex
+
+After the experiment plan, tracker entry, smoke test, and applicable scientific
+gates have passed, aggregate and verify their schema-specific receipts with
+`python -m experiments.local_dispatch build-preflight|verify-preflight`, then
+dispatch with `plan|start|status`. The dispatcher uses one immutable request
+for either a fresh window in the existing `tmux main` session or one bounded
+SSH transaction into a fresh attempt-named tmux session on Trex. It never uses
+`send-keys`, retries automatically, or falls back to a different target.
+
+See [`local_dispatch.md`](local_dispatch.md) for the request contract, checked-in
+profiles, commands, receipts, and failure semantics. `start` requires the
+approved plan and a fresh production tracker-gate receipt, then revalidates the
+plan-declared v2 preflight envelope, each inner semantic receipt, the pinned
+effective environment, and the exact clean Git commit on the target. This
+transport layer does not authorize a run or bypass any protocol, plan, tracker,
+or preflight gate. Its terminal fail-stop behavior begins only after the
+long-run `start`, not during preflight-envelope construction, planning,
+code/test repair, environment setup, or bounded developer probes.
+
 ## Collection and results
 
 Workers publish only their own validated run bundles. One collector owns the

@@ -1,0 +1,832 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-best-observed-confirmation/v1",
+  "experiment_id": "perfectdiode-conv12-best-observed-confirmation-20260727-v1",
+  "name": "perfect-diode-conv1-conv2-best-observed-ordinary-mnist-confirmation",
+  "status": {
+    "plan": "approved",
+    "implementation": "reviewed_ready_for_launch",
+    "launch_authorized": true,
+    "measurements": "pending"
+  },
+  "evidence_scope": {
+    "class": "ordinary_mnist_optimization_diagnostic",
+    "paper_facing": false,
+    "selection_role": "diagnostic_best_observed_override",
+    "freezes_learning_rate": false,
+    "cross_scheme_superiority_allowed": false,
+    "replaces_medium_affine_handoff": false
+  },
+  "selection_override": {
+    "state": "approved",
+    "approved": true,
+    "approved_by": "Filip",
+    "approved_at": "2026-07-27T16:46:00+02:00",
+    "reason": "The parent protocol cannot freeze boundary-unresolved surfaces, but the requested successor explicitly asks to confirm the best observed safety-admissible rho cell on every architecture, scheme, and optimizer surface.",
+    "scope": "Exactly the twelve ordered entries in /entries; no interpolation, extrapolation, reselection, fallback, or conditional expansion is allowed.",
+    "conv1_basis": "Best observed safety-admissible three-epoch parent-core candidate on each surface; only legacy Adam was core-bracketed, so all values remain diagnostic.",
+    "conv2_basis": "Reviewed continuation diagnostic-best cell for baseline SGD, baseline Adam, ours SGD, ours Adam, and legacy SGD; best observed parent-core cell for legacy Adam, which was outside the high-rho continuation scope.",
+    "plateau_rule": {
+      "relative_validation_loss_width": 0.02,
+      "boundary": "inclusive",
+      "tie_break_order": [
+        "higher_final_validation_accuracy",
+        "higher_median_projection_efficiency",
+        "lower_maximum_target",
+        "lower_target_sum",
+        "lower_rho_conv",
+        "lower_rho_dense",
+        "deterministic_candidate_identity"
+      ],
+      "conv2_ours_adam_application": "The rho_conv=0.027,rho_dense=0.03 and rho_conv=0.027,rho_dense=0.09 cells are within the inclusive two-percent loss plateau; rho_conv=0.027,rho_dense=0.03 is selected by higher final validation accuracy."
+    }
+  },
+  "authorities": {
+    "protocol": {
+      "path": "docs/perfectdiode_learning_protocol.md"
+    },
+    "parent_study": {
+      "study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+      "config_path": "configs/conv/perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json",
+      "config_sha256": "647f92e01c8619951367d71cadd6320c6924c0223a2f5ed344f7ff1739bac5c1",
+      "resolved_config_sha256": "699804e1f7c35f65f50656db4af0b120dd3a3d0f2fb95e3a17b65ebfe7b78535",
+      "shards": {
+        "conv1": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib",
+        "conv2": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex"
+      },
+      "conv1_card_path": "result_registry/cards/diagnostics/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv1.json",
+      "conv1_card_sha256": "f7d3c46132ee121ccbef0185404d995a4f1982cf8b73066969447d2751e2c487",
+      "conv1_review_path": "result_registry/reviews/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv1.json",
+      "conv1_review_sha256": "e88f7c1248e70fe850187ef8575932728d7ba96b3c09e0b40b09299c2ed4369d",
+      "conv2_card_path": "result_registry/cards/diagnostics/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2.json",
+      "conv2_card_sha256": "4711301e6944aee023998f5a0367798dcc01dfe72a1afd7a522ca5389a58b69e",
+      "conv2_review_path": "result_registry/reviews/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2.json",
+      "conv2_review_sha256": "7bdad374ea0506604b70e7f5e1046205d9ff586c736cda4db5f14557bda428d9"
+    },
+    "conv2_high_rho_continuation": {
+      "continuation_id": "pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b",
+      "config_path": "configs/conv/perfectdiode_conv2_high_rho_corner_20260727_v1.json",
+      "config_sha256": "59bdffe5d06b301e9361677587d22058ba9c8c17016d6211b38faaed39692c1c",
+      "manifest_path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/continuation.manifest.json",
+      "manifest_sha256": "845de169b114a36351f27e4813afe8329ab0a677bc175d2e9230a0971499414a",
+      "summary_path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/diagnostic_summary.json",
+      "summary_sha256": "bb72d0b4fcf7cdff61e4b44981e92de8c7e962d832bbe6445ca9ba5c8673b02f",
+      "card_path": "result_registry/cards/diagnostics/perfectdiode-conv2-high-rho-corner-20260727-v1.json",
+      "card_sha256": "3b128ff686262e7d9246c5f475105af6ff8e94b4142a163cf983edb91aed7450",
+      "review_path": "result_registry/reviews/perfectdiode-conv2-high-rho-corner-20260727-v1.json",
+      "review_sha256": "07378f654a585ce28e289e732ae3dbcdf908c6761c48873273e9551f003f09d4"
+    },
+    "experiment_plan": {
+      "path": "docs/experiment_plans/perfectdiode-conv12-best-observed-confirmation-20260727-v1.md",
+      "hash_binding": "The generated immutable bundle and manifest must bind the approved plan SHA-256 externally; the config must not embed the plan hash because the plan embeds this config hash."
+    }
+  },
+  "dataset": {
+    "name": "mnist",
+    "variant": "ordinary",
+    "input_shape": [
+      2,
+      28,
+      28
+    ],
+    "normalization": {
+      "mean": 0.1307,
+      "std": 0.3081,
+      "scale": 0.3
+    },
+    "signed_two_channel_preprocessing": "concatenate(x_normalized,-x_normalized)",
+    "affine_enabled": false,
+    "train_size": 55000,
+    "train_batch_size": 16,
+    "train_shuffle_method": "torch_randperm",
+    "train_shuffle_seed": 0,
+    "train_indices_sha256": "c0940cfdde9fb2a87f846a4dd234a6ff634eed32a98b9f5d72dfed3e2119a809",
+    "steps_per_epoch": 3438,
+    "validation_size": 5000,
+    "validation_batch_size": 64,
+    "validation_split_seed": 0,
+    "validation_stratified": true,
+    "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+    "official_test": {
+      "enabled": false,
+      "read_allowed": false
+    }
+  },
+  "model": {
+    "model_seed": 0,
+    "nonlinearity": "perfect_diode",
+    "perfect_diode": {
+      "clamp_epsilon": 1e-08,
+      "clamped_convergence_criterion": "projected_kkt_residual"
+    },
+    "conductance_bounds": [
+      0.0,
+      100.0
+    ],
+    "weight_initialization": "kaiming_uniform",
+    "weight_gains": 1.0,
+    "paired_output_loss": "squared_error_paired_20",
+    "reset_global_name_counters_before_build": true,
+    "architectures": {
+      "conv1": {
+        "channels": [
+          64
+        ],
+        "kernel_sizes": [
+          3
+        ],
+        "strides": [
+          2
+        ],
+        "paddings": [
+          1
+        ],
+        "pooling": "none",
+        "output_dim": 20,
+        "input_gain": 40.0,
+        "T": 4,
+        "K": 4,
+        "reference_T": 64,
+        "reference_K": 64,
+        "initialization_checkpoint_sha256": "fec964e5cbabb482ab6aeb74bbbc9e3bec3b836c222412d6a02c30dcc66724b0",
+        "initialization_tensor_sha256": "99f6ee133f72aae48205e58bb5d9a5568f6d7a2f3d3a801a0f4e07d16463fc1d"
+      },
+      "conv2": {
+        "channels": [
+          64,
+          128
+        ],
+        "kernel_sizes": [
+          3,
+          3
+        ],
+        "strides": [
+          2,
+          2
+        ],
+        "paddings": [
+          1,
+          1
+        ],
+        "pooling": "none",
+        "output_dim": 20,
+        "input_gain": 100.0,
+        "T": 6,
+        "K": 6,
+        "reference_T": 64,
+        "reference_K": 64,
+        "initialization_checkpoint_sha256": "9bc20dedb62586f89ee572f7c7ce981d72cb3658b77d6cabd0528853febe3449",
+        "initialization_tensor_sha256": "e9aa471dc5558e525758b345de12c53f0a086c5a1b022024c2fc349ec138e2e3"
+      }
+    }
+  },
+  "solver": {
+    "energy_mode": "asynchronous",
+    "fixed_step_minimization": true,
+    "batch_state_policy": "reset_each_batch",
+    "adaptive_equilibrium": false,
+    "overrelaxation_factor": 1.1,
+    "single_diode_updater": "custom",
+    "settings": {
+      "rel_tol": 1e-05,
+      "vn_tol": 1e-06,
+      "use_polish": true,
+      "max_newton_iters": 32,
+      "z_thresh": 10000000000.0,
+      "exp_clip": 100000.0,
+      "dynamic_polish": true,
+      "overrelaxation_reject_steps": false,
+      "overrelaxation_reject_max_tries": 3,
+      "overrelaxation_reject_shrink": 0.5,
+      "overrelaxation_reject_eps": 0.0
+    }
+  },
+  "optimizer_arms": {
+    "sgd": {
+      "name": "SGD",
+      "momentum": 0.0,
+      "weight_decay": 0.0
+    },
+    "adam": {
+      "name": "Adam",
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.0,
+      "amsgrad": false,
+      "foreach": false,
+      "fused": false,
+      "maximize": false,
+      "capturable": false,
+      "differentiable": false
+    }
+  },
+  "training_contracts": {
+    "shared": {
+      "restart_from_shared_initialization": true,
+      "continue_from_three_epoch_candidate": false,
+      "schedule": "constant_parameter_specific_lr_vector",
+      "warmup_steps": 0,
+      "scheduler_enabled": false,
+      "decay": "none",
+      "validate_after_every_epoch": true,
+      "checkpoints": [
+        "best_validation_loss",
+        "final"
+      ],
+      "official_test_evaluation": false
+    },
+    "conv1": {
+      "epochs": 10,
+      "steps_per_epoch": 3438,
+      "total_steps": 34380
+    },
+    "conv2": {
+      "epochs": 20,
+      "steps_per_epoch": 3438,
+      "total_steps": 68760
+    }
+  },
+  "safety": {
+    "fail_closed": true,
+    "non_finite_persistence_steps": 1,
+    "loss_ema": {
+      "begin_after_steps": 32,
+      "decay": 0.98,
+      "factor_over_prior_minimum": 4.0,
+      "persistence_steps": 8
+    },
+    "bounded_gradient_rms": {
+      "reference": "first_32_step_median",
+      "factor_over_reference": 100.0,
+      "persistence_steps": 8
+    },
+    "combined_bound_occupancy": {
+      "increase_over_initial": 0.2,
+      "persistence_steps": 16
+    },
+    "projection_efficiency": {
+      "minimum": 0.5,
+      "persistence_steps": 16,
+      "ignore_numerically_zero_proposals": true,
+      "zero_update_epsilon": 1e-12
+    }
+  },
+  "entries": [
+    {
+      "entry_id": "pdconfirm_conv1_baseline_sgd_seed0",
+      "architecture": "conv1",
+      "row_id": "conv1_baseline_v1_c1",
+      "scheme": "baseline",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "optimizer": "sgd",
+      "rho_conv": 0.009,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.14269596288753023,
+        "ConvWeight_0": 0.14269596288753023,
+        "DenseWeight_0": 0.012023754247240415
+      },
+      "epochs": 10,
+      "expected_steps": 34380,
+      "selection_basis": "best_observed_parent_core_candidate_diagnostic_override",
+      "boundary_status": "core_upper_edge_unresolved",
+      "source_candidate": {
+        "cell_id": "pdcell_04ca5d00557a73e4727d8f1645d156b89699e3035606c80fee9b575d81b00234",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib/stages/rho_core_candidates/entries/conv1_baseline_v1_c1--sgd--pdcell_04ca5d00557a73e4727d8f1645d156b89699e3035606c80fee9b575d81b00234",
+        "artifact_sha256": {
+          "result.json": "6e6baa1f8845844e188e1a45be18ccdbf0565c5626377a966289dd443d1c6abb",
+          "run_spec.json": "d7a753a679b201c4c1e866e02dfe51c665dafc55a7c6c4434593d291b099e496",
+          "validation.json": "4945ef9e5899277987251815de11f09639cdbe5d2e2f5d8224dc49a8444cb4a0",
+          "complete.json": "b7f3497d8fca2e65bf68ea5d91819890fc35e7e1565afa8b16da9b565b85c25b"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9544,
+          "loss": 0.10242747534513473,
+          "median_projection_efficiency": 0.9862112236664988
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv1_baseline_adam_seed0",
+      "architecture": "conv1",
+      "row_id": "conv1_baseline_v1_c1",
+      "scheme": "baseline",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "optimizer": "adam",
+      "rho_conv": 0.009,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.0008667627547588472,
+        "ConvWeight_0": 0.0008667627547588472,
+        "DenseWeight_0": 0.00010940146047947796
+      },
+      "epochs": 10,
+      "expected_steps": 34380,
+      "selection_basis": "best_observed_parent_core_candidate_diagnostic_override",
+      "boundary_status": "core_upper_edge_unresolved",
+      "source_candidate": {
+        "cell_id": "pdcell_39e03234a2c8a877469bfce5662fa7b03045ea88d7304afab4879d344a078ff3",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib/stages/rho_core_candidates/entries/conv1_baseline_v1_c1--adam--pdcell_39e03234a2c8a877469bfce5662fa7b03045ea88d7304afab4879d344a078ff3",
+        "artifact_sha256": {
+          "result.json": "a52c42d7c510fc0915fa518d35a2b2a887d78df779a56d9323a577148a36d1c3",
+          "run_spec.json": "2708cd53740a6545172d3fbf1b28c30e7484733e30d658e5fc1ff0581b6f97b8",
+          "validation.json": "f41156fb1b5b09ef2e707ca346639c2f7bdc3b491a280a3ded3a2caa1ee23657",
+          "complete.json": "e5cc5fd1ea1d87b56d114bc2cccdad705a3b0bc50001daffefd2204418f7bd49"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9596,
+          "loss": 0.09903789498806,
+          "median_projection_efficiency": 0.9102877273865672
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv1_ours_sgd_seed0",
+      "architecture": "conv1",
+      "row_id": "conv1_ours_v4_c1",
+      "scheme": "ours",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "optimizer": "sgd",
+      "rho_conv": 0.009,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.0375993923258011,
+        "ConvWeight_0": 0.0375993923258011,
+        "DenseWeight_0": 0.003116554276215693
+      },
+      "epochs": 10,
+      "expected_steps": 34380,
+      "selection_basis": "best_observed_parent_core_candidate_diagnostic_override",
+      "boundary_status": "core_upper_edge_unresolved",
+      "source_candidate": {
+        "cell_id": "pdcell_ab150303f18b29584f20a402019217c527d350efdd5647da30d38740f7d329e4",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib/stages/rho_core_candidates/entries/conv1_ours_v4_c1--sgd--pdcell_ab150303f18b29584f20a402019217c527d350efdd5647da30d38740f7d329e4",
+        "artifact_sha256": {
+          "result.json": "1d719152d4116d569a660d4c5be2335de6810c3e1de154b2918ea1693eff3da9",
+          "run_spec.json": "4bda543ae9f5025aa24bc10a5f5f23051e62ab0d8408c68de3e41a6a68302e78",
+          "validation.json": "981282015e4071bff68001fb8126788cdc0dd08b261a487de3ead6e3550f0323",
+          "complete.json": "4ae79f54df233bb7ec68bedfd9743709cd3ad831721966cb6db8868fa3150428"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9594,
+          "loss": 0.09703514560461045,
+          "median_projection_efficiency": 0.9950214784327249
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv1_ours_adam_seed0",
+      "architecture": "conv1",
+      "row_id": "conv1_ours_v4_c1",
+      "scheme": "ours",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "optimizer": "adam",
+      "rho_conv": 0.009,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.0008667532085119479,
+        "ConvWeight_0": 0.0008667532085119479,
+        "DenseWeight_0": 0.00010938768481011549
+      },
+      "epochs": 10,
+      "expected_steps": 34380,
+      "selection_basis": "best_observed_parent_core_candidate_diagnostic_override",
+      "boundary_status": "core_upper_edge_unresolved",
+      "source_candidate": {
+        "cell_id": "pdcell_0b02b13b342fda2f313d498931dc97d21e665d5efadf29cbb2f63708c909ca6b",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib/stages/rho_core_candidates/entries/conv1_ours_v4_c1--adam--pdcell_0b02b13b342fda2f313d498931dc97d21e665d5efadf29cbb2f63708c909ca6b",
+        "artifact_sha256": {
+          "result.json": "77b325df34a62dc2193ee80182c4666210869194f92ca650a631e50a306934ee",
+          "run_spec.json": "c03846c6b2a900f95a699832044ad33b6fbb7e68a85656b826aab794e2670957",
+          "validation.json": "a763cc955fe76487d16ff8a23c5e7d759144a441c98e412cc8b1851d56769828",
+          "complete.json": "ae9ce7cb7d884f706936c6b4085f46774a77b19dad1c1b09d60412b8b72cb23d"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9602,
+          "loss": 0.09543735681772232,
+          "median_projection_efficiency": 0.9849489172218597
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv1_legacy_sgd_seed0",
+      "architecture": "conv1",
+      "row_id": "conv1_legacy_v4_c0p25",
+      "scheme": "legacy",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "optimizer": "sgd",
+      "rho_conv": 0.003,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.0002057531665161486,
+        "ConvWeight_0": 0.0002057531665161486,
+        "DenseWeight_0": 0.00004762590258862023
+      },
+      "epochs": 10,
+      "expected_steps": 34380,
+      "selection_basis": "best_observed_parent_core_candidate_diagnostic_override",
+      "boundary_status": "core_upper_edge_unresolved",
+      "source_candidate": {
+        "cell_id": "pdcell_3d738592e348c67f1d6f0f289addca25c41926d2ff4b4ac65a692a8975421cf5",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib/stages/rho_core_candidates/entries/conv1_legacy_v4_c0p25--sgd--pdcell_3d738592e348c67f1d6f0f289addca25c41926d2ff4b4ac65a692a8975421cf5",
+        "artifact_sha256": {
+          "result.json": "9e49caac609769d19e9cc1a2cdf804e3bcea7294d22493a5ca8a5dbc97df5ff9",
+          "run_spec.json": "c7dd5fa4ecbdc30be1c55f3672946429ae2258faf5d7acbe9d4f4b97f4ece9de",
+          "validation.json": "0cd97550720e71015b06038982d423eb87cc5ddf61f33ae38b5ce072e1e7f0e4",
+          "complete.json": "d9d484ab96c5f92f7ccc8ae8005e2ea7677e395678e600aefce0451cbeb7d2a0"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9446,
+          "loss": 0.12925158367156983,
+          "median_projection_efficiency": 0.9993340684028216
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv1_legacy_adam_seed0",
+      "architecture": "conv1",
+      "row_id": "conv1_legacy_v4_c0p25",
+      "scheme": "legacy",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "optimizer": "adam",
+      "rho_conv": 0.003,
+      "rho_dense": 0.01,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.00028891655615187234,
+        "ConvWeight_0": 0.00028891655615187234,
+        "DenseWeight_0": 0.00003646175250178931
+      },
+      "epochs": 10,
+      "expected_steps": 34380,
+      "selection_basis": "core_bracketed_parent_candidate_used_as_diagnostic_override",
+      "boundary_status": "core_bracketed_unpublished_selector",
+      "source_candidate": {
+        "cell_id": "pdcell_d9e74d8c99a4b4d5e6ffb97be1ad80ae24ffe3aa3a51ba44e673f7e13831cdc7",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/akib/stages/rho_core_candidates/entries/conv1_legacy_v4_c0p25--adam--pdcell_d9e74d8c99a4b4d5e6ffb97be1ad80ae24ffe3aa3a51ba44e673f7e13831cdc7",
+        "artifact_sha256": {
+          "result.json": "5cf11a38ea4ec3b79311990fd8c657e77754b6706b5b15c1317ad8a72193ac02",
+          "run_spec.json": "3c44b3b0227446be9044819af24bc25c7a50c77377a4f51ede51253b739e3b9b",
+          "validation.json": "695dd63a285f6cebb07cc2203d5a60fa34ceaf4b969940e38d947738d08e84f0",
+          "complete.json": "6ccc4a99b41a3f133cdda8aa9f4bda1c1a5e19e9a20f1a2aa5c57604186feee7"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9618,
+          "loss": 0.09618259881734847,
+          "median_projection_efficiency": 0.9953658642383701
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv2_baseline_sgd_seed0",
+      "architecture": "conv2",
+      "row_id": "conv2_baseline_v1_c1",
+      "scheme": "baseline",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "optimizer": "sgd",
+      "rho_conv": 0.027,
+      "rho_dense": 0.09,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 7.908644279360533,
+        "Bias_1": 3.8147569717357532,
+        "ConvWeight_0": 7.908644279360533,
+        "ConvWeight_1": 3.8147569717357532,
+        "DenseWeight_0": 0.8206297500202572
+      },
+      "epochs": 20,
+      "expected_steps": 68760,
+      "selection_basis": "reviewed_high_rho_continuation_diagnostic_best",
+      "boundary_status": "partial_corner_or_core_non_frozen",
+      "source_candidate": {
+        "cell_id": "pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497",
+        "directory": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497",
+        "artifact_sha256": {
+          "result.json": "92cbaa97604a618402ab396c40ad8cd49d1dc1cba5fd0dd7f4bfb0e3e6f2a702",
+          "run_spec.json": "c0589fea1dd561b64cde6976984106af9071faef942efb366aead2d4a8e2e21c",
+          "validation.json": "042686df34268acfb84501b1ca955f65fab8cefb0eccd6bffd143ef3d082d3f2",
+          "complete.json": "c88032fb5779400d2cb3cc026fe1300e54d45153e7f8064370f8701f78b6b6c4"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9596,
+          "loss": 0.08278817584514618,
+          "median_projection_efficiency": 0.9665430826791134
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv2_baseline_adam_seed0",
+      "architecture": "conv2",
+      "row_id": "conv2_baseline_v1_c1",
+      "scheme": "baseline",
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "optimizer": "adam",
+      "rho_conv": 0.027,
+      "rho_dense": 0.09,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.002600778433792526,
+        "Bias_1": 0.00045905251396845677,
+        "ConvWeight_0": 0.002600778433792526,
+        "ConvWeight_1": 0.00045905251396845677,
+        "DenseWeight_0": 0.0004676600672307592
+      },
+      "epochs": 20,
+      "expected_steps": 68760,
+      "selection_basis": "reviewed_high_rho_continuation_diagnostic_best",
+      "boundary_status": "partial_corner_or_core_non_frozen",
+      "source_candidate": {
+        "cell_id": "pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011",
+        "directory": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011",
+        "artifact_sha256": {
+          "result.json": "c46d49836886f6f7bf5e8f0738c1739c4fbeaa8d83c93601d8bec588a9bead00",
+          "run_spec.json": "490bc3445d6d75971f5659b4efa78b70ac8ee0a2873ecb0acd778226fb4a514f",
+          "validation.json": "0a8d55a4b2b1bcd22b7beab092cbe0b0327aa1d3ccbe690c7f22ed7c203dad33",
+          "complete.json": "60f2e0062355bb43816bea18a57510ac23a9eb834e45c0a197cfe7076db45d6c"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.961,
+          "loss": 0.07676252238154412,
+          "median_projection_efficiency": 0.7882328044551051
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv2_ours_sgd_seed0",
+      "architecture": "conv2",
+      "row_id": "conv2_ours_v4_c1",
+      "scheme": "ours",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "optimizer": "sgd",
+      "rho_conv": 0.009,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.5233578992742577,
+        "Bias_1": 0.2460433892221963,
+        "ConvWeight_0": 0.5233578992742577,
+        "ConvWeight_1": 0.2460433892221963,
+        "DenseWeight_0": 0.05202009211879659
+      },
+      "epochs": 20,
+      "expected_steps": 68760,
+      "selection_basis": "reviewed_high_rho_continuation_diagnostic_best_reused_parent_control",
+      "boundary_status": "partial_corner_or_core_non_frozen",
+      "source_candidate": {
+        "cell_id": "pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06",
+        "artifact_sha256": {
+          "result.json": "f5dab05604a705ffdd8be796c286ef1969e24b84a6e72c9e42d7af2fe3857d9f",
+          "run_spec.json": "8091452cba5a9d1aa1a226236e6f9f097be3e03c80d6d91903265e675e6ad93c",
+          "validation.json": "5966c6d1025ab27da0d72a89fac6998214f6033a49c5df898950d3d2b9a4feb2",
+          "complete.json": "6b2a85edc6886e4c83558cda85c4ed77a246b4126d12b3aef687bb6c2793fef5"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9718,
+          "loss": 0.06503381167054176,
+          "median_projection_efficiency": 0.9901585669010695
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv2_ours_adam_seed0",
+      "architecture": "conv2",
+      "row_id": "conv2_ours_v4_c1",
+      "scheme": "ours",
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "optimizer": "adam",
+      "rho_conv": 0.027,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.0026003557768089435,
+        "Bias_1": 0.00045865085217639624,
+        "ConvWeight_0": 0.0026003557768089435,
+        "ConvWeight_1": 0.00045865085217639624,
+        "DenseWeight_0": 0.00015513551618831395
+      },
+      "epochs": 20,
+      "expected_steps": 68760,
+      "selection_basis": "reviewed_high_rho_continuation_diagnostic_best_after_inclusive_two_percent_plateau_accuracy_tie_break",
+      "boundary_status": "partial_corner_or_core_non_frozen",
+      "source_candidate": {
+        "cell_id": "pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d",
+        "directory": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d",
+        "artifact_sha256": {
+          "result.json": "8bca5790541a958963745786ce37d1d374898c9f4e10f912711535c9164bb3bb",
+          "run_spec.json": "e827417cc77bff45f8a33d494d0cc04990103243f87b2ac38b422f8cc1cad1b7",
+          "validation.json": "de0fa52c51fc23267f631aaa5dc15863639fd8c59339fdffa38d38f586f7be3f",
+          "complete.json": "2b55723651b7d7587581f29100442f6d66ad917f3cd5757185428195700a6141"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9742,
+          "loss": 0.059991259372234346,
+          "median_projection_efficiency": 0.9345302551831078
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv2_legacy_sgd_seed0",
+      "architecture": "conv2",
+      "row_id": "conv2_legacy_v4_c0p25",
+      "scheme": "legacy",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "optimizer": "sgd",
+      "rho_conv": 0.003,
+      "rho_dense": 0.03,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.004967330268074946,
+        "Bias_1": 0.0006747257925121923,
+        "ConvWeight_0": 0.004967330268074946,
+        "ConvWeight_1": 0.0036783910988624773,
+        "DenseWeight_0": 0.002360443447463354
+      },
+      "epochs": 20,
+      "expected_steps": 68760,
+      "selection_basis": "reviewed_high_rho_continuation_diagnostic_best_reused_parent_control",
+      "boundary_status": "partial_corner_or_core_non_frozen",
+      "source_candidate": {
+        "cell_id": "pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e",
+        "artifact_sha256": {
+          "result.json": "9c74f4c7afbe638261df2176c4c636af5d7d3b4bfa3faf6ff448f272329927c8",
+          "run_spec.json": "b5d48ff4266d4ba09f4daf8f84514b768255398879041e0accf5aaecf3ebdfb1",
+          "validation.json": "dea610a070d3e88fa62a9ba51bc0ecad7e9966f4d27ca179617252a610531fdb",
+          "complete.json": "24220d31a365c83997be95a1d22cffbd7197e4062183c0eced1ad4fe26b84103"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9678,
+          "loss": 0.07388557366132736,
+          "median_projection_efficiency": 0.995569837756005
+        }
+      }
+    },
+    {
+      "entry_id": "pdconfirm_conv2_legacy_adam_seed0",
+      "architecture": "conv2",
+      "row_id": "conv2_legacy_v4_c0p25",
+      "scheme": "legacy",
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "optimizer": "adam",
+      "rho_conv": 0.009,
+      "rho_dense": 0.01,
+      "raw_learning_rates_by_parameter": {
+        "Bias_0": 0.0008667501803806466,
+        "Bias_1": 0.0001528407966018847,
+        "ConvWeight_0": 0.0008667501803806466,
+        "ConvWeight_1": 0.0001528407966018847,
+        "DenseWeight_0": 0.00005169817235477215
+      },
+      "epochs": 20,
+      "expected_steps": 68760,
+      "selection_basis": "best_observed_parent_core_candidate_outside_high_rho_continuation_scope_diagnostic_override",
+      "boundary_status": "core_upper_edge_unresolved_not_expanded",
+      "source_candidate": {
+        "cell_id": "pdcell_b141e151e6d06b7f3c7ac128d02312bb0f13e70f2a944ed6e5726ce3387d5c70",
+        "directory": "results/conv_pd_hparam_093d3bc325a5/perfectdiode_hparam_studies/perfect-diode-conv1-conv2-ordinary-mnist-sgd-adam-two-rho-screen--lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46/shards/trex/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--adam--pdcell_b141e151e6d06b7f3c7ac128d02312bb0f13e70f2a944ed6e5726ce3387d5c70",
+        "artifact_sha256": {
+          "result.json": "e032791b2ba4a87468859fb20711b76ed128458cfc2be824c55c83e7f54ecc6e",
+          "run_spec.json": "2f78957da9a26c1712a709746fbb653afac7520eefa450a5ab302a20e6126c97",
+          "validation.json": "65427ae4b07fd3ffbe843f3f86479f11d844c3bb1cc9f9c0c1d1e5584453f089",
+          "complete.json": "2cceaa0e6572050784db6095e11ce556fbd2ee750ffeafb74a88a5fcd8b06fa4"
+        },
+        "three_epoch_final_validation": {
+          "accuracy": 0.9778,
+          "loss": 0.05470466657280922,
+          "median_projection_efficiency": 0.9826094739947138
+        }
+      }
+    }
+  ],
+  "execution": {
+    "implementation_state": "reviewed_ready_for_launch",
+    "planned_manifest_job_count": 12,
+    "planned_slurm_pack_count": 6,
+    "runs_per_gpu": 2,
+    "concurrent_within_pack": true,
+    "fixed_entry_packs": [
+      [
+        0,
+        1
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        8,
+        9
+      ],
+      [
+        10,
+        11
+      ]
+    ],
+    "resume_policy": "skip_only_hash_verified_complete_entries",
+    "incomplete_entry_policy": "restart_from_shared_initialization",
+    "completion_marker_written_last": true,
+    "jean_zay": {
+      "dossier": "AD011016471R1",
+      "project": "umg",
+      "account": "umg@v100",
+      "partition": "gpu_p13",
+      "qos": "qos_gpu-t3",
+      "constraint": "v100-32g",
+      "gpus_per_task": 1,
+      "cpus_per_task": 16,
+      "host_memory_policy": "jean_zay_site_managed_no_explicit_slurm_request",
+      "hint": "nomultithread",
+      "production_time_limit": "08:00:00",
+      "canary_time_limit": "02:00:00",
+      "walltime_basis": "The heaviest live canary concurrently runs both Conv2 entries in pack 4 and must validate aggregate throughput and a safe projected 20-epoch duration before release; eight hours leaves fail-safe headroom above the prior approximately 3.2-hour one-process Conv2 projection while preserving fail-closed admission.",
+      "module": "pytorch-gpu/py3/2.5.0",
+      "python_executable": "/lustre/fshomisc/sup/hpe/pub/miniforge/24.9.0/envs/pytorch-gpu-2.5.0+py3.12.7/bin/python",
+      "production_array": "0-5%6",
+      "production_task_count": 6,
+      "entries_per_task": 2,
+      "concurrent_training_processes_per_gpu": 2,
+      "live_canary_array": "0-0",
+      "slurm_parent_submission_count": 2
+    },
+    "preflight": {
+      "same_launcher_config_environment_device_and_output_path_required": true,
+      "scheduled_runner_static_preflight_required": true,
+      "sbatch_test_only_required": true,
+      "live_singleton_canary_required": true,
+      "fresh_tk_reference_gate_required": true,
+      "fresh_tk_reference_gate_scope": "six_unique_architecture_x_scheme_rows",
+      "full_epoch_training_canary": {
+        "pack_index": 4,
+        "entry_indices": [
+          8,
+          9
+        ],
+        "architecture": "conv2",
+        "schemes": [
+          "ours",
+          "ours"
+        ],
+        "optimizers": [
+          "sgd",
+          "adam"
+        ],
+        "mode": "successor_canary_pack",
+        "epochs": 1,
+        "expected_steps_per_entry": 3438,
+        "concurrent": true,
+        "same_training_entrypoint_as_production": true
+      },
+      "semantic_completion_marker_and_hash_required": true,
+      "full_array_blocked_until_all_gates_pass": true
+    }
+  },
+  "artifacts": {
+    "immutable": true,
+    "hash": "sha256",
+    "source_commit_required": true,
+    "clean_content_addressed_source_archive_required": true,
+    "resolved_config_hash_required": true,
+    "environment_hash_required": true,
+    "dataset_split_hash_required": true,
+    "minibatch_order_hash_required": true,
+    "initialization_checkpoint_hash_required": true,
+    "manifest_entry_hashes_required": true,
+    "raw_learning_rate_vector_required": true,
+    "rho_targets_required": true,
+    "validation_metrics_required": true,
+    "safety_and_projection_diagnostics_required": true,
+    "official_test_read": false,
+    "remote_results_root": "/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode_best_observed_confirmation_studies/perfectdiode-conv12-best-observed-confirmation-20260727-v1",
+    "intended_local_results_root": "results/perfectdiode_best_observed_confirmation_studies/perfectdiode-conv12-best-observed-confirmation-20260727-v1"
+  },
+  "prohibitions": {
+    "launch_before_explicit_plan_approval": true,
+    "reuse_stale_preflight": true,
+    "change_T_or_K": true,
+    "change_selected_rho": true,
+    "recompute_or_substitute_learning_rate_vector": true,
+    "continue_from_candidate_checkpoint": true,
+    "conditional_expansion": true,
+    "official_test_read": true,
+    "paper_facing_evidence": true,
+    "freeze_learning_rate": true,
+    "cross_scheme_superiority_claim": true
+  }
+}

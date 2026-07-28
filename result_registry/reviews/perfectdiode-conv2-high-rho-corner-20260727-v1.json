@@ -1,0 +1,58 @@
+{
+  "card_id": "perfectdiode-conv2-high-rho-corner-20260727-v1",
+  "claims": [
+    {
+      "claim_id": "baseline-sgd-higher-rho-outcome",
+      "claim_kind": "surface_higher_rho_outcome",
+      "statement": "Within this surface, a qualifying new higher-rho cell puts the reused valid control outside the inclusive 2% loss plateau.",
+      "support": "supported_matched_control",
+      "surface_row_id": "baseline-sgd"
+    },
+    {
+      "claim_id": "baseline-adam-higher-rho-outcome",
+      "claim_kind": "surface_higher_rho_outcome",
+      "statement": "Within this surface, a qualifying new higher-rho cell puts the reused valid control outside the inclusive 2% loss plateau.",
+      "support": "supported_matched_control",
+      "surface_row_id": "baseline-adam"
+    },
+    {
+      "claim_id": "ours-sgd-higher-rho-outcome",
+      "claim_kind": "surface_higher_rho_outcome",
+      "statement": "Within this surface, the complete diagnostic does not put the reused valid control outside a qualifying new cell's inclusive 2% loss plateau.",
+      "support": "not_supported",
+      "surface_row_id": "ours-sgd"
+    },
+    {
+      "claim_id": "ours-adam-higher-rho-outcome",
+      "claim_kind": "surface_higher_rho_outcome",
+      "statement": "Within this surface, a qualifying new higher-rho cell puts the reused valid control outside the inclusive 2% loss plateau.",
+      "support": "supported_matched_control",
+      "surface_row_id": "ours-adam"
+    },
+    {
+      "claim_id": "legacy-sgd-higher-rho-outcome",
+      "claim_kind": "surface_higher_rho_outcome",
+      "statement": "Within this surface, the complete diagnostic does not put the reused valid control outside a qualifying new cell's inclusive 2% loss plateau.",
+      "support": "not_supported",
+      "surface_row_id": "legacy-sgd"
+    }
+  ],
+  "conclusion": {
+    "decision": "Record the five surface outcomes without selecting a final learning rate, launching long confirmation, or promoting the result to paper-facing evidence.",
+    "headline": "Five independent Conv2 within-surface rho-corner outcomes were reviewed.",
+    "interpretation": "Each outcome applies only within its own scheme/optimizer surface; the diagnostic does not rank schemes or optimizers.",
+    "limitations": [
+      "This is a targeted partial-grid ordinary-MNIST diagnostic.",
+      "Only seed 0 and a three-epoch budget were evaluated.",
+      "The official MNIST test set was not read.",
+      "No cross-scheme superiority or final learning-rate claim is supported."
+    ],
+    "observation": "All 20 planned cells are represented by hash-verified local artifacts, including reused controls and safety-stopped canaries."
+  },
+  "evidence_class": "ordinary_mnist_rho_corner_diagnostic",
+  "review_id": "perfectdiode-conv2-high-rho-corner-20260727-v1-review",
+  "review_status": "reviewed",
+  "reviewed_at": "2026-07-27",
+  "schema_version": "drn-result-review/v1",
+  "supersedes": []
+}

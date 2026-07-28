@@ -1,0 +1,1556 @@
+{
+  "card_id": "perfectdiode-conv2-high-rho-corner-20260727-v1",
+  "completed_at": "2026-07-27T12:08:47.094762+00:00",
+  "completed_at_source": "continuation_completion_marker_mtime",
+  "continuation_id": "pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b",
+  "evidence": {
+    "class": "ordinary_mnist_rho_corner_diagnostic",
+    "comparison_scope": "within_surface_only",
+    "freezes_learning_rate": false,
+    "ineligibility_reasons": [
+      "Targeted partial-grid ordinary-MNIST diagnostic.",
+      "Single-seed three-epoch evidence cannot freeze a learning rate."
+    ],
+    "paper_eligibility": "ineligible"
+  },
+  "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+  "project": "conv_amplification",
+  "provenance": {
+    "artifacts": [
+      {
+        "artifact_id": "artifact-883858a3f4c46d54128d91a73460418a07508ad33b4f967e808c99deef721a24",
+        "origin": "continuation_artifact",
+        "path": "results/_transfer_receipts/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/trex-full.json",
+        "role": "full_transfer_receipt",
+        "sha256": "2aca9e09c8136f3cfe43b045e8770aa97aa75dffe21e564ffb941f413bafb8a3"
+      },
+      {
+        "artifact_id": "artifact-2edfe6a9079c5f515af7c5353e8135a0794f73a4785c370a973421bc76fd5293",
+        "origin": "continuation_artifact",
+        "path": "results/_transfer_receipts/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/trex-metadata.json",
+        "role": "metadata_transfer_receipt",
+        "sha256": "a9a61af6f8c2d6b03069694aafc18be5418dcf13b81c426835e60a7720ee6958"
+      },
+      {
+        "artifact_id": "artifact-f076b19fd24d981825ae2955784967246537dbe5e8ce7bdce06b06e2841fd087",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/collection_receipt.json",
+        "role": "collection_receipt",
+        "sha256": "4b39f0f824f038b5974bd128c15d83215ef8958d66c1bdc10a25cf682d65f767"
+      },
+      {
+        "artifact_id": "artifact-8ccf482eef456da11b7ed02f227013acf6c82ba3dd47c964c3161a23df2413dd",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/continuation.manifest.json",
+        "role": "continuation_manifest",
+        "sha256": "845de169b114a36351f27e4813afe8329ab0a677bc175d2e9230a0971499414a"
+      },
+      {
+        "artifact_id": "artifact-7463fddb1140f792344e4ce6a5450f8ac76b941476f33c6c0a3f82bea5d60bc2",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/continuation.resolved.json",
+        "role": "continuation_descriptor",
+        "sha256": "411b02ec3dc24408662b6e489fc99e2b878a2d7bf1dd2e112f1c26099223f894"
+      },
+      {
+        "artifact_id": "artifact-c0478f43a81557edd6f787a59aa450a1d566f4cecf4a6b69747ac7f0c3abb7d0",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/diagnostic_summary.json",
+        "role": "diagnostic_summary",
+        "sha256": "bb72d0b4fcf7cdff61e4b44981e92de8c7e962d832bbe6445ca9ba5c8673b02f"
+      },
+      {
+        "artifact_id": "artifact-8a40adc754917f832ae3997b503dee6c7390ffd43ed55e3524c3231103cd91fe",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/parent_import_receipt.json",
+        "role": "parent_import_receipt",
+        "sha256": "85a707ad92e8403ad241087c7c89fac44a0627d8fa6624d8cd69230d48469dbc"
+      },
+      {
+        "artifact_id": "artifact-a01cf6e356885a3fa1739ed770dfb00f9f0f19f5caba7ff2fcd67f4b8b56e4b3",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/scheduled_run_preflight_receipt.json",
+        "role": "scheduled_run_preflight_receipt",
+        "sha256": "d9baaabec42c027fc13451aae75c5a8290561b66982a7bdf24b56347ba690a1c"
+      },
+      {
+        "artifact_id": "artifact-1c68618e7a604036a5268974751b41d1fe80186444576115d77c9bdd3555bb94",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/assets/entries/conv2-assets/result.json",
+        "role": "shared_initialization_split_contract",
+        "sha256": "84d2c1796d32c996ff1af05702fe155a6df316c174f8888fbcb234a5a877f5cf"
+      },
+      {
+        "artifact_id": "artifact-9e617a87104eefee7035dc698543fe41ba0d7c9d6c4cf462d31b4ec433e8eda0",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/optimizer_probe/entries/conv2_baseline_v1_c1--adam/result.json",
+        "role": "optimizer_probe_baseline-adam",
+        "sha256": "e6e49b0b7a0f7a6f61f7ba8c86da823bb53fe4321a67d350118a760595b85ffe"
+      },
+      {
+        "artifact_id": "artifact-3218979cba5e4b606496d85c5397a32ce218b4afd460b84cab490a9992ffc17c",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/optimizer_probe/entries/conv2_baseline_v1_c1--sgd/result.json",
+        "role": "optimizer_probe_baseline-sgd",
+        "sha256": "3a11d1e8e02339cb97dea712d96d96ca306ec14cce1736e369435872babaafd8"
+      },
+      {
+        "artifact_id": "artifact-6c5367c0d61916758823d77b5f112f1e8fca2ee068d6d7c579e2fcf54c9eb2c0",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/optimizer_probe/entries/conv2_legacy_v4_c0p25--sgd/result.json",
+        "role": "optimizer_probe_legacy-sgd",
+        "sha256": "ebfedd3c6bacd0b5ed8a688ea5a0bda3702e3dce987075f55c1cc4c50ca7baeb"
+      },
+      {
+        "artifact_id": "artifact-693048596422857b99bb0269bacdabec054852d366b587f8613af7cac272c75b",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/optimizer_probe/entries/conv2_ours_v4_c1--adam/result.json",
+        "role": "optimizer_probe_ours-adam",
+        "sha256": "807d72457782420a724beeadeaaa1574e1e9ddc0e94dba13270133acc2626489"
+      },
+      {
+        "artifact_id": "artifact-66156bae54b771dcbf042cb6b3c9d94a21c030d4ba13a32ef2c949651d288e0b",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/optimizer_probe/entries/conv2_ours_v4_c1--sgd/result.json",
+        "role": "optimizer_probe_ours-sgd",
+        "sha256": "8319ae69440b6bed1e52b22d03ee5038b35622412bb73d13674b15ec8714af29"
+      },
+      {
+        "artifact_id": "artifact-c701a771a422ba9cd30155c0afeedec9153e19f49bdbe72b202905348ab21098",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_canary_core/entries/conv2_legacy_v4_c0p25--sgd/result.json",
+        "role": "canary_result",
+        "sha256": "73f91fac33558058f4c8e21c25b1c3bcef3b54f3d5b8077b50a63a1bac8d9e6a"
+      },
+      {
+        "artifact_id": "artifact-8b64a9392f87f27784212bd484a385bfea92e6565ac589e712be3dfc2121ada1",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_df5cafb80124c54839afe44bb95f5295e493686f6cc0e852aa7df96a3169b379/result.json",
+        "role": "candidate_result",
+        "sha256": "bfa4b71edd068da2d72378d17c6af495eeca02e01763d0482a438b8f32991341"
+      },
+      {
+        "artifact_id": "artifact-4393b90e88d6687f22beb1e7c082c9265bdbd2eb44ffc88612666b38959b7f59",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_df5cafb80124c54839afe44bb95f5295e493686f6cc0e852aa7df96a3169b379/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "69aeed649603eec64fbeeb2e8e131bcb8634ac7c16579d9cd7cbaf2d66cff5f8"
+      },
+      {
+        "artifact_id": "artifact-77cfbb39fb7a7b49cce2d51fcbd97272129e2b4e5e8b97cdadf90b8f349baf5d",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_df5cafb80124c54839afe44bb95f5295e493686f6cc0e852aa7df96a3169b379/validation.json",
+        "role": "candidate_validation",
+        "sha256": "eeedd12a9824156f04f35b958221b63a64d352d09295f839a4dac0006c4dac58"
+      },
+      {
+        "artifact_id": "artifact-263afd3d59390d0620e8874eca87fc612b8cad18f0d9f8b52d88f1207037d47d",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_d78e4ac22f3ca3879748a9f3b62decae7f2f2d10fc2bfcd2b4729a19ae408f20/result.json",
+        "role": "candidate_result",
+        "sha256": "f9a03be82c44c29f033214621cfe2a6ee1b3fb574f9aee65f764de4a9a2b2890"
+      },
+      {
+        "artifact_id": "artifact-00bd847e5caa5891b7fdf99e185b45c2c80d61b5cf241bfd28c1e9f3123fefa9",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_d78e4ac22f3ca3879748a9f3b62decae7f2f2d10fc2bfcd2b4729a19ae408f20/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "55b96ea9a6f34104cff98d76f5beec84e607c60dd9bef69853e110ef6182cf3b"
+      },
+      {
+        "artifact_id": "artifact-d6b4aa52b8fab2537f190929806cc59f87a7d5121c5663c348d6e701b09955a0",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_d78e4ac22f3ca3879748a9f3b62decae7f2f2d10fc2bfcd2b4729a19ae408f20/validation.json",
+        "role": "candidate_validation",
+        "sha256": "1a7b7852286442117083d10f1155edc0da67468275cb915f5622948a70691dca"
+      },
+      {
+        "artifact_id": "artifact-42e43aaa08f80544c0c84192fe3b2e28c57dd0f1cbb119377fc037760d9e7111",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e/result.json",
+        "role": "candidate_result",
+        "sha256": "9c74f4c7afbe638261df2176c4c636af5d7d3b4bfa3faf6ff448f272329927c8"
+      },
+      {
+        "artifact_id": "artifact-bf339824c8159f7404f13d55f4e1aa360b8777a69c50893bfe05a1b3e6ed0a28",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "b5d48ff4266d4ba09f4daf8f84514b768255398879041e0accf5aaecf3ebdfb1"
+      },
+      {
+        "artifact_id": "artifact-907b89f3e6affd0bac3edfea836af39ff01c0ec9cf9674c5ce2473ac26a2a659",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e/validation.json",
+        "role": "candidate_validation",
+        "sha256": "dea610a070d3e88fa62a9ba51bc0ecad7e9966f4d27ca179617252a610531fdb"
+      },
+      {
+        "artifact_id": "artifact-14574d3bdf96be2423efb959347c2b0c1d6965862f3f039041df92ad2c43f6dd",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_ours_v4_c1--adam--pdcell_6cd61f63e8c35413d748128ab07b07047ec0d15b39ef00a2af8b8136ea4ad994/result.json",
+        "role": "candidate_result",
+        "sha256": "59f0cb07fce8e281e2f2ed569185a071f0138a3003c934d7e5e4a631df1a946a"
+      },
+      {
+        "artifact_id": "artifact-17bbe0df52aa145d2bcc44723d4d5c3cafc2d4edf0ad389c06fcd535b0d4e5db",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_ours_v4_c1--adam--pdcell_6cd61f63e8c35413d748128ab07b07047ec0d15b39ef00a2af8b8136ea4ad994/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "7ffef10f35570ad56e7451a2e5a57193468e3f4c036ad32d272342362d4ea5b4"
+      },
+      {
+        "artifact_id": "artifact-a638b6336224675d970b33d7f0c33f439490b151cb2fc38be0fe4f8d082f7499",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_ours_v4_c1--adam--pdcell_6cd61f63e8c35413d748128ab07b07047ec0d15b39ef00a2af8b8136ea4ad994/validation.json",
+        "role": "candidate_validation",
+        "sha256": "585baeb73383fed5bfafa33a4297ae6754b69721cd8138e79f03ccbc4ec1a8f1"
+      },
+      {
+        "artifact_id": "artifact-ec7827ee11f4f0700d29ec08a6b50aee0674fd00591509e89e369e67d421ca70",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06/result.json",
+        "role": "candidate_result",
+        "sha256": "f5dab05604a705ffdd8be796c286ef1969e24b84a6e72c9e42d7af2fe3857d9f"
+      },
+      {
+        "artifact_id": "artifact-497ea720cc4c74c0741bb06f201406373b98255712acd12b384576a2d0121c78",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "8091452cba5a9d1aa1a226236e6f9f097be3e03c80d6d91903265e675e6ad93c"
+      },
+      {
+        "artifact_id": "artifact-fae61b0672edc1753e66fc42686514174dfc5ee3d4daae33991dd681d3988e4c",
+        "origin": "reused_parent_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/shards/parent/stages/rho_core_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06/validation.json",
+        "role": "candidate_validation",
+        "sha256": "5966c6d1025ab27da0d72a89fac6998214f6033a49c5df898950d3d2b9a4feb2"
+      },
+      {
+        "artifact_id": "artifact-c9d979bd3080e652769fa538d35a7a50cdadc91aea1257a1b724c54ed49c0f05",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/complete.json",
+        "role": "canary_stage_completion",
+        "sha256": "80f7c7094082267a54ff0646ac32f73933203a897e54c1b0a37b65d9ca7703e1"
+      },
+      {
+        "artifact_id": "artifact-b1ca7eef8bb8875fb45e1fadba1ae5157d5734afb7d875f0defc45c57bbd1ca9",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_baseline_v1_c1--adam--pdcell_0a656813660b5795aec480429095832711ca325d63deab5d2219a05bc6031d40/result.json",
+        "role": "canary_result",
+        "sha256": "051769517cb5385584550dbd1c92094f72d77207c8e655605f42aa470fb53130"
+      },
+      {
+        "artifact_id": "artifact-3b43e60a653f0f025b62cab555300df4f138977479d3eabd8daf2831d13175a2",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_baseline_v1_c1--adam--pdcell_1dcd7385f3cd167931d1825aa785eee151c2076440d0bdce302635216717e1fc/result.json",
+        "role": "canary_result",
+        "sha256": "3ee784c6f94ea707cdd4b87e7ba68f906fc119e304d8b8c50d25c499c20474cd"
+      },
+      {
+        "artifact_id": "artifact-2527945ada9825ec453604b22a3509505cd9d46d3acffabd23b5534eb3d71cf4",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_baseline_v1_c1--adam--pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011/result.json",
+        "role": "canary_result",
+        "sha256": "c1bf7da219258c80d19b34cd532cae3f94cf6bc3ab52c3db4730f6c77c46bab6"
+      },
+      {
+        "artifact_id": "artifact-7d6a0592cc844f01c8cc9094cccbb9176fdc86c83e802ae4df4eab0706cab2b4",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_baseline_v1_c1--sgd--pdcell_1d278afbfe1316961d4765b2a03405036cb65ef3553d144c6361d2c6c578cb2a/result.json",
+        "role": "canary_result",
+        "sha256": "84d093c5bfb78157630c1460acbe6724f22af3a7afa9aaa4b44717db92c482a7"
+      },
+      {
+        "artifact_id": "artifact-7866d592de065f5b47ccc01378d673bd08673e86976f69e6b46e9c4e15b5f066",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_baseline_v1_c1--sgd--pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497/result.json",
+        "role": "canary_result",
+        "sha256": "8fe69d9e7dea6ac47810b30822dca4772f215bea8eaf45951d9b404817cb6bc5"
+      },
+      {
+        "artifact_id": "artifact-03617646c4b995952b6deebd07f99a1f072a664297cdf26790720f765a677499",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_baseline_v1_c1--sgd--pdcell_98db500ac6647fa8eaa931cfb6d18105a2bab1bc41367b2b593bede499d26500/result.json",
+        "role": "canary_result",
+        "sha256": "462eea83aea1f037c84a4dbc61bcc4bf22cd4b575b483f6f5c8149e46074629b"
+      },
+      {
+        "artifact_id": "artifact-fa780989b15f2b9da4e93e42f887e75eebb99f19f6c79f7d8dd743a711b2dcad",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_legacy_v4_c0p25--sgd--pdcell_2a910f4e682e3f72395a7b73a84af4a9c26d023d7ea554604f4d59c5c2bd6abf/result.json",
+        "role": "canary_result",
+        "sha256": "8e18091eaef651ae0db587c240fcaee3fd09b909ca2a5cbf76adff2635afb4b4"
+      },
+      {
+        "artifact_id": "artifact-b69a487e01655b5e57618e097a5ca928d2cf1c5d21d56e4f5a37ff80fe1e2f7e",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_legacy_v4_c0p25--sgd--pdcell_3b0938dc67b1221412aebbb3adad6510d8d6d84a73c60db64342583b4ab40dc7/result.json",
+        "role": "canary_result",
+        "sha256": "5d64520af10f52117d7374361460a519c468ff4f458658b5ce662990e5c3715c"
+      },
+      {
+        "artifact_id": "artifact-80eb530c27fb52a400be492a1be93c6e4a78ccecfd3bad8dc70427f3353bd7b3",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_ours_v4_c1--adam--pdcell_9e210bf3422dcb518464c029a10a26445f66cb78801847697e5ecf06ca4dca79/result.json",
+        "role": "canary_result",
+        "sha256": "d01850453da9966931b8aff8edb6e68e503bfffd5d74fbd8f383d5e1fcadab42"
+      },
+      {
+        "artifact_id": "artifact-6ddaff2655cd55af10a39dfdda644210178c62714bcbe531980131052149f795",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_ours_v4_c1--adam--pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d/result.json",
+        "role": "canary_result",
+        "sha256": "38e9aee9afe3c680e2f3e3298a50771920817ca0cebdfdf8808da5fb2f204a4c"
+      },
+      {
+        "artifact_id": "artifact-c515df3f51493d0b9cbef7cb00b6b52bb3dc55dc2abfa2e89c1430fdd6b7ddf4",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_ours_v4_c1--adam--pdcell_e5e3b336d3d5e2ca21f6657355d76fa9bcf86a6915fd671e54c9c38c99b89bdd/result.json",
+        "role": "canary_result",
+        "sha256": "ac66359bd3b2ba620719fca3b721bb6e38f843454e9c85fb9b3f26cb6f0b52d3"
+      },
+      {
+        "artifact_id": "artifact-0a2b2eb8e9273bf21b901a29755081e2fbff9019618ccfdbc93b37fabc6042d6",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_ours_v4_c1--sgd--pdcell_1f38c3cf5b5a745f1670cb7d5183c3245707d114fe8c681d1fbc908127c82142/result.json",
+        "role": "canary_result",
+        "sha256": "b91e70185d1c57b054989a44e89c92d144419f224295a4c9222eab7980e57584"
+      },
+      {
+        "artifact_id": "artifact-74c77b1f2f552192e7034addf5955ffe3f29ef2625343cd7f96fa8b3ed76018d",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_ours_v4_c1--sgd--pdcell_3f11646744ef7570c2b53a8a6976206dc92697a65ca7737c066361cafa721c01/result.json",
+        "role": "canary_result",
+        "sha256": "c19463f01144b51b1b424b55c684d6741673f7d3dc003cfb61267081143c0d3b"
+      },
+      {
+        "artifact_id": "artifact-96958013f17449ea10a581c1fc867b77ddd19be8c37a3e47e510bb281860788e",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_canary_extension/entries/conv2_ours_v4_c1--sgd--pdcell_d920e653d689f82ac3e3455c0b714d61b5118452b3c8ab8e7fc30a6a84033501/result.json",
+        "role": "canary_result",
+        "sha256": "9c37da798bafc7b0da893ebed90a12bac3bb930304378864c9ca54b1535ecf08"
+      },
+      {
+        "artifact_id": "artifact-1b1231567a1968978764f53d5471504b0839a5c058f375afcb7b6ed3152e1641",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/complete.json",
+        "role": "candidate_stage_completion",
+        "sha256": "e2a4071040f3cbc503881dc996278c5bd9225f86a401a2831ec157143e136649"
+      },
+      {
+        "artifact_id": "artifact-2f60d86b27ed570f9b4036553b0ddeeda69439b604c42c6f0a0ed1121c652b1a",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_0a656813660b5795aec480429095832711ca325d63deab5d2219a05bc6031d40/result.json",
+        "role": "candidate_result",
+        "sha256": "c6035b8e50e4149d533d2f4b80af91579741536c400f7fe0120ed69a2f3db77d"
+      },
+      {
+        "artifact_id": "artifact-80662ce5a020b36b1a830ed9023a0aeb76906ac12bd599998e66db728de07712",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_0a656813660b5795aec480429095832711ca325d63deab5d2219a05bc6031d40/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "cd63f15a6f73b2a6841665c266568ac2aae0831f8932f038654cd3aa038a460b"
+      },
+      {
+        "artifact_id": "artifact-ed24aa54ffb64dbd2fdec2450c0dd374e08654276dc9f5728d7ea2c5aa4af643",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_0a656813660b5795aec480429095832711ca325d63deab5d2219a05bc6031d40/validation.json",
+        "role": "candidate_validation",
+        "sha256": "e736abcaef211bec39c0067a669b4bf3ef43d4960771b5a3ef32c826aeb0201a"
+      },
+      {
+        "artifact_id": "artifact-637c311d813f88b9691da32178d4bdc9e436a17e01f1a54bc17b0e864821eb90",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_1dcd7385f3cd167931d1825aa785eee151c2076440d0bdce302635216717e1fc/result.json",
+        "role": "candidate_result",
+        "sha256": "65f1d6d95397c7231fa31d2f0937e663a9535b6e8885fcd679506c3b7342c79d"
+      },
+      {
+        "artifact_id": "artifact-dc2d823339bbae8b1e12a1d8a53749487c5d0f4b86ce499fe5fec2e1fd8b0107",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_1dcd7385f3cd167931d1825aa785eee151c2076440d0bdce302635216717e1fc/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "ded6b86f9e7a9ac1cdea6ce57e525a223a822f10d3596265ed978abb7bc5fc6d"
+      },
+      {
+        "artifact_id": "artifact-ea922bc0c18dca0f29e337d2072c1e56d5cf5f3434d98dfbceb479dc1efe8a29",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_1dcd7385f3cd167931d1825aa785eee151c2076440d0bdce302635216717e1fc/validation.json",
+        "role": "candidate_validation",
+        "sha256": "698f29ae3e15944a3fa727c358ceb4a38e0e102c9d6972874fb0e5c3c2f5c200"
+      },
+      {
+        "artifact_id": "artifact-1dd77f6af5170db01033e415813fd19569c91d5376951e74ccc0a2be2eb6b1dd",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011/result.json",
+        "role": "candidate_result",
+        "sha256": "c46d49836886f6f7bf5e8f0738c1739c4fbeaa8d83c93601d8bec588a9bead00"
+      },
+      {
+        "artifact_id": "artifact-77e9c540643023793a6c5d95a46efa3d820713bda0592c9f2468e241cf4dbdff",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "490bc3445d6d75971f5659b4efa78b70ac8ee0a2873ecb0acd778226fb4a514f"
+      },
+      {
+        "artifact_id": "artifact-7148dff18da0b9759e29d48c4e7a20cb62fd9c51e3786c41d7d8e4588225ed75",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--adam--pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011/validation.json",
+        "role": "candidate_validation",
+        "sha256": "0a8d55a4b2b1bcd22b7beab092cbe0b0327aa1d3ccbe690c7f22ed7c203dad33"
+      },
+      {
+        "artifact_id": "artifact-2febda8d4e192884ea0ec6a7ef0244a39276de01fb861d154ab3ea1b554d956f",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_1d278afbfe1316961d4765b2a03405036cb65ef3553d144c6361d2c6c578cb2a/result.json",
+        "role": "candidate_result",
+        "sha256": "6a993ebf6967c6561404ef53922eb5633c299feda9e13d87dab39fb1313f0626"
+      },
+      {
+        "artifact_id": "artifact-b4ed84bddd9b789ec6159f4f416118c5defc41bf157f99b3611447c7881e5c66",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_1d278afbfe1316961d4765b2a03405036cb65ef3553d144c6361d2c6c578cb2a/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "331caac2cab43b62d092bffbda6672ac685956686abd73e7144792babc64159a"
+      },
+      {
+        "artifact_id": "artifact-d9ae33b60d56e7f254b8a75a56cd00708cfacbb4f54b4b36298ff9ce4cfb00af",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_1d278afbfe1316961d4765b2a03405036cb65ef3553d144c6361d2c6c578cb2a/validation.json",
+        "role": "candidate_validation",
+        "sha256": "bdbb66968617abdc5e8b2f7e543c7ac1717dac028ea4a4ffa0f2ca6cde0e1349"
+      },
+      {
+        "artifact_id": "artifact-25a221031e7166994dd2cfcaf4cd74dccf1b4a71cf3012c13538aaf996989353",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497/result.json",
+        "role": "candidate_result",
+        "sha256": "92cbaa97604a618402ab396c40ad8cd49d1dc1cba5fd0dd7f4bfb0e3e6f2a702"
+      },
+      {
+        "artifact_id": "artifact-4b709492d45590b5176ef8877bdde5bf65ad470545f67c0afb5cd98daca63bed",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "c0589fea1dd561b64cde6976984106af9071faef942efb366aead2d4a8e2e21c"
+      },
+      {
+        "artifact_id": "artifact-6e13f4e1e7cf6807924e6bf0fb2634d85a9b5fef1f21f0d28f201ad273a5a1b9",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497/validation.json",
+        "role": "candidate_validation",
+        "sha256": "042686df34268acfb84501b1ca955f65fab8cefb0eccd6bffd143ef3d082d3f2"
+      },
+      {
+        "artifact_id": "artifact-39eb775571b78be10ca4bb3d40813a18cd71d3a4deda6886d7b7c59c06aff4c1",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_98db500ac6647fa8eaa931cfb6d18105a2bab1bc41367b2b593bede499d26500/result.json",
+        "role": "candidate_result",
+        "sha256": "8b5ea878ddebf4bb56ed4b5fbc3bd355264ff2c456de3e817f4ecd59b3bfb736"
+      },
+      {
+        "artifact_id": "artifact-66c4bebfb213bcb7745ab8d717587deea3efe52c80e4df00b1edfb173d2e84fa",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_98db500ac6647fa8eaa931cfb6d18105a2bab1bc41367b2b593bede499d26500/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "aa71df648cadc5a218439a9f3db6a9b5cea13ee79fa793f5fc3eba6a30c86d2b"
+      },
+      {
+        "artifact_id": "artifact-bacbfb2bcbbc7e34cc7437340e18630e8c90a56bf972fc35e076370e7947c13b",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_baseline_v1_c1--sgd--pdcell_98db500ac6647fa8eaa931cfb6d18105a2bab1bc41367b2b593bede499d26500/validation.json",
+        "role": "candidate_validation",
+        "sha256": "cfbe4b59faa0dab1e7df1b7e4d413e0563f8f66214f9a4387af56393388367bb"
+      },
+      {
+        "artifact_id": "artifact-e1e80f73748aad5259137680f4c70f40e5bb090d839ee03e9e5a5a124b2d1356",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_2a910f4e682e3f72395a7b73a84af4a9c26d023d7ea554604f4d59c5c2bd6abf/result.json",
+        "role": "zero_work_candidate_outcome",
+        "sha256": "afd12319c1595d02c42a15bf526be291cdd81e750226051e52669a7c3ce3f64f"
+      },
+      {
+        "artifact_id": "artifact-e9e87b3198ddbd162871c71aef3d8f39ceae674b55e5abd65b364bd22c4da7ad",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_legacy_v4_c0p25--sgd--pdcell_3b0938dc67b1221412aebbb3adad6510d8d6d84a73c60db64342583b4ab40dc7/result.json",
+        "role": "zero_work_candidate_outcome",
+        "sha256": "ca2ca0de75aa5511138ea3ab3fde013cac2d68393014ba9a357803e651647bae"
+      },
+      {
+        "artifact_id": "artifact-2ac275f5efe519c13831753f210f2e3688376a14ef698f7c23819baed4be21be",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_9e210bf3422dcb518464c029a10a26445f66cb78801847697e5ecf06ca4dca79/result.json",
+        "role": "candidate_result",
+        "sha256": "61eef29c843d2b5b8a23d3f698662615d2960cd9e0358777960a5bbeed812a3f"
+      },
+      {
+        "artifact_id": "artifact-813fa5d7cb9bb03757550ab9b8fde2988b5bd2df1011957c26fa998df5ec92bc",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_9e210bf3422dcb518464c029a10a26445f66cb78801847697e5ecf06ca4dca79/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "7de67c26e9a047ae99479cf9c0fee1ef53f8938078db426717b50d2bb02e05d3"
+      },
+      {
+        "artifact_id": "artifact-d9eda32fce40fc618fc29bc27f3635ac9ce1780fdea62ee8e2277411b408a37f",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_9e210bf3422dcb518464c029a10a26445f66cb78801847697e5ecf06ca4dca79/validation.json",
+        "role": "candidate_validation",
+        "sha256": "7494c2a92c33cc2f58f92968952fd84d68026f5e00f2228fb8fbfdc8b55c5d90"
+      },
+      {
+        "artifact_id": "artifact-09eae4fd5df96e1cd5055862b46b398682b0f3eb6675ac94594ff93f8b2c2ccc",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d/result.json",
+        "role": "candidate_result",
+        "sha256": "8bca5790541a958963745786ce37d1d374898c9f4e10f912711535c9164bb3bb"
+      },
+      {
+        "artifact_id": "artifact-0aca259bf9f723fb63a7cac1d3177773fa1974cb9f650dff613620f5469a630a",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "e827417cc77bff45f8a33d494d0cc04990103243f87b2ac38b422f8cc1cad1b7"
+      },
+      {
+        "artifact_id": "artifact-043038698eb3e20b118cf4fd562cc6934e9551420abba23e94869e0bcb75533d",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d/validation.json",
+        "role": "candidate_validation",
+        "sha256": "de0fa52c51fc23267f631aaa5dc15863639fd8c59339fdffa38d38f586f7be3f"
+      },
+      {
+        "artifact_id": "artifact-43091e70b07555abd67b72a72f77fdc58768e2ef16e7832052d9689bbfbbcf97",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_e5e3b336d3d5e2ca21f6657355d76fa9bcf86a6915fd671e54c9c38c99b89bdd/result.json",
+        "role": "candidate_result",
+        "sha256": "8162d485037406aaae8a5e1ddbcef6869823fff9ed6d813df52799f1d0f58f23"
+      },
+      {
+        "artifact_id": "artifact-9bd6aacda5e054c7071af5c06986f9db921417bf508cc82afee5d5b66deadbcd",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_e5e3b336d3d5e2ca21f6657355d76fa9bcf86a6915fd671e54c9c38c99b89bdd/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "e7ac8d04945ba5228c0a28caa959997f9140c680bf547355d79f47eb006819d6"
+      },
+      {
+        "artifact_id": "artifact-5adb74533b13201b72afc2338d5bfc141bd4349146c5abbcf8e85fadccc687f5",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--adam--pdcell_e5e3b336d3d5e2ca21f6657355d76fa9bcf86a6915fd671e54c9c38c99b89bdd/validation.json",
+        "role": "candidate_validation",
+        "sha256": "c6a3a1b3bee8d4a6e1dc22aec4be03f493dbbe3c8fbb7203b1a6674b554035c4"
+      },
+      {
+        "artifact_id": "artifact-58804396910abcfd4266e30cc14b245ea657508a0a45aa85614044987d3641e2",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_1f38c3cf5b5a745f1670cb7d5183c3245707d114fe8c681d1fbc908127c82142/result.json",
+        "role": "zero_work_candidate_outcome",
+        "sha256": "062ef28371b785848a53ec08a2f05ac566ded9ad97de3bb7e8acd45bdd0c4137"
+      },
+      {
+        "artifact_id": "artifact-3fc7779be99626eebce945d894ec021a4ae044a54f566845d9ffcc8f716a6b0e",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_3f11646744ef7570c2b53a8a6976206dc92697a65ca7737c066361cafa721c01/result.json",
+        "role": "candidate_result",
+        "sha256": "be2d218770ca7691edeb8cbbbb58acf9a637155387f738c4cef21c3ed512524a"
+      },
+      {
+        "artifact_id": "artifact-823326da1374b953586f8daaafde0626cd3b1eb2774ada218368f49cdc349111",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_3f11646744ef7570c2b53a8a6976206dc92697a65ca7737c066361cafa721c01/run_spec.json",
+        "role": "candidate_run_spec",
+        "sha256": "c457e445aa197e11c11ba7e9bd3c1ddcc5048e8a14104de30d9a254a328df011"
+      },
+      {
+        "artifact_id": "artifact-7fa4853d622978efc30a988d640afed524ad3594f445c86dc51bd3a64e2c6f3e",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_3f11646744ef7570c2b53a8a6976206dc92697a65ca7737c066361cafa721c01/validation.json",
+        "role": "candidate_validation",
+        "sha256": "61d9ea8c85943995967a1d00aeba2f6df44d630dff4edccf562b41bb43cc2195"
+      },
+      {
+        "artifact_id": "artifact-0e9e2b3a67b31a9040dc250f5a36b84f8a58263c1495ed9b1aebd4f151e732fe",
+        "origin": "continuation_artifact",
+        "path": "results/perfectdiode_high_rho_corner_studies/pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b/stages/rho_extension_candidates/entries/conv2_ours_v4_c1--sgd--pdcell_d920e653d689f82ac3e3455c0b714d61b5118452b3c8ab8e7fc30a6a84033501/result.json",
+        "role": "zero_work_candidate_outcome",
+        "sha256": "1fe8c9d862fa035fd6a1fe98b03b8f00b281a8026307858103f03ba75d778e61"
+      }
+    ],
+    "code": {
+      "config_sha256": "699804e1f7c35f65f50656db4af0b120dd3a3d0f2fb95e3a17b65ebfe7b78535",
+      "environment_sha256": "3581399f48835c2e2e559a10b48028d9cf404c4b066fd9a1450421f754461413",
+      "worker_archive_sha256": "f291478bfc50f741ec31c65cf135b5ecc5ef2b109b18659decddf4300c179f28",
+      "worker_git_revision": "093d3bc325a5ecb92262639798408a845d9767f1"
+    },
+    "continuation_id": "pdcontinuation_6d967e1bddba4a70cb6bcd81e7f739488389271553fa7eb8f099de688fa4922b",
+    "execution_id": "pdexec_8c6ec4cbd90bd52ab6050e17d78c5d9f8c79cbf725765d04a5232c24df51c878",
+    "parent_import_id": "pdparentimport_e9cd86fb4140f12f34e11f2184097d3919da672c3e15931ab53d2db15ec7679d",
+    "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46",
+    "protocol_id": "perfectdiode-conv2-high-rho-corner-20260727-v1",
+    "root_alias": "REPO_ROOT"
+  },
+  "question": "Does higher rho improve final-epoch validation loss within each requested Conv2 scheme/optimizer surface?",
+  "review_id": "perfectdiode-conv2-high-rho-corner-20260727-v1-review",
+  "rows": [
+    {
+      "label": "Baseline, SGD",
+      "optimizer": "sgd",
+      "outcome": {
+        "comparison_scope": "within_surface_only",
+        "diagnostic_best_cell_id": "pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497",
+        "freezes_learning_rate": false,
+        "higher_rho_conclusion": "higher_rho_supported",
+        "plateau_cell_ids": [
+          "pdcell_98db500ac6647fa8eaa931cfb6d18105a2bab1bc41367b2b593bede499d26500",
+          "pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497"
+        ],
+        "plateau_relative_to_minimum": 0.02,
+        "reused_control_outside_plateau": true
+      },
+      "reused_control": {
+        "artifact_ids": [
+          "artifact-263afd3d59390d0620e8874eca87fc612b8cad18f0d9f8b52d88f1207037d47d",
+          "artifact-00bd847e5caa5891b7fdf99e185b45c2c80d61b5cf241bfd28c1e9f3123fefa9",
+          "artifact-d6b4aa52b8fab2537f190929806cc59f87a7d5121c5663c348d6e701b09955a0"
+        ],
+        "cell_id": "pdcell_d78e4ac22f3ca3879748a9f3b62decae7f2f2d10fc2bfcd2b4729a19ae408f20",
+        "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46"
+      },
+      "row_id": "baseline-sgd",
+      "scheme": "baseline",
+      "tested_cells": [
+        {
+          "artifact_ids": [
+            "artifact-263afd3d59390d0620e8874eca87fc612b8cad18f0d9f8b52d88f1207037d47d",
+            "artifact-00bd847e5caa5891b7fdf99e185b45c2c80d61b5cf241bfd28c1e9f3123fefa9",
+            "artifact-d6b4aa52b8fab2537f190929806cc59f87a7d5121c5663c348d6e701b09955a0"
+          ],
+          "cell_id": "pdcell_d78e4ac22f3ca3879748a9f3b62decae7f2f2d10fc2bfcd2b4729a19ae408f20",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.957,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.08552010254859925,
+            "median_projection_efficiency": 0.9677850372471738,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [
+            "artifact-263afd3d59390d0620e8874eca87fc612b8cad18f0d9f8b52d88f1207037d47d",
+            "artifact-00bd847e5caa5891b7fdf99e185b45c2c80d61b5cf241bfd28c1e9f3123fefa9",
+            "artifact-d6b4aa52b8fab2537f190929806cc59f87a7d5121c5663c348d6e701b09955a0"
+          ],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "reused_parent_artifact"
+        },
+        {
+          "artifact_ids": [
+            "artifact-03617646c4b995952b6deebd07f99a1f072a664297cdf26790720f765a677499",
+            "artifact-39eb775571b78be10ca4bb3d40813a18cd71d3a4deda6886d7b7c59c06aff4c1",
+            "artifact-66c4bebfb213bcb7745ab8d717587deea3efe52c80e4df00b1edfb173d2e84fa",
+            "artifact-bacbfb2bcbbc7e34cc7437340e18630e8c90a56bf972fc35e076370e7947c13b"
+          ],
+          "cell_id": "pdcell_98db500ac6647fa8eaa931cfb6d18105a2bab1bc41367b2b593bede499d26500",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9578,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.08362742611169816,
+            "median_projection_efficiency": 0.9700525688850985,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-7d6a0592cc844f01c8cc9094cccbb9176fdc86c83e802ae4df4eab0706cab2b4",
+            "artifact-2febda8d4e192884ea0ec6a7ef0244a39276de01fb861d154ab3ea1b554d956f",
+            "artifact-b4ed84bddd9b789ec6159f4f416118c5defc41bf157f99b3611447c7881e5c66",
+            "artifact-d9ae33b60d56e7f254b8a75a56cd00708cfacbb4f54b4b36298ff9ce4cfb00af"
+          ],
+          "cell_id": "pdcell_1d278afbfe1316961d4765b2a03405036cb65ef3553d144c6361d2c6c578cb2a",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9532,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.09561120166182518,
+            "median_projection_efficiency": 0.9717647973765958,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-7866d592de065f5b47ccc01378d673bd08673e86976f69e6b46e9c4e15b5f066",
+            "artifact-25a221031e7166994dd2cfcaf4cd74dccf1b4a71cf3012c13538aaf996989353",
+            "artifact-4b709492d45590b5176ef8877bdde5bf65ad470545f67c0afb5cd98daca63bed",
+            "artifact-6e13f4e1e7cf6807924e6bf0fb2634d85a9b5fef1f21f0d28f201ad273a5a1b9"
+          ],
+          "cell_id": "pdcell_68fe4c39bf038f89f5d5d266c02f1e416e664c1215b13b25ae440ed6dd78e497",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9596,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.08278817584514618,
+            "median_projection_efficiency": 0.9665430826791134,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        }
+      ]
+    },
+    {
+      "label": "Baseline, Adam",
+      "optimizer": "adam",
+      "outcome": {
+        "comparison_scope": "within_surface_only",
+        "diagnostic_best_cell_id": "pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011",
+        "freezes_learning_rate": false,
+        "higher_rho_conclusion": "higher_rho_supported",
+        "plateau_cell_ids": [
+          "pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011"
+        ],
+        "plateau_relative_to_minimum": 0.02,
+        "reused_control_outside_plateau": true
+      },
+      "reused_control": {
+        "artifact_ids": [
+          "artifact-8b64a9392f87f27784212bd484a385bfea92e6565ac589e712be3dfc2121ada1",
+          "artifact-4393b90e88d6687f22beb1e7c082c9265bdbd2eb44ffc88612666b38959b7f59",
+          "artifact-77cfbb39fb7a7b49cce2d51fcbd97272129e2b4e5e8b97cdadf90b8f349baf5d"
+        ],
+        "cell_id": "pdcell_df5cafb80124c54839afe44bb95f5295e493686f6cc0e852aa7df96a3169b379",
+        "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46"
+      },
+      "row_id": "baseline-adam",
+      "scheme": "baseline",
+      "tested_cells": [
+        {
+          "artifact_ids": [
+            "artifact-8b64a9392f87f27784212bd484a385bfea92e6565ac589e712be3dfc2121ada1",
+            "artifact-4393b90e88d6687f22beb1e7c082c9265bdbd2eb44ffc88612666b38959b7f59",
+            "artifact-77cfbb39fb7a7b49cce2d51fcbd97272129e2b4e5e8b97cdadf90b8f349baf5d"
+          ],
+          "cell_id": "pdcell_df5cafb80124c54839afe44bb95f5295e493686f6cc0e852aa7df96a3169b379",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.959,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.08505717210769653,
+            "median_projection_efficiency": 0.7978753446369711,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [
+            "artifact-8b64a9392f87f27784212bd484a385bfea92e6565ac589e712be3dfc2121ada1",
+            "artifact-4393b90e88d6687f22beb1e7c082c9265bdbd2eb44ffc88612666b38959b7f59",
+            "artifact-77cfbb39fb7a7b49cce2d51fcbd97272129e2b4e5e8b97cdadf90b8f349baf5d"
+          ],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "reused_parent_artifact"
+        },
+        {
+          "artifact_ids": [
+            "artifact-3b43e60a653f0f025b62cab555300df4f138977479d3eabd8daf2831d13175a2",
+            "artifact-637c311d813f88b9691da32178d4bdc9e436a17e01f1a54bc17b0e864821eb90",
+            "artifact-dc2d823339bbae8b1e12a1d8a53749487c5d0f4b86ce499fe5fec2e1fd8b0107",
+            "artifact-ea922bc0c18dca0f29e337d2072c1e56d5cf5f3434d98dfbceb479dc1efe8a29"
+          ],
+          "cell_id": "pdcell_1dcd7385f3cd167931d1825aa785eee151c2076440d0bdce302635216717e1fc",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.96,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.08126583624482155,
+            "median_projection_efficiency": 0.7948123442218026,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-b1ca7eef8bb8875fb45e1fadba1ae5157d5734afb7d875f0defc45c57bbd1ca9",
+            "artifact-2f60d86b27ed570f9b4036553b0ddeeda69439b604c42c6f0a0ed1121c652b1a",
+            "artifact-80662ce5a020b36b1a830ed9023a0aeb76906ac12bd599998e66db728de07712",
+            "artifact-ed24aa54ffb64dbd2fdec2450c0dd374e08654276dc9f5728d7ea2c5aa4af643"
+          ],
+          "cell_id": "pdcell_0a656813660b5795aec480429095832711ca325d63deab5d2219a05bc6031d40",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.96,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.0804261263012886,
+            "median_projection_efficiency": 0.7872295952213122,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-2527945ada9825ec453604b22a3509505cd9d46d3acffabd23b5534eb3d71cf4",
+            "artifact-1dd77f6af5170db01033e415813fd19569c91d5376951e74ccc0a2be2eb6b1dd",
+            "artifact-77e9c540643023793a6c5d95a46efa3d820713bda0592c9f2468e241cf4dbdff",
+            "artifact-7148dff18da0b9759e29d48c4e7a20cb62fd9c51e3786c41d7d8e4588225ed75"
+          ],
+          "cell_id": "pdcell_47e31b1379bdd137aa81e251f11ef37538d299e380dd7b73032dc40c1519c011",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.961,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.07676252238154412,
+            "median_projection_efficiency": 0.7882328044551051,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        }
+      ]
+    },
+    {
+      "label": "Ours, SGD",
+      "optimizer": "sgd",
+      "outcome": {
+        "comparison_scope": "within_surface_only",
+        "diagnostic_best_cell_id": "pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06",
+        "freezes_learning_rate": false,
+        "higher_rho_conclusion": "higher_rho_not_supported",
+        "plateau_cell_ids": [
+          "pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06"
+        ],
+        "plateau_relative_to_minimum": 0.02,
+        "reused_control_outside_plateau": false
+      },
+      "reused_control": {
+        "artifact_ids": [
+          "artifact-ec7827ee11f4f0700d29ec08a6b50aee0674fd00591509e89e369e67d421ca70",
+          "artifact-497ea720cc4c74c0741bb06f201406373b98255712acd12b384576a2d0121c78",
+          "artifact-fae61b0672edc1753e66fc42686514174dfc5ee3d4daae33991dd681d3988e4c"
+        ],
+        "cell_id": "pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06",
+        "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46"
+      },
+      "row_id": "ours-sgd",
+      "scheme": "ours",
+      "tested_cells": [
+        {
+          "artifact_ids": [
+            "artifact-ec7827ee11f4f0700d29ec08a6b50aee0674fd00591509e89e369e67d421ca70",
+            "artifact-497ea720cc4c74c0741bb06f201406373b98255712acd12b384576a2d0121c78",
+            "artifact-fae61b0672edc1753e66fc42686514174dfc5ee3d4daae33991dd681d3988e4c"
+          ],
+          "cell_id": "pdcell_ee23af3febeac0485344b25dad5a99631ccb81bb400d2ea98f061ea0972d4a06",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9718,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.06503381167054176,
+            "median_projection_efficiency": 0.9901585669010695,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [
+            "artifact-ec7827ee11f4f0700d29ec08a6b50aee0674fd00591509e89e369e67d421ca70",
+            "artifact-497ea720cc4c74c0741bb06f201406373b98255712acd12b384576a2d0121c78",
+            "artifact-fae61b0672edc1753e66fc42686514174dfc5ee3d4daae33991dd681d3988e4c"
+          ],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "reused_parent_artifact"
+        },
+        {
+          "artifact_ids": [
+            "artifact-0a2b2eb8e9273bf21b901a29755081e2fbff9019618ccfdbc93b37fabc6042d6",
+            "artifact-58804396910abcfd4266e30cc14b245ea657508a0a45aa85614044987d3641e2"
+          ],
+          "cell_id": "pdcell_1f38c3cf5b5a745f1670cb7d5183c3245707d114fe8c681d1fbc908127c82142",
+          "execution": {
+            "completed_steps": 44,
+            "expected_steps": 10314,
+            "state": "stopped_at_canary",
+            "training_completed": false
+          },
+          "final_validation": null,
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": {
+              "code": "canary_safety_failure:projection_efficiency",
+              "summary": "Canary safety gate failed with projection_efficiency after 44 completed steps."
+            },
+            "state": "failed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-74c77b1f2f552192e7034addf5955ffe3f29ef2625343cd7f96fa8b3ed76018d",
+            "artifact-3fc7779be99626eebce945d894ec021a4ae044a54f566845d9ffcc8f716a6b0e",
+            "artifact-823326da1374b953586f8daaafde0626cd3b1eb2774ada218368f49cdc349111",
+            "artifact-7fa4853d622978efc30a988d640afed524ad3594f445c86dc51bd3a64e2c6f3e"
+          ],
+          "cell_id": "pdcell_3f11646744ef7570c2b53a8a6976206dc92697a65ca7737c066361cafa721c01",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9606,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.08859979207515717,
+            "median_projection_efficiency": 0.9907598725121587,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-96958013f17449ea10a581c1fc867b77ddd19be8c37a3e47e510bb281860788e",
+            "artifact-0e9e2b3a67b31a9040dc250f5a36b84f8a58263c1495ed9b1aebd4f151e732fe"
+          ],
+          "cell_id": "pdcell_d920e653d689f82ac3e3455c0b714d61b5118452b3c8ab8e7fc30a6a84033501",
+          "execution": {
+            "completed_steps": 161,
+            "expected_steps": 10314,
+            "state": "stopped_at_canary",
+            "training_completed": false
+          },
+          "final_validation": null,
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": {
+              "code": "canary_safety_failure:gradient_rms_explosion",
+              "summary": "Canary safety gate failed with gradient_rms_explosion after 161 completed steps."
+            },
+            "state": "failed"
+          },
+          "source": "new_continuation"
+        }
+      ]
+    },
+    {
+      "label": "Ours, Adam",
+      "optimizer": "adam",
+      "outcome": {
+        "comparison_scope": "within_surface_only",
+        "diagnostic_best_cell_id": "pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d",
+        "freezes_learning_rate": false,
+        "higher_rho_conclusion": "higher_rho_supported",
+        "plateau_cell_ids": [
+          "pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d",
+          "pdcell_9e210bf3422dcb518464c029a10a26445f66cb78801847697e5ecf06ca4dca79"
+        ],
+        "plateau_relative_to_minimum": 0.02,
+        "reused_control_outside_plateau": true
+      },
+      "reused_control": {
+        "artifact_ids": [
+          "artifact-14574d3bdf96be2423efb959347c2b0c1d6965862f3f039041df92ad2c43f6dd",
+          "artifact-17bbe0df52aa145d2bcc44723d4d5c3cafc2d4edf0ad389c06fcd535b0d4e5db",
+          "artifact-a638b6336224675d970b33d7f0c33f439490b151cb2fc38be0fe4f8d082f7499"
+        ],
+        "cell_id": "pdcell_6cd61f63e8c35413d748128ab07b07047ec0d15b39ef00a2af8b8136ea4ad994",
+        "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46"
+      },
+      "row_id": "ours-adam",
+      "scheme": "ours",
+      "tested_cells": [
+        {
+          "artifact_ids": [
+            "artifact-14574d3bdf96be2423efb959347c2b0c1d6965862f3f039041df92ad2c43f6dd",
+            "artifact-17bbe0df52aa145d2bcc44723d4d5c3cafc2d4edf0ad389c06fcd535b0d4e5db",
+            "artifact-a638b6336224675d970b33d7f0c33f439490b151cb2fc38be0fe4f8d082f7499"
+          ],
+          "cell_id": "pdcell_6cd61f63e8c35413d748128ab07b07047ec0d15b39ef00a2af8b8136ea4ad994",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9718,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.06219475623369217,
+            "median_projection_efficiency": 0.934433250628165,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [
+            "artifact-14574d3bdf96be2423efb959347c2b0c1d6965862f3f039041df92ad2c43f6dd",
+            "artifact-17bbe0df52aa145d2bcc44723d4d5c3cafc2d4edf0ad389c06fcd535b0d4e5db",
+            "artifact-a638b6336224675d970b33d7f0c33f439490b151cb2fc38be0fe4f8d082f7499"
+          ],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "reused_parent_artifact"
+        },
+        {
+          "artifact_ids": [
+            "artifact-c515df3f51493d0b9cbef7cb00b6b52bb3dc55dc2abfa2e89c1430fdd6b7ddf4",
+            "artifact-43091e70b07555abd67b72a72f77fdc58768e2ef16e7832052d9689bbfbbcf97",
+            "artifact-9bd6aacda5e054c7071af5c06986f9db921417bf508cc82afee5d5b66deadbcd",
+            "artifact-5adb74533b13201b72afc2338d5bfc141bd4349146c5abbcf8e85fadccc687f5"
+          ],
+          "cell_id": "pdcell_e5e3b336d3d5e2ca21f6657355d76fa9bcf86a6915fd671e54c9c38c99b89bdd",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9708,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.06296956050097942,
+            "median_projection_efficiency": 0.9171383507331543,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-6ddaff2655cd55af10a39dfdda644210178c62714bcbe531980131052149f795",
+            "artifact-09eae4fd5df96e1cd5055862b46b398682b0f3eb6675ac94594ff93f8b2c2ccc",
+            "artifact-0aca259bf9f723fb63a7cac1d3177773fa1974cb9f650dff613620f5469a630a",
+            "artifact-043038698eb3e20b118cf4fd562cc6934e9551420abba23e94869e0bcb75533d"
+          ],
+          "cell_id": "pdcell_bac4aef2fd8dc3eee29011a51ac8e529e3b2978f8f20fcd34b39456bd21ba47d",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9742,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.059991259372234346,
+            "median_projection_efficiency": 0.9345302551831078,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-80eb530c27fb52a400be492a1be93c6e4a78ccecfd3bad8dc70427f3353bd7b3",
+            "artifact-2ac275f5efe519c13831753f210f2e3688376a14ef698f7c23819baed4be21be",
+            "artifact-813fa5d7cb9bb03757550ab9b8fde2988b5bd2df1011957c26fa998df5ec92bc",
+            "artifact-d9eda32fce40fc618fc29bc27f3635ac9ce1780fdea62ee8e2277411b408a37f"
+          ],
+          "cell_id": "pdcell_9e210bf3422dcb518464c029a10a26445f66cb78801847697e5ecf06ca4dca79",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9732,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.05984691172838211,
+            "median_projection_efficiency": 0.925493316264174,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.027,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "new_continuation"
+        }
+      ]
+    },
+    {
+      "label": "Legacy, SGD",
+      "optimizer": "sgd",
+      "outcome": {
+        "comparison_scope": "within_surface_only",
+        "diagnostic_best_cell_id": "pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e",
+        "freezes_learning_rate": false,
+        "higher_rho_conclusion": "higher_rho_not_supported",
+        "plateau_cell_ids": [
+          "pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e"
+        ],
+        "plateau_relative_to_minimum": 0.02,
+        "reused_control_outside_plateau": false
+      },
+      "reused_control": {
+        "artifact_ids": [
+          "artifact-42e43aaa08f80544c0c84192fe3b2e28c57dd0f1cbb119377fc037760d9e7111",
+          "artifact-bf339824c8159f7404f13d55f4e1aa360b8777a69c50893bfe05a1b3e6ed0a28",
+          "artifact-907b89f3e6affd0bac3edfea836af39ff01c0ec9cf9674c5ce2473ac26a2a659"
+        ],
+        "cell_id": "pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e",
+        "parent_study_id": "lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46"
+      },
+      "row_id": "legacy-sgd",
+      "scheme": "legacy",
+      "tested_cells": [
+        {
+          "artifact_ids": [
+            "artifact-42e43aaa08f80544c0c84192fe3b2e28c57dd0f1cbb119377fc037760d9e7111",
+            "artifact-bf339824c8159f7404f13d55f4e1aa360b8777a69c50893bfe05a1b3e6ed0a28",
+            "artifact-907b89f3e6affd0bac3edfea836af39ff01c0ec9cf9674c5ce2473ac26a2a659"
+          ],
+          "cell_id": "pdcell_24ed021787071dde4b0c4255f232f7d5ab5f70737c0ed47be4fa0781d90f9c3e",
+          "execution": {
+            "completed_steps": 10314,
+            "expected_steps": 10314,
+            "state": "complete",
+            "training_completed": true
+          },
+          "final_validation": {
+            "accuracy": 0.9678,
+            "accuracy_gate_passed": true,
+            "checkpoint_role": "final_epoch",
+            "epoch": 3,
+            "loss": 0.07388557366132736,
+            "median_projection_efficiency": 0.995569837756005,
+            "metric": "final_epoch_validation",
+            "official_test_read": false,
+            "sample_count": 5000,
+            "seed_count": 1,
+            "trained_epochs": 3
+          },
+          "official_test_read": false,
+          "parent_artifact_ids": [
+            "artifact-42e43aaa08f80544c0c84192fe3b2e28c57dd0f1cbb119377fc037760d9e7111",
+            "artifact-bf339824c8159f7404f13d55f4e1aa360b8777a69c50893bfe05a1b3e6ed0a28",
+            "artifact-907b89f3e6affd0bac3edfea836af39ff01c0ec9cf9674c5ce2473ac26a2a659"
+          ],
+          "rho": {
+            "conv": 0.003,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": null,
+            "state": "passed"
+          },
+          "source": "reused_parent_artifact"
+        },
+        {
+          "artifact_ids": [
+            "artifact-fa780989b15f2b9da4e93e42f887e75eebb99f19f6c79f7d8dd743a711b2dcad",
+            "artifact-e1e80f73748aad5259137680f4c70f40e5bb090d839ee03e9e5a5a124b2d1356"
+          ],
+          "cell_id": "pdcell_2a910f4e682e3f72395a7b73a84af4a9c26d023d7ea554604f4d59c5c2bd6abf",
+          "execution": {
+            "completed_steps": 40,
+            "expected_steps": 10314,
+            "state": "stopped_at_canary",
+            "training_completed": false
+          },
+          "final_validation": null,
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.003,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": {
+              "code": "canary_safety_failure:loss_ema_explosion",
+              "summary": "Canary safety gate failed with loss_ema_explosion after 40 completed steps."
+            },
+            "state": "failed"
+          },
+          "source": "new_continuation"
+        },
+        {
+          "artifact_ids": [
+            "artifact-c701a771a422ba9cd30155c0afeedec9153e19f49bdbe72b202905348ab21098"
+          ],
+          "cell_id": "pdcell_fbdc029a6d29312d0f6bc6e6988951ae0f196dacfa50347af700627642437331",
+          "execution": {
+            "completed_steps": 40,
+            "expected_steps": 10314,
+            "state": "stopped_at_canary",
+            "training_completed": false
+          },
+          "final_validation": null,
+          "official_test_read": false,
+          "parent_artifact_ids": [
+            "artifact-c701a771a422ba9cd30155c0afeedec9153e19f49bdbe72b202905348ab21098"
+          ],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.03
+          },
+          "safety": {
+            "failure": {
+              "code": "canary_safety_failure:loss_ema_explosion",
+              "summary": "Canary safety gate failed with loss_ema_explosion after 40 completed steps."
+            },
+            "state": "failed"
+          },
+          "source": "reused_parent_artifact"
+        },
+        {
+          "artifact_ids": [
+            "artifact-b69a487e01655b5e57618e097a5ca928d2cf1c5d21d56e4f5a37ff80fe1e2f7e",
+            "artifact-e9e87b3198ddbd162871c71aef3d8f39ceae674b55e5abd65b364bd22c4da7ad"
+          ],
+          "cell_id": "pdcell_3b0938dc67b1221412aebbb3adad6510d8d6d84a73c60db64342583b4ab40dc7",
+          "execution": {
+            "completed_steps": 19,
+            "expected_steps": 10314,
+            "state": "stopped_at_canary",
+            "training_completed": false
+          },
+          "final_validation": null,
+          "official_test_read": false,
+          "parent_artifact_ids": [],
+          "rho": {
+            "conv": 0.009,
+            "dense": 0.09
+          },
+          "safety": {
+            "failure": {
+              "code": "canary_safety_failure:projection_efficiency",
+              "summary": "Canary safety gate failed with projection_efficiency after 19 completed steps."
+            },
+            "state": "failed"
+          },
+          "source": "new_continuation"
+        }
+      ]
+    }
+  ],
+  "schema_version": "drn-rho-corner-diagnostic-card/v1",
+  "scope": {
+    "architecture": {
+      "profile": "conv2"
+    },
+    "dataset": {
+      "affine_enabled": false,
+      "evaluation_split": {
+        "name": "validation",
+        "sample_count": 5000,
+        "seed": 0,
+        "source": "mnist_train",
+        "stratified": true
+      },
+      "name": "mnist",
+      "official_test_read": false,
+      "variant": "ordinary"
+    },
+    "nonlinearity": {
+      "clamped_convergence_criterion": "projected_kkt_residual",
+      "name": "perfect_diode",
+      "parameters": {
+        "clamp_epsilon": 1e-08
+      }
+    },
+    "operating_point": {
+      "input_gain": {
+        "shared_across_schemes": true,
+        "status": "reused_parent_diagnostic_setting",
+        "value": 100
+      },
+      "solver": {
+        "K": 6,
+        "T": 6,
+        "security_check": "reused_hash_verified_parent_pass",
+        "security_reference": {
+          "K": 64,
+          "T": 64
+        },
+        "status": "reused_parent_diagnostic_setting"
+      }
+    },
+    "training": {
+      "accuracy_gate": {
+        "boundary": "greater_than_or_equal",
+        "metric": "final_validation_accuracy",
+        "minimum": 0.9
+      },
+      "batch_size": 16,
+      "canary_max_steps": 640,
+      "candidate_expected_steps": 10314,
+      "epochs": 3,
+      "model_seed": 0,
+      "plateau_boundary": "inclusive",
+      "plateau_relative_to_minimum": 0.02,
+      "selection_metric": "minimum_final_validation_loss",
+      "tie_breakers": [
+        "higher_final_validation_accuracy",
+        "higher_median_projection_efficiency",
+        "lower_maximum_target",
+        "lower_target_sum",
+        "lower_rho_conv",
+        "lower_rho_dense",
+        "deterministic_candidate_identity"
+      ],
+      "validation_batch_size": 64
+    }
+  },
+  "status": {
+    "comparison": "within_surface_only",
+    "coverage": "complete",
+    "curation": "diagnostic_valid",
+    "review": "reviewed"
+  },
+  "title": "Conv2 perfect-diode high-rho corner diagnostic"
+}

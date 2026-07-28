@@ -13,7 +13,12 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - `labs/`: experiments and utilities
 - `plotting_functions/`: analysis/plotting helpers
 - `playbooks/`: SOPs for repeatable tasks
+- `skills/`: repo-local Codex workflows and deterministic helpers
 - `docs/`: lightweight state and notes
+
+## Nested Guidance
+- Before changing files under a directory that contains its own `AGENTS.md`,
+  read and follow that file in addition to this repository-wide guidance.
 
 ## Playbooks
 - Optuna analysis SOP: `playbooks/optuna_analysis.md`
@@ -37,6 +42,69 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - Jean Zay runs default to the R3 project `fmu`; use `fmu@v100` for V100 GPU jobs and write run outputs under `/lustre/fsn1/projects/rech/fmu/$USER/server_code/results` unless the user explicitly requests another project/account. The source checkout may stay under the existing `umg` work path.
 - For MNIST Conv amplification training, prefer running Conv1 and Conv2 jobs on `tmux main` and `tmux akibscomputer`; reserve Conv3 jobs for Jean Zay and `tmux trex` unless local availability or urgency clearly argues otherwise.
 - Prefer keeping the same launcher/config contract across local tmux and Jean Zay so results can be aggregated into one summary.
+- For an already approved long simulation on `tmux main` or Trex, use the
+  bounded, receipt-backed `python -m experiments.local_dispatch` workflow in
+  `docs/local_dispatch.md`; do not reconstruct it with `send-keys` or a chain
+  of one-check-per-SSH commands. Build its schema-validated v2 preflight
+  envelope with the same tool before arming `start`.
+
+## Long-Run Simulation Fail-Stop-Report Policy
+- This policy applies only to an **armed long-run simulation attempt**: a
+  numerical run or batch expected to occupy a compute lane for at least ten
+  minutes, any scheduled/queued long-running simulation batch, or explicitly
+  armed monitoring of such an active run. It does not apply merely because
+  the repository contains experiment code.
+- Before entering the final launch path, state `LONG-RUN ATTEMPT ARMED` with
+  the experiment/attempt ID, target lane or scheduler, expected duration,
+  hard deadline, and immutable state/receipt paths. The armed attempt covers
+  final staging and revalidation of already-produced smoke/scientific gate
+  receipts, submission, immediate scheduler or process readback, and
+  active-run monitoring.
+- Planning, code edits, unit/integration tests, linting, dependency and
+  environment setup, plan-only/dry-run commands, short interactive probes,
+  bounded developer smoke tests, and short smoke/scientific gate execution
+  completed before `start` are
+  outside the armed attempt. Failures there may be diagnosed, fixed, and
+  retested with bounded observable work; they must never be represented as
+  passed long-run launch gates. A gate that is itself a long or scheduled
+  simulation is a separate armed long-run attempt.
+- Offline collection and analysis after a run is no longer active are also
+  outside the armed attempt. For any repairable failure outside the protected
+  scope, diagnose the cause before rerunning and keep corrective work bounded
+  and observable; never repeat blindly. If the cause remains unresolved after
+  reasonable diagnosis-backed attempts, report it.
+- Within an armed attempt, an unexpected failure is any nonzero exit,
+  exception, timeout, unreachable required dependency, or missing, stale,
+  ambiguous, or mismatched receipt, artifact, or scheduler readback that the
+  approved plan does not explicitly classify as an independent scientific
+  outcome. The first such failure is terminal for that long-run attempt and
+  current launch turn.
+- At that failure, stop the long-run launch/monitoring workflow. Perform only
+  bounded, read-only inspection needed to identify the exact error and live
+  job state. Do not edit code or configuration, substitute a path, tool,
+  host, or environment, restage, refreeze, rerun, retry, resubmit, cancel, or
+  delegate those actions in the same turn.
+- Report and wait. Only a new user message sent after the long-run failure
+  report may authorize diagnosis, repair, cancellation, or a new attempt. A
+  plan, config, or launcher may define retry mechanics, but it never grants
+  authority to initiate that retry.
+- The report must name the exact stage, command, and error; completed stages;
+  launched-job count, IDs, and live states (explicitly zero when none);
+  last valid receipts, logs, and artifacts; files or external state changed;
+  and the smallest proposed next action.
+- Preserve any failed receipt and all diagnostic evidence. A later authorized
+  attempt must use a new immutable attempt ID and receipt paths; never
+  overwrite or resume a terminal failed attempt.
+- A long-run controller may catch an unexpected exception only to atomically
+  write one first-write-wins failure report, mark the attempt terminal, and
+  exit nonzero. It must never catch and continue. A failed long-run state
+  cannot submit or resume.
+- Long-run polling and reconciliation loops require an explicit hard
+  deadline, emit observable progress at least every 60 seconds, and stop and
+  report if progress becomes unobservable or the deadline expires.
+- A candidate-cell rejection that an approved sweep explicitly defines as an
+  independent scientific outcome is not a pipeline failure. Record it as
+  negative evidence and continue only as authorized by the frozen plan.
 
 ## Conv Amplification Paper Work
 - Before proposing, launching, or summarizing Conv amplification runs, read `docs/conv_paper_hyperparameter_protocol.md` and every active protocol it links. Use that protocol set as the source of truth.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scheduled Run Preflight"
+  short_description: "Validate scheduled commands before queueing"
+  default_prompt: "Use $scheduled-run-preflight to validate this scheduled command before it is queued."
