@@ -3009,18 +3009,23 @@ def _training_run_spec(
     }
 
 
-def _execute_training_entry(
+def _prepare_training_entry(
     study: Mapping[str, Any],
     spec: PerfectDiodeHparamStudySpec,
     shard_dir: Path,
-    output_dir: Path,
     payload: Mapping[str, Any],
     *,
     data_root: str | Path,
     download: bool,
-    device: str,
-    mode: str,
 ) -> dict[str, Any]:
+    """Resolve the production preamble from scientific fields.
+
+    ``cell_id`` is derived provenance.  It is not an admission field because
+    a continuation may carry an identifier produced under an older parent
+    study while retaining the same row, optimizer, rho values, and learning
+    rates.
+    """
+
     row, assets = _common_loaded_assets(
         study,
         spec,
@@ -3034,25 +3039,67 @@ def _execute_training_entry(
         payload.get("surface_id")
         or f"{row['row_id']}--{optimizer_name}"
     )
-    rho_conv = _finite(payload.get("rho_conv"), "payload.rho_conv", positive=True)
+    rho_conv = _finite(
+        payload.get("rho_conv"), "payload.rho_conv", positive=True
+    )
     rho_dense = _finite(
         payload.get("rho_dense"), "payload.rho_dense", positive=True
     )
-    expected_cell_id = rho_cell_id(
+    resolved_payload = copy.deepcopy(dict(payload))
+    resolved_payload["cell_id"] = rho_cell_id(
         study_id=spec.study_id,
         surface_id=surface_id,
         rho_conv=rho_conv,
         rho_dense=rho_dense,
     )
-    if payload.get("cell_id") != expected_cell_id:
-        raise ValueError(
-            "Expected payload.cell_id to match the exact rho-cell identity. "
-            f"Provided value: {payload.get('cell_id')!r}."
-        )
-    probe = _load_stable_probe(shard_dir, payload)
+    probe = _load_stable_probe(shard_dir, resolved_payload)
     rates = _resolve_rates(
-        probe, payload, rho_conv=rho_conv, rho_dense=rho_dense
+        probe,
+        resolved_payload,
+        rho_conv=rho_conv,
+        rho_dense=rho_dense,
     )
+    return {
+        "row": row,
+        "assets": assets,
+        "payload": resolved_payload,
+        "optimizer_name": optimizer_name,
+        "surface_id": surface_id,
+        "rho_conv": rho_conv,
+        "rho_dense": rho_dense,
+        "rates": rates,
+    }
+
+
+def _execute_training_entry(
+    study: Mapping[str, Any],
+    spec: PerfectDiodeHparamStudySpec,
+    shard_dir: Path,
+    output_dir: Path,
+    payload: Mapping[str, Any],
+    *,
+    data_root: str | Path,
+    download: bool,
+    device: str,
+    mode: str,
+) -> dict[str, Any]:
+    prepared = _prepare_training_entry(
+        study,
+        spec,
+        shard_dir,
+        payload,
+        data_root=data_root,
+        download=download,
+    )
+    row = prepared["row"]
+    assets = prepared["assets"]
+    payload = prepared["payload"]
+    optimizer_name = prepared["optimizer_name"]
+    surface_id = prepared["surface_id"]
+    rho_conv = prepared["rho_conv"]
+    rho_dense = prepared["rho_dense"]
+    rates = prepared["rates"]
+    expected_cell_id = payload["cell_id"]
     runtime = _build_fresh_runtime(
         study,
         row,

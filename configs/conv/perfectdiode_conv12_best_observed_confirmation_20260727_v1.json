@@ -743,9 +743,9 @@
     "incomplete_entry_policy": "restart_from_shared_initialization",
     "completion_marker_written_last": true,
     "jean_zay": {
-      "dossier": "AD011016471R1",
-      "project": "umg",
-      "account": "umg@v100",
+      "dossier": "AD010913993R3",
+      "project": "fmu",
+      "account": "fmu@v100",
       "partition": "gpu_p13",
       "qos": "qos_gpu-t3",
       "constraint": "v100-32g",
@@ -813,7 +813,7 @@
     "validation_metrics_required": true,
     "safety_and_projection_diagnostics_required": true,
     "official_test_read": false,
-    "remote_results_root": "/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode_best_observed_confirmation_studies/perfectdiode-conv12-best-observed-confirmation-20260727-v1",
+    "remote_results_root": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/perfectdiode_best_observed_confirmation_studies/perfectdiode-conv12-best-observed-confirmation-20260727-v1",
     "intended_local_results_root": "results/perfectdiode_best_observed_confirmation_studies/perfectdiode-conv12-best-observed-confirmation-20260727-v1"
   },
   "prohibitions": {

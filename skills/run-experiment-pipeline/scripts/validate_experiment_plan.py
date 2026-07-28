@@ -30,6 +30,16 @@ PREFLIGHT_ROLES = {
     "tk_reference",
     "scheduled_run_preflight",
 }
+LEGACY_PREFLIGHT_KEYS = {
+    "smoke_required",
+    "tk_reference_required",
+    "scheduled_run_preflight_required",
+    "receipt_path",
+}
+CANONICAL_PREFLIGHT_KEYS = LEGACY_PREFLIGHT_KEYS | {
+    "receipt_schemas",
+    "receipt_bindings",
+}
 
 
 class PlanError(ValueError):
@@ -145,19 +155,23 @@ def reject_placeholders(value: Any, context: str = "plan") -> None:
 
 def validate_preflight_contract(
     value: Any,
+    *,
+    allow_legacy_receipt_contract_for_catalog: bool = False,
 ) -> tuple[Path, dict[str, dict[str, Any] | None]]:
     """Validate and normalize the exact preflight receipt authority."""
 
+    is_legacy_receipt_contract = (
+        allow_legacy_receipt_contract_for_catalog
+        and isinstance(value, dict)
+        and set(value) == LEGACY_PREFLIGHT_KEYS
+    )
     preflight = require_keys(
         value,
-        required={
-            "smoke_required",
-            "tk_reference_required",
-            "scheduled_run_preflight_required",
-            "receipt_path",
-            "receipt_schemas",
-            "receipt_bindings",
-        },
+        required=(
+            LEGACY_PREFLIGHT_KEYS
+            if is_legacy_receipt_contract
+            else CANONICAL_PREFLIGHT_KEYS
+        ),
         context="execution.preflight",
     )
     require(
@@ -171,6 +185,18 @@ def validate_preflight_contract(
             f"a boolean preflight.{key}",
             preflight[key],
         )
+    receipt_path = relative_repo_path(
+        preflight["receipt_path"],
+        "execution.preflight.receipt_path",
+    )
+    require(
+        len(receipt_path.parts) > 1 and receipt_path.parts[0] == "results",
+        "a preflight receipt below results/",
+        str(receipt_path),
+    )
+    if is_legacy_receipt_contract:
+        return receipt_path, {}
+
     receipt_schemas = require_keys(
         preflight["receipt_schemas"],
         required=PREFLIGHT_ROLES,
@@ -268,15 +294,6 @@ def validate_preflight_contract(
             "producer_source_id": producer_source_id,
         }
         bound_paths.append(inner_path)
-    receipt_path = relative_repo_path(
-        preflight["receipt_path"],
-        "execution.preflight.receipt_path",
-    )
-    require(
-        len(receipt_path.parts) > 1 and receipt_path.parts[0] == "results",
-        "a preflight receipt below results/",
-        str(receipt_path),
-    )
     require(
         receipt_path not in bound_paths,
         "the outer preflight receipt path to differ from every inner receipt",
@@ -296,6 +313,7 @@ def validate_plan(
     *,
     require_approved: bool,
     verify_files: bool,
+    allow_legacy_receipt_contract_for_catalog: bool = False,
 ) -> None:
     require_keys(
         plan,
@@ -474,8 +492,11 @@ def validate_plan(
     )
     for key in ("launcher", "collector", "validator"):
         require_string_list(execution[key], f"execution.{key}")
-    receipt_path, _receipt_bindings = validate_preflight_contract(
-        execution["preflight"]
+    receipt_path, receipt_bindings = validate_preflight_contract(
+        execution["preflight"],
+        allow_legacy_receipt_contract_for_catalog=(
+            allow_legacy_receipt_contract_for_catalog
+        ),
     )
 
     storage = require_keys(
@@ -501,6 +522,19 @@ def validate_plan(
             "storage.local_bundle_path",
             str(receipt_path),
         )
+    for role, binding in receipt_bindings.items():
+        if binding is None:
+            continue
+        bound_receipt_path = binding["receipt_path"]
+        try:
+            bound_receipt_path.relative_to(local_bundle)
+        except ValueError:
+            require(
+                False,
+                f"execution.preflight.receipt_bindings.{role}.receipt_path "
+                "below storage.local_bundle_path",
+                str(bound_receipt_path),
+            )
     require(isinstance(storage["remote_staging"], list), "a remote_staging list", storage["remote_staging"])
     for remote in storage["remote_staging"]:
         remote = require_keys(

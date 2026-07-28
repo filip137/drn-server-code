@@ -476,6 +476,63 @@ def test_rho_cell_identity_is_prefixed_and_content_derived() -> None:
     assert first != second
 
 
+def test_training_preamble_derives_cell_id_instead_of_admitting_on_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    row = {
+        "row_id": "conv1_baseline_v1_c1",
+        "architecture": "conv1",
+        "scheme": "baseline",
+    }
+    assets = object()
+    spec = SimpleNamespace(study_id="current-study")
+    payload = {
+        "entry_id": "job-a",
+        "row_id": row["row_id"],
+        "optimizer": "sgd",
+        "rho_conv": 0.009,
+        "rho_dense": 0.03,
+        "cell_id": "legacy-parent-cell-id",
+        "raw_learning_rates_by_parameter": {"weight": 0.1},
+    }
+
+    monkeypatch.setattr(
+        runtime_module,
+        "_common_loaded_assets",
+        lambda *_args, **_kwargs: (row, assets),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_load_stable_probe",
+        lambda *_args, **_kwargs: {"probe_stable": True},
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_resolve_rates",
+        lambda _probe, resolved, **_kwargs: dict(
+            resolved["raw_learning_rates_by_parameter"]
+        ),
+    )
+
+    prepared = runtime_module._prepare_training_entry(
+        {},
+        spec,
+        tmp_path,
+        payload,
+        data_root=tmp_path,
+        download=False,
+    )
+    expected = rho_cell_id(
+        study_id="current-study",
+        surface_id="conv1_baseline_v1_c1--sgd",
+        rho_conv=0.009,
+        rho_dense=0.03,
+    )
+    assert prepared["payload"]["cell_id"] == expected
+    assert payload["cell_id"] == "legacy-parent-cell-id"
+    assert prepared["rates"] == {"weight": 0.1}
+
+
 def test_failed_center_attempt_is_reused_when_it_is_in_safe_core(
     tmp_path: Path, monkeypatch
 ) -> None:

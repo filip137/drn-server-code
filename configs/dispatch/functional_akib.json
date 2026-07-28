@@ -1,0 +1,26 @@
+{
+  "schema_version": "functional-target-profile/v1",
+  "target_id": "akib",
+  "target_kind": "ssh_process",
+  "host": "integnano-akib",
+  "transport": {
+    "kind": "ssh",
+    "ssh_target": "akib",
+    "ssh_config": "/home/filip/.ssh/config"
+  },
+  "workspace_root": "/home/filiposana/server_code",
+  "result_root": "/home/filiposana/server_code/results/functional_executor",
+  "data_root": "/home/filiposana/data",
+  "device": "cuda:0",
+  "python_candidates": [
+    "/home/filiposana/miniconda3/envs/py312/bin/python",
+    "python3"
+  ],
+  "required_imports": [
+    "torch"
+  ],
+  "requires_cuda": true,
+  "minimum_gpu_count": 1,
+  "default_concurrency": 1,
+  "tmux_session_prefix": "exp-akib-"
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": "functional-target-profile/v1",
+  "target_id": "local",
+  "target_kind": "local_tmux",
+  "host": "local",
+  "transport": {
+    "kind": "local",
+    "ssh_target": null
+  },
+  "workspace_root": "/home/filip/server_code_conv_learning_rate_protocol",
+  "result_root": "/home/filip/server_code_conv_learning_rate_protocol/results/functional_executor",
+  "data_root": "/home/filip/data",
+  "device": "cuda:0",
+  "python_candidates": [
+    "/home/filip/miniconda3/envs/py312/bin/python",
+    "python3"
+  ],
+  "required_imports": [
+    "torch"
+  ],
+  "requires_cuda": true,
+  "minimum_gpu_count": 1,
+  "default_concurrency": 2,
+  "tmux_session_prefix": "exp-local-"
+}

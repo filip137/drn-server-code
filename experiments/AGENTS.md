@@ -1,19 +1,45 @@
 # AGENTS
 
 ## Scope
-This guidance applies to experiment scripts, launchers, collectors, and monitors under `experiments/`, especially MNIST Conv DRN amplification paper work.
+This guidance applies to experiment scripts, launchers, collectors, monitors,
+and result bundles under `experiments/`. It supplements the repository-root
+`AGENTS.md`.
 
-## Conv Amplification Run Rules
-- Before changing launchers or interpreting results for Conv amplification, read `../docs/conv_paper_hyperparameter_protocol.md`, every active protocol it links, and `../docs/amplification_experiment_curation.md`.
-- For current state, also check `../docs/current_state.md`. Do not treat documents under `../docs/contaminated_old_worktree/` or `../docs/old_worktree_snapshots/` as active protocols.
-- Keep the frozen dataset transform, input representation, architecture, output encoding, nonlinearity, and three-scheme amplification grid—baseline `v1/c1`, proposed/ours `v4/c1`, and legacy `v4/c0.25`—explicit in every launcher or collector.
-- Do not mix matched-operating-point hard-sigmoid rows, tuned upper-envelope rows, same-raw-`input_gain` diagnostics, and preliminary screens without labeling the category in outputs and summaries.
-- Choose `input_gain` before operational `T/K`. For both nonlinearities, preserve the per-architecture and per-amplification 30%-target calibration contract and freeze the seed-0 gain across later model seeds.
-- Reset global layer and parameter name counters before every independent calibration model, and seed the shuffled calibration loader independently of model RNG consumption.
-- For perfect diode, use projected KKT residuals for clamped hidden-layer convergence checks and keep raw residuals as diagnostics.
-- All nine hard-sigmoid gains and row-specific operational `T/K` values are frozen. The Conv1/Conv2 hard-sigmoid seed-0 LR handoff is complete through the two v1 baselines and four v3 parameter-relative-rho amplified rows. Perfect-diode calibration and `T/K`, plus Conv3/perfect-diode LR rules, remain pending.
-- Batch size 16 and plain SGD are frozen only for the completed Conv1/Conv2 hard-sigmoid screen. Final-training epoch budget, seeds, checkpoint inclusion, and paper categories remain unresolved; do not launch long checks or final training until the later protocol is frozen.
-- Calibration outputs must preserve enough provenance for later aggregation: resolved dataset transform, affine and model seeds, convolution pipeline, nonlinearity, amplification values, calibration T, adaptive-equilibrium setting, selected gain, target occupancy, and every hidden-layer measured occupancy.
+## Protocol Authority
+- For Conv amplification work, start with
+  `../docs/conv_paper_hyperparameter_protocol.md` and follow the protocols that
+  it marks active for the requested evidence scope.
+- `../docs/conv_paper_experiment_definition.md` owns the paper dataset,
+  preprocessing, architectures, output encoding, loss, nonlinearities, and
+  amplification schemes.
+- `../docs/conv_paper_hard_sigmoid_input_gain_protocol.md` owns the
+  hard-sigmoid-only input-gain calibration contract, including its target and
+  freeze rule. Do not apply that target or procedure to perfect diode.
+- `../docs/conv_paper_tk_protocol.md` owns the paper operational `T/K`
+  selection rules within the scope it explicitly declares.
+- `../docs/conv_paper_learning_rate_protocol.md` owns the paper hard-sigmoid
+  learning-rate handoff within the rows and optimizer contract it explicitly
+  declares.
+- `../docs/results/amplification_experiment_curation.md` owns the evidence disposition
+  of historical results. `../docs/current_state.md` is the user-controlled
+  agent handoff and `../docs/current_experiments.md` is the operational
+  tracker; neither is a protocol.
+- Do not copy numerical protocol values or completion-status snapshots into
+  this file. Read them from the active protocol documents at execution time.
+
+## Evidence Scope
+- Every launcher and manifest must identify its intended evidence scope as
+  paper-facing, diagnostic, or historical replay.
+- Collectors and summaries must preserve that intended scope together with any
+  later valid, diagnostic, excluded, or superseded disposition assigned by the
+  active protocols and curation ledger.
+- A paper-facing run must resolve exactly to the active experiment definition
+  and every applicable downstream protocol.
+- Ordinary-MNIST and other off-protocol diagnostics must be labeled explicitly
+  and must not be promoted to paper-facing evidence by a launcher or worker.
+- Collectors must not silently combine rows with different datasets,
+  initializers, gains, `T/K`, optimizers, learning rates, epoch budgets, or
+  checkpoint rules.
 
 ## Launching
 - Preserve the same launcher/config contract across local tmux lanes and Jean Zay whenever possible.
@@ -40,7 +66,8 @@ This guidance applies to experiment scripts, launchers, collectors, and monitors
   existing terminal failure report or failed state. A failed state cannot
   submit or resume. A new attempt requires a new state/receipt path and a new
   user message after the prior report.
-- Keep the exact tracker entry `preflighting` through the payload canary and
+- For a legacy/full-plan attempt, keep the exact tracker entry `preflighting`
+  through the payload canary and
   require that state immediately before its scheduler side effect. Stop at
   the successful canary boundary. Only a later invocation may launch
   production, and immediately before that production scheduler side effect it
@@ -51,8 +78,119 @@ This guidance applies to experiment scripts, launchers, collectors, and monitors
   changes it to `queued` or `running`. Within an armed attempt, missing,
   malformed, duplicate, blocked, or stale entries are terminal pre-launch
   failures.
-- For the perfect-diode Conv1/Conv2 successor, staged Jean Zay source and
+- A simplified diagnostic continuation does not use this legacy
+  canary/production tracker-receipt split. Its functional dispatcher requires
+  the approved generated study/proposal, one passing smoke per target, the
+  matching aggregate preflight, and an executor-generated tracker entry.
+- The following is a legacy full-plan rule for the existing perfect-diode
+  Conv1/Conv2 Jean Zay successor only; it is not the launch path for a new
+  simplified diagnostic continuation. Its staged source and
   bootstrap validation is part of its armed long-run launch gate and must run
   exactly once through
   `validate_mnist_conv_perfectdiode_successor_staged_jeanzay.sh`. Do not
   reconstruct or selectively retry its SSH subcommands.
+
+## Large-Run Preflight Implementation
+- Follow the root large-run preflight policy for every long or large batch,
+  whether immediate or scheduled.
+- The execution smoke test must use the same public launcher, configuration
+  resolution, environment, device type, and output-writing code as the full
+  run. Use a separate disposable output directory so smoke artifacts cannot
+  contaminate production results.
+- A training smoke test must construct the real dataset and model, execute the
+  equilibrium phases, compute the real loss and gradients, complete at least
+  one optimizer step, and write the expected checkpoint or result artifact. A
+  parser check, import check, plan, dry run, or `--help` invocation is not
+  sufficient.
+- For a non-training experiment, the smoke test must execute the experiment's
+  principal numerical computation and write its expected result artifact.
+- Reject non-finite values, missing artifacts, schema failures, or a nonzero
+  exit status. Do not launch the full workload after any preflight failure.
+- Every unique resolved architecture x nonlinearity x amplification
+  configuration in a Conv amplification batch must have a passing scientific
+  `T/K` reference gate under the active protocol for that evidence scope.
+  Hard-sigmoid criteria must not be reused for perfect diode.
+- A true continuation may reuse its recorded accepted `T/K` result when
+  learning rates and the operating point are fixed and no architecture,
+  nonlinearity, amplification, input gain, `T/K`, or equilibrium/gradient
+  semantic changes. A host, epoch extension, path, interpreter, library, CUDA,
+  or GPU change alone requires a new target smoke, not a new scientific gate.
+- For perfect-diode clamped hidden states, use projected KKT residuals. Raw
+  residuals are diagnostics for clamped states, not the convergence gate.
+- For paper-facing or explicitly reproducibility-critical work, reuse a
+  preflight only when its strict recorded identities still match. For ordinary
+  diagnostics, keep scientific inputs exact but treat Python, PyTorch, CUDA,
+  GPU, paths, and operational adapter code as provenance: rerun the real
+  one-batch smoke and admit the target when required capabilities, finite
+  numerics, checkpoint writing, and result schema pass.
+- Scheduled runs must also satisfy
+  `../skills/scheduled-run-preflight/SKILL.md`.
+
+## Reproducibility And Provenance
+- When an active calibration protocol requires independent model builds, reset
+  global layer and parameter name counters before each build and seed the
+  shuffled loader independently of model RNG consumption.
+- Preserve the resolved config and enough provenance to reproduce and classify
+  every result: code identity, dataset and transform, model and data seeds,
+  architecture, output encoding, nonlinearity, amplification values,
+  initializer and bounds, input gain, `T/K`, optimizer contract, device and
+  host, evidence scope, and preflight receipt.
+- Calibration results must additionally record the calibration configuration,
+  target definition, selected value, and every required layer measurement.
+- Slurm runs must record the job and array-task identifiers, account, resource
+  profile, remote result path, and intended local destination.
+
+## Execution And Jean Zay Results
+- Follow the root compute-allocation policy. Keep the launcher and resolved
+  scientific config identical across local tmux and Jean Zay execution.
+- Follow `../docs/jean-zay.md` for the current SSH alias, project/account,
+  storage paths, monitoring, and result-repatriation procedure.
+- Use `../skills/sync-remote-results/SKILL.md` for Akib, Trex, and Jean Zay
+  transfers.
+- Treat Jean Zay result storage as temporary staging, not as the permanent
+  result archive. Before submission, assign both a run-specific remote output
+  directory and its intended local destination.
+- A Jean Zay run is not complete until its result bundle, resolved configs,
+  manifests, checkpoints, metrics, and Slurm logs have been copied back and
+  validated locally.
+- Before transfer, require a terminal Slurm state and a passing remote
+  collector, completion marker, or experiment-specific validator. A
+  metadata-only evaluation snapshot may arrive first, but final archival
+  acceptance requires the entire self-contained run or study root.
+- Copy into a local staging directory first. Verify the transfer and run the
+  experiment-specific collector or integrity validator before publishing the
+  bundle into the local result store.
+- Write a transfer receipt under the local result store containing the remote
+  and local paths, job identifiers and terminal states, content identity, file
+  count and bytes, transfer and verification commands, local validation
+  result, and timestamp.
+- If transfer or validation fails, keep the exact remote run directory,
+  classify the run as incomplete, and retry the transfer. Do not treat
+  remote-only results as completed or paper-facing evidence.
+- Never use a failure-masking transfer such as `scp -r ... || true`.
+- After the local copy passes validation, perform remote cleanup as a separate
+  recorded step and remove only the exact run-specific remote directory.
+  Never delete a shared Jean Zay result root, source checkout, or another
+  run's output.
+
+## Operational Tracking
+
+- Before a new or materially changed experiment launch, follow
+  `../skills/run-experiment-pipeline/SKILL.md` and require its approved,
+  validated plan.
+- Full-plan workflows retain the exact-ID `launch-ready` tracker validator
+  before their first production side effect. A simplified ordinary-diagnostic
+  continuation uses its authorized immutable dispatch request plus matching
+  passed functional-preflight result as launch authority; the executor
+  creates and validates the concise tracker entry automatically rather than
+  making tracker syntax a user-facing gate.
+- As part of an explicitly requested launch, monitoring, transfer, or
+  validation workflow, update `../docs/current_experiments.md` after each
+  verified state transition, reusing the same experiment marker and the
+  `Testing`, `Where`, and `Status` fields. Do not put run status in
+  `../docs/current_state.md`.
+- Generated monitors and reporters write detailed output beside the result
+  bundle. They must not append directly to either concise document.
+- Record terminal remote execution as `remote-closed`, not complete, until
+  transfer and local validation pass. Keep the entry through
+  `review-pending`; remove it only after the reviewed result is published.

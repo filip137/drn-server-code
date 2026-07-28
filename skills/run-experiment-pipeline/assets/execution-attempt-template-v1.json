@@ -1,0 +1,119 @@
+{
+  "schema_version": "experiment-execution-attempt/v1",
+  "attempt": {
+    "attempt_id": "replace-me-attempt",
+    "study_ref": {
+      "path": "docs/experiment_studies/replace-me-study.json",
+      "study_id": "replace-me-study",
+      "study_spec_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "study_bindings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "supersedes_attempt_id": null,
+    "source": {
+      "git_commit": "0000000000000000000000000000000000000000",
+      "control_plane_release_id": "replace-me-release",
+      "control_plane_release_path": "experiments/control_plane/releases/replace-me-release.json",
+      "control_plane_release_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "target": {
+      "kind": "ssh_tmux",
+      "host": "trex",
+      "device": "cuda:0",
+      "profile_path": "launch_tools/profiles/replace-me-trex.json",
+      "profile_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "execution": {
+      "launcher": [
+        "python",
+        "-m",
+        "experiments.replace_me",
+        "validate"
+      ],
+      "collector": [
+        "python",
+        "-m",
+        "experiments.replace_me",
+        "collect"
+      ],
+      "validator": [
+        "python",
+        "-m",
+        "experiments.replace_me",
+        "validate-results"
+      ],
+      "routed_manifest": {
+        "path": "results/replace-me-attempt/staging/routed-manifest.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "source_study_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "job_count_pointer": "/entries",
+        "job_count": 1,
+        "selection": {
+          "mode": "all",
+          "job_id_key": "entry_id",
+          "selected_study_job_ids": [
+            "replace-me-case"
+          ]
+        }
+      },
+      "environment_contract": {
+        "path": "configs/environments/replace-me-trex.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "preflight": {
+      "outer_receipt_path": "results/replace-me-attempt/preflight/outer.json",
+      "requirements": [
+        {
+          "role": "smoke",
+          "required": true,
+          "schema_version": "replace-me-smoke-receipt/v1",
+          "receipt_path": "results/replace-me-attempt/preflight/smoke.json",
+          "subject_id": "replace-me-smoke",
+          "producer_source_id": "0000000000000000000000000000000000000000"
+        },
+        {
+          "role": "tk_reference",
+          "required": true,
+          "schema_version": "replace-me-tk-receipt/v1",
+          "receipt_path": "results/replace-me-attempt/preflight/tk-reference.json",
+          "subject_id": "replace-me-tk",
+          "producer_source_id": "0000000000000000000000000000000000000000"
+        },
+        {
+          "role": "scheduled_run_preflight",
+          "required": true,
+          "schema_version": "replace-me-scheduled-preflight/v1",
+          "receipt_path": "results/replace-me-attempt/preflight/scheduled.json",
+          "subject_id": "replace-me-scheduled",
+          "producer_source_id": "0000000000000000000000000000000000000000"
+        }
+      ]
+    },
+    "storage": {
+      "local_bundle_path": "results/replace-me-attempt",
+      "remote_staging": [
+        {
+          "host": "trex",
+          "path": "/home/filip/results/replace-me-attempt",
+          "intended_local_destination": "results/replace-me-attempt"
+        }
+      ]
+    },
+    "deadlines": {
+      "run_class": "validation",
+      "expected_duration_seconds": 120,
+      "hard_deadline_seconds": 300,
+      "scheduler_start_timeout_seconds": null
+    }
+  },
+  "authorization": {
+    "status": "draft",
+    "authorized_by": null,
+    "authorized_at": null,
+    "authorized_attempt_sha256": null
+  },
+  "provenance": {
+    "origin": "native-template",
+    "notes": []
+  }
+}

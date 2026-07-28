@@ -1,0 +1,218 @@
+{
+  "schema_version": "experiment-catalog/v1",
+  "entries": [
+    {
+      "experiment_id": "conv-perfectdiode-conv12-two-rho-sgd-adam-ordinary-mnist-bs16-v1",
+      "title": "Perfect-diode Conv1/Conv2 ordinary-MNIST learning-rate screen",
+      "summary": "Current Conv1/Conv2 ordinary-MNIST diagnostic for scheme- and optimizer-specific parameter-relative-rho selection.",
+      "lifecycle": "current",
+      "aliases": [
+        "perfect diode conv1 conv2 learning rate",
+        "perfect diode conv12 lr screen",
+        "perfect diode conv1 conv2 learning rate continuation"
+      ],
+      "scope": {
+        "architectures": [
+          "conv1",
+          "conv2"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "learning_rate_screen"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/perfectdiode_learning_protocol.md"
+        ],
+        "config": "configs/conv/perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json",
+        "plan": null
+      },
+      "execution": {
+        "launcher": "experiments/run_mnist_conv_perfectdiode_hparam.py"
+      }
+    },
+    {
+      "experiment_id": "conv3-perfectdiode-tk-ordinary-mnist-gain360-seed0-v1",
+      "title": "Perfect-diode Conv3 ordinary-MNIST T/K selection",
+      "summary": "Current Conv3 diagnostic that selects and audits the perfect-diode equilibrium and gradient-unroll counts before learning-rate work.",
+      "lifecycle": "current",
+      "aliases": [
+        "perfect diode conv3 tk",
+        "perfect diode conv3 iterations"
+      ],
+      "scope": {
+        "architectures": [
+          "conv3"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "tk_selection"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/perfectdiode_conv3_learning_protocol.md"
+        ],
+        "config": "configs/conv/perfectdiode_conv3_tk_ordinary_mnist_v1.json",
+        "plan": null
+      },
+      "execution": {
+        "launcher": "experiments/run_mnist_conv_perfectdiode_tk.py"
+      }
+    },
+    {
+      "experiment_id": "perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v5",
+      "title": "Perfect-diode Conv3 ordinary-MNIST T=8/K=8 learning-rate screen",
+      "summary": "Approved three-epoch Conv3 learning-rate diagnostic at fixed T=8/K=8 with independently selected baseline, ours, and legacy SGD/Adam surfaces, a minimal-core execution smoke, and hash-strict off-lane receipt validation.",
+      "lifecycle": "current",
+      "aliases": [
+        "conv-perfectdiode-conv3-two-rho-sgd-adam-ordinary-mnist-bs16-v2",
+        "perfect diode conv3 learning rate",
+        "perfect diode conv3 lr screen"
+      ],
+      "scope": {
+        "architectures": [
+          "conv3"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "learning_rate_screen"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/perfectdiode_conv3_learning_protocol.md"
+        ],
+        "config": "configs/conv/perfectdiode_conv3_lr_operating_point_t8_k8_20260727_v1.json",
+        "plan": "docs/experiment_plans/perfectdiode-conv3-lr-ordinary-mnist-t8k8-20260727-v5.md"
+      },
+      "execution": {
+        "launcher": "experiments/run_mnist_conv_perfectdiode_conv3_hparam_t8k8_local_20260727_v4.sh"
+      }
+    },
+    {
+      "experiment_id": "perfectdiode-conv2-high-rho-corner-20260727-v1",
+      "title": "Perfect-diode Conv2 high-rho continuation",
+      "summary": "Approved targeted continuation of five Conv2 ordinary-MNIST optimizer surfaces; it preserves and compares against hash-locked parent controls.",
+      "lifecycle": "current",
+      "aliases": [
+        "perfect diode conv2 high rho",
+        "perfect diode conv2 high rho continuation"
+      ],
+      "scope": {
+        "architectures": [
+          "conv2"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "learning_rate_continuation"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/perfectdiode_learning_protocol.md"
+        ],
+        "config": "configs/conv/perfectdiode_conv2_high_rho_corner_20260727_v1.json",
+        "plan": "docs/experiment_plans/perfectdiode-conv2-high-rho-corner-20260727-v1.md"
+      },
+      "execution": {
+        "launcher": "experiments/run_mnist_conv_perfectdiode_high_rho_continuation.py"
+      }
+    },
+    {
+      "experiment_id": "perfectdiode-conv12-best-observed-confirmation-20260727-v1",
+      "title": "Perfect-diode Conv1/Conv2 best-observed confirmation",
+      "summary": "Approved diagnostic-only successor that restarts twelve hash-bound best-observed rho cells for 10 Conv1 epochs or 20 Conv2 epochs in six fixed two-run Jean Zay V100 packs; automatic production release is authorized only after the fresh R3 preflight and complete live paired canary pass.",
+      "lifecycle": "current",
+      "aliases": [
+        "perfect diode conv12 best observed confirmation",
+        "perfect diode conv1 10 epoch conv2 20 epoch",
+        "perfect diode conv1 conv2 long confirmation jean zay"
+      ],
+      "scope": {
+        "architectures": [
+          "conv1",
+          "conv2"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "best_observed_confirmation",
+          "long_horizon_training"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/perfectdiode_learning_protocol.md"
+        ],
+        "config": "configs/conv/perfectdiode_conv12_best_observed_confirmation_20260727_v1.json",
+        "plan": "docs/experiment_plans/perfectdiode-conv12-best-observed-confirmation-20260727-v1.md"
+      },
+      "execution": {
+        "launcher": "experiments/supervise_mnist_conv_perfectdiode_successor_confirmation_jeanzay.py"
+      }
+    },
+    {
+      "experiment_id": "perfectdiode-conv12-initialization-rho-comparison-20260727-v2",
+      "title": "Perfect-diode Conv1/Conv2 bounded-initialization rho comparison",
+      "summary": "Draft local/Akib/Trex diagnostic successor comparing bounded-uniform and bounded-Kaiming initialization over the referenced Conv1/Conv2 SGD/Adam rho surfaces without reusing completed seed-0 numerical outputs.",
+      "lifecycle": "current",
+      "aliases": [
+        "perfect diode initialization rho comparison",
+        "perfect diode bounded uniform kaiming rho",
+        "perfect diode conv1 conv2 initialization independence"
+      ],
+      "scope": {
+        "architectures": [
+          "conv1",
+          "conv2"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "learning_rate_screen",
+          "initialization_robustness"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/perfectdiode_learning_protocol.md"
+        ],
+        "config": "configs/conv/perfectdiode_conv12_initialization_rho_comparison_20260727_v2.json",
+        "plan": "docs/experiment_plans/perfectdiode-conv12-initialization-rho-comparison-20260727-v2.md"
+      },
+      "execution": {
+        "launcher": "experiments/run_mnist_conv_perfectdiode_init_rho_local_20260727_v2.sh"
+      }
+    }
+  ]
+}
