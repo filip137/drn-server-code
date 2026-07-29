@@ -9,7 +9,7 @@ this study is part of the frozen deterministic-medium-affine learning-rate
 handoff.
 
 Canonical config:
-[`hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json`](../configs/conv/hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json)
+[`hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json`](../../../configs/conv/hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json)
 
 - Study ID:
   `lrstudy_87864fb9a23c07e5761d61bdbc9104b869d01fd5b9697aa768a3c5a7f588f931`

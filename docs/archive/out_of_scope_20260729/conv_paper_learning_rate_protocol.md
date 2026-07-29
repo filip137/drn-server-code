@@ -101,9 +101,9 @@ Common frozen provenance:
 
 | Version | Declarative source | Study identity | Role | Executed result |
 |---|---|---|---|---|
-| v1 | [`hardsigmoid_lr_study_sgd_bs16_v1.json`](../configs/conv/hardsigmoid_lr_study_sgd_bs16_v1.json) | `lrstudy_2103c850c10540d5628cd20cbebc0af519bd871116062e8b80e50ad0c068a9a4` | conductance-span screen for all six rows | two baseline LRs frozen; four amplified rows unresolved |
-| v2 | [`hardsigmoid_lr_rescue_warmin_sgd_bs16_v2.json`](../configs/conv/hardsigmoid_lr_rescue_warmin_sgd_bs16_v2.json) | `lrstudy_aa0a5d954056594099cf76ed49a8ef159f9e707d207b0784fc11f44212f9b0a6` | lower-rho warm-in rescue for Conv1 amplified rows | both rows unresolved; no candidate training |
-| v3 | [`hardsigmoid_lr_relative_rho_sgd_bs16_v3.json`](../configs/conv/hardsigmoid_lr_relative_rho_sgd_bs16_v3.json) | `lrstudy_b2cffbb9c9976c58338141fc179fba2ff4f37b3d02009ef9255e3d5a21d650d2` | parameter-relative screen for the four amplified rows | all four LRs frozen |
+| v1 | [`hardsigmoid_lr_study_sgd_bs16_v1.json`](../../../configs/conv/hardsigmoid_lr_study_sgd_bs16_v1.json) | `lrstudy_2103c850c10540d5628cd20cbebc0af519bd871116062e8b80e50ad0c068a9a4` | conductance-span screen for all six rows | two baseline LRs frozen; four amplified rows unresolved |
+| v2 | [`hardsigmoid_lr_rescue_warmin_sgd_bs16_v2.json`](../../../configs/conv/hardsigmoid_lr_rescue_warmin_sgd_bs16_v2.json) | `lrstudy_aa0a5d954056594099cf76ed49a8ef159f9e707d207b0784fc11f44212f9b0a6` | lower-rho warm-in rescue for Conv1 amplified rows | both rows unresolved; no candidate training |
+| v3 | [`hardsigmoid_lr_relative_rho_sgd_bs16_v3.json`](../../../configs/conv/hardsigmoid_lr_relative_rho_sgd_bs16_v3.json) | `lrstudy_b2cffbb9c9976c58338141fc179fba2ff4f37b3d02009ef9255e3d5a21d650d2` | parameter-relative screen for the four amplified rows | all four LRs frozen |
 
 The immutable resolved v1 and v3 sources intentionally retain their
 pre-execution `status.measurements=pending` values. Completion markers,
@@ -220,7 +220,7 @@ accuracy.
 Evidence:
 
 - tracked v1 handoff:
-  [`conv_hardsigmoid_lr_seed0_selection_20260719.csv`](conv_hardsigmoid_lr_seed0_selection_20260719.csv);
+  [`conv_hardsigmoid_lr_seed0_selection_20260719.csv`](../../conv_hardsigmoid_lr_seed0_selection_20260719.csv);
 - v1 resolved-config SHA-256:
   `8bbe06ca62ed622233ab467cc1eb1124a85e4081eeea8c2e2cf0ee33bc7cb896`;
 - v1 selection SHA-256:
@@ -255,7 +255,7 @@ stable eligible targets. No LR was selected or invented.
 Evidence:
 
 - tracked rescue:
-  [`conv_hardsigmoid_lr_conv1_rescue_20260719.csv`](conv_hardsigmoid_lr_conv1_rescue_20260719.csv);
+  [`conv_hardsigmoid_lr_conv1_rescue_20260719.csv`](../../conv_hardsigmoid_lr_conv1_rescue_20260719.csv);
 - v2 resolved-config SHA-256:
   `25c9832e2a55992ab2fe19d3833967f49a173c092534350242a45bfda9fc98af`;
 - parent-import receipt SHA-256:
@@ -333,7 +333,7 @@ are not paper-facing accuracy measurements.
 V3 evidence:
 
 - four-row handoff:
-  [`conv_hardsigmoid_lr_relative_rho_v3_20260719.csv`](conv_hardsigmoid_lr_relative_rho_v3_20260719.csv),
+  [`conv_hardsigmoid_lr_relative_rho_v3_20260719.csv`](../../conv_hardsigmoid_lr_relative_rho_v3_20260719.csv),
   SHA-256
   `ae4ad79329614b9682282ca09c96aace11835da99ff13517f2136abe02b749c4`;
 - v3 resolved-config / import-receipt SHA-256:
@@ -372,7 +372,7 @@ their native selection coordinate remains conductance-span rho.
 | Conv2 | legacy `v4/c0.25` | v3 / initial parameter RMS | `0.0015293192084949393` | `0.009222524758373938` | `9.038794657063601e-7` | `frozen_seed0_screen` |
 
 The tracked full-precision authority is
-[`conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv`](conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv),
+[`conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv`](../../conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv),
 SHA-256
 `9eefa3a901be8ca049fb9060744ba99d5a8c28ac6dc4de36e1fc745f147aeed7`.
 Its curation provenance SHA-256 is

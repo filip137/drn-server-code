@@ -5,6 +5,31 @@
 This repository contains the simulations and evidence for a paper on
 bidirectional amplification in dissipative resistive networks.
 
+## Agent Authority
+
+This is a trusted, agent-operated research worktree. Within an assigned task,
+agents have standing permission to:
+
+- read, create, edit, move, and remove files in this worktree while preserving
+  unrelated user changes and irreplaceable results;
+- run project commands, tests, diagnostics, and project-local dependency setup;
+- use available CPUs/GPUs and the configured tmux, SSH, and Slurm targets;
+- smoke, launch, monitor, retry, and collect experiments; and
+- analyze outputs, generate plots and summaries, interpret results, and update
+  the lightweight experiment record.
+
+A request to run or complete an experiment authorizes that ordinary lifecycle
+without a separate approval round trip. Before a substantial launch, make the
+cases, target, budget, expected duration, and result path visible, but continue
+without waiting for confirmation. If target or budget is omitted, choose the
+leanest protocol-compliant option that can answer the question and record the
+assumption.
+
+Pause only when a missing scientific choice would materially change the
+question, required access is unavailable, or an action would affect unrelated
+work, data, jobs, or people. Repository scientific gates protect evidential
+quality; they are not human approval gates.
+
 ## Repository Rules
 
 - Keep source, small configs, documentation, and lightweight result summaries
@@ -19,18 +44,22 @@ bidirectional amplification in dissipative resistive networks.
 
 ## Scientific Authority
 
-For Conv amplification work, start with:
+The active Conv scope is perfect-diode BPTT training of Conv1, Conv2, and
+Conv3. Start with:
 
 - `docs/conv_paper_hyperparameter_protocol.md`
 - `docs/conv_paper_experiment_definition.md`
-- `docs/conv_paper_hard_sigmoid_input_gain_protocol.md`
-- `docs/conv_paper_tk_protocol.md`
-- `docs/conv_paper_learning_rate_protocol.md`
-- `docs/amplification_experiment_curation.md`
+- `docs/perfectdiode_learning_protocol.md`
+- `docs/perfectdiode_conv3_learning_protocol.md`
+- `docs/perfectdiode_bounded_weight_protocol.md`
 
-`docs/current_state.md` records direction and `docs/current_experiments.md`
-records live operational state. Neither replaces the scientific protocols.
-Historical and archived documents are provenance, not authority for new runs.
+`docs/current_state.md` is the concise dashboard and node inventory.
+`docs/experiment_workflow.md` is the execution guide. Historical and archived
+documents are provenance, not authority for new runs.
+
+Ordinary MNIST is used for `T/K`, rho, learning-rate, and bounded-initializer
+selection. Deterministic medium-affine MNIST is used for paper runs. A
+diagnostic accuracy from ordinary MNIST is never paper-facing evidence.
 
 ## Experiments
 
@@ -45,29 +74,40 @@ Follow `docs/experiment_workflow.md`.
   `--smoke` mode on the target, then launch the unchanged configs.
 - Prefer a direct runner. Extract shared code only when it serves more than
   one experiment.
-- Before a long or scheduled run, show the scientific cases, target, budget,
-  expected duration, and result path and get explicit approval.
-- Check `tmux main`, `tmux akibscomputer`, and `tmux trex` before allocating
-  work. Never replace or interfere with an occupied lane.
+- Before a long or scheduled run, record and report the scientific cases,
+  target, budget, expected duration, and result path, then proceed once the
+  applicable smoke and scientific gates pass.
+- Check the configured `main`, `akib`, `trex`, and `jean-zay` targets before
+  allocating work. Never replace or interfere with an occupied lane or
+  unrelated Slurm job.
 - Run a short end-to-end smoke through the same runner, environment, device,
   and output path. Conv amplification runs also need the active scientific
   `T/K` gate unless an unchanged accepted operating point applies. Exact-config
   repeats cite the accepted operating point instead of rerunning it.
 - Use `python -m experiments.launch` for the common local, tmux, SSH/tmux, and
   Slurm cases. A direct command is fine when it is clearer.
+- Keep one scientific surface on one recorded target. Host selection is
+  transport, not a scheme-dependent scientific factor; initialization,
+  cohorts, minibatch order, and resolved config must remain identical where
+  the protocol requires matched comparisons.
 - Save the resolved config, exact command, commit, environment summary, logs,
   metrics, and checkpoints in one run-specific directory.
-- Diagnose operational failures and retry when the cause is understood and
-  the approved science, target class, and budget are unchanged. Ask again
-  before changing scientific scope, materially expanding cost, cancelling a
-  run, or deleting data.
+- Diagnose operational failures and retry when the cause is understood and the
+  science, target class, and budget remain in scope. Agents may cancel and
+  replace jobs they launched when those jobs are invalid, obsolete, or
+  operationally broken; do not disturb unrelated jobs or delete irreplaceable
+  data.
 - While actively monitoring, keep progress observable and use a deadline.
 - Copy remote results locally and validate the local copy before drawing final
   conclusions.
+- Interpret completed or clearly labeled partial results directly against the
+  governing protocol. Distinguish measurements from inference and record
+  uncertainty or protocol deviations instead of withholding a supported
+  conclusion for another approval step.
 
-For MNIST Conv work, prefer Conv1/Conv2 on `main` and `akibscomputer`, and
-Conv3 on Jean Zay or `trex`. Jean Zay defaults to `fmu@v100`; put outputs
-under `/lustre/fsn1/projects/rech/fmu/$USER/server_code/results`.
+Prefer Conv1 on `main` or `akib`, Conv2 on `akib` or `trex`, and Conv3 on
+`trex` or `jean-zay`. Jean Zay defaults to `fmu@v100`; put outputs under
+`/lustre/fsn1/projects/rech/fmu/$USER/server_code/results`.
 
 ## Environment
 

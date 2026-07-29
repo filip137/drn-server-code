@@ -1,21 +1,26 @@
-# Energy-Based Learning Framework
+# Perfect-Diode Conv Amplification Experiments
 
-Coordinate-descent simulations of dissipative resistive networks, including
-the experiments used to study bidirectional amplification.
+This repository contains simulations and evidence for bidirectional
+amplification in dissipative resistive networks. The active Conv work is
+perfect-diode BPTT training of Conv1, Conv2, and Conv3 networks.
 
-- Core models: `model/`
-- Training code: `training/` and `labs/mnist_train.py`
-- Scientific runners and analysis: `experiments/`
-- Active Conv protocols: `docs/conv_paper_hyperparameter_protocol.md`
-- Lean execution workflow: `docs/experiment_workflow.md`
+Start here:
 
-The execution layer intentionally stays small. Scientific runners own their
-configs and outputs; `python -m experiments.launch` only starts an existing
-command on a configured target and reports its handle.
+- [`docs/conv_paper_hyperparameter_protocol.md`](docs/conv_paper_hyperparameter_protocol.md)
+  indexes the active scientific contract;
+- [`docs/conv_paper_experiment_definition.md`](docs/conv_paper_experiment_definition.md)
+  defines the deterministic medium-affine paper grid;
+- [`docs/perfectdiode_learning_protocol.md`](docs/perfectdiode_learning_protocol.md)
+  defines the ordinary-MNIST Conv1/Conv2 rho workflow;
+- [`docs/perfectdiode_conv3_learning_protocol.md`](docs/perfectdiode_conv3_learning_protocol.md)
+  defines the ordinary-MNIST Conv3 `T/K` and rho workflow;
+- [`docs/perfectdiode_bounded_weight_protocol.md`](docs/perfectdiode_bounded_weight_protocol.md)
+  defines bounded-initializer selection; and
+- [`docs/experiment_workflow.md`](docs/experiment_workflow.md) documents local,
+  Akib, Trex, and Jean Zay execution.
 
-Complete configs with already-selected learning rates run through
-`python -m experiments.exact_run`. It supports a cheap one-batch smoke and
-automatic Slurm-array indexing without generating another study format.
-
-Conv layerwise two-rho update-ratio searches are available through
-`python -m experiments.rho_search`; see `docs/experiment_workflow.md`.
+Scientific runners own their readable configs and outputs.
+`python -m experiments.launch` transports an existing command to a configured
+target. Complete configs with frozen learning-rate vectors run through
+`python -m experiments.exact_run`; `python -m experiments.rho_search` is a
+probe-and-grid building block for the larger rho protocols.

@@ -1,11 +1,11 @@
-# Perfect-Diode Conv3 Ordinary-MNIST T/K and Learning-Rate Protocol
+# Perfect-Diode Conv3 Wide-Range T/K And Rho Protocol
 
-Updated: 2026-07-27
+Updated: 2026-07-29
 
-Status: scientific design approved for implementation. No experiment has been
-authorized or launched by this document. Execution remains blocked on
-validated immutable configs/manifests and separately approved exact experiment
-plans for the `T/K` and learning-rate studies.
+Status: scientific design approved and authorized for agent execution. Agents
+may validate the immutable configs/manifests, run the `T/K` and learning-rate
+studies, and interpret their results without separate per-stage approval. The
+frozen scientific gates, ceilings, routing, and scope below remain binding.
 
 ## Scope
 
@@ -23,10 +23,12 @@ The `T/K` design namespace is
 namespace is `mnist-conv-perfectdiode-hparam-study/v2`; v1 Conv1/Conv2 study
 and run identities remain immutable.
 
-This is an ordinary-MNIST optimization diagnostic. It does not calibrate a
-perfect-diode paper gain, fill the deterministic-medium-affine paper grid,
-select the paper optimizer, authorize long confirmation, or authorize final
-paper training.
+This ordinary-MNIST study selects `T/K` and the wide-range
+parameter-specific LR vector for each matching deterministic medium-affine
+paper surface. Its validation accuracy and checkpoints are diagnostics, not
+paper-facing evidence. A handoff remains valid only while architecture,
+scheme, optimizer, initialization, input gain, `T/K`, and weight contract
+match the paper config.
 
 ## Frozen ordinary-MNIST contract
 
@@ -45,8 +47,8 @@ paper training.
 - Nonlinearity: perfect diode with clamp epsilon `1e-8`. Every source config
   must contain the explicit diode parameter dictionaries required by the
   repository; they must not be supplied by a silent default.
-- Conductance bounds and initialization: `[0,100]`, Kaiming-uniform bounded
-  weights, weight gain `1`.
+- Conductance-weight contract: wide-range projection to `[0,100]`,
+  Kaiming-uniform initialization, and weight gain `1`.
 - Input gain: exactly `360`, shared unchanged across all three schemes.
   Record provenance as `user_fixed_ordinary_mnist_diagnostic`,
   `shared_across_schemes=true`, and `recalibrate=false`.
@@ -183,8 +185,9 @@ SHA-256.
 
 Generate the LR config and immutable manifest only after Study 1 is terminal.
 Embed each selected `T/K` value and the exact upstream selection and
-operating-point-audit SHA-256 values. Freeze and obtain approval for a second
-exact experiment plan before any optimizer probe or canary runs.
+operating-point-audit SHA-256 values. Freeze and record a second exact
+experiment plan before any optimizer probe or canary runs; no separate
+approval is required.
 
 Rho selection is independent for all six scheme x optimizer surfaces. Never
 transfer target rho values, optimizer units, or raw LRs between schemes or
@@ -303,7 +306,7 @@ Legacy has a different safety record. Conv2 legacy-SGD's
 `loss_ema_explosion`, while its provisional three-epoch core winner was
 `0.003,0.03`. Conv2 legacy-Adam's corresponding canary was safe, but its
 provisional winner was `0.009,0.01`. The tracked summary is in the
-[Conv2 perfect-diode diagnostic card](results/index.md#perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2);
+[Conv2 perfect-diode diagnostic card](../result_registry/cards/diagnostics/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2.json);
 the failed-canary control is also recorded in the historical Conv2
 continuation work retained in Git history.
 The immutable legacy-SGD canary result has SHA-256
@@ -420,38 +423,32 @@ Terminal LR reasons include `selected_seed0_ordinary_mnist_three_epoch_screen`,
 have one terminal selected-or-unresolved record.
 
 Publish separate diagnostic comparison cards for T/K and the six-surface LR
-screen through the existing result registry. No handoff status may imply
-paper-facing evidence or a final-training learning rate.
+screen through the existing result registry. A successful handoff freezes the
+LR vector for its matching medium-affine wide-range row, but no
+ordinary-MNIST accuracy or checkpoint is a paper result.
 
-## Local execution contract
+## Execution Contract
 
-This study may execute only in the existing `tmux main` and
-`tmux akibscomputer` sessions. The routing is frozen:
+Prefer `trex` or `jean-zay` for Conv3. A short diagnostic may use `main` or
+`akib` only when it fits safely and the same target class, environment, and
+scientific contract can be preserved.
 
-| Scheme | T/K row and both optimizer surfaces |
-|---|---|
-| baseline `v1/c1` | `tmux main` |
-| proposed/ours `v4/c1` | `tmux akibscomputer` |
-| legacy `v4/c0.25` | `tmux main` |
+Assign every scheme x optimizer surface, including its T/K row, probe,
+canaries, candidates, and selector inputs, to one recorded target before
+launch. Do not split a surface across hosts. Host choice must not depend on
+whether a scheme is baseline, ours, or legacy.
 
-Every cell of one scheme x optimizer surface stays on its assigned host. Its
-scheme-specific T/K row runs on that same host. The initialization checkpoint,
-dataset split, T/K cohorts, and training-order bytes must nevertheless be
-hash-identical across both hosts.
-
-Check both sessions and their GPUs immediately before every launch, use their
-available capacity, run at most one worker per GPU, and never replace or
-interfere with an occupied lane. If either lane is unavailable, wait. Do not
-substitute Trex or Jean Zay.
-
-Because scheme and host/runtime are confounded by this routing, the result may
-select or reject an LR independently within each scheme x optimizer surface
-but may not support a cross-scheme superiority claim. An Akib import, memory,
-numerical-smoke, or scientific-gate failure blocks the affected work. Do not
-silently reroute it or change batch size or science.
+Initialization tensors, dataset split, T/K cohorts, and training-order bytes
+must be hash-identical across matched surfaces wherever the protocol requires
+shared assets. Run at most one worker per GPU unless a measured packing smoke
+establishes a different safe contract.
 
 Use the same runner, config, environment, device type, and output path for the
-smoke and production command. Every Conv3 scheme must pass its exact T/K
-operating-point gate before its LR surfaces run. Present the cases, routing,
-budget, duration, and result path for Filip's approval before launching; no
-additional plan schema or tracker gate is required.
+smoke and production command. Every scheme must pass its exact T/K
+operating-point gate before its LR surfaces run. Present the cases, target,
+budget, duration, and result path before launching, then proceed without
+waiting for per-run approval.
+
+For Jean Zay, pass the repository's fail-closed pre-submit tests and live
+canary for the exact staged source, config, wrapper, and resource request.
+Copy remote outputs locally and validate hashes before selection.

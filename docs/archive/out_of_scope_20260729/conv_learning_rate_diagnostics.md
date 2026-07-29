@@ -34,7 +34,7 @@ scheduler-accounting, or wrapper-debug narration.
 The design is separated by nonlinearity:
 
 - [`Hard-Sigmoid Conv1/2/3 Ordinary-MNIST Learning Protocol`](hardsigmoid_learning_protocol.md);
-- [`Perfect-Diode Conv1/Conv2 Ordinary-MNIST Learning Protocol`](perfectdiode_learning_protocol.md).
+- [`Perfect-Diode Conv1/Conv2 Ordinary-MNIST Learning Protocol`](../../perfectdiode_learning_protocol.md).
 
 Each defines its own identity namespace, restarted 640-step canaries, exact
 three-epoch candidates, an inclusive 90% validation-accuracy gate, and at
@@ -51,7 +51,7 @@ across schemes:
 | Conv2 | `100` | `6/6` |
 
 The canonical Conv1/Conv2 config is
-[`perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json`](../configs/conv/perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json),
+[`perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json`](../../../configs/conv/perfectdiode_conv12_sgd_adam_hparam_ordinary_mnist_v1.json),
 with study identity
 `lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46`.
 
@@ -85,9 +85,9 @@ failure. The table applies the intended selector read-only to all surfaces;
 the other ten rows are reconstructions. None is a frozen LR handoff. No
 extension, `select_final`, or long confirmation has completed or been
 launched. The full twelve-surface, full-precision table is
-[`conv_perfectdiode_lr_core_screen_20260727.csv`](conv_perfectdiode_lr_core_screen_20260727.csv);
+[`conv_perfectdiode_lr_core_screen_20260727.csv`](../../conv_perfectdiode_lr_core_screen_20260727.csv);
 the protocol-level interpretation is in
-[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md).
+[`perfectdiode_learning_protocol.md`](../../perfectdiode_learning_protocol.md).
 
 These values do not replace the pending medium-affine paper calibration or
 handoff. Perfect-diode Conv3 is outside this v1 execution pipeline and remains
@@ -96,7 +96,7 @@ unresolved.
 ## V4 Medium-Affine Layer-Wise Diagnostic — `retired_incomplete`
 
 Canonical config:
-[`hardsigmoid_lr_layerwise_relative_rho_constant_sgd_bs16_v4.json`](../configs/conv/hardsigmoid_lr_layerwise_relative_rho_constant_sgd_bs16_v4.json)
+[`hardsigmoid_lr_layerwise_relative_rho_constant_sgd_bs16_v4.json`](../../../configs/conv/hardsigmoid_lr_layerwise_relative_rho_constant_sgd_bs16_v4.json)
 
 Study identity:
 `lrstudy_b345477de5ff64c828a9d31602314a00046bc9728039562d3e5011132805e14d`
@@ -148,7 +148,7 @@ selected.
 ## V5 Ordinary-MNIST Architecture-Level Median Diagnostic
 
 Canonical config:
-[`hardsigmoid_lr_architecture_relative_rho_constant_sgd_bs16_v5.json`](../configs/conv/hardsigmoid_lr_architecture_relative_rho_constant_sgd_bs16_v5.json)
+[`hardsigmoid_lr_architecture_relative_rho_constant_sgd_bs16_v5.json`](../../../configs/conv/hardsigmoid_lr_architecture_relative_rho_constant_sgd_bs16_v5.json)
 
 Study identity:
 `lrstudy_5da3a7452c00d42325bfe930d80f037791125d3ce7b5ddd79be13ff8b96b49e2`
@@ -174,7 +174,7 @@ All 36 candidate artifacts were published; 32 candidates completed the full
 ## V6 Conv2 Baseline Two-Rho Diagnostic
 
 Canonical config:
-[`hardsigmoid_lr_conv2_two_rho_constant_sgd_bs16_v6.json`](../configs/conv/hardsigmoid_lr_conv2_two_rho_constant_sgd_bs16_v6.json)
+[`hardsigmoid_lr_conv2_two_rho_constant_sgd_bs16_v6.json`](../../../configs/conv/hardsigmoid_lr_conv2_two_rho_constant_sgd_bs16_v6.json)
 
 Study identity:
 `lrstudy_c735d2beead9fcbadda89a65ffe86257da53f15e6cbfab7b4f04b14b08ff6c2f`
@@ -250,7 +250,7 @@ Focused protocol:
 [`conv2_sgd_adam_boundary_diagnostic_protocol.md`](conv2_sgd_adam_boundary_diagnostic_protocol.md)
 
 Canonical config:
-[`hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json`](../configs/conv/hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json)
+[`hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json`](../../../configs/conv/hardsigmoid_lr_conv2_sgd_adam_boundary_constant_bs16_v1.json)
 
 Study identity:
 `lrstudy_87864fb9a23c07e5761d61bdbc9104b869d01fd5b9697aa768a3c5a7f588f931`
@@ -287,7 +287,7 @@ explicitly canceled rather than completed.
 ## V7 Conv3 Ordinary-MNIST Study — Canonical Execution Incomplete
 
 Canonical config:
-[`hardsigmoid_lr_conv3_scheme_two_rho_constant_sgd_bs16_v7.json`](../configs/conv/hardsigmoid_lr_conv3_scheme_two_rho_constant_sgd_bs16_v7.json)
+[`hardsigmoid_lr_conv3_scheme_two_rho_constant_sgd_bs16_v7.json`](../../../configs/conv/hardsigmoid_lr_conv3_scheme_two_rho_constant_sgd_bs16_v7.json)
 
 Study identity:
 `lrstudy_6e56b399cf3e522a2c3f39f66a51611147b6171dd3b9e223f20791bc6275caf0`
@@ -310,7 +310,7 @@ selection is ordinary-MNIST optimization evidence only.
 ### Legacy lower-target rescue
 
 Config:
-[`hardsigmoid_lr_conv3_legacy_low_rho_rescue_bs16_v1.json`](../configs/conv/hardsigmoid_lr_conv3_legacy_low_rho_rescue_bs16_v1.json)
+[`hardsigmoid_lr_conv3_legacy_low_rho_rescue_bs16_v1.json`](../../../configs/conv/hardsigmoid_lr_conv3_legacy_low_rho_rescue_bs16_v1.json)
 
 Identity:
 `lrrescue_e9c1d08dc339f723f61d3d73b8059fe5f82fe95952a5d1fa06107ed877141a04`
@@ -328,7 +328,7 @@ gate. No LR is frozen. Completion SHA-256:
 ### Gain-200 sensitivity
 
 Config:
-[`hardsigmoid_lr_conv3_legacy_gain200_rho5e5_3e4_bs16_v1.json`](../configs/conv/hardsigmoid_lr_conv3_legacy_gain200_rho5e5_3e4_bs16_v1.json)
+[`hardsigmoid_lr_conv3_legacy_gain200_rho5e5_3e4_bs16_v1.json`](../../../configs/conv/hardsigmoid_lr_conv3_legacy_gain200_rho5e5_3e4_bs16_v1.json)
 
 Identity:
 `lrgain_0dc9dc42f5cb2044a9c4d7e4d4a1ab8fab4e3f4b4f356837fde4de1c3f74e303`
@@ -342,7 +342,7 @@ validation, and froze no LR. Completion SHA-256:
 ### Gain-200 `Bias_2`/10 control
 
 Config:
-[`hardsigmoid_lr_conv3_legacy_gain200_bias2_0p1x_bs16_v1.json`](../configs/conv/hardsigmoid_lr_conv3_legacy_gain200_bias2_0p1x_bs16_v1.json)
+[`hardsigmoid_lr_conv3_legacy_gain200_bias2_0p1x_bs16_v1.json`](../../../configs/conv/hardsigmoid_lr_conv3_legacy_gain200_bias2_0p1x_bs16_v1.json)
 
 Identity:
 `lrbias2_0135c2403354462edfe121ed198c0ff973132303ff4f28ed7ca5d13bda29ef81`

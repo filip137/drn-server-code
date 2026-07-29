@@ -1,12 +1,30 @@
 # Experiment Workflow
 
-The workflow is deliberately small: a scientific runner plus an optional
-transport command.
+The execution layer is deliberately small: a scientific runner plus an
+optional transport command.
 
-## Exact-config fast path
+## Standing Agent Authorization
 
-When Filip provides the exact setups and learning-rate vectors, each complete
-trainer config is the scientific contract. Run those configs unchanged:
+An assigned experiment task authorizes its ordinary lifecycle: prepare the
+readable config or command, run same-path smoke and scientific gates, launch
+on an available configured target, monitor, retry understood operational
+failures, collect and validate outputs, and interpret the results.
+
+Before substantial compute starts, record and report the goal, cases, target,
+budget, expected duration, and result directory. This is an observability
+step, not a separate approval gate.
+
+## Scientific Paths
+
+There are two distinct training paths:
+
+1. Ordinary MNIST selects `T/K`, optimizer-specific rho targets, raw
+   parameter-specific LR vectors, and the bounded initializer.
+2. Deterministic medium-affine MNIST runs the paper configs with those
+   handoffs unchanged.
+
+When Filip supplies complete configs with exact LR vectors, use the exact-run
+path directly. Do not run a rho search or calibration first:
 
 ```bash
 python -m experiments.exact_run \
@@ -14,10 +32,7 @@ python -m experiments.exact_run \
   --output-root results/fixed-run --device cuda
 ```
 
-This path does not perform a rho search, calibration, adaptive expansion, or
-plan generation. Before a long or remote run, use the same command with
-`--smoke`; it performs one real optimizer step and one validation batch and
-writes normal trainer artifacts below `OUTPUT_ROOT/smoke/`:
+Use the same command with `--smoke` before a long or remote run:
 
 ```bash
 python -m experiments.exact_run \
@@ -25,114 +40,172 @@ python -m experiments.exact_run \
   --output-root results/fixed-run --device cuda --smoke
 ```
 
-Each config must contain matching explicit `lr` and
-`optimizer.learning_rate` vectors. With no index, configs run sequentially.
-`--index N` selects one. On Slurm, `SLURM_ARRAY_TASK_ID` selects the config
-automatically. Every case writes `exact_run.json` beside the normal trainer
-artifacts and refuses to merge into a non-empty case directory.
+The smoke performs one real optimizer step and one validation batch and writes
+normal artifacts below `OUTPUT_ROOT/smoke/`. An unchanged accepted `T/K`
+operating point is cited rather than rerun.
 
-An unchanged accepted Conv `T/K` operating point is cited rather than rerun.
-A scientific change to the architecture, nonlinearity, amplification, input
-gain, `T/K`, or equilibrium/gradient algorithm still needs its applicable
-scientific check.
+## Configured Targets
 
-## Before a long run
+Targets live in `configs/experiment_targets.json`.
 
-1. Write down the goal, cases/seeds, scientific config, budget, target,
-   expected duration, and result directory.
-2. Show that short proposal to Filip and get explicit approval.
-3. Check that the target GPU or tmux lane is free.
-4. Run a short end-to-end smoke through the same runner, environment, device,
-   and output-writing path. Training smokes perform at least one optimizer
-   step.
-5. Run the active scientific `T/K` gate when the Conv protocol requires it.
+| Target | Kind | Working directory | Preferred use |
+|---|---|---|---|
+| `local` | foreground | current checkout | tests and short smokes |
+| `main` | local tmux session `main` | `/home/filip/server_code` | Conv1 and diagnostics |
+| `akib` | SSH/tmux through alias `akib` | `/home/filiposana/server_code` | Conv1/Conv2 |
+| `trex` | SSH/tmux through `filip@trex` | `/home/filip/server_code` | Conv2/Conv3 |
+| `jean-zay` | SSH/Slurm | `/lustre/fswork/projects/rech/umg/$USER/server_code` | Conv3 and arrays |
 
-## Launch
+`local` and `main` are two execution modes on the same local machine. The
+launcher target is `akib`; `akibscomputer` is historical tmux terminology,
+not the current target name.
 
-`experiments.launch` treats the experiment command as opaque:
+Check live GPU/lane/scheduler availability immediately before launch. Keep one
+scientific surface on one target and record that target in its artifacts.
+
+## Before A Long Run
+
+1. Record goal, cases/seeds, scientific config, budget, target, expected
+   duration, and result directory.
+2. Verify the exact source/config identity on the target.
+3. Check the target GPU, tmux lane, or Slurm allocation.
+4. Run a same-runner, same-environment, same-device, same-output-path smoke.
+5. Run the active `T/K`, rho-canary, or other scientific gate.
+6. Launch and record the tmux handle or Slurm job ID.
+7. Monitor to a declared deadline.
+
+## Launch Examples
+
+`experiments.launch` treats the experiment command as opaque. Add `--dry-run`
+to any `run` command to inspect transport without launching.
+
+Foreground local smoke:
 
 ```bash
 python -m experiments.launch run local \
-  --name conv-smoke -- \
+  --name conv-smoke --dry-run -- \
   python labs/mnist_train.py --config CONFIG.json --output-dir RESULTS
-
-python -m experiments.launch run trex \
-  --name conv-run --log /home/filip/server_code/results/conv-run/run.log -- \
-  python EXPERIMENT_SCRIPT.py --config CONFIG.json
 ```
 
-For a Jean Zay array, pass the array and time limits directly to Slurm. The
-exact-run worker maps each task ID to one config:
+Detached local tmux:
+
+```bash
+python -m experiments.launch run main \
+  --name conv1-run \
+  --log /home/filip/server_code/results/conv1-run/run.log --dry-run -- \
+  python -m experiments.exact_run CONFIG.json \
+    --output-root /home/filip/server_code/results/conv1-run --device cuda
+```
+
+Akib:
+
+```bash
+python -m experiments.launch run akib \
+  --name conv1-rho \
+  --log /home/filiposana/server_code/results/conv1-rho/run.log --dry-run -- \
+  python -m experiments.rho_search SOURCE_CONFIG.json \
+    --output-root /home/filiposana/server_code/results/conv1-rho \
+    --rho-conv 0.001 0.003 0.009 \
+    --rho-dense 0.003333333333 0.01 0.03 \
+    --epochs 3 --device cuda
+```
+
+Trex:
+
+```bash
+python -m experiments.launch run trex \
+  --name conv2-run \
+  --log /home/filip/server_code/results/conv2-run/run.log --dry-run -- \
+  python -m experiments.exact_run CONFIG.json \
+    --output-root /home/filip/server_code/results/conv2-run --device cuda
+```
+
+Jean Zay array:
 
 ```bash
 python -m experiments.launch run jean-zay \
-  --name conv-fixed \
-  --log /lustre/fsn1/projects/rech/fmu/$USER/server_code/results/conv-fixed/logs/%A_%a.log \
+  --name conv3-fixed \
+  --log /lustre/fsn1/projects/rech/fmu/$USER/server_code/results/conv3-fixed/logs/%A_%a.log \
   --slurm-arg=--array=0-5%6 \
-  --slurm-arg=--time=04:00:00 -- \
+  --slurm-arg=--time=04:00:00 --dry-run -- \
   python -m experiments.exact_run \
     CONFIG0.json CONFIG1.json CONFIG2.json CONFIG3.json CONFIG4.json CONFIG5.json \
-    --output-root /lustre/fsn1/projects/rech/fmu/$USER/server_code/results/conv-fixed \
+    --output-root /lustre/fsn1/projects/rech/fmu/$USER/server_code/results/conv3-fixed \
     --device cuda
 ```
 
-Targets live in `configs/experiment_targets.json`. `--dry-run` prints the
-exact transport command without executing it. Detached launches return a
-tmux handle or Slurm job ID:
+The launcher does not stage source, choose scientific settings, retry,
+collect, or select results.
+
+## Status
+
+Detached tmux/SSH jobs require the handle returned by launch and the same log
+path:
 
 ```bash
-python -m experiments.launch status trex conv-run \
-  --log /home/filip/server_code/results/conv-run/run.log
+python -m experiments.launch status main TMUX_WINDOW_ID \
+  --log /home/filip/server_code/results/conv1-run/run.log
+
+python -m experiments.launch status akib conv1-rho \
+  --log /home/filiposana/server_code/results/conv1-rho/run.log
+
+python -m experiments.launch status trex conv2-run \
+  --log /home/filip/server_code/results/conv2-run/run.log
+
 python -m experiments.launch status jean-zay JOB_ID
 ```
 
-The launcher does not stage source, choose scientific settings, retry, update
-a tracker, or collect results. Do those directly and visibly.
+For Jean Zay resource details, monitoring, and result collection, follow
+[`jean-zay.md`](jean-zay.md).
 
-## Conv layerwise two-rho search
+## Rho Search Building Block
 
 `experiments.rho_search` accepts a normal Conv `source_config.json`, probes
-the initial minibatch gradients, converts separate Conv and Dense rho targets
-into a complete per-parameter learning-rate vector, and runs the Cartesian
-grid:
+the initial optimizer proposals, converts separate Conv and Dense rho targets
+into a complete per-parameter LR vector, and runs a declared Cartesian grid:
 
 ```bash
 python -m experiments.rho_search SOURCE_CONFIG.json \
-  --output-root results/conv1-rho \
+  --output-root results/conv-rho \
   --rho-conv 0.001 0.003 0.009 \
   --rho-dense 0.003333333333 0.01 0.03 \
   --epochs 3 --device cuda
 ```
 
 Use `--optimizer Adam` for fresh-state Adam proposal units; otherwise the
-source config's optimizer is used. The default bias policy is the newer Q90
-cap. `--bias-policy tied` reproduces the older hard-sigmoid convention.
+source config's optimizer is used. The default perfect-diode bias policy is
+the Q90 cap.
 
-The default probe checks stability at 32, 64, then 128 batches and stops at
-the first stable point. It uses the deterministic 55k/5k split of MNIST's
-training set; the official test set is not read. `probe.json`, each cell's
-config and metrics, and `summary.{json,csv}` are written below the output
-root. `--probe-only` stops after calibration and `--dry-run` only prints the
-resolved search.
+The default probe checks stability at 32, 64, then 128 batches. It uses the
+deterministic 55,000/5,000 ordinary-MNIST split and does not read the official
+test set. Each cell restarts from the same initializer-specific checkpoint and
+shuffle state.
 
-The measured unit is
-`RMS(nominal-LR-one pre-projection proposal) / RMS(initial weight)`.
-Conv/Dense weight units use the batch median. A bias uses its attached Conv
-weight for normalization and its batch Q90 for the cap. Each cell restarts
-from the same seed and shuffle state.
+The measured weight unit is:
 
-This is the optimizer-aware layerwise/two-rho diagnostic. It does not parse
-the deleted historical study schemas or reproduce the older v3 scalar-LR
-selection rule.
+```text
+median_batch(
+  RMS(nominal-LR-one pre-projection proposal) / RMS(initial weight)
+)
+```
 
-## During and after
+The command implements probe and grid execution. It does not by itself
+implement the complete 640-step scientific-canary, factor-of-three expansion,
+2% plateau selection, global bounded-initializer selection, or post-training
+`T/K` audit. Those remain requirements of the active perfect-diode protocols.
 
-- Record the resolved config, command, commit, environment, handle/job ID,
-  logs, metrics, and checkpoints in one run-specific directory.
-- Keep active monitoring observable and bounded by a deadline.
-- Retry an understood operational failure when the approved science and
-  budget are unchanged. Ask again for scientific changes, material budget
-  expansion, cancellation, or deletion.
+## During And After
+
+- Record the resolved config, command, commit, environment, target/job
+  identity, logs, metrics, checkpoints, and completion record in one
+  run-specific directory.
+- Keep monitoring observable and bounded by a deadline.
+- Retry an understood operational failure when science and budget remain in
+  scope. Cancel and replace only jobs launched for the current task that are
+  invalid, obsolete, or operationally broken.
 - Copy remote results locally and validate the local copy before using it as
   evidence.
-- `docs/current_experiments.md` is a concise human tracker, not a launch gate.
+- Analyze outputs against declared completion criteria. Label partial
+  evidence, confounds, and deviations explicitly.
+- Update `docs/current_state.md` with terminal scientific status, not transient
+  busy/idle node state.

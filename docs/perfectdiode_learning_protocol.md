@@ -1,10 +1,12 @@
-# Perfect-Diode Conv1/Conv2 Ordinary-MNIST Learning Protocol
+# Perfect-Diode Conv1/Conv2 Wide-Range Rho Protocol
 
-Updated: 2026-07-27
+Updated: 2026-07-29
 
 Status: protocol and implementation frozen and tested. Fixed-`T/K` security
-checks, probes, canaries, and promoted core candidates are measured. Selector
-publication, rho extensions, final selections, and long confirmations remain
+checks, probes, canaries, and promoted core candidates are measured. Nine
+user-directed interim LR vectors are authorized below for current unbounded
+results. Three Conv1/Conv2 surfaces remain without an interim vector, and
+selector publication, terminal evidence, and long confirmations remain
 incomplete. The gains and Conv1/Conv2 `T/K` values below are user-fixed
 diagnostic choices, not calibration measurements.
 
@@ -24,11 +26,11 @@ with content-derived study identity
 `lrstudy_5afe8bc7c9180cd1c677d1d87a497e1d6a89c1599cd015d7a6c127ebb18f2e46`.
 Existing LR study and run identities v1-v7 remain immutable.
 
-This is an ordinary-MNIST optimization diagnostic. It does not replace the
-pending per-scheme deterministic-medium-affine perfect-diode calibration,
-select the paper optimizer, or authorize final paper training. The
-corresponding hard-sigmoid workflow is defined separately in
-[`hardsigmoid_learning_protocol.md`](hardsigmoid_learning_protocol.md).
+This ordinary-MNIST study selects the wide-range parameter-specific LR vector
+for each matching deterministic medium-affine paper surface. Its validation
+accuracy is an optimization diagnostic, not paper-facing evidence. The
+handoff is valid only when architecture, scheme, optimizer, initialization,
+input gain, `T/K`, and weight contract match the paper config exactly.
 
 ## Frozen ordinary-MNIST contract
 
@@ -39,8 +41,11 @@ corresponding hard-sigmoid workflow is defined separately in
 - Official MNIST test split: never instantiated or read.
 - Preprocessing: the established signed two-channel representation,
   `0.3 * (x - 0.1307) / 0.3081`, concatenated with its negative.
-- Architectures: the frozen padding-1 Conv1/Conv2 geometries with paired
+- Architectures: Conv1 channels `[64]`, strides `[2]`; Conv2 channels
+  `[64,128]`, strides `[2,2]`; kernel `3`, padding `1`, no pooling, and paired
   20-output squared-error loss.
+- Conductance-weight contract: wide-range projection to `[0,100]` with the
+  reference Kaiming-uniform initialization.
 - Model seed and train-loader shuffle seed: independently fixed to `0`.
 - Global layer and parameter name counters: reset before every independent
   model build.
@@ -274,7 +279,41 @@ Its SHA-256 is
 `cd8228bcc1096b733ef7c729622fc5e9f53911489767822a9ca6fb84012da870`.
 These measurements remain ordinary-MNIST optimization diagnostics. They do
 not resolve deterministic-medium-affine perfect-diode gain calibration,
-operational `T/K`, optimizer choice, learning rates, or final paper training.
+operational `T/K`, optimizer choice, or final paper performance. The incomplete
+core screen also does not yet freeze a terminal learning-rate handoff; a vector
+becomes authoritative only after the selection and confirmation stages below
+resolve its full parameter-specific surface.
+
+## Interim unbounded-result LR vectors
+
+Filip supplied the following interim vectors on 2026-07-29. For now, use each
+vector unchanged for its matching wide-range/unbounded result row. This is an
+explicit user-directed interim handoff; it does not retrospectively make the
+incomplete selector terminal.
+
+Notation maps directly to the scientific parameter names:
+
+```text
+C_i = ConvWeight_i
+B_i = Bias_i
+D   = DenseWeight_0
+```
+
+| Architecture | Scheme | Optimizer | Parameter-wise LR vector |
+|---|---|---|---|
+| Conv1 | baseline | SGD | `C0=B0=0.142696, D=0.0120238` |
+| Conv1 | baseline | Adam | `C0=B0=8.66763e-4, D=1.09401e-4` |
+| Conv1 | ours | SGD | `C0=B0=0.0375994, D=0.00311655` |
+| Conv1 | ours | Adam | `C0=B0=8.66753e-4, D=1.09388e-4` |
+| Conv1 | legacy | SGD | `C0=B0=2.05753e-4, D=4.76259e-5` |
+| Conv2 | baseline | SGD | `C0=B0=7.90864, C1=B1=3.81476, D=0.820630` |
+| Conv2 | baseline | Adam | `C0=B0=2.60078e-3, C1=B1=4.59053e-4, D=4.67660e-4` |
+| Conv2 | legacy | SGD | `C0=B0=0.00496733, C1=0.00367839, B1=6.74726e-4, D=0.00236044` |
+| Conv2 | legacy | Adam | `C0=B0=8.66750e-4, C1=B1=1.52841e-4, D=5.16982e-5` |
+
+No interim vector was supplied for Conv1 legacy Adam, Conv2 ours SGD, or
+Conv2 ours Adam. Leave those rows unresolved; do not recover values for them
+from an older config, diagnostic winner, or unpublished selector output.
 
 ## Stages, resume, and output
 
@@ -307,8 +346,9 @@ diagnostics, and all provenance hashes. Successful rows use
 `unresolved_no_pass`, `unresolved_boundary`, `unresolved_probe`,
 and `unresolved_fixed_tk_gradient_mismatch`.
 
-Every handoff records `official_test_read=false`; no status may imply a frozen
-medium-affine or final-paper result.
+Every handoff records `official_test_read=false`. A successful handoff freezes
+the LR vector for its matching medium-affine wide-range row, but no
+ordinary-MNIST accuracy or checkpoint is a paper result.
 
 ## Long confirmations
 
@@ -332,13 +372,13 @@ most 108 full candidates, or 324 candidate-epochs. If every surface expands
 to 16 cells, the absolute ceiling is 192 candidates, or 576
 candidate-epochs. Canary failures reduce full promotions.
 
-The Conv1 screen runs as an immutable Akib shard and the Conv2 screen as an
-immutable Trex shard, with one process per GPU. The shards are copied back and
-hash-merged locally; the hosts never mutate the same study directory. All
-eligible long confirmations run sequentially on Trex.
+Prefer Conv1 surfaces on `main` or `akib` and Conv2 surfaces on `akib` or
+`trex`, with one process per GPU. Assign each scientific surface to one
+recorded target before launch. Copy remote shards back and hash-merge locally;
+hosts never mutate the same study directory. Prefer Trex for eligible long
+confirmations.
 
-Before the screens, the exact committed source archive and config identity
-must be verified on both hosts. Each host must pass remote import/plan smoke
-tests and one representative Adam center canary while recording memory and
-throughput. No screen job is launched from an uncommitted or dirty source
-tree.
+Before a screen, verify the exact committed source archive and config identity
+on its target. Every used target must pass import/plan smoke tests and one
+representative Adam center canary while recording memory and throughput. No
+screen job is launched from an uncommitted or dirty source tree.

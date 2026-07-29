@@ -31,7 +31,7 @@ Here, “per layer” means per Conv architecture: Conv1, Conv2, and Conv3. The 
 
 Every diagnostic row must use:
 
-- the dataset, preprocessing, architecture, output, and loss contract in the [experiment definition](conv_paper_experiment_definition.md);
+- the dataset, preprocessing, architecture, output, and loss contract in the [experiment definition](../../conv_paper_experiment_definition.md);
 - `hard_sigmoid` with `v_off=4.0` and active interval `[-4,4]`;
 - fixed-step minimization with `adaptive_equilibrium=false`;
 - model initialization seed `0` and affine seed `1729`;
@@ -157,8 +157,8 @@ All nine `T=64` reference residuals passed. No row selected boundary `K=64`, so 
 
 Evidence:
 
-- [tracked frozen gain handoff](conv_hardsigmoid_sat30_gains_20260718.csv);
-- [tracked row-specific `T/K`, residual, gradient, and saturation evidence](conv_hardsigmoid_tk_selection_20260718.csv).
+- [tracked frozen gain handoff](../../conv_hardsigmoid_sat30_gains_20260718.csv);
+- [tracked row-specific `T/K`, residual, gradient, and saturation evidence](../../conv_hardsigmoid_tk_selection_20260718.csv).
 
 The complete generated diagnostic bundle remains locally under `results/conv_hardsigmoid_tk_medium_affine_deterministic_cohort_20260718` and is intentionally not tracked by Git.
 

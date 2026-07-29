@@ -6,7 +6,7 @@ Status: protocol and all nine calibration measurements frozen.
 
 ## Purpose And Dependency
 
-Calibrate raw `input_gain` after the experiment definition is frozen and before operational `T/K` is selected. This protocol applies only to the `hard_sigmoid` rows in the frozen [experiment definition](conv_paper_experiment_definition.md).
+Calibrate raw `input_gain` after the experiment definition is frozen and before operational `T/K` is selected. This protocol applies only to the `hard_sigmoid` rows in the frozen [experiment definition](../../conv_paper_experiment_definition.md).
 
 ## Fixed Calibration Configuration
 
@@ -59,8 +59,8 @@ The 2026-07-18 Trex calibration and independent source-config rebuild selected t
 
 Evidence:
 
-- [tracked frozen gain handoff](conv_hardsigmoid_sat30_gains_20260718.csv);
-- [tracked `T=64` rebuild and operational `T/K` evidence](conv_hardsigmoid_tk_selection_20260718.csv).
+- [tracked frozen gain handoff](../../conv_hardsigmoid_sat30_gains_20260718.csv);
+- [tracked `T=64` rebuild and operational `T/K` evidence](../../conv_hardsigmoid_tk_selection_20260718.csv).
 
 The complete local diagnostic bundle remains under `results/conv_hardsigmoid_gain_medium_affine_t64_deterministic_cohort_20260718` and `results/conv_hardsigmoid_tk_medium_affine_deterministic_cohort_20260718`; generated result bundles are intentionally not tracked by Git.
 
@@ -98,4 +98,4 @@ The calibration table must contain:
 
 ## Post-T/K Check
 
-The post-selection check is complete. Initial per-layer saturation was remeasured at every row's selected operational `T` without recalibrating or changing the frozen gain. The calibration-`T` and selected-`T` values are recorded together in [`conv_hardsigmoid_tk_selection_20260718.csv`](conv_hardsigmoid_tk_selection_20260718.csv).
+The post-selection check is complete. Initial per-layer saturation was remeasured at every row's selected operational `T` without recalibrating or changing the frozen gain. The calibration-`T` and selected-`T` values are recorded together in [`conv_hardsigmoid_tk_selection_20260718.csv`](../../conv_hardsigmoid_tk_selection_20260718.csv).

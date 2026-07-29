@@ -1,184 +1,146 @@
-# Current Research State
+# Current Perfect-Diode Conv State
 
-Updated: 2026-07-27
+Updated: 2026-07-29
 
-This is a short dashboard, not a second protocol. Detailed evidence and
-selection rules remain in the linked protocol documents.
+This is a dashboard, not a second protocol. Selection rules remain in the
+[active protocol index](conv_paper_hyperparameter_protocol.md).
 
-## Current focus
+## Current Focus
 
-The immediate scope is Conv1 and Conv2 with:
+The active question is perfect-diode BPTT training for:
 
+- Conv1, Conv2, and Conv3;
+- strides `[2]`, `[2,2]`, and `[2,2,1]`;
+- kernel `3`, padding `1`, and no pooling;
 - baseline `v1/c1`, proposed/ours `v4/c1`, and legacy `v4/c0.25`;
-- hard sigmoid and perfect diode;
-- plain SGD and Adam;
-- an unrestricted-conductance comparison followed by the same comparison with
-  a limited weight range.
+- plain SGD and Adam; and
+- wide-range reference and bounded hardware weight contracts.
 
-The current SGD/Adam learning protocols are defined on ordinary MNIST:
+Rho and learning-rate selection uses ordinary MNIST. Paper training uses
+deterministic medium-affine MNIST.
 
-- [`hardsigmoid_learning_protocol.md`](hardsigmoid_learning_protocol.md);
-- [`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md).
+## Wide-Range Rho Status
 
-They do not by themselves authorize deterministic-medium-affine paper
-training. Unless a later protocol says otherwise, the planned 10- and
-30-epoch result runs below refer to the current ordinary-MNIST Conv1/Conv2
-comparison.
+The wide-range reference projects conductance weights to `[0,100]`.
 
-## Locked medium-affine hard-sigmoid learning rates
+### Conv1/Conv2
 
-Yes: the six Conv1/Conv2 hard-sigmoid seed-0 peak learning rates below are
-locked with status `frozen_seed0_screen` for the deterministic-medium-affine,
-plain-SGD handoff.
+The fixed ordinary-MNIST operating points are:
 
-| Architecture | Scheme | Frozen gain | Operational `T/K` | Frozen peak LR |
-|---|---|---:|---:|---:|
-| Conv1 | baseline `v1/c1` | `75.6030807495` | `4/4` | `0.30174007288404703` |
-| Conv1 | proposed/ours `v4/c1` | `84.8402175903` | `4/4` | `0.001838414260143094` |
-| Conv1 | legacy `v4/c0.25` | `31.8188591003` | `4/4` | `4.639114646319357e-5` |
-| Conv2 | baseline `v1/c1` | `253.3022308350` | `16/6` | `1.7347317646208873` |
-| Conv2 | proposed/ours `v4/c1` | `716.3439331055` | `24/6` | `0.011865709277518458` |
-| Conv2 | legacy `v4/c0.25` | `661.4369506836` | `8/4` | `0.0015293192084949393` |
-
-Baseline values come from the v1 conductance-span screen. Amplified values
-come from the v3 initial-parameter-RMS screen. The full-precision authority is
-[`conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv`](conv_hardsigmoid_lr_active_handoff_relative_rho_v3.csv).
-
-These are peak rates for the reviewed plain-SGD warm-up/cosine schedule. They
-are not constant-LR values and are not Adam learning rates. The canonical
-handoff and schedule are documented in
-[`conv_paper_learning_rate_protocol.md`](conv_paper_learning_rate_protocol.md).
-
-The associated five-epoch medium-affine screen accuracies were much lower than
-the ordinary-MNIST results below. They are omitted here to avoid presenting
-cross-dataset numbers as one comparable result table.
-
-## Completed ordinary-MNIST hard-sigmoid diagnostic
-
-This is the high-accuracy MNIST result. The completed v5 diagnostic disabled
-the affine transform and trained every selected constant-vector plain-SGD
-candidate for exactly five epochs (`17,190` optimizer steps). It selected:
-
-- Conv1: historical-profile arm with architecture alpha `1e-3`;
-- Conv2: strict-equal arm with architecture alpha `3e-3`.
-
-The alpha is the architecture-level selection coordinate, not a raw optimizer
-learning rate. The selected constant plain-SGD vectors were:
-
-| Architecture | Scheme | Conv-weight and attached-bias LR(s) | Dense-weight LR |
-|---|---|---|---:|
-| Conv1 | baseline `v1/c1` | `ConvWeight_0/Bias_0 = 0.012753716099960177` | `0.010733445246971115` |
-| Conv1 | proposed/ours `v4/c1` | `ConvWeight_0/Bias_0 = 0.0022473180071152475` | `0.0018430140298218768` |
-| Conv1 | legacy `v4/c0.25` | `ConvWeight_0/Bias_0 = 0.00015948762988316354` | `0.00012492257381097838` |
-| Conv2 | baseline `v1/c1` | `ConvWeight_0/Bias_0 = 0.28517673662900744`; `ConvWeight_1/Bias_1 = 0.17572188418530033` | `0.008570616719708114` |
-| Conv2 | proposed/ours `v4/c1` | `ConvWeight_0/Bias_0 = 0.010165416619510566`; `ConvWeight_1/Bias_1 = 0.01066261593218855` | `0.0004309071720122689` |
-| Conv2 | legacy `v4/c0.25` | `ConvWeight_0/Bias_0 = 0.0002140195123572878`; `ConvWeight_1/Bias_1 = 0.00030380191511292584` | `0.000013754700600274864` |
-
-| Architecture | Scheme | Maximum validation accuracy | Accuracy epoch / trained epochs | Minimum-loss checkpoint epoch | Clean test accuracy | Observed checkpoint conductance range |
-|---|---|---:|---:|---:|---:|---:|
-| Conv1 | baseline `v1/c1` | `94.98%` | `5 / 5` | `4` | `95.37%` | `[0, 0.2740043104]` |
-| Conv1 | proposed/ours `v4/c1` | `95.56%` | `4 / 5` | `3` | `96.07%` | `[0, 0.2474433184]` |
-| Conv1 | legacy `v4/c0.25` | `94.82%` | `5 / 5` | `4` | `95.18%` | `[0, 0.2518008053]` |
-| Conv2 | baseline `v1/c1` | `93.18%` | `5 / 5` | `5` | `93.99%` | `[0, 0.6000501513]` |
-| Conv2 | proposed/ours `v4/c1` | `95.42%` | `5 / 5` | `5` | `95.72%` | `[0, 0.3044329584]` |
-| Conv2 | legacy `v4/c0.25` | `94.32%` | `5 / 5` | `5` | `95.02%` | `[0, 0.2438901961]` |
-
-The maximum validation accuracy is the largest accuracy observed across the
-five epoch-end validations. The clean test accuracy comes from a later
-read-only replay of each immutable minimum-validation-loss checkpoint, so its
-checkpoint epoch need not equal the maximum-accuracy epoch. The observed
-conductance range is the global minimum and maximum across all `ConvWeight`
-and `DenseWeight` tensors in that same minimum-loss checkpoint; biases are
-excluded. These are achieved values inside the configured training bounds
-`[0,100]`, not imposed limits. The Conv1 and Conv2 replay details are in
-[`conv1_hardsigmoid_finite_conductance_ordinary_mnist_diagnostic.md`](conv1_hardsigmoid_finite_conductance_ordinary_mnist_diagnostic.md)
-and
-[`conv2_conv3_hardsigmoid_finite_conductance_ordinary_mnist.md`](conv2_conv3_hardsigmoid_finite_conductance_ordinary_mnist.md).
-
-The separate limited-conductance replay found a shared sampled window of
-`[1e-3,0.3]` for Conv1 and `[1e-4,0.3]` for Conv2 in which every scheme stayed
-within one percentage point of its own clean test accuracy. Those are tested
-diagnostic windows, not yet the frozen bounds for the planned training
-comparison.
-
-These are selected ordinary-MNIST v5 SGD diagnostics, not
-deterministic-medium-affine paper results. The newer ordinary-MNIST
-SGD-and-Adam protocol still has measurements pending; using the v5 selection
-there would have to be an explicit reuse rather than a new selection.
-
-## Perfect-diode Conv1/Conv2 operating points and core status
-
-The current ordinary-MNIST perfect-diode protocol uses user-fixed diagnostic
-operating points shared across the three amplification schemes:
-
-| Architecture | Fixed `input_gain` | Fixed operational `T/K` |
+| Architecture | Input gain | Operational `T/K` |
 |---|---:|---:|
 | Conv1 | `40` | `4/4` |
 | Conv2 | `100` | `6/6` |
 
-These values are fixed inputs, not calibration measurements. Every scheme
-passed the fixed-`T/K` gradient security comparison against the
-`(T=64,K=64)` reference: Conv1 compared `(4,4)` and Conv2 compared `(6,6)`.
+All six fixed-`T/K` security rows passed comparison with `(T=64,K=64)`.
+The 12 scheme x optimizer core rho surfaces completed and produced generally
+strong three-epoch diagnostic candidates. Filip has now authorized nine
+explicit parameter-wise LR vectors for current unbounded result rows. Use
+those vectors unchanged as the interim handoff recorded in the authority
+below.
 
-The three-epoch core candidates produced generally strong ordinary-MNIST
-validation accuracy. For the five Conv2 surfaces requested for continuation,
-the provisional core winners reached `95.70%--97.18%`. Their complete 2% loss
-plateaus implicated both upper rho edges, so the useful region is not yet
-bracketed. The next diagnostic wave is to add `rho_conv=0.027` and
-`rho_dense=0.09` for baseline and ours under SGD and Adam, plus legacy SGD.
-No extension run has been launched.
+The three Conv1/Conv2 rows still lacking an interim vector are:
 
-The selector publication failed after the core measurements, so these remain
-provisional diagnostics rather than selected learning rates. Full results and
-failure provenance are in
-[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md) and
-[`conv_perfectdiode_lr_core_screen_20260727.csv`](conv_perfectdiode_lr_core_screen_20260727.csv).
+- Conv1 legacy Adam;
+- Conv2 ours SGD; and
+- Conv2 ours Adam.
 
-## Learning-rate status
+Do not fill those gaps from older configs or diagnostic winners. Terminal rho
+selection and long-confirmation evidence remain incomplete even for the nine
+interim-authorized rows.
 
-| Block | SGD | Adam |
-|---|---|---|
-| Conv1/Conv2 hard sigmoid, deterministic medium affine | six row-specific peak LRs locked for the reviewed SGD schedule | no locked Adam handoff |
-| Conv1/Conv2 hard sigmoid, ordinary-MNIST v5 diagnostic | selected: Conv1 historical profile / `1e-3`; Conv2 strict equal / `3e-3` | not studied |
-| Conv1/Conv2 hard sigmoid, current ordinary-MNIST protocol | new optimizer-specific selection pending; v5 reuse must be explicit | pending optimizer-specific LR selection |
-| Conv1/Conv2 perfect diode, ordinary MNIST | core measured; upward expansion and final selection pending | core measured; upward expansion and final selection pending |
+Authority:
+[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md).
 
-The former v1-v7 studies and the Conv2 SGD/Adam boundary study remain useful
-diagnostic evidence in
-[`conv_learning_rate_diagnostics.md`](conv_learning_rate_diagnostics.md), but
-they do not change this status table.
+### Conv3
 
-## Remaining protocol decisions
+The ordinary-MNIST Conv3 contract uses:
 
-| Decision | Status |
-|---|---|
-| Perfect-diode Conv1/Conv2 gains and `T/K` | fixed diagnostic inputs: Conv1 `40`, `4/4`; Conv2 `100`, `6/6` |
-| Perfect-diode Conv1/Conv2 SGD learning rates | core measured; no frozen handoff |
-| Perfect-diode Conv1/Conv2 Adam learning rates | core measured; no frozen handoff |
-| Hard-sigmoid Adam learning rates | pending |
-| Conv1 result budget | fixed at 10 epochs |
-| Conv2 result budget | fixed at 30 epochs |
-| Optimizers in the result comparison | plain SGD and Adam |
-| Limited weight range | comparison requested; exact bounds still need to be frozen |
-| Final model seeds | pending |
-| Final checkpoint rule | pending |
-| Final inclusion categories | pending |
-| Conv3 | outside the immediate Conv1/Conv2 result sequence; unresolved |
+- channels `[64,128,256]`, strides `[2,2,1]`, and padding `[1,1,1]`;
+- shared diagnostic input gain `360`; and
+- per-scheme `T/K` selection followed by six optimizer-specific rho surfaces.
 
-## Next actions
+The scientific protocol is authorized, but no terminal all-surface `T/K` and
+LR handoff is recorded in the active documentation.
 
-1. Complete the missing optimizer-specific LR handoffs:
-   - run the one-wave Conv2 perfect-diode expansion at
-     `rho_conv=0.027` and `rho_dense=0.09` for baseline/ours under SGD
-     and Adam plus legacy SGD, then perform final selection;
-   - resolve the remaining perfect-diode surfaces separately; the current
-     five-surface continuation is intentionally narrower than the full
-     Conv1/Conv2 protocol;
-   - select hard-sigmoid Adam LRs, because the frozen SGD rates cannot be
-     transferred to Adam.
-2. Run the unrestricted-weight result grid with both optimizers:
-   - Conv1 for 10 epochs;
-   - Conv2 for 30 epochs.
-3. Freeze the exact limited weight bounds, then repeat the same Conv1/Conv2,
-   nonlinearity, amplification, optimizer, epoch, seed, and checkpoint grid
-   with only the weight range changed.
+Authority:
+[`perfectdiode_conv3_learning_protocol.md`](perfectdiode_conv3_learning_protocol.md).
+
+## Bounded Hardware Status
+
+The bounded condition projects `ConvWeight_*` and `DenseWeight_*` to
+`[1e-5,1e-4]`. It independently screens:
+
+- `bounded_uniform` sampled from `[1e-5,1e-4)`; and
+- `bounded_kaiming_uniform` with gain `1`.
+
+Both initializers require independent ordinary-MNIST rho selection for all 18
+architecture x scheme x optimizer surfaces. A single initializer is then
+chosen globally by matched 2% loss-plateau wins.
+
+The repository retains an immutable Conv1/Conv2 predecessor config, but no
+completed all-depth selector or global winner is recorded. Bounded
+medium-affine paper runs therefore remain pending.
+
+Authority:
+[`perfectdiode_bounded_weight_protocol.md`](perfectdiode_bounded_weight_protocol.md).
+
+## Paper-Run Status
+
+The deterministic medium-affine paper grid has 36 rows per model seed:
+
+```text
+3 architectures x 3 schemes x 2 optimizers x 2 weight contracts
+```
+
+Each row must import its matching ordinary-MNIST LR handoff unchanged. The
+nine user-directed interim Conv1/Conv2 vectors may be used for current
+unbounded result rows; missing surfaces remain unresolved. Ordinary-MNIST
+validation accuracy is never reported as paper evidence.
+
+Current epoch decisions:
+
+| Architecture | Paper budget |
+|---|---:|
+| Conv1 | 10 epochs |
+| Conv2 | 30 epochs |
+| Conv3 | pending |
+
+Final model seeds, Conv3 epoch budget, checkpoint rule, and inclusion rule
+remain pending. No complete paper grid is authorized until the corresponding
+wide-range and bounded LR handoffs are terminal.
+
+## Compute Targets
+
+This table records stable access and routing information, not live occupancy.
+Always check the target immediately before launch.
+
+| Resource | Launcher target | Access / workdir | Preferred work |
+|---|---|---|---|
+| Local foreground | `local` | current checkout | unit tests and foreground smokes |
+| Local GPU tmux | `main` | session `main`; `/home/filip/server_code` | Conv1, smokes, diagnostics |
+| Akib | `akib` | SSH alias `akib`; `/home/filiposana/server_code` | Conv1/Conv2 surfaces |
+| Trex | `trex` | `filip@trex`; `/home/filip/server_code` | Conv2/Conv3 surfaces and long confirmations |
+| Jean Zay | `jean-zay` | SSH alias `jean-zay`; Slurm `fmu@v100` | Conv3, arrays, and scheduled production |
+
+Jean Zay source checkout:
+`/lustre/fswork/projects/rech/umg/$USER/server_code`.
+
+Jean Zay result root:
+`/lustre/fsn1/projects/rech/fmu/$USER/server_code/results`.
+
+Keep one scientific surface on one recorded target. Host availability must not
+change the surface's config, batch size, initialization, cohorts, or training
+order.
+
+## Next Actions
+
+1. Run only the nine interim-authorized Conv1/Conv2 unbounded rows as needed;
+   keep the three missing rows unresolved.
+2. Finish terminal wide-range rho selection and confirmation for Conv1/Conv2.
+3. Complete Conv3 `T/K` selection and its six wide-range rho surfaces.
+4. Execute both bounded initializer families across all 18 surfaces and
+   publish the global selector.
+5. Freeze Conv3 budget, final seeds, checkpoint rule, and inclusion rule.
+6. Generate exact medium-affine configs from the successful handoffs, smoke
+   on each target, and launch the wide-range and bounded paper grids.

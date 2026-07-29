@@ -1,15 +1,16 @@
 # Amplification Experiment Curation
 
-Last updated: 2026-07-26
+Last updated: 2026-07-29
 
-This is the paper-facing cleanup layer for historical MNIST amplification
-experiments. Raw result directories remain immutable; use the classifications
-below instead of selecting runs directly from the filesystem.
+This is a provenance and evidence-curation layer for historical MNIST
+amplification experiments. It is not an active launch protocol. Raw result
+directories remain immutable; use the classifications below instead of
+selecting runs directly from the filesystem.
 
 The active deterministic-medium-affine Conv experiment is governed by
 [`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md).
-Ordinary-MNIST LR studies are curated separately in
-[`conv_learning_rate_diagnostics.md`](conv_learning_rate_diagnostics.md).
+The former ordinary-MNIST LR ledger is archived at
+[`archive/out_of_scope_20260729/conv_learning_rate_diagnostics.md`](archive/out_of_scope_20260729/conv_learning_rate_diagnostics.md).
 
 ## Main conclusions
 
@@ -28,8 +29,8 @@ Ordinary-MNIST LR studies are curated separately in
 6. Historical Conv accuracy tables are preliminary ordinary-MNIST or
    mixed-protocol evidence. They are not quantitative evidence for the active
    medium-affine paper grid.
-7. The active hard-sigmoid Conv1/Conv2 LR handoff is complete; medium-affine
-   Conv3, all perfect-diode LR rules, and final training remain unresolved.
+7. The active scope is now perfect-diode BPTT Conv1/Conv2/Conv3. Historical
+   hard-sigmoid handoffs below remain provenance, not authority for new runs.
 
 ## Paper-facing dense runs
 
@@ -99,7 +100,7 @@ architecture evidence:
 Do not use these as final figures. They mix ordinary MNIST with older gains,
 geometry, `T/K`, LR, epoch, and sometimes output conventions.
 
-For the active medium-affine setup:
+For the historical hard-sigmoid medium-affine setup:
 
 - all nine hard-sigmoid gains and row-specific `T/K` pairs are frozen;
 - Conv1/Conv2 baseline LRs come from v1;
@@ -112,6 +113,10 @@ For the active medium-affine setup:
 V4-v7, the scheme-specific two-rho sweeps, and the Conv2 SGD/Adam boundary
 study are optimizer diagnostics only. Their disposition and important results
 are kept in the diagnostic ledger rather than repeated here.
+
+The active perfect-diode dataset handoff, rho rules, and bounded-weight
+contract are indexed in
+[`conv_paper_hyperparameter_protocol.md`](conv_paper_hyperparameter_protocol.md).
 
 ## Negative controls
 
@@ -139,14 +144,16 @@ Do not use these as paper-facing quantitative evidence:
 | `results/mnist_bp_conv2_hardsigmoid_residual_vs_iterations_seed0` | superseded by corrected residual diagnostic |
 | pre-2026-07-18 Conv gain and `T/K` handoffs | superseded for deterministic medium affine MNIST |
 
-## Standard setup going forward
+## Active setup going forward
 
 - Conv paper rows use only baseline `v1/c1`, proposed/ours `v4/c1`, and legacy
   `v4/c0.25`.
-- Gain is calibrated separately per architecture, nonlinearity, and scheme
-  before operational `T/K`.
-- Hard-sigmoid residuals use raw `max |dE/dz|`.
+- The active nonlinearity is perfect diode and the training algorithm is BPTT.
+- Ordinary MNIST selects `T/K`, rho, learning-rate vectors, and the bounded
+  initializer; deterministic medium-affine MNIST supplies paper results.
 - Perfect-diode clamped hidden layers use projected KKT residuals.
+- Wide-range and bounded hardware contracts remain distinct scientific
+  surfaces.
 - Robustness reports always name the perturbation coordinate.
 - Final paper training waits for the unresolved active protocols even when an
   ordinary-MNIST diagnostic has completed.

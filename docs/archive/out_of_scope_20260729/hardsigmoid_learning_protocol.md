@@ -23,7 +23,7 @@ This is an ordinary-MNIST optimization diagnostic. It does not replace the
 deterministic-medium-affine paper handoff, select the paper optimizer, or
 authorize final paper training. The corresponding perfect-diode workflow is
 defined separately in
-[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md).
+[`perfectdiode_learning_protocol.md`](../../perfectdiode_learning_protocol.md).
 
 ## Frozen ordinary-MNIST contract
 
