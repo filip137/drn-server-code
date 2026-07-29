@@ -1369,6 +1369,25 @@ def run_surface(
     )
 
 
+def _reported_range_status(record: Mapping[str, Any]) -> dict[str, Any] | None:
+    existing = record.get("rho_range_status")
+    if isinstance(existing, Mapping):
+        return dict(existing)
+    expansion = record.get("expansion")
+    if not isinstance(expansion, Mapping):
+        return None
+    conv_edge = expansion.get("plateau_on_outer_rho_conv_edge")
+    dense_edge = expansion.get("plateau_on_outer_rho_dense_edge")
+    bounded = conv_edge is not None or dense_edge is not None
+    return {
+        "classification": "bounded" if bounded else "unbounded",
+        "bracketed": not bounded,
+        "rho_conv_edge": conv_edge,
+        "rho_dense_edge": dense_edge,
+        "derived_from_legacy_expansion_record": True,
+    }
+
+
 def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
     records = []
     for surface in surface_specs(study):
@@ -1380,11 +1399,30 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
                     **surface,
                     "status": record["status"],
                     "selected": record.get("selected"),
+                    "accuracy_gate_met": (
+                        record.get("selection", {}).get("accuracy_gate_met")
+                        if isinstance(record.get("selection"), Mapping)
+                        else None
+                    ),
+                    "rho_range_status": _reported_range_status(record),
+                    "suspicious_accuracy_status": record.get(
+                        "suspicious_accuracy_status"
+                    ),
                     "path": str(path),
                 }
             )
         else:
-            records.append({**surface, "status": "pending", "selected": None, "path": str(path)})
+            records.append(
+                {
+                    **surface,
+                    "status": "pending",
+                    "selected": None,
+                    "accuracy_gate_met": None,
+                    "rho_range_status": None,
+                    "suspicious_accuracy_status": None,
+                    "path": str(path),
+                }
+            )
     counts: dict[str, int] = {}
     for record in records:
         counts[record["status"]] = counts.get(record["status"], 0) + 1
@@ -1392,6 +1430,9 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
         "schema_version": _artifact_schema(study, "summary"),
         "study_id": study["study_id"],
         "status": "complete" if counts.get("complete") == len(records) else "partial",
+        "execution_status": (
+            "terminal" if counts.get("pending", 0) == 0 else "in_progress"
+        ),
         "scope_is_partial_all_depth_initializer_selector": True,
         "global_initializer_selection_allowed": False,
         "counts": counts,

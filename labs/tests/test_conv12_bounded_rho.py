@@ -17,6 +17,7 @@ from experiments.run_conv12_bounded_rho import (
     _rho_axes,
     _rho_index,
     build_source_config,
+    collect,
     compare_fixed_tk_gradients,
     load_study,
     select_candidates,
@@ -406,3 +407,40 @@ def test_compatibility_reselector_detects_below_accuracy_boundary() -> None:
         )
         == "lower"
     )
+
+
+def test_collect_reports_range_and_below_accuracy_fields(tmp_path) -> None:
+    _path, study = load_study()
+    surface = surface_specs(study)[0]
+    selection_path = (
+        tmp_path / "surfaces" / surface["surface_id"] / "selection.json"
+    )
+    selection_path.parent.mkdir(parents=True)
+    selection_path.write_text(
+        """{
+          "status": "complete_below_accuracy_range_bounded",
+          "selected": {"rho_conv": 0.001, "rho_dense": 0.01},
+          "selection": {"accuracy_gate_met": false},
+          "rho_range_status": {
+            "classification": "bounded",
+            "bracketed": false,
+            "rho_conv_edge": "lower",
+            "rho_dense_edge": null
+          },
+          "suspicious_accuracy_status": {
+            "floor": 0.8,
+            "triggered": true,
+            "remains_below_floor": true
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    summary = collect(study, tmp_path)
+    record = summary["surfaces"][0]
+
+    assert summary["execution_status"] == "in_progress"
+    assert record["accuracy_gate_met"] is False
+    assert record["rho_range_status"]["classification"] == "bounded"
+    assert record["suspicious_accuracy_status"]["remains_below_floor"] is True
