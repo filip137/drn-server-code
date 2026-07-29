@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run the focused bounded perfect-diode Conv1/Conv2 rho study.
+"""Run focused bounded perfect-diode Conv1/Conv2 or Conv3 rho studies.
 
 The study is intentionally narrow: baseline and ours, SGD and Adam, and the
 two bounded initializers.  It materializes shared initialization checkpoints,
 runs the optimizer-independent fixed-T/K security checks, then drives the
-adaptive center, 3x3 core, optional one-wave expansion, and terminal selector
-through :mod:`experiments.rho_search`.
+architecture-specific 3x3 core, optional one-wave expansion, and terminal
+selector through :mod:`experiments.rho_search`.
 """
 
 from __future__ import annotations
@@ -40,7 +40,29 @@ DEFAULT_STUDY = (
     / "perfectdiode_conv12_bounded_rho_baseline_ours_20260729_v1.json"
 )
 DEFAULT_MINIMIZER = REPO_ROOT / "labs" / "configs" / "mnist_minimizer_fixed_iterations.json"
-SURFACE_SCHEMA = "perfectdiode-conv12-bounded-rho-surface/v1"
+CONV12_STUDY_SCHEMA = "perfectdiode-conv12-bounded-rho-study/v1"
+CONV3_STUDY_SCHEMA = "perfectdiode-conv3-bounded-rho-study/v1"
+
+
+def _study_variant(study: Mapping[str, Any]) -> str:
+    schema = study.get("schema_version")
+    if schema == CONV12_STUDY_SCHEMA:
+        return "conv12"
+    if schema == CONV3_STUDY_SCHEMA:
+        return "conv3"
+    raise ValueError(f"Unexpected study schema: {schema!r}.")
+
+
+def _artifact_schema(study: Mapping[str, Any], artifact: str) -> str:
+    variant = _study_variant(study)
+    if variant == "conv12":
+        legacy = {
+            "bounded-init-asset": "perfectdiode-conv12-bounded-init-asset/v1",
+            "fixed-tk-security": "perfectdiode-conv12-fixed-tk-security/v1",
+        }
+        if artifact in legacy:
+            return legacy[artifact]
+    return f"perfectdiode-{variant}-bounded-rho-{artifact}/v1"
 
 
 def _sha256_file(path: Path) -> str:
@@ -62,11 +84,10 @@ def _sha256_json(value: Any) -> str:
 def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
     source = Path(path).expanduser().resolve()
     study = json.loads(source.read_text(encoding="utf-8"))
-    if study.get("schema_version") != "perfectdiode-conv12-bounded-rho-study/v1":
-        raise ValueError(f"Unexpected study schema in {source}.")
+    variant = _study_variant(study)
     scope = study["scope"]
     expected = {
-        "architectures": ["conv1", "conv2"],
+        "architectures": ["conv1", "conv2"] if variant == "conv12" else ["conv3"],
         "schemes": ["baseline", "ours"],
         "optimizers": ["SGD", "Adam"],
         "initializers": ["bounded_uniform", "bounded_kaiming_uniform"],
@@ -76,8 +97,14 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
             raise ValueError(
                 f"Expected scope.{key}={value!r}. Provided value: {scope.get(key)!r}."
             )
-    if set(scope.get("excluded", ())) != {"legacy", "conv3"}:
-        raise ValueError("The focused study must explicitly exclude legacy and Conv3.")
+    expected_excluded = (
+        {"legacy", "conv3"} if variant == "conv12" else {"legacy", "conv1", "conv2"}
+    )
+    if set(scope.get("excluded", ())) != expected_excluded:
+        raise ValueError(
+            f"The focused {variant} study must explicitly exclude "
+            f"{sorted(expected_excluded)!r}."
+        )
     if study["dataset"].get("official_test_read") is not False:
         raise ValueError("The ordinary-MNIST selector must exclude the official test split.")
     model = study["model"]
@@ -90,6 +117,24 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
             raise ValueError(f"Expected an explicit non-empty model.{key} dictionary.")
     if [float(model["weight_min"]), float(model["weight_max"])] != [1e-5, 1e-4]:
         raise ValueError("The bounded conductance interval must be [1e-5, 1e-4].")
+    if variant == "conv3":
+        architecture = model["architectures"]["conv3"]
+        if [int(architecture["T"]), int(architecture["K"])] != [8, 8]:
+            raise ValueError("The focused Conv3 study must use T=8 and K=8.")
+        search = study["rho_search"]
+        if search.get("core_mode") != "fixed_grid":
+            raise ValueError("The focused Conv3 study must use the fixed high grid.")
+        expected_core = {
+            "rho_conv": [0.009, 0.027, 0.081],
+            "rho_dense": [0.03, 0.09, 0.27],
+        }
+        for axis, expected_values in expected_core.items():
+            actual = [float(value) for value in search["fixed_core"][axis]]
+            if actual != expected_values:
+                raise ValueError(
+                    f"Expected Conv3 {axis}={expected_values!r}. "
+                    f"Provided value: {actual!r}."
+                )
     safety = study["rho_search"]["safety"]
     if safety.get("bound_occupancy") != "report_only":
         raise ValueError("Bound occupancy must be report-only.")
@@ -171,7 +216,11 @@ def build_source_config(
             "model_key": "mnist_bp_conv_amp",
             "dataset_key": "mnist",
             "epochs": int(study["rho_search"]["candidate_epochs"]),
-            "plots_dir": "plots/perfectdiode_conv12_bounded_rho",
+            "plots_dir": (
+                "plots/perfectdiode_conv12_bounded_rho"
+                if _study_variant(study) == "conv12"
+                else "plots/perfectdiode_conv3_bounded_rho"
+            ),
         },
         "input_mode": "train",
         "training_algorithm": "BP",
@@ -259,7 +308,7 @@ def materialize(
     output_root.mkdir(parents=True, exist_ok=True)
     surfaces = surface_specs(study)
     resolved = {
-        "schema_version": "perfectdiode-conv12-bounded-rho-resolved/v1",
+        "schema_version": _artifact_schema(study, "resolved"),
         "study_id": study["study_id"],
         "study_config": str(study_path),
         "study_config_sha256": _sha256_file(study_path),
@@ -452,7 +501,7 @@ def ensure_asset(
         apply_optimizer_steps=False,
     )
     record = {
-        "schema_version": "perfectdiode-conv12-bounded-init-asset/v1",
+        "schema_version": _artifact_schema(study, "bounded-init-asset"),
         "initializer": initializer,
         "architecture": architecture,
         "checkpoint": str(checkpoint),
@@ -548,6 +597,7 @@ def run_fixed_tk_gate(
         operational_t=int(architecture["T"]),
         operational_k=int(architecture["K"]),
     )
+    result["schema_version"] = _artifact_schema(study, "fixed-tk-security")
     result["signature"] = signature
     result["initializer"] = surface["initializer"]
     result["architecture"] = surface["architecture"]
@@ -558,7 +608,15 @@ def run_fixed_tk_gate(
 
 
 def _rho_axes(study: Mapping[str, Any]) -> tuple[list[float], list[float]]:
-    center = study["rho_search"]["center"]
+    search = study["rho_search"]
+    if search.get("core_mode", "adaptive_safe_center") == "fixed_grid":
+        core_conv = [float(value) for value in search["fixed_core"]["rho_conv"]]
+        core_dense = [float(value) for value in search["fixed_core"]["rho_dense"]]
+        return (
+            sorted({min(core_conv) / 3.0, *core_conv, max(core_conv) * 3.0}),
+            sorted({min(core_dense) / 3.0, *core_dense, max(core_dense) * 3.0}),
+        )
+    center = search["center"]
     # Covers six downward center attempts, either side of every core, and the
     # single permitted expansion wave.
     exponents = range(-7, 3)
@@ -697,6 +755,22 @@ def _run_rho_cell(
     return _cell(rho_root, index, rho_conv, rho_dense)
 
 
+def _has_clean_canary(cell_dir: Path, cell: Mapping[str, Any]) -> bool:
+    if cell.get("status") == "canary_clean":
+        return True
+    if cell.get("status") != "complete":
+        return False
+    canary_path = cell_dir / "canary.json"
+    if not canary_path.is_file():
+        return False
+    canary = json.loads(canary_path.read_text(encoding="utf-8"))
+    return (
+        canary.get("status") == "clean"
+        and int(canary.get("completed_steps", -1))
+        == int(canary.get("requested_steps", -2))
+    )
+
+
 def _candidate_record(cell_dir: Path, cell: Mapping[str, Any]) -> dict[str, Any]:
     record = {
         "cell_id": cell_dir.name,
@@ -806,41 +880,87 @@ def run_rho_surface(
     )
 
     search = study["rho_search"]
-    center_conv = float(search["center"]["rho_conv"])
-    center_dense = float(search["center"]["rho_dense"])
+    core_mode = search.get("core_mode", "adaptive_safe_center")
     safe_center = None
-    center_attempts = []
-    for attempt in range(int(search["maximum_center_attempts"])):
-        rho_conv = center_conv / (3.0**attempt)
-        rho_dense = center_dense / (3.0**attempt)
-        cell_dir, cell = _run_rho_cell(
-            study,
-            surface,
-            source_config,
-            rho_root,
-            rho_conv_axis,
-            rho_dense_axis,
-            rho_conv,
-            rho_dense,
-            device=device,
-            canary_only=True,
-        )
-        center_attempts.append(
-            {
-                "attempt": attempt + 1,
-                "rho_conv": float(cell["rho_conv"]),
-                "rho_dense": float(cell["rho_dense"]),
-                "status": cell["status"],
-                "path": str(cell_dir),
+    center_attempts: list[dict[str, Any]] = []
+    if core_mode == "adaptive_safe_center":
+        center_conv = float(search["center"]["rho_conv"])
+        center_dense = float(search["center"]["rho_dense"])
+        for attempt in range(int(search["maximum_center_attempts"])):
+            rho_conv = center_conv / (3.0**attempt)
+            rho_dense = center_dense / (3.0**attempt)
+            cell_dir, cell = _run_rho_cell(
+                study,
+                surface,
+                source_config,
+                rho_root,
+                rho_conv_axis,
+                rho_dense_axis,
+                rho_conv,
+                rho_dense,
+                device=device,
+                canary_only=True,
+            )
+            center_attempts.append(
+                {
+                    "attempt": attempt + 1,
+                    "rho_conv": float(cell["rho_conv"]),
+                    "rho_dense": float(cell["rho_dense"]),
+                    "status": cell["status"],
+                    "path": str(cell_dir),
+                }
+            )
+            if _has_clean_canary(cell_dir, cell):
+                safe_center = (float(cell["rho_conv"]), float(cell["rho_dense"]))
+                break
+        if safe_center is None:
+            result = {
+                "schema_version": _artifact_schema(study, "surface"),
+                **dict(surface),
+                "core_mode": core_mode,
+                "center_attempts": center_attempts,
+                "safe_center": None,
+                "status": "unresolved_no_safe_center",
+                "candidates": [],
+                "selected": None,
+                "official_test_read": False,
             }
+            _write_json(selection_path, result)
+            return result
+        core_conv = sorted(
+            rho_conv_axis[
+                _rho_index(
+                    rho_conv_axis,
+                    rho_dense_axis,
+                    safe_center[0] * factor,
+                    safe_center[1],
+                )
+                // len(rho_dense_axis)
+            ]
+            for factor in search["core_factors"]
         )
-        if cell["status"] == "canary_clean":
-            safe_center = (float(cell["rho_conv"]), float(cell["rho_dense"]))
-            break
+        core_dense = sorted(
+            rho_dense_axis[
+                _rho_index(
+                    rho_conv_axis,
+                    rho_dense_axis,
+                    safe_center[0],
+                    safe_center[1] * factor,
+                )
+                % len(rho_dense_axis)
+            ]
+            for factor in search["core_factors"]
+        )
+    elif core_mode == "fixed_grid":
+        core_conv = sorted(float(value) for value in search["fixed_core"]["rho_conv"])
+        core_dense = sorted(float(value) for value in search["fixed_core"]["rho_dense"])
+    else:
+        raise ValueError(f"Unsupported rho core mode: {core_mode!r}.")
 
     result: dict[str, Any] = {
-        "schema_version": SURFACE_SCHEMA,
+        "schema_version": _artifact_schema(study, "surface"),
         **dict(surface),
+        "core_mode": core_mode,
         "center_attempts": center_attempts,
         "safe_center": (
             {"rho_conv": safe_center[0], "rho_dense": safe_center[1]}
@@ -849,39 +969,6 @@ def run_rho_surface(
         ),
         "official_test_read": False,
     }
-    if safe_center is None:
-        result.update(
-            status="unresolved_no_safe_center",
-            candidates=[],
-            selected=None,
-        )
-        _write_json(selection_path, result)
-        return result
-
-    core_conv = sorted(
-        rho_conv_axis[
-            _rho_index(
-                rho_conv_axis,
-                rho_dense_axis,
-                safe_center[0] * factor,
-                safe_center[1],
-            )
-            // len(rho_dense_axis)
-        ]
-        for factor in search["core_factors"]
-    )
-    core_dense = sorted(
-        rho_dense_axis[
-            _rho_index(
-                rho_conv_axis,
-                rho_dense_axis,
-                safe_center[0],
-                safe_center[1] * factor,
-            )
-            % len(rho_dense_axis)
-        ]
-        for factor in search["core_factors"]
-    )
     candidate_by_pair: dict[tuple[float, float], dict[str, Any]] = {}
     for rho_conv in core_conv:
         for rho_dense in core_dense:
@@ -1070,7 +1157,15 @@ def run_surface(
                 smoke=True,
             )
         )
-        center = study["rho_search"]["center"]
+        search = study["rho_search"]
+        if search.get("core_mode", "adaptive_safe_center") == "fixed_grid":
+            fixed = search["fixed_core"]
+            representative = {
+                "rho_conv": fixed["rho_conv"][len(fixed["rho_conv"]) // 2],
+                "rho_dense": fixed["rho_dense"][len(fixed["rho_dense"]) // 2],
+            }
+        else:
+            representative = search["center"]
         cell_dir, cell = _run_rho_cell(
             study,
             surface,
@@ -1078,14 +1173,14 @@ def run_surface(
             smoke_root,
             rho_conv_axis,
             rho_dense_axis,
-            float(center["rho_conv"]),
-            float(center["rho_dense"]),
+            float(representative["rho_conv"]),
+            float(representative["rho_dense"]),
             device=device,
             canary_only=False,
             smoke=True,
         )
         result = {
-            "schema_version": "perfectdiode-conv12-bounded-rho-smoke/v1",
+            "schema_version": _artifact_schema(study, "smoke"),
             "status": "complete" if cell["status"] == "complete" else cell["status"],
             "surface": dict(surface),
             "asset": asset,
@@ -1098,7 +1193,7 @@ def run_surface(
         return result
     if gate["security_passed"] is not True:
         result = {
-            "schema_version": SURFACE_SCHEMA,
+            "schema_version": _artifact_schema(study, "surface"),
             **dict(surface),
             "status": "unresolved_fixed_tk_gradient_mismatch",
             "fixed_tk": gate,
@@ -1139,7 +1234,7 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
     for record in records:
         counts[record["status"]] = counts.get(record["status"], 0) + 1
     summary = {
-        "schema_version": "perfectdiode-conv12-bounded-rho-summary/v1",
+        "schema_version": _artifact_schema(study, "summary"),
         "study_id": study["study_id"],
         "status": "complete" if counts.get("complete") == len(records) else "partial",
         "scope_is_partial_all_depth_initializer_selector": True,

@@ -191,9 +191,9 @@ median_batch(
 
 The command implements the optimizer probe, a restarted safety canary for each
 cell, and candidate-grid execution. Bound occupancy and projection efficiency
-are report-only diagnostics. The focused Conv1/Conv2 bounded study adds
-adaptive center attempts, one factor-of-three expansion wave, and the 2% loss
-plateau selector:
+are report-only diagnostics. The focused bounded runner adds the
+architecture-specific core, one factor-of-three expansion wave, and the 2%
+loss plateau selector. Conv1/Conv2 use adaptive safe-center attempts:
 
 ```bash
 python -m experiments.run_conv12_bounded_rho plan
@@ -201,9 +201,20 @@ python -m experiments.run_conv12_bounded_rho smoke --surface-index 0
 python -m experiments.run_conv12_bounded_rho run-all
 ```
 
-The focused runner deliberately excludes legacy and Conv3. It therefore does
-not publish the all-depth global bounded-initializer decision or perform the
-post-training Conv3 audit.
+Conv3 uses `T=K=8` and its fixed high 3x3 core:
+
+```bash
+python -m experiments.run_conv12_bounded_rho \
+  --study configs/conv/perfectdiode_conv3_bounded_rho_baseline_ours_20260729_v1.json \
+  plan
+python -m experiments.run_conv12_bounded_rho \
+  --study configs/conv/perfectdiode_conv3_bounded_rho_baseline_ours_20260729_v1.json \
+  smoke --surface-index 0
+```
+
+Both focused configs deliberately exclude legacy. The default config excludes
+Conv3, while the Conv3 config excludes Conv1/Conv2. Neither result alone
+publishes the all-depth global bounded-initializer decision.
 
 ## During And After
 
