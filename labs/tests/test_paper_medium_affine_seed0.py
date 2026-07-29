@@ -133,9 +133,9 @@ def test_slurm_wrapper_freezes_the_reviewed_resource_contract() -> None:
         "#SBATCH --constraint=v100-16g",
         "#SBATCH --gres=gpu:1",
         "#SBATCH --cpus-per-task=10",
-        "#SBATCH --mem=40G",
     ):
         assert directive in wrapper
+    assert "#SBATCH --mem" not in wrapper
     assert "pytorch-gpu/py3/2.5.0" in wrapper
     assert "--summary-json" in wrapper
     assert "PAPER_MODE" in wrapper

@@ -24,7 +24,7 @@
       "constraint": "v100-16g",
       "cpus_per_task": 10,
       "gpus_per_task": 1,
-      "memory": "40G",
+      "memory": "jean_zay_gpu_node_default",
       "module": "pytorch-gpu/py3/2.5.0",
       "partition": "gpu_p13",
       "qos": "qos_gpu-t3"

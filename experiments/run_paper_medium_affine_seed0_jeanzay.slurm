@@ -8,7 +8,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=10
 #SBATCH --hint=nomultithread
-#SBATCH --mem=40G
 
 set -euo pipefail
 
