@@ -136,6 +136,11 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
                     f"Provided value: {actual!r}."
                 )
     safety = study["rho_search"]["safety"]
+    if study["rho_search"].get("select_best_safe_below_accuracy") is not True:
+        raise ValueError(
+            "The focused bounded study must select the best safety-clean "
+            "candidate when the 90% reporting threshold is not reached."
+        )
     if safety.get("bound_occupancy") != "report_only":
         raise ValueError("Bound occupancy must be report-only.")
     if safety.get("projection_efficiency") != "report_only":
@@ -801,15 +806,34 @@ def _candidate_record(cell_dir: Path, cell: Mapping[str, Any]) -> dict[str, Any]
 def select_candidates(
     candidates: Sequence[Mapping[str, Any]],
     plateau_fraction: float,
+    *,
+    select_best_safe_below_accuracy: bool = False,
 ) -> dict[str, Any]:
-    eligible = [
+    accuracy_eligible = [
         dict(candidate)
         for candidate in candidates
         if candidate.get("selection_eligible")
         and candidate.get("final_validation_loss") is not None
     ]
+    eligible = accuracy_eligible
+    selection_basis = "accuracy_gate"
+    if not eligible and select_best_safe_below_accuracy:
+        eligible = [
+            dict(candidate)
+            for candidate in candidates
+            if candidate.get("status") == "complete"
+            and candidate.get("final_validation_loss") is not None
+            and candidate.get("final_validation_accuracy") is not None
+        ]
+        selection_basis = "best_safe_below_accuracy"
     if not eligible:
-        return {"eligible": [], "plateau": [], "selected": None}
+        return {
+            "eligible": [],
+            "plateau": [],
+            "selected": None,
+            "selection_basis": "none",
+            "accuracy_gate_met": False,
+        }
     best_loss = min(float(candidate["final_validation_loss"]) for candidate in eligible)
     plateau = [
         candidate
@@ -835,6 +859,8 @@ def select_candidates(
         "minimum_final_validation_loss": best_loss,
         "plateau": plateau,
         "selected": min(plateau, key=key),
+        "selection_basis": selection_basis,
+        "accuracy_gate_met": bool(accuracy_eligible),
     }
 
 
@@ -989,10 +1015,13 @@ def run_rho_surface(
     selection = select_candidates(
         list(candidate_by_pair.values()),
         float(search["inclusive_loss_plateau"]),
+        select_best_safe_below_accuracy=bool(
+            search.get("select_best_safe_below_accuracy", False)
+        ),
     )
     if selection["selected"] is None:
         result.update(
-            status="unresolved_no_passing_core_candidate",
+            status="unresolved_no_safe_completed_core_candidate",
             candidates=list(candidate_by_pair.values()),
             selection=selection,
             selected=None,
@@ -1060,6 +1089,9 @@ def run_rho_surface(
     final_selection = select_candidates(
         list(candidate_by_pair.values()),
         float(search["inclusive_loss_plateau"]),
+        select_best_safe_below_accuracy=bool(
+            search.get("select_best_safe_below_accuracy", False)
+        ),
     )
     outer_conv_edge = _confined_edge(
         final_selection["plateau"], "rho_conv", expanded_conv
@@ -1067,15 +1099,29 @@ def run_rho_surface(
     outer_dense_edge = _confined_edge(
         final_selection["plateau"], "rho_dense", expanded_dense
     )
-    unresolved_boundary = bool(new_pairs) and (
+    range_bounded = bool(
         outer_conv_edge is not None or outer_dense_edge is not None
     )
-    result.update(
-        status=(
+    unresolved_boundary = bool(new_pairs) and range_bounded
+    below_accuracy_fallback = (
+        final_selection["selection_basis"] == "best_safe_below_accuracy"
+    )
+    if below_accuracy_fallback:
+        status = (
+            "complete_below_accuracy_range_bounded"
+            if range_bounded
+            else "complete_below_accuracy_bracketed"
+        )
+        selected = final_selection["selected"]
+    else:
+        status = (
             "unresolved_after_boundary_expansion"
             if unresolved_boundary
             else "complete"
-        ),
+        )
+        selected = None if unresolved_boundary else final_selection["selected"]
+    result.update(
+        status=status,
         core_axes={"rho_conv": core_conv, "rho_dense": core_dense},
         expansion={
             "triggered": bool(new_pairs),
@@ -1089,12 +1135,18 @@ def run_rho_surface(
             "plateau_on_outer_rho_conv_edge": outer_conv_edge,
             "plateau_on_outer_rho_dense_edge": outer_dense_edge,
         },
+        rho_range_status={
+            "classification": "bounded" if range_bounded else "unbounded",
+            "bracketed": not range_bounded,
+            "rho_conv_edge": outer_conv_edge,
+            "rho_dense_edge": outer_dense_edge,
+        },
         candidates=sorted(
             candidate_by_pair.values(),
             key=lambda item: (item["rho_conv"], item["rho_dense"]),
         ),
         selection=final_selection,
-        selected=None if unresolved_boundary else final_selection["selected"],
+        selected=selected,
     )
     _write_json(selection_path, result)
     return result

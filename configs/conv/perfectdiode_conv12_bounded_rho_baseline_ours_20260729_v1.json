@@ -133,6 +133,7 @@
     "candidate_epochs": 3,
     "expected_candidate_steps": 10314,
     "minimum_validation_accuracy": 0.9,
+    "select_best_safe_below_accuracy": true,
     "inclusive_loss_plateau": 0.02,
     "safety": {
       "warmup_steps": 32,

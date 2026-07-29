@@ -6,6 +6,12 @@ import pytest
 import torch
 
 import experiments.run_conv12_bounded_rho as bounded_rho_runner
+from experiments.reselect_bounded_rho_below_accuracy import (
+    _confined_edge as reselect_confined_edge,
+)
+from experiments.reselect_bounded_rho_below_accuracy import (
+    _select_best_safe as reselect_best_safe,
+)
 from experiments.run_conv12_bounded_rho import (
     _has_clean_canary,
     _rho_axes,
@@ -259,3 +265,73 @@ def test_selector_uses_loss_plateau_then_accuracy_and_projection() -> None:
 
     assert {item["cell_id"] for item in selection["plateau"]} == {"a", "b"}
     assert selection["selected"]["cell_id"] == "b"
+
+
+def test_selector_falls_back_to_best_safe_candidate_below_accuracy() -> None:
+    candidates = [
+        {
+            "cell_id": "low-loss",
+            "status": "complete",
+            "selection_eligible": False,
+            "final_validation_loss": 0.2,
+            "final_validation_accuracy": 0.88,
+            "median_projection_efficiency": 0.7,
+            "rho_conv": 0.001,
+            "rho_dense": 0.01,
+        },
+        {
+            "cell_id": "higher-loss",
+            "status": "complete",
+            "selection_eligible": False,
+            "final_validation_loss": 0.3,
+            "final_validation_accuracy": 0.89,
+            "median_projection_efficiency": 0.9,
+            "rho_conv": 0.003,
+            "rho_dense": 0.01,
+        },
+    ]
+
+    selection = select_candidates(
+        candidates,
+        0.02,
+        select_best_safe_below_accuracy=True,
+    )
+
+    assert selection["accuracy_gate_met"] is False
+    assert selection["selection_basis"] == "best_safe_below_accuracy"
+    assert selection["selected"]["cell_id"] == "low-loss"
+
+
+def test_compatibility_reselector_detects_below_accuracy_boundary() -> None:
+    candidates = [
+        {
+            "cell_id": "best",
+            "status": "complete",
+            "final_validation_loss": 0.2,
+            "final_validation_accuracy": 0.88,
+            "median_projection_efficiency": 0.8,
+            "rho_conv": 0.001,
+            "rho_dense": 0.01,
+        },
+        {
+            "cell_id": "other",
+            "status": "complete",
+            "final_validation_loss": 0.3,
+            "final_validation_accuracy": 0.89,
+            "median_projection_efficiency": 0.9,
+            "rho_conv": 0.003,
+            "rho_dense": 0.01,
+        },
+    ]
+
+    selection = reselect_best_safe(candidates, 0.02)
+
+    assert selection["selected"]["cell_id"] == "best"
+    assert (
+        reselect_confined_edge(
+            selection["plateau"],
+            "rho_conv",
+            [0.001, 0.003, 0.009],
+        )
+        == "lower"
+    )

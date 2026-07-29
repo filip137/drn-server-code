@@ -216,6 +216,13 @@ Both focused configs deliberately exclude legacy. The default config excludes
 Conv3, while the Conv3 config excludes Conv1/Conv2. Neither result alone
 publishes the all-depth global bounded-initializer decision.
 
+For these focused bounded studies, 90% remains a reported performance
+threshold. If no safety-clean core candidate reaches it, selection falls back
+to the lowest-loss completed candidate. A fallback plateau confined to a
+tested edge receives the same single factor-of-three expansion wave, and the
+terminal result explicitly reports whether the explored rho range is still
+bounded or is bracketed.
+
 ## During And After
 
 - Follow the canonical run-bundle and promotion rules in
