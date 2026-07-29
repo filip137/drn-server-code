@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -462,3 +463,34 @@ def test_collect_reports_range_and_below_accuracy_fields(tmp_path) -> None:
     assert record["accuracy_gate_met"] is False
     assert record["rho_range_status"]["classification"] == "bounded"
     assert record["suspicious_accuracy_status"]["remains_below_floor"] is True
+
+
+def test_collect_treats_below_accuracy_fallbacks_as_complete(tmp_path) -> None:
+    _path, study = load_study()
+    statuses = (
+        "complete",
+        "complete_below_accuracy_range_bounded",
+        "complete_below_accuracy_bracketed",
+    )
+    for surface in surface_specs(study):
+        selection_path = (
+            tmp_path / "surfaces" / surface["surface_id"] / "selection.json"
+        )
+        selection_path.parent.mkdir(parents=True)
+        selection_path.write_text(
+            json.dumps(
+                {
+                    "status": statuses[surface["index"] % len(statuses)],
+                    "selected": {
+                        "rho_conv": 0.001,
+                        "rho_dense": 0.01,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    summary = collect(study, tmp_path)
+
+    assert summary["status"] == "complete"
+    assert summary["execution_status"] == "terminal"

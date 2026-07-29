@@ -1430,10 +1430,18 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for record in records:
         counts[record["status"]] = counts.get(record["status"], 0) + 1
+    successful_terminal_statuses = {
+        "complete",
+        "complete_below_accuracy_range_bounded",
+        "complete_below_accuracy_bracketed",
+    }
+    study_complete = all(
+        record["status"] in successful_terminal_statuses for record in records
+    )
     summary = {
         "schema_version": _artifact_schema(study, "summary"),
         "study_id": study["study_id"],
-        "status": "complete" if counts.get("complete") == len(records) else "partial",
+        "status": "complete" if study_complete else "partial",
         "execution_status": (
             "terminal" if counts.get("pending", 0) == 0 else "in_progress"
         ),
