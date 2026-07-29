@@ -212,6 +212,77 @@ def test_conv3_fixed_grid_runs_all_nine_cells_without_center_search(
     assert result["selected"]["rho_dense"] == 0.09
 
 
+def test_suspiciously_low_fixed_grid_widens_toward_better_edges(
+    tmp_path, monkeypatch
+) -> None:
+    _path, study = load_study(CONV3_STUDY)
+    surface = surface_specs(study)[0]
+    calls = []
+
+    monkeypatch.setattr(bounded_rho_runner, "run_rho_search", lambda _args: {})
+
+    def fake_run_cell(
+        _study,
+        _surface,
+        _source_config,
+        rho_root,
+        _rho_conv_axis,
+        _rho_dense_axis,
+        rho_conv,
+        rho_dense,
+        *,
+        device,
+        canary_only,
+        smoke=False,
+    ):
+        del device, smoke
+        calls.append((float(rho_conv), float(rho_dense), canary_only))
+        cell_dir = rho_root / "cells" / f"cell-{len(calls)}"
+        return cell_dir, {
+            "index": len(calls) - 1,
+            "rho_conv": rho_conv,
+            "rho_dense": rho_dense,
+            "status": "complete",
+            "selection_eligible": False,
+        }
+
+    def fake_candidate(cell_dir, cell):
+        rho_conv = float(cell["rho_conv"])
+        rho_dense = float(cell["rho_dense"])
+        distance = abs(rho_conv - 0.027) + abs(rho_dense - 0.09)
+        return {
+            "cell_id": cell_dir.name,
+            "index": cell["index"],
+            "rho_conv": rho_conv,
+            "rho_dense": rho_dense,
+            "status": "complete",
+            "selection_eligible": False,
+            "final_validation_loss": 1.0 if distance < 1e-12 else 2.0 + distance,
+            "final_validation_accuracy": 0.55 + 0.1 * rho_conv + 0.1 * rho_dense,
+            "median_projection_efficiency": 1.0,
+            "path": str(cell_dir),
+        }
+
+    monkeypatch.setattr(bounded_rho_runner, "_run_rho_cell", fake_run_cell)
+    monkeypatch.setattr(bounded_rho_runner, "_candidate_record", fake_candidate)
+
+    result = bounded_rho_runner.run_rho_surface(
+        study,
+        tmp_path,
+        surface,
+        tmp_path / "source.json",
+        device="cuda",
+    )
+
+    assert len(calls) == 16
+    assert max(rho_conv for rho_conv, _, _ in calls) == pytest.approx(0.243)
+    assert max(rho_dense for _, rho_dense, _ in calls) == pytest.approx(0.81)
+    assert result["expansion"]["trigger"] == "suspicious_low_accuracy"
+    assert result["suspicious_accuracy_status"]["triggered"] is True
+    assert result["suspicious_accuracy_status"]["remains_below_floor"] is True
+    assert result["rho_range_status"]["classification"] == "unbounded"
+
+
 def test_fixed_tk_comparison_uses_inclusive_layerwise_gates() -> None:
     contract = {
         "reference_T": 64,

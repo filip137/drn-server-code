@@ -3,9 +3,10 @@
 
 This controller preserves completed core cells.  It selects the lowest-loss
 safety-clean candidate when no candidate reached the configured accuracy
-threshold, adds the single permitted factor-of-three expansion when the 2%
-loss plateau is confined to a core edge, and writes a terminal selection that
-reports whether the expanded rho range is still bounded or bracketed.
+threshold, adds the single permitted factor-of-three expansion when the
+selected rho is bounded or core accuracy is suspiciously low, and writes a
+terminal selection that reports whether the expanded rho range is still
+bounded or bracketed.
 """
 
 from __future__ import annotations
@@ -127,6 +128,41 @@ def _selected_edge(
     return None
 
 
+def _maximum_safe_accuracy(candidates: Sequence[Mapping[str, Any]]) -> float | None:
+    accuracies = [
+        float(candidate["final_validation_accuracy"])
+        for candidate in candidates
+        if candidate.get("status") == "complete"
+        and candidate.get("final_validation_accuracy") is not None
+    ]
+    return max(accuracies) if accuracies else None
+
+
+def _accuracy_trend_edge(
+    candidates: Sequence[Mapping[str, Any]],
+    axis: str,
+    values: Sequence[float],
+) -> str | None:
+    edge_accuracy: dict[str, float] = {}
+    for edge, value in (("lower", min(values)), ("upper", max(values))):
+        accuracies = [
+            float(candidate["final_validation_accuracy"])
+            for candidate in candidates
+            if candidate.get("status") == "complete"
+            and candidate.get("final_validation_accuracy") is not None
+            and float(candidate[axis]) == float(value)
+        ]
+        if accuracies:
+            edge_accuracy[edge] = max(accuracies)
+    if not edge_accuracy:
+        return None
+    if len(edge_accuracy) == 1:
+        return next(iter(edge_accuracy))
+    if edge_accuracy["upper"] > edge_accuracy["lower"]:
+        return "upper"
+    return "lower"
+
+
 def _expanded_value(values: Sequence[float], edge: str) -> float:
     if edge == "lower":
         return min(values) / 3.0
@@ -179,6 +215,19 @@ def reselect_surface(
         )
     conv_edge = _selected_edge(selection, "rho_conv", core_conv)
     dense_edge = _selected_edge(selection, "rho_dense", core_dense)
+    core_maximum_safe_accuracy = _maximum_safe_accuracy(candidates)
+    suspicious_floor = float(
+        study["rho_search"]["suspicious_validation_accuracy_floor"]
+    )
+    suspicious_accuracy_triggered = bool(
+        core_maximum_safe_accuracy is not None
+        and core_maximum_safe_accuracy < suspicious_floor
+    )
+    if suspicious_accuracy_triggered:
+        if conv_edge is None:
+            conv_edge = _accuracy_trend_edge(candidates, "rho_conv", core_conv)
+        if dense_edge is None:
+            dense_edge = _accuracy_trend_edge(candidates, "rho_dense", core_dense)
     expanded_conv = list(core_conv)
     expanded_dense = list(core_dense)
     new_pairs: set[tuple[float, float]] = set()
@@ -228,6 +277,9 @@ def reselect_surface(
         final_selection, "rho_dense", expanded_dense
     )
     range_bounded = outer_conv_edge is not None or outer_dense_edge is not None
+    final_maximum_safe_accuracy = _maximum_safe_accuracy(
+        list(candidate_by_pair.values())
+    )
     backup = surface_dir / "selection.pre_below_accuracy_policy.json"
     if not backup.exists():
         shutil.copy2(selection_path, backup)
@@ -241,6 +293,13 @@ def reselect_surface(
         "core_axes": {"rho_conv": core_conv, "rho_dense": core_dense},
         "expansion": {
             "triggered": bool(new_pairs),
+            "trigger": (
+                "suspicious_low_accuracy"
+                if suspicious_accuracy_triggered
+                else "selected_boundary"
+                if new_pairs
+                else None
+            ),
             "rho_conv_edge": conv_edge,
             "rho_dense_edge": dense_edge,
             "expanded_axes": {
@@ -257,6 +316,17 @@ def reselect_surface(
             "rho_conv_edge": outer_conv_edge,
             "rho_dense_edge": outer_dense_edge,
         },
+        "suspicious_accuracy_status": {
+            "floor": suspicious_floor,
+            "triggered": suspicious_accuracy_triggered,
+            "core_maximum_safe_accuracy": core_maximum_safe_accuracy,
+            "final_maximum_safe_accuracy": final_maximum_safe_accuracy,
+            "remains_below_floor": bool(
+                final_maximum_safe_accuracy is not None
+                and final_maximum_safe_accuracy < suspicious_floor
+            ),
+            "direction_policy": "better_safety_clean_core_edge_per_axis",
+        },
         "candidates": sorted(
             candidate_by_pair.values(),
             key=lambda item: (item["rho_conv"], item["rho_dense"]),
@@ -267,7 +337,9 @@ def reselect_surface(
             "minimum_validation_accuracy": float(
                 study["rho_search"]["minimum_validation_accuracy"]
             ),
-            "directive": "select_best_safe_and_expand_if_range_bounded",
+            "directive": (
+                "select_best_safe_expand_if_range_bounded_or_suspiciously_low"
+            ),
             "controller": str(controller_path),
             "controller_sha256": _sha256_file(controller_path),
             "controller_commit": _git_commit(controller_path.parents[1]),

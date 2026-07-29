@@ -113,6 +113,23 @@ Never transfer numerical outputs between bounded initializers.
 Every surface must produce one selected safe LR handoff or an explicit
 unresolved reason.
 
+For the active baseline/ours-only focused study, `90%` is a reporting
+threshold rather than a condition for withholding a rho handoff. If no
+safety-clean candidate reaches it, select the best completed candidate with
+the normal loss-plateau and tie-break rules, and report whether that selected
+rho is on a tested outer bound. A bound-selected rho triggers the single
+factor-of-three expansion wave.
+
+The same wave may also be triggered when the best safety-clean core accuracy
+is below the declared suspicious-accuracy floor (`80%` in the active
+configs), even if the selected rho is interior. For each otherwise interior
+axis, extend toward the outer core edge with the higher safety-clean
+validation accuracy. Do not infer a direction from rejected cells. This
+remains one wave with at most one added value per axis and at most 16 tested
+cells. Record whether the maximum accuracy remains below the diagnostic floor
+after expansion. Bound occupancy and projection efficiency remain
+report-only.
+
 ## Global Initializer Selection
 
 An initializer is globally eligible only when all 18 surfaces have a selected

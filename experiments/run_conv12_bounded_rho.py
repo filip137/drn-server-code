@@ -141,6 +141,19 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
             "The focused bounded study must select the best safety-clean "
             "candidate when the 90% reporting threshold is not reached."
         )
+    suspicious_floor = study["rho_search"].get(
+        "suspicious_validation_accuracy_floor"
+    )
+    if (
+        suspicious_floor is None
+        or not 0.0 < float(suspicious_floor) < float(
+            study["rho_search"]["minimum_validation_accuracy"]
+        )
+    ):
+        raise ValueError(
+            "Expected rho_search.suspicious_validation_accuracy_floor strictly "
+            "between zero and the reporting accuracy threshold."
+        )
     if safety.get("bound_occupancy") != "report_only":
         raise ValueError("Bound occupancy must be report-only.")
     if safety.get("projection_efficiency") != "report_only":
@@ -892,6 +905,43 @@ def _selection_edge(
     return None
 
 
+def _maximum_safe_accuracy(candidates: Sequence[Mapping[str, Any]]) -> float | None:
+    accuracies = [
+        float(candidate["final_validation_accuracy"])
+        for candidate in candidates
+        if candidate.get("status") == "complete"
+        and candidate.get("final_validation_accuracy") is not None
+    ]
+    return max(accuracies) if accuracies else None
+
+
+def _accuracy_trend_edge(
+    candidates: Sequence[Mapping[str, Any]],
+    axis: str,
+    values: Sequence[float],
+) -> str | None:
+    """Choose one outward direction from safety-clean edge accuracy evidence."""
+
+    edge_accuracy: dict[str, float] = {}
+    for edge, value in (("lower", min(values)), ("upper", max(values))):
+        accuracies = [
+            float(candidate["final_validation_accuracy"])
+            for candidate in candidates
+            if candidate.get("status") == "complete"
+            and candidate.get("final_validation_accuracy") is not None
+            and float(candidate[axis]) == float(value)
+        ]
+        if accuracies:
+            edge_accuracy[edge] = max(accuracies)
+    if not edge_accuracy:
+        return None
+    if len(edge_accuracy) == 1:
+        return next(iter(edge_accuracy))
+    if edge_accuracy["upper"] > edge_accuracy["lower"]:
+        return "upper"
+    return "lower"
+
+
 def run_rho_surface(
     study: Mapping[str, Any],
     output_root: Path,
@@ -1046,6 +1096,23 @@ def run_rho_surface(
 
     conv_edge = _selection_edge(selection, "rho_conv", core_conv)
     dense_edge = _selection_edge(selection, "rho_dense", core_dense)
+    core_maximum_safe_accuracy = _maximum_safe_accuracy(
+        list(candidate_by_pair.values())
+    )
+    suspicious_floor = float(search["suspicious_validation_accuracy_floor"])
+    suspicious_accuracy_triggered = bool(
+        core_maximum_safe_accuracy is not None
+        and core_maximum_safe_accuracy < suspicious_floor
+    )
+    if suspicious_accuracy_triggered:
+        if conv_edge is None:
+            conv_edge = _accuracy_trend_edge(
+                list(candidate_by_pair.values()), "rho_conv", core_conv
+            )
+        if dense_edge is None:
+            dense_edge = _accuracy_trend_edge(
+                list(candidate_by_pair.values()), "rho_dense", core_dense
+            )
     expanded_conv = list(core_conv)
     expanded_dense = list(core_dense)
     new_pairs: set[tuple[float, float]] = set()
@@ -1060,7 +1127,7 @@ def run_rho_surface(
                 rho_conv_axis,
                 rho_dense_axis,
                 new_conv,
-                safe_center[1],
+                core_dense[len(core_dense) // 2],
             )
             // len(rho_dense_axis)
         ]
@@ -1077,7 +1144,7 @@ def run_rho_surface(
             _rho_index(
                 rho_conv_axis,
                 rho_dense_axis,
-                safe_center[0],
+                core_conv[len(core_conv) // 2],
                 new_dense,
             )
             % len(rho_dense_axis)
@@ -1121,6 +1188,9 @@ def run_rho_surface(
     below_accuracy_fallback = (
         final_selection["selection_basis"] == "best_safe_below_accuracy"
     )
+    final_maximum_safe_accuracy = _maximum_safe_accuracy(
+        list(candidate_by_pair.values())
+    )
     if below_accuracy_fallback:
         status = (
             "complete_below_accuracy_range_bounded"
@@ -1140,6 +1210,13 @@ def run_rho_surface(
         core_axes={"rho_conv": core_conv, "rho_dense": core_dense},
         expansion={
             "triggered": bool(new_pairs),
+            "trigger": (
+                "suspicious_low_accuracy"
+                if suspicious_accuracy_triggered
+                else "selected_boundary"
+                if new_pairs
+                else None
+            ),
             "rho_conv_edge": conv_edge,
             "rho_dense_edge": dense_edge,
             "expanded_axes": {
@@ -1155,6 +1232,17 @@ def run_rho_surface(
             "bracketed": not range_bounded,
             "rho_conv_edge": outer_conv_edge,
             "rho_dense_edge": outer_dense_edge,
+        },
+        suspicious_accuracy_status={
+            "floor": suspicious_floor,
+            "triggered": suspicious_accuracy_triggered,
+            "core_maximum_safe_accuracy": core_maximum_safe_accuracy,
+            "final_maximum_safe_accuracy": final_maximum_safe_accuracy,
+            "remains_below_floor": bool(
+                final_maximum_safe_accuracy is not None
+                and final_maximum_safe_accuracy < suspicious_floor
+            ),
+            "direction_policy": "better_safety_clean_core_edge_per_axis",
         },
         candidates=sorted(
             candidate_by_pair.values(),
