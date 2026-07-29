@@ -409,6 +409,24 @@ def test_compatibility_reselector_detects_below_accuracy_boundary() -> None:
     )
 
 
+def test_reselector_detects_factor_constructed_boundary_with_float_tolerance() -> None:
+    selection = {
+        "selected": {
+            "rho_conv": 0.027,
+            "rho_dense": 0.03,
+        }
+    }
+
+    assert (
+        reselect_selected_edge(
+            selection,
+            "rho_conv",
+            [0.001, 0.003, 0.009000000000000001, 0.027000000000000003],
+        )
+        == "upper"
+    )
+
+
 def test_collect_reports_range_and_below_accuracy_fields(tmp_path) -> None:
     _path, study = load_study()
     surface = surface_specs(study)[0]

@@ -27,6 +27,10 @@ RESELECTABLE_STATUSES = {
     "unresolved_no_passing_core_candidate",
     "unresolved_no_safe_completed_core_candidate",
 }
+TERMINAL_BELOW_ACCURACY_STATUSES = {
+    "complete_below_accuracy_range_bounded",
+    "complete_below_accuracy_bracketed",
+}
 DEFAULT_SUSPICIOUS_ACCURACY_FLOOR = 0.80
 
 
@@ -108,12 +112,16 @@ def _confined_edge(
     axis: str,
     values: Sequence[float],
 ) -> str | None:
-    observed = {float(candidate[axis]) for candidate in plateau}
-    if observed == {min(values)}:
+    observed = [float(candidate[axis]) for candidate in plateau]
+    if observed and all(_same_rho(value, min(values)) for value in observed):
         return "lower"
-    if observed == {max(values)}:
+    if observed and all(_same_rho(value, max(values)) for value in observed):
         return "upper"
     return None
+
+
+def _same_rho(left: float, right: float) -> bool:
+    return math.isclose(float(left), float(right), rel_tol=1e-12, abs_tol=1e-15)
 
 
 def _selected_edge(
@@ -122,9 +130,9 @@ def _selected_edge(
     values: Sequence[float],
 ) -> str | None:
     selected = float(selection["selected"][axis])
-    if selected == min(values):
+    if _same_rho(selected, min(values)):
         return "lower"
-    if selected == max(values):
+    if _same_rho(selected, max(values)):
         return "upper"
     return None
 
@@ -151,7 +159,7 @@ def _accuracy_trend_edge(
             for candidate in candidates
             if candidate.get("status") == "complete"
             and candidate.get("final_validation_accuracy") is not None
-            and float(candidate[axis]) == float(value)
+            and _same_rho(float(candidate[axis]), float(value))
         ]
         if accuracies:
             edge_accuracy[edge] = max(accuracies)
@@ -172,6 +180,67 @@ def _expanded_value(values: Sequence[float], edge: str) -> float:
     raise ValueError(f"Unexpected edge: {edge!r}.")
 
 
+def _repair_terminal_range_status(
+    runner,
+    *,
+    original: Mapping[str, Any],
+    selection_path: Path,
+    surface_id: str,
+) -> dict[str, Any]:
+    expanded = original.get("expansion", {}).get("expanded_axes", {})
+    selected = original.get("selected")
+    if (
+        not isinstance(selected, Mapping)
+        or not isinstance(expanded, Mapping)
+        or not expanded.get("rho_conv")
+        or not expanded.get("rho_dense")
+    ):
+        return {
+            "surface_id": surface_id,
+            "status": "skipped_terminal_without_expanded_axes",
+        }
+    conv_edge = _selected_edge(
+        {"selected": selected}, "rho_conv", expanded["rho_conv"]
+    )
+    dense_edge = _selected_edge(
+        {"selected": selected}, "rho_dense", expanded["rho_dense"]
+    )
+    bounded = conv_edge is not None or dense_edge is not None
+    repaired = dict(original)
+    repaired["status"] = (
+        "complete_below_accuracy_range_bounded"
+        if bounded
+        else "complete_below_accuracy_bracketed"
+    )
+    repaired["rho_range_status"] = {
+        "classification": "bounded" if bounded else "unbounded",
+        "bracketed": not bounded,
+        "rho_conv_edge": conv_edge,
+        "rho_dense_edge": dense_edge,
+    }
+    repaired_expansion = dict(repaired["expansion"])
+    repaired_expansion["plateau_on_outer_rho_conv_edge"] = conv_edge
+    repaired_expansion["plateau_on_outer_rho_dense_edge"] = dense_edge
+    repaired["expansion"] = repaired_expansion
+    repaired["range_classification_repair"] = {
+        "reason": "rho_factor_floating_point_tolerance",
+        "controller_commit": _git_commit(Path(__file__).resolve().parents[1]),
+        "training_cells_reused": True,
+    }
+    backup = selection_path.with_name("selection.pre_range_tolerance_repair.json")
+    if not backup.exists():
+        shutil.copy2(selection_path, backup)
+    runner._write_json(selection_path, repaired)
+    return {
+        "surface_id": surface_id,
+        "status": repaired["status"],
+        "selected": repaired["selected"],
+        "rho_range_status": repaired["rho_range_status"],
+        "new_cell_count": 0,
+        "range_classification_repaired": True,
+    }
+
+
 def reselect_surface(
     runner,
     *,
@@ -189,6 +258,13 @@ def reselect_surface(
             "status": "skipped_missing_selection",
         }
     original = json.loads(selection_path.read_text(encoding="utf-8"))
+    if original.get("status") in TERMINAL_BELOW_ACCURACY_STATUSES:
+        return _repair_terminal_range_status(
+            runner,
+            original=original,
+            selection_path=selection_path,
+            surface_id=surface["surface_id"],
+        )
     if original.get("status") not in RESELECTABLE_STATUSES:
         return {
             "surface_id": surface["surface_id"],

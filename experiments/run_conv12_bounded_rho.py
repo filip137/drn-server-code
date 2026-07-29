@@ -882,12 +882,16 @@ def _confined_edge(
     axis: str,
     values: Sequence[float],
 ) -> str | None:
-    observed = {float(candidate[axis]) for candidate in plateau}
-    if observed == {min(values)}:
+    observed = [float(candidate[axis]) for candidate in plateau]
+    if observed and all(_same_rho(value, min(values)) for value in observed):
         return "lower"
-    if observed == {max(values)}:
+    if observed and all(_same_rho(value, max(values)) for value in observed):
         return "upper"
     return None
+
+
+def _same_rho(left: float, right: float) -> bool:
+    return math.isclose(float(left), float(right), rel_tol=1e-12, abs_tol=1e-15)
 
 
 def _selection_edge(
@@ -898,9 +902,9 @@ def _selection_edge(
     if selection.get("selection_basis") != "best_safe_below_accuracy":
         return _confined_edge(selection["plateau"], axis, values)
     selected = float(selection["selected"][axis])
-    if selected == min(values):
+    if _same_rho(selected, min(values)):
         return "lower"
-    if selected == max(values):
+    if _same_rho(selected, max(values)):
         return "upper"
     return None
 
@@ -929,7 +933,7 @@ def _accuracy_trend_edge(
             for candidate in candidates
             if candidate.get("status") == "complete"
             and candidate.get("final_validation_accuracy") is not None
-            and float(candidate[axis]) == float(value)
+            and _same_rho(float(candidate[axis]), float(value))
         ]
         if accuracies:
             edge_accuracy[edge] = max(accuracies)
