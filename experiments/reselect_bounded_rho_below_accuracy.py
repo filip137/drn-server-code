@@ -27,6 +27,7 @@ RESELECTABLE_STATUSES = {
     "unresolved_no_passing_core_candidate",
     "unresolved_no_safe_completed_core_candidate",
 }
+DEFAULT_SUSPICIOUS_ACCURACY_FLOOR = 0.80
 
 
 def _sha256_file(path: Path) -> str:
@@ -216,8 +217,13 @@ def reselect_surface(
     conv_edge = _selected_edge(selection, "rho_conv", core_conv)
     dense_edge = _selected_edge(selection, "rho_dense", core_dense)
     core_maximum_safe_accuracy = _maximum_safe_accuracy(candidates)
+    configured_suspicious_floor = study["rho_search"].get(
+        "suspicious_validation_accuracy_floor"
+    )
     suspicious_floor = float(
-        study["rho_search"]["suspicious_validation_accuracy_floor"]
+        DEFAULT_SUSPICIOUS_ACCURACY_FLOOR
+        if configured_suspicious_floor is None
+        else configured_suspicious_floor
     )
     suspicious_accuracy_triggered = bool(
         core_maximum_safe_accuracy is not None
@@ -318,6 +324,11 @@ def reselect_surface(
         },
         "suspicious_accuracy_status": {
             "floor": suspicious_floor,
+            "floor_source": (
+                "compatibility_controller_default"
+                if configured_suspicious_floor is None
+                else "study_config"
+            ),
             "triggered": suspicious_accuracy_triggered,
             "core_maximum_safe_accuracy": core_maximum_safe_accuracy,
             "final_maximum_safe_accuracy": final_maximum_safe_accuracy,
