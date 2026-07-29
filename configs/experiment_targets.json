@@ -1,0 +1,33 @@
+{
+  "local": {
+    "kind": "local",
+    "workdir": "."
+  },
+  "main": {
+    "kind": "tmux",
+    "session": "main",
+    "workdir": "/home/filip/server_code"
+  },
+  "akib": {
+    "kind": "ssh-tmux",
+    "host": "akib",
+    "workdir": "/home/filiposana/server_code"
+  },
+  "trex": {
+    "kind": "ssh-tmux",
+    "host": "filip@trex",
+    "workdir": "/home/filip/server_code"
+  },
+  "jean-zay": {
+    "kind": "slurm",
+    "host": "jean-zay",
+    "workdir": "/lustre/fswork/projects/rech/umg/ucy17uy/server_code",
+    "sbatch": [
+      "--account=fmu@v100",
+      "--partition=gpu_p13",
+      "--qos=qos_gpu-t3",
+      "--constraint=v100-16g",
+      "--gres=gpu:1"
+    ]
+  }
+}

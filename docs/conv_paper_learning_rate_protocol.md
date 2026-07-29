@@ -111,18 +111,12 @@ selection artifacts, and the tracked handoff CSVs are the post-execution
 authority; editing a resolved source in place would create a different study
 identity.
 
-The public stage interface is:
-
-```text
-python -m experiments.mnist_conv lr-study --stage probe --config STUDY.json ...
-python -m experiments.mnist_conv lr-study --stage range --study STUDY_DIR ...
-python -m experiments.mnist_conv lr-study --stage candidates --study STUDY_DIR ...
-python -m experiments.mnist_conv lr-study --stage select --study STUDY_DIR
-```
-
-Scientific choices come only from the study JSON. Each stage writes an
-immutable manifest, embeds hashes of upstream artifacts, resumes already
-complete work, and writes its completion marker last.
+The historical staged runner used to produce these measurements has been
+removed from the active tree. The frozen JSON files and recorded outputs
+remain provenance for this completed handoff. A future repetition should use
+a focused scientific script that calls `labs.mnist_train` and can be launched
+with `python -m experiments.launch`; it must preserve the scientific choices
+in the relevant JSON rather than editing a completed result in place.
 
 ## Shared Parameter Diagnostics And Safety Gates
 

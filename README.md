@@ -1,7 +1,21 @@
 # Energy-Based Learning Framework
 
-This repository is based on coordinate descent to enable simulations of DRNs with dissipative non-linearities.
-See [A fast algorithm to simulate nonlinear resistive networks](papers/fast-drn/README.md).
+Coordinate-descent simulations of dissipative resistive networks, including
+the experiments used to study bidirectional amplification.
 
-The supported resistive MNIST Conv paper run, sweep, and result workflow is
-documented in [docs/mnist_conv_workflow.md](docs/mnist_conv_workflow.md).
+- Core models: `model/`
+- Training code: `training/` and `labs/mnist_train.py`
+- Scientific runners and analysis: `experiments/`
+- Active Conv protocols: `docs/conv_paper_hyperparameter_protocol.md`
+- Lean execution workflow: `docs/experiment_workflow.md`
+
+The execution layer intentionally stays small. Scientific runners own their
+configs and outputs; `python -m experiments.launch` only starts an existing
+command on a configured target and reports its handle.
+
+Complete configs with already-selected learning rates run through
+`python -m experiments.exact_run`. It supports a cheap one-batch smoke and
+automatic Slurm-array indexing without generating another study format.
+
+Conv layerwise two-rho update-ratio searches are available through
+`python -m experiments.rho_search`; see `docs/experiment_workflow.md`.

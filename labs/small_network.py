@@ -8,7 +8,7 @@ import sys
 
 
 ARCHIVE_TAG = "archive/small-network-v1"
-REPLACEMENT = "python -m experiments.mnist_conv run --config RUN.json --results-root results"
+REPLACEMENT = "python labs/mnist_train.py --config CONFIG.json --output-dir RESULTS"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,8 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     args, unknown = _parser().parse_known_args(argv)
     print(
         "Expected format: "
-        "python -m experiments.mnist_conv run --config RUN.json "
-        "--results-root RESULTS_ROOT",
+        "python labs/mnist_train.py --config CONFIG.json --output-dir RESULTS",
         file=sys.stderr,
     )
     print(

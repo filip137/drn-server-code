@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# MNIST_CONV_LEGACY_LAUNCHER_DEPRECATED
-printf "%s\n" "Expected format: python -m experiments.mnist_conv {run|sweep|collect} ..." >&2
-printf "%s\n" "Provided deprecated MNIST Conv launcher invocation: $0 $*" >&2
-printf "%s\n" "Deprecated MNIST Conv launcher; no setup, allocation, or work was performed." >&2
-exit 2
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/home/filip/server_code}"
@@ -54,18 +49,8 @@ for lane in $(seq 0 $((NUM_LANES - 1))); do
     bash "${SCRIPT}"
   ) >"${lane_log}" 2>&1 &
   pid="$!"
-  pids+=("${pid}")
   echo "$(date) launched v_off=4.0 lane=${lane} pid=${pid} waits_for=${pids[$lane]} log=${lane_log}" | tee -a "${ORCH_ROOT}/logs/orchestrator.log"
 done
 
-status=0
-for pid in "${pids[@]}"; do
-  if ! wait "${pid}"; then
-    echo "$(date) lane pid=${pid} failed" | tee -a "${ORCH_ROOT}/logs/orchestrator.log" >&2
-    status=1
-  fi
-done
-if [[ "${status}" -ne 0 ]]; then
-  exit "${status}"
-fi
+wait
 echo "$(date) orchestrator complete" | tee -a "${ORCH_ROOT}/logs/orchestrator.log"

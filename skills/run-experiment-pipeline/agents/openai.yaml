@@ -1,4 +1,0 @@
-interface:
-  display_name: "Run Experiment Pipeline"
-  short_description: "Define, run, track, and review exact sweeps"
-  default_prompt: "Use $run-experiment-pipeline to turn this hypothesis into an exact tracked experiment and carry it through reviewed results."

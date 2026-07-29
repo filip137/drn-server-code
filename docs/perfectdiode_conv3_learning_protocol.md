@@ -304,8 +304,8 @@ Legacy has a different safety record. Conv2 legacy-SGD's
 `0.003,0.03`. Conv2 legacy-Adam's corresponding canary was safe, but its
 provisional winner was `0.009,0.01`. The tracked summary is in the
 [Conv2 perfect-diode diagnostic card](results/index.md#perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2);
-the failed-canary control is also bound by the
-[approved Conv2 continuation plan](experiment_plans/perfectdiode-conv2-high-rho-corner-20260727-v1.md).
+the failed-canary control is also recorded in the historical Conv2
+continuation work retained in Git history.
 The immutable legacy-SGD canary result has SHA-256
 `73f91fac33558058f4c8e21c25b1c3bcef3b54f3d5b8077b50a63a1bac8d9e6a`.
 
@@ -402,29 +402,15 @@ audit
 -> finalize_lr
 ```
 
-Conditional and ineligible stages publish explicit zero-work completions.
-Manifests are immutable and embed upstream hashes. Resume skips only
-hash-verified complete entries. An interrupted Adam candidate without a
-complete optimizer-state checkpoint restarts from the shared initialization.
+Resume only complete candidate outputs. An interrupted Adam candidate without
+a complete optimizer-state checkpoint restarts from the shared initialization.
 
-Required immutable evidence includes:
-
-- approved experiment plan, canonical config, expanded manifest, resolved
-  config, source commit/archive, effective-code fingerprint, and environment;
-- train/validation split indices, T and K cohorts, training minibatch order,
-  shared initialization checkpoint, and every parent-artifact hash;
-- raw per-candidate T and K measurements, selectors, sentinels, and
-  operating-point audit;
-- optimizer probes, raw ordered LR vectors, canary/candidate results, complete
-  step logs, epoch metrics, safety diagnostics, post-training T/K audits, and
-  terminal surface handoffs;
-- manifest and stage-completion hashes, plus an explicit
-  `official_test_read=false` at every level.
-
-Fail closed on missing approval, config/manifest drift, source or environment
-drift, dataset/cohort/initializer mismatch, failed numerical smoke, failed
-T/K gate, unsupported result-card schema, missing/non-finite artifacts, or
-hash mismatch.
+Record the approved scientific config, source commit, environment,
+train/validation split, T/K cohorts, minibatch order, shared initialization,
+raw T/K measurements, LR vectors, step logs, epoch metrics, safety
+diagnostics, and terminal selections in the run directory. Stop on a failed
+numerical smoke, failed T/K gate, dataset/initializer mismatch, missing
+artifacts, or non-finite values.
 
 Terminal LR reasons include `selected_seed0_ordinary_mnist_three_epoch_screen`,
 `unresolved_tk`, `unresolved_tk_gradient_viability`, `unresolved_probe`,
@@ -461,19 +447,11 @@ substitute Trex or Jean Zay.
 Because scheme and host/runtime are confounded by this routing, the result may
 select or reject an LR independently within each scheme x optimizer surface
 but may not support a cross-scheme superiority claim. An Akib import, memory,
-numerical-smoke, or scientific-preflight failure blocks the affected work and
-requires an explicit amended plan. It must not trigger a silent host reroute,
-batch-size reduction, or other scientific/configuration change.
+numerical-smoke, or scientific-gate failure blocks the affected work. Do not
+silently reroute it or change batch size or science.
 
-Use the same immutable public launcher, resolved config, environment, device
-type, output-writing path, and one-entry numerical smoke as production. Every
-unique Conv3 scheme must also pass its exact T/K operating-point gate before
-its LR surfaces are released. Any material source, config, environment,
-initializer, architecture, nonlinearity, amplification, gain, or `T/K` change
-invalidates the smoke and gate.
-
-Before launch, create and validate two exact plans under
-`docs/experiment_plans/`: one for T/K and, after T/K is hash-frozen, one for
-LR. Each plan must bind its config and manifest SHA-256, job count, result
-bundle, tracker entry, and planned comparison cards, and must record Filip's
-explicit approval. This protocol alone is not launch authorization.
+Use the same runner, config, environment, device type, and output path for the
+smoke and production command. Every Conv3 scheme must pass its exact T/K
+operating-point gate before its LR surfaces run. Present the cases, routing,
+budget, duration, and result path for Filip's approval before launching; no
+additional plan schema or tracker gate is required.

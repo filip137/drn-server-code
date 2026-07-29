@@ -821,6 +821,49 @@ def build_mnist_train_validation_loaders(
     )
 
 
+class MnistTrainValidationDataset(Datasets):
+    """Adapter exposing the deterministic 55k/5k MNIST split to trainers."""
+
+    def __init__(
+        self,
+        name,
+        batch_size,
+        device,
+        root,
+        train,
+        download,
+        normalize,
+        normalize_std,
+        normalize_mean=0.1307,
+        normalize_scale=1.0,
+        affine_config=None,
+        split_seed=0,
+        shuffle_seed=0,
+        validation_batch_size=MNIST_LR_STUDY_VALIDATION_BATCH_SIZE,
+        num_workers=0,
+        pin_memory=False,
+    ):
+        super().__init__(name, batch_size, device)
+        self.params = {
+            "batch_size": batch_size,
+            "root": root,
+            "download": download,
+            "normalize": normalize,
+            "normalize_std": normalize_std,
+            "normalize_mean": normalize_mean,
+            "normalize_scale": normalize_scale,
+            "affine_config": affine_config,
+            "split_seed": split_seed,
+            "shuffle_seed": shuffle_seed,
+            "validation_batch_size": validation_batch_size,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+        }
+
+    def build(self):
+        return build_mnist_train_validation_loaders(**self.params)
+
+
 class MnistDataset(Datasets):
 
     def __init__(

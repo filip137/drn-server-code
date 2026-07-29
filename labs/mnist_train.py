@@ -226,9 +226,9 @@ def _resolve_optimizer_settings(config, *, optimizer_name=None, momentum=None, w
             "Expected optimizer_name to equal config['optimizer']['name']. "
             f"Provided values: optimizer_name={optimizer_name!r}, configured={configured_name!r}."
         )
-    if optimizer_name != "SGD":
+    if optimizer_name not in {"SGD", "Adam"}:
         raise ValueError(
-            "Expected optimizer name to be exactly 'SGD' for this training backend. "
+            "Expected optimizer name to be one of ('SGD', 'Adam'). "
             f"Provided value: {optimizer_name!r}."
         )
 
@@ -262,7 +262,81 @@ def _resolve_optimizer_settings(config, *, optimizer_name=None, momentum=None, w
             "Expected optimizer weight_decay to be non-negative. "
             f"Provided value: {resolved['weight_decay']!r}."
         )
-    return "SGD", resolved["momentum"], resolved["weight_decay"]
+    if optimizer_name == "Adam" and resolved["momentum"] != 0.0:
+        raise ValueError(
+            "Expected optimizer momentum to be 0.0 when name is 'Adam'. "
+            f"Provided value: {resolved['momentum']!r}."
+        )
+    return optimizer_name, resolved["momentum"], resolved["weight_decay"]
+
+
+def _optimizer_details(config, name, momentum, weight_decay):
+    details = {
+        "name": name,
+        "momentum": momentum,
+        "weight_decay": weight_decay,
+    }
+    if name == "Adam":
+        optimizer_cfg = config.get("optimizer", {})
+        raw_betas = optimizer_cfg.get("betas", [0.9, 0.999])
+        if not isinstance(raw_betas, (list, tuple)) or len(raw_betas) != 2:
+            raise ValueError(
+                "Expected config['optimizer']['betas'] to contain two values. "
+                f"Provided value: {raw_betas!r}."
+            )
+        betas = tuple(
+            _require_finite_scalar(value, f"optimizer beta {index}")
+            for index, value in enumerate(raw_betas)
+        )
+        if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
+            raise ValueError(
+                "Expected optimizer betas to be in [0, 1). "
+                f"Provided value: {betas!r}."
+            )
+        eps = _require_finite_scalar(optimizer_cfg.get("eps", 1e-8), "optimizer eps")
+        if eps <= 0.0:
+            raise ValueError(f"Expected optimizer eps to be positive. Provided value: {eps!r}.")
+        details.update(betas=list(betas), eps=eps)
+    return details
+
+
+def _build_parameter_optimizer(energy_fn, cost_fn, learning_rates, details):
+    if details["name"] == "SGD":
+        return Optimizer(
+            energy_fn,
+            cost_fn,
+            learning_rates,
+            momentum=details["momentum"],
+            weight_decay=details["weight_decay"],
+        )
+
+    params = [
+        param
+        for param in energy_fn.params() + cost_fn.params()
+        if not isinstance(param, PoolWeight)
+    ]
+    if len(learning_rates) != len(params):
+        raise ValueError(
+            f"learning_rates length ({len(learning_rates)}) does not match "
+            f"parameter count ({len(params)} after filtering PoolWeight)"
+        )
+    groups = [
+        {"params": [param.state], "lr": rate}
+        for param, rate in zip(params, learning_rates)
+    ]
+    return torch.optim.Adam(
+        groups,
+        lr=1.0,
+        betas=tuple(details["betas"]),
+        eps=details["eps"],
+        weight_decay=details["weight_decay"],
+        amsgrad=False,
+        foreach=False,
+        maximize=False,
+        capturable=False,
+        differentiable=False,
+        fused=False,
+    )
 
 
 def _validate_optimizer_rate_consistency(config, learning_rates, lr_decay):
@@ -746,6 +820,8 @@ def _train_image_task(
     optimizer_name=None,
     momentum=None,
     weight_decay=None,
+    gradient_callback=None,
+    apply_optimizer_steps=True,
 ):
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
@@ -768,6 +844,12 @@ def _train_image_task(
         optimizer_name=optimizer_name,
         momentum=momentum,
         weight_decay=weight_decay,
+    )
+    optimizer_details = _optimizer_details(
+        config,
+        optimizer_name_value,
+        momentum_value,
+        weight_decay_value,
     )
 
     project_root = PROJECT_ROOT
@@ -980,7 +1062,20 @@ def _train_image_task(
     if "root" in dataset_params:
         dataset_params["root"] = os.path.expanduser(str(dataset_params["root"]))
     loader_result = dataset_factory(**dataset_params).build()
-    if isinstance(loader_result, tuple):
+    dataset_provenance = None
+    if hasattr(loader_result, "train_loader") and hasattr(loader_result, "validation_loader"):
+        train_loader = loader_result.train_loader
+        test_loader = loader_result.validation_loader
+        dataset_provenance = {
+            "schema": "mnist-train-validation-split/v1",
+            "source_split": "train",
+            "split_seed": int(loader_result.split_seed),
+            "shuffle_seed": int(loader_result.shuffle_seed),
+            "train_indices_sha256": loader_result.train_indices_hash,
+            "validation_indices_sha256": loader_result.validation_indices_hash,
+            "first_epoch_batch_order_sha256": loader_result.first_epoch_batch_order_hash,
+        }
+    elif isinstance(loader_result, tuple):
         train_loader, test_loader = loader_result
     else:
         train_loader = loader_result
@@ -1016,12 +1111,11 @@ def _train_image_task(
         learning_rate = _require_finite_scalar(lr, "learning rate")
         learning_rates = [learning_rate] * (len(energy_params) + len(cost_params))
     _validate_optimizer_rate_consistency(config, learning_rates, lr_decay_value)
-    optimizer = Optimizer(
+    optimizer = _build_parameter_optimizer(
         energy_fn,
         cost_fn,
         learning_rates,
-        momentum=momentum_value,
-        weight_decay=weight_decay_value,
+        optimizer_details,
     )
 
     history = {
@@ -1046,6 +1140,7 @@ def _train_image_task(
             "key": dataset_key,
             "factory": dataset_cfg["factory"],
             "params": dataset_params,
+            "provenance": dataset_provenance,
             "preprocessing": {
                 "normalize": bool(dataset_params.get("normalize", False)),
                 "normalize_mean": dataset_params.get("normalize_mean"),
@@ -1066,11 +1161,9 @@ def _train_image_task(
             "num_classes": num_classes,
         },
         "optimizer": {
-            "name": optimizer_name_value,
+            **optimizer_details,
             "learning_rate": list(learning_rates),
             "lr_decay": lr_decay_value,
-            "momentum": momentum_value,
-            "weight_decay": weight_decay_value,
         },
         "training": {
             "epochs": int(epochs),
@@ -1078,6 +1171,7 @@ def _train_image_task(
             "max_batches": max_batches,
             "max_test_batches": max_test_batches,
             "batch_state_policy": batch_state_policy,
+            "optimizer_steps_applied": bool(apply_optimizer_steps),
             "num_iterations_training": training_iterations,
             "num_iterations_inference": inference_iterations,
             "beta": beta_value,
@@ -1188,21 +1282,34 @@ def _train_image_task(
                         f"Provided value: {tuple(grad.shape)}."
                     )
                 param.state.grad = grad
-            optimizer.step()
-            _require_finite_variables(
-                energy_params + cost_params,
-                "optimizer-updated parameter",
-                epoch=epoch + 1,
-                batch=batch_idx + 1,
-            )
-            for param in energy_params:
-                param.clamp_()
-            _require_finite_variables(
-                energy_params + cost_params,
-                "clamped parameter",
-                epoch=epoch + 1,
-                batch=batch_idx + 1,
-            )
+            stop_after_batch = False
+            if gradient_callback is not None:
+                stop_after_batch = bool(
+                    gradient_callback(
+                        {
+                            "epoch": epoch + 1,
+                            "batch": batch_idx + 1,
+                            "parameters": tuple(params),
+                            "gradients": tuple(grads[:len(params)]),
+                        }
+                    )
+                )
+            if apply_optimizer_steps:
+                optimizer.step()
+                _require_finite_variables(
+                    energy_params + cost_params,
+                    "optimizer-updated parameter",
+                    epoch=epoch + 1,
+                    batch=batch_idx + 1,
+                )
+                for param in energy_params:
+                    param.clamp_()
+                _require_finite_variables(
+                    energy_params + cost_params,
+                    "clamped parameter",
+                    epoch=epoch + 1,
+                    batch=batch_idx + 1,
+                )
 
             acc = running_correct / seen
             avg_loss = running_loss / seen
@@ -1212,6 +1319,8 @@ def _train_image_task(
                     f"running loss={avg_loss:.4f} acc={acc*100:.2f}%",
                     flush=True,
                 )
+            if stop_after_batch:
+                break
 
         if not seen:
             raise RuntimeError(
@@ -1419,11 +1528,9 @@ def _train_image_task(
         "final_test_loss": summary.get("final_test_loss"),
         "test_error": summary.get("test_error"),
         "lr_decay": lr_decay_value,
-        "optimizer": {
-            "name": optimizer_name_value,
-            "momentum": momentum_value,
-            "weight_decay": weight_decay_value,
-        },
+        "optimizer": optimizer_details,
+        "optimizer_steps_applied": bool(apply_optimizer_steps),
+        "dataset_provenance": dataset_provenance,
         "final_learning_rate": [float(group["lr"]) for group in optimizer.param_groups],
         "checkpoint_path": str(final_model_path),
         "best_checkpoint_path": str(best_model_path),
@@ -1449,11 +1556,8 @@ def _train_image_task(
         "epochs": int(epochs),
         "lr": list(lr) if isinstance(lr, (list, tuple)) else float(lr),
         "lr_decay": lr_decay_value,
-        "optimizer": {
-            "name": optimizer_name_value,
-            "momentum": momentum_value,
-            "weight_decay": weight_decay_value,
-        },
+        "optimizer": optimizer_details,
+        "optimizer_steps_applied": bool(apply_optimizer_steps),
         "beta": beta_value,
         "training_algorithm": training_algorithm,
         "batch_state_policy": batch_state_policy,
@@ -1461,6 +1565,7 @@ def _train_image_task(
         "dataset_key": dataset_key,
         "model_key": model_key,
         "dataset_factory": dataset_cfg["factory"],
+        "dataset_provenance": dataset_provenance,
         "device": str(device),
         "host": host,
         "timestamp": timestamp,
@@ -1511,6 +1616,8 @@ def train_mnist_conv(
     optimizer_name=None,
     momentum=None,
     weight_decay=None,
+    gradient_callback=None,
+    apply_optimizer_steps=True,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1535,6 +1642,8 @@ def train_mnist_conv(
         optimizer_name=optimizer_name,
         momentum=momentum,
         weight_decay=weight_decay,
+        gradient_callback=gradient_callback,
+        apply_optimizer_steps=apply_optimizer_steps,
     )
 
 
@@ -1545,6 +1654,7 @@ def train_tiny_grid(
     beta,
     log_interval,
     max_batches,
+    max_test_batches=None,
     device=None,
     sanity_check=False,
     epoch_callback=None,
@@ -1562,6 +1672,7 @@ def train_tiny_grid(
         beta=beta,
         log_interval=log_interval,
         max_batches=max_batches,
+        max_test_batches=max_test_batches,
         dataset_key="tiny3x3",
         model_key="tiny3x3",
         image_shape=(3, 3),
@@ -1577,7 +1688,7 @@ def train_tiny_grid(
     )
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Train resistive MNIST model via equilibrium propagation.")
     parser.add_argument("--config", required=True, help="Path to configuration JSON.")
     parser.add_argument(
@@ -1609,6 +1720,13 @@ def main():
         "--max-batches",
         type=int,
         help="Optional cap on number of batches per epoch. Overrides config if provided.",
+    )
+    parser.add_argument(
+        "--max-test-batches",
+        "--max-validation-batches",
+        dest="max_test_batches",
+        type=int,
+        help="Optional cap on validation batches. Overrides config if provided.",
     )
     parser.add_argument(
         "--device",
@@ -1657,8 +1775,9 @@ def main():
         help="Random seed for initialization and dataloader order.",
     )
 
-    args = parser.parse_args()
-    config = load_config(args.config)
+    args = parser.parse_args(argv)
+    config_path = Path(args.config).expanduser().resolve()
+    config = load_config(config_path)
     lab_cfg = config.get("lab", {})
 
     epochs = args.epochs if args.epochs is not None else lab_cfg.get("epochs")
@@ -1670,6 +1789,8 @@ def main():
         lr = args.lr
     else:
         lr = config.get("lr")
+        if lr is None and isinstance(config.get("optimizer"), dict):
+            lr = config["optimizer"].get("learning_rate")
 
     if lr is None:
         raise ValueError("Learning rate must be provided via --lr or config['lr'].")
@@ -1697,6 +1818,13 @@ def main():
     max_batches = args.max_batches if args.max_batches is not None else config.get("max_batches")
     if max_batches is not None:
         max_batches = int(max_batches)
+    max_test_batches = (
+        args.max_test_batches
+        if args.max_test_batches is not None
+        else config.get("max_test_batches")
+    )
+    if max_test_batches is not None:
+        max_test_batches = int(max_test_batches)
 
     model_key = lab_cfg.get("model_key", "mnist")
     default_dataset_key = lab_cfg.get("dataset_key")
@@ -1720,12 +1848,13 @@ def main():
             )
 
     train_kwargs = dict(
-        config_path=args.config,
+        config_path=config_path,
         epochs=epochs,
         lr=learning_rate_cfg,
         beta=beta,
         log_interval=log_interval,
         max_batches=max_batches,
+        max_test_batches=max_test_batches,
         device=args.device,
         sanity_check=args.sanity_check,
         output_dir=args.output_dir,
@@ -1764,7 +1893,8 @@ def main():
         result_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(result_path, result_payload)
         print(f"Wrote Optuna summary to {result_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

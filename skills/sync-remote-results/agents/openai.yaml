@@ -1,4 +1,0 @@
-interface:
-  display_name: "Sync Remote Results"
-  short_description: "Copy and validate remote experiment results"
-  default_prompt: "Use $sync-remote-results to copy this completed experiment from a remote host and prepare it for local evaluation."
