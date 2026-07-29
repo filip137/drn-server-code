@@ -36,23 +36,20 @@ The fixed ordinary-MNIST operating points are:
 
 All six fixed-`T/K` security rows passed comparison with `(T=64,K=64)`.
 The 12 scheme x optimizer core rho surfaces completed and produced generally
-strong three-epoch diagnostic candidates. Filip has now authorized nine
+strong three-epoch diagnostic candidates. Filip has now authorized all 12
 explicit parameter-wise LR vectors for current unbounded result rows. Use
-those vectors unchanged as the interim handoff recorded in the authority
-below.
+those vectors unchanged, at the supplied precision, from the machine-readable
+handoff below.
 
-The three Conv1/Conv2 rows still lacking an interim vector are:
-
-- Conv1 legacy Adam;
-- Conv2 ours SGD; and
-- Conv2 ours Adam.
-
-Do not fill those gaps from older configs or diagnostic winners. Terminal rho
-selection and long-confirmation evidence remain incomplete even for the nine
-interim-authorized rows.
+All six Conv1 vectors completed ten-epoch confirmations with ordinary-MNIST
+validation accuracy between `95.60%` and `96.48%`; final review is pending.
+Conv2 remains three-epoch best-observed evidence, with validation accuracy
+between `95.96%` and `97.78%`. Terminal rho selection remains incomplete, and
+the current handoff does not imply Conv2 long-confirmation evidence.
 
 Authority:
-[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md).
+[`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md) and
+[`perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json`](../configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json).
 
 ### Conv3
 
@@ -60,13 +57,26 @@ The ordinary-MNIST Conv3 contract uses:
 
 - channels `[64,128,256]`, strides `[2,2,1]`, and padding `[1,1,1]`;
 - shared diagnostic input gain `360`; and
-- per-scheme `T/K` selection followed by six optimizer-specific rho surfaces.
+- the user-fixed `T=K=8` operating point for the completed rho study.
 
-The scientific protocol is authorized, but no terminal all-surface `T/K` and
-LR handoff is recorded in the active documentation.
+The six optimizer-specific rho surfaces completed on Jean Zay: 54 initial
+cells plus 37 boundary-expansion cells, with all final search bounds closed.
+The selected `(rho_conv,rho_dense)` pairs are baseline SGD
+`(0.001,0.03)`, baseline Adam `(0.027,0.27)`, ours SGD `(0.009,0.03)`,
+ours Adam `(0.081,0.09)`, legacy SGD `(0.003,0.01)`, and legacy Adam
+`(0.027,0.01)`. These are one-seed, three-epoch ordinary-MNIST selection
+results. The execution used `weight_min=0` and `weight_max=null`; it is
+unbounded selector evidence rather than an identical `[0,100]` selection
+surface. Filip explicitly authorized applying its six published vectors to
+the downstream `[0,100]` paper configs; the source mismatch and missing long
+confirmation remain recorded limitations.
 
 Authority:
-[`perfectdiode_conv3_learning_protocol.md`](perfectdiode_conv3_learning_protocol.md).
+[`perfectdiode_conv3_learning_protocol.md`](perfectdiode_conv3_learning_protocol.md),
+the
+[`perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json`](../configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json)
+handoff, and the
+[`conv3_pd_unbounded_rho_t8k8_20260729T125734Z` manifest entry](experimental_manifest.md#conv3_pd_unbounded_rho_t8k8_20260729t125734z--conv3-perfect-diode-rho-selection).
 
 ## Bounded Hardware Status
 
@@ -96,9 +106,8 @@ The deterministic medium-affine paper grid has 36 rows per model seed:
 ```
 
 Each row must import its matching ordinary-MNIST LR handoff unchanged. The
-nine user-directed interim Conv1/Conv2 vectors may be used for current
-unbounded result rows; missing surfaces remain unresolved. Ordinary-MNIST
-validation accuracy is never reported as paper evidence.
+12 user-directed Conv1/Conv2 vectors may be used for current unbounded result
+rows. Ordinary-MNIST validation accuracy is never reported as paper evidence.
 
 Current epoch decisions:
 
@@ -106,11 +115,23 @@ Current epoch decisions:
 |---|---:|
 | Conv1 | 10 epochs |
 | Conv2 | 30 epochs |
-| Conv3 | pending |
+| Conv3 | 30 epochs |
 
-Final model seeds, Conv3 epoch budget, checkpoint rule, and inclusion rule
-remain pending. No complete paper grid is authorized until the corresponding
-wide-range and bounded LR handoffs are terminal.
+The first wide-range batch uses model seed `0`, loader seed `0`, and affine
+seed `1729`. It trains on the deterministic medium-affine 55,000/5,000
+train/validation split, selects the maximum-validation-accuracy checkpoint,
+and reads the official 10,000-example medium-affine test split exactly once
+from that checkpoint. Every predeclared row completing its exact epoch budget
+with finite metrics and verified artifacts is included; operational failures
+may only be retried unchanged.
+
+Filip authorized the Conv3 vectors selected under `weight_max=null` for use
+with the `[0,100]` paper contract. That source-contract mismatch remains
+explicit provenance rather than being silently erased. The 18 exact seed-0
+wide-range configs are staged under
+`configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/`.
+Bounded medium-affine rows remain blocked on the global bounded initializer and
+LR handoff.
 
 ## Compute Targets
 
@@ -137,12 +158,15 @@ order.
 
 ## Next Actions
 
-1. Run only the nine interim-authorized Conv1/Conv2 unbounded rows as needed;
-   keep the three missing rows unresolved.
-2. Finish terminal wide-range rho selection and confirmation for Conv1/Conv2.
-3. Complete Conv3 `T/K` selection and its six wide-range rho surfaces.
+1. Pass the fail-closed local, Jean Zay test-only, and one-task live-canary
+   gates for the staged 18-row seed-0 wide-range paper batch, then launch and
+   collect its Conv1/Conv2/Conv3 arrays.
+2. Finish Conv1 confirmation review and terminal wide-range rho publication;
+   run the missing Conv2 long confirmations if terminal evidence is required.
+3. Complete any required Conv3 long confirmation while retaining the explicit
+   `weight_max=null` selection versus `[0,100]` downstream limitation.
 4. Execute both bounded initializer families across all 18 surfaces and
    publish the global selector.
-5. Freeze Conv3 budget, final seeds, checkpoint rule, and inclusion rule.
-6. Generate exact medium-affine configs from the successful handoffs, smoke
-   on each target, and launch the wide-range and bounded paper grids.
+5. Decide later multi-seed scope after the seed-0 wide-range batch is analyzed.
+6. Generate the bounded medium-affine configs only after the successful
+   all-depth bounded handoff.

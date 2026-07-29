@@ -56,8 +56,10 @@ Ordinary-MNIST selection runs use
 paper result.
 
 Deterministic medium-affine runs use an explicit medium-affine evidence class
-and report the actual evaluated split. Interim unbounded rows additionally
-record that their LR source is an interim user-directed handoff.
+and report the actual evaluated split. Current Conv1/Conv2 unbounded rows
+additionally record the exact fixed handoff ID
+`perfectdiode-conv12-unbounded-fixed-lr-20260729-v1` and preserve its
+architecture-specific evidence status.
 
 ## Active Simulations
 

@@ -1,0 +1,349 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-fixed-lr-handoff/v1",
+  "handoff_id": "perfectdiode-conv12-unbounded-fixed-lr-20260729-v1",
+  "authorized_by": "Filip",
+  "authorized_at": "2026-07-29",
+  "status": {
+    "use_for_current_unbounded_results": true,
+    "values_are_fixed_at_authorized_precision": true,
+    "terminal_rho_protocol_handoff": false,
+    "paper_metric": false,
+    "conv1_confirmation": "complete_awaiting_final_review",
+    "conv2_confirmation": "not_run_three_epoch_evidence_only"
+  },
+  "usage": {
+    "runnable_config": false,
+    "instruction": "Generate one complete exact-run config per entry and copy both the ordered vector and named mapping unchanged.",
+    "do_not_substitute_fuller_predecessor_values": true,
+    "downstream_dataset": "deterministic_medium_affine_mnist",
+    "selection_dataset": "ordinary_mnist_55000_train_5000_validation",
+    "official_test_read": false
+  },
+  "scientific_surface": {
+    "training_algorithm": "BPTT",
+    "non_linearity": "perfect_diode",
+    "perfect_diode": {
+      "clamp_epsilon": 1e-08
+    },
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "kernel_size": 3,
+    "padding": 1,
+    "pooling": "none",
+    "conductance_bounds": [
+      0.0,
+      100.0
+    ],
+    "weight_initialization": "kaiming_uniform",
+    "architectures": {
+      "conv1": {
+        "channels": [
+          64
+        ],
+        "strides": [
+          2
+        ],
+        "input_gain": 40.0,
+        "T": 4,
+        "K": 4,
+        "parameter_order": [
+          "ConvWeight_0",
+          "DenseWeight_0",
+          "Bias_0"
+        ]
+      },
+      "conv2": {
+        "channels": [
+          64,
+          128
+        ],
+        "strides": [
+          2,
+          2
+        ],
+        "input_gain": 100.0,
+        "T": 6,
+        "K": 6,
+        "parameter_order": [
+          "ConvWeight_0",
+          "ConvWeight_1",
+          "DenseWeight_0",
+          "Bias_0",
+          "Bias_1"
+        ]
+      }
+    },
+    "schemes": {
+      "baseline": {
+        "run_name": "mnist_bp_amp_v1_c1",
+        "voltage_amp": 1.0,
+        "current_amp": 1.0
+      },
+      "ours": {
+        "run_name": "mnist_bp_amp_v4_c1",
+        "voltage_amp": 4.0,
+        "current_amp": 1.0
+      },
+      "legacy": {
+        "run_name": "mnist_bp_amp_v4_c0p25",
+        "voltage_amp": 4.0,
+        "current_amp": 0.25
+      }
+    }
+  },
+  "evidence_summary": {
+    "conv1": {
+      "epochs": 10,
+      "surface_count": 6,
+      "validation_accuracy_percent_range": [
+        95.6,
+        96.48
+      ],
+      "state": "confirmations_complete_awaiting_final_review",
+      "metric_scope": "ordinary_mnist_validation_not_paper_evidence"
+    },
+    "conv2": {
+      "epochs": 3,
+      "surface_count": 6,
+      "validation_accuracy_percent_range": [
+        95.96,
+        97.78
+      ],
+      "state": "best_observed_three_epoch_evidence_no_long_confirmation",
+      "metric_scope": "ordinary_mnist_validation_not_paper_evidence",
+      "reviewed_sources": [
+        "result_registry/cards/diagnostics/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2.json",
+        "result_registry/reviews/perfectdiode-ordinary-mnist-lr-core-screen-20260727-conv2.json",
+        "result_registry/cards/diagnostics/perfectdiode-conv2-high-rho-corner-20260727-v1.json",
+        "result_registry/reviews/perfectdiode-conv2-high-rho-corner-20260727-v1.json"
+      ]
+    }
+  },
+  "parameter_notation": {
+    "C_i": "ConvWeight_i",
+    "B_i": "Bias_i",
+    "D": "DenseWeight_0"
+  },
+  "entries": [
+    {
+      "entry_id": "conv1_baseline_sgd",
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.142696,
+        "Bias_0": 0.142696,
+        "DenseWeight_0": 0.0120238
+      },
+      "ordered_learning_rate_vector": [
+        0.142696,
+        0.0120238,
+        0.142696
+      ]
+    },
+    {
+      "entry_id": "conv1_baseline_adam",
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 8.66763e-4,
+        "Bias_0": 8.66763e-4,
+        "DenseWeight_0": 1.09401e-4
+      },
+      "ordered_learning_rate_vector": [
+        8.66763e-4,
+        1.09401e-4,
+        8.66763e-4
+      ]
+    },
+    {
+      "entry_id": "conv1_ours_sgd",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.0375994,
+        "Bias_0": 0.0375994,
+        "DenseWeight_0": 0.00311655
+      },
+      "ordered_learning_rate_vector": [
+        0.0375994,
+        0.00311655,
+        0.0375994
+      ]
+    },
+    {
+      "entry_id": "conv1_ours_adam",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 8.66753e-4,
+        "Bias_0": 8.66753e-4,
+        "DenseWeight_0": 1.09388e-4
+      },
+      "ordered_learning_rate_vector": [
+        8.66753e-4,
+        1.09388e-4,
+        8.66753e-4
+      ]
+    },
+    {
+      "entry_id": "conv1_legacy_sgd",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "optimizer": "SGD",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 2.05753e-4,
+        "Bias_0": 2.05753e-4,
+        "DenseWeight_0": 4.76259e-5
+      },
+      "ordered_learning_rate_vector": [
+        2.05753e-4,
+        4.76259e-5,
+        2.05753e-4
+      ]
+    },
+    {
+      "entry_id": "conv1_legacy_adam",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "optimizer": "Adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 2.88917e-4,
+        "Bias_0": 2.88917e-4,
+        "DenseWeight_0": 3.64618e-5
+      },
+      "ordered_learning_rate_vector": [
+        2.88917e-4,
+        3.64618e-5,
+        2.88917e-4
+      ]
+    },
+    {
+      "entry_id": "conv2_baseline_sgd",
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 7.90864,
+        "Bias_0": 7.90864,
+        "ConvWeight_1": 3.81476,
+        "Bias_1": 3.81476,
+        "DenseWeight_0": 0.820630
+      },
+      "ordered_learning_rate_vector": [
+        7.90864,
+        3.81476,
+        0.820630,
+        7.90864,
+        3.81476
+      ]
+    },
+    {
+      "entry_id": "conv2_baseline_adam",
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 2.60078e-3,
+        "Bias_0": 2.60078e-3,
+        "ConvWeight_1": 4.59053e-4,
+        "Bias_1": 4.59053e-4,
+        "DenseWeight_0": 4.67660e-4
+      },
+      "ordered_learning_rate_vector": [
+        2.60078e-3,
+        4.59053e-4,
+        4.67660e-4,
+        2.60078e-3,
+        4.59053e-4
+      ]
+    },
+    {
+      "entry_id": "conv2_ours_sgd",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.523358,
+        "Bias_0": 0.523358,
+        "ConvWeight_1": 0.246043,
+        "Bias_1": 0.246043,
+        "DenseWeight_0": 0.0520201
+      },
+      "ordered_learning_rate_vector": [
+        0.523358,
+        0.246043,
+        0.0520201,
+        0.523358,
+        0.246043
+      ]
+    },
+    {
+      "entry_id": "conv2_ours_adam",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 2.60036e-3,
+        "Bias_0": 2.60036e-3,
+        "ConvWeight_1": 4.58651e-4,
+        "Bias_1": 4.58651e-4,
+        "DenseWeight_0": 1.55136e-4
+      },
+      "ordered_learning_rate_vector": [
+        2.60036e-3,
+        4.58651e-4,
+        1.55136e-4,
+        2.60036e-3,
+        4.58651e-4
+      ]
+    },
+    {
+      "entry_id": "conv2_legacy_sgd",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "optimizer": "SGD",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.00496733,
+        "Bias_0": 0.00496733,
+        "ConvWeight_1": 0.00367839,
+        "Bias_1": 6.74726e-4,
+        "DenseWeight_0": 0.00236044
+      },
+      "ordered_learning_rate_vector": [
+        0.00496733,
+        0.00367839,
+        0.00236044,
+        0.00496733,
+        6.74726e-4
+      ]
+    },
+    {
+      "entry_id": "conv2_legacy_adam",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "optimizer": "Adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 8.66750e-4,
+        "Bias_0": 8.66750e-4,
+        "ConvWeight_1": 1.52841e-4,
+        "Bias_1": 1.52841e-4,
+        "DenseWeight_0": 5.16982e-5
+      },
+      "ordered_learning_rate_vector": [
+        8.66750e-4,
+        1.52841e-4,
+        5.16982e-5,
+        8.66750e-4,
+        1.52841e-4
+      ]
+    }
+  ],
+  "predecessor_provenance": {
+    "path": "configs/conv/perfectdiode_conv12_best_observed_confirmation_20260727_v1.json",
+    "role": "immutable_full_precision_diagnostic_predecessor_not_launch_authority"
+  }
+}

@@ -69,6 +69,37 @@ def load_exact_config(path: Path) -> dict[str, Any]:
             "Expected every learning rate to be finite and non-negative. "
             f"Provided value: {invalid!r}."
         )
+    parameter_order = config.get("parameter_order")
+    rates_by_parameter = config.get("learning_rates_by_parameter")
+    if parameter_order is not None or rates_by_parameter is not None:
+        if (
+            not isinstance(parameter_order, list)
+            or not parameter_order
+            or len(set(parameter_order)) != len(parameter_order)
+        ):
+            raise ValueError(
+                "Expected config['parameter_order'] to be a non-empty list of "
+                f"unique names. Provided value: {parameter_order!r}."
+            )
+        if not isinstance(rates_by_parameter, Mapping):
+            raise ValueError(
+                "Expected config['learning_rates_by_parameter'] to be an object. "
+                f"Provided value: {rates_by_parameter!r}."
+            )
+        if set(parameter_order) != set(rates_by_parameter):
+            raise ValueError(
+                "Expected parameter_order and learning_rates_by_parameter to name "
+                "the same parameters. "
+                f"Provided values: order={parameter_order!r}, "
+                f"mapping={sorted(rates_by_parameter)!r}."
+            )
+        expected_rates = [rates_by_parameter[name] for name in parameter_order]
+        if expected_rates != rates:
+            raise ValueError(
+                "Expected config['lr'] to be derived from the named mapping in "
+                "config['parameter_order']. "
+                f"Provided values: expected={expected_rates!r}, lr={rates!r}."
+            )
     optimizer_name = optimizer.get("name") if isinstance(optimizer, Mapping) else None
     if optimizer_name not in {"SGD", "Adam"}:
         raise ValueError(
@@ -162,29 +193,46 @@ def build_train_command(
                 "1",
                 "--max-test-batches",
                 "1",
+                "--skip-terminal-official-test",
             ]
         )
     return command
 
 
 def _git_state() -> dict[str, Any]:
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=REPO_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=REPO_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return {
+            "commit": os.environ.get("EXPERIMENT_SOURCE_COMMIT"),
+            "dirty": None,
+            "source_archive_sha256": os.environ.get(
+                "EXPERIMENT_SOURCE_ARCHIVE_SHA256"
+            ),
+        }
     return {
-        "commit": commit.stdout.strip() if commit.returncode == 0 else None,
+        "commit": (
+            commit.stdout.strip()
+            if commit.returncode == 0
+            else os.environ.get("EXPERIMENT_SOURCE_COMMIT")
+        ),
         "dirty": bool(status.stdout.strip()) if status.returncode == 0 else None,
+        "source_archive_sha256": os.environ.get(
+            "EXPERIMENT_SOURCE_ARCHIVE_SHA256"
+        ),
     }
 
 
@@ -196,12 +244,36 @@ def _dataset_contract(config: Mapping[str, Any]) -> dict[str, Any]:
     factory = dataset.get("factory") if isinstance(dataset, Mapping) else None
     params = dataset.get("params", {}) if isinstance(dataset, Mapping) else {}
     train_validation = bool(factory and "TrainValidation" in str(factory))
+    affine_config = params.get("affine_config", {}) if isinstance(params, Mapping) else {}
+    affine_enabled = bool(
+        (factory and "Affine" in str(factory))
+        or (
+            isinstance(affine_config, Mapping)
+            and affine_config.get("enabled")
+        )
+    )
+    evaluation = config.get("evaluation", {})
+    official_test = (
+        evaluation.get("official_test", {})
+        if isinstance(evaluation, Mapping)
+        else {}
+    )
+    official_test_policy = (
+        official_test.get("policy", "disabled")
+        if isinstance(official_test, Mapping)
+        else "disabled"
+    )
     return {
         "key": dataset_key,
         "factory": factory,
         "params": params,
         "evaluation_split": "validation" if train_validation else "test",
-        "official_test_read": False if train_validation else None,
+        "variant": "deterministic_medium_affine" if affine_enabled else "ordinary",
+        "official_test_policy": official_test_policy,
+        "official_test_read_during_training": False if train_validation else None,
+        "official_test_read": (
+            "terminal_once" if official_test_policy == "terminal_once" else False
+        ),
     }
 
 
@@ -212,12 +284,10 @@ def _evidence_class(config: Mapping[str, Any], override: str | None) -> str:
     if isinstance(reporting, Mapping) and reporting.get("evidence_class"):
         return str(reporting["evidence_class"])
     dataset = _dataset_contract(config)
+    if dataset["key"] == "mnist" and dataset["variant"] == "deterministic_medium_affine":
+        return "paper_medium_affine"
     if dataset["evaluation_split"] == "validation":
         return "ordinary_mnist_selection"
-    if dataset["key"] == "mnist" and dataset["factory"] and "Affine" in str(
-        dataset["factory"]
-    ):
-        return "medium_affine_experiment"
     return "diagnostic"
 
 
@@ -242,7 +312,55 @@ def _terminal_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
             "best_accuracy": metrics.get("best_test_accuracy"),
         },
     }
+    if split == "validation" and metrics.get("official_test_evaluations"):
+        result["test"] = {
+            "loss": metrics.get("official_test_loss"),
+            "accuracy": metrics.get("official_test_accuracy"),
+            "checkpoint": metrics.get("official_test_checkpoint"),
+            "examples": metrics.get("official_test_examples"),
+            "evaluations": metrics.get("official_test_evaluations"),
+        }
     return result
+
+
+def _completion_errors(
+    config: Mapping[str, Any],
+    metrics: Mapping[str, Any],
+    *,
+    smoke: bool,
+) -> list[str]:
+    if smoke:
+        return []
+    evaluation = config.get("evaluation", {})
+    official_test = (
+        evaluation.get("official_test", {})
+        if isinstance(evaluation, Mapping)
+        else {}
+    )
+    policy = (
+        official_test.get("policy", "disabled")
+        if isinstance(official_test, Mapping)
+        else "disabled"
+    )
+    if policy != "terminal_once":
+        return []
+
+    errors = []
+    if metrics.get("official_test_evaluations") != 1:
+        errors.append("expected exactly one official-test evaluation")
+    if metrics.get("official_test_examples") != 10_000:
+        errors.append("expected the official test evaluation to contain 10000 examples")
+    if metrics.get("official_test_checkpoint") != "best_validation":
+        errors.append("expected official test checkpoint 'best_validation'")
+    for key in ("official_test_accuracy", "official_test_loss"):
+        value = metrics.get(key)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
+            errors.append(f"expected finite {key}")
+    return errors
 
 
 def run(
@@ -369,6 +487,15 @@ def run(
                 if metrics_path.exists()
                 else {}
             )
+            completion_errors = _completion_errors(config, metrics, smoke=smoke)
+            if completion_errors:
+                error = "; ".join(completion_errors)
+                record["status"] = "failed"
+                record["error"] = error
+                _write_json(record_path, record)
+                fail_run(case_dir, error=error, returncode=completed.returncode)
+                results.append(record)
+                break
             complete_run(
                 case_dir,
                 terminal_metrics=_terminal_metrics(metrics),
@@ -405,6 +532,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--study-id")
     parser.add_argument("--evidence-class")
     parser.add_argument("--target")
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        help="Optional path for the selected invocation's one-row run summary.",
+    )
     return parser.parse_args(argv)
 
 
@@ -421,6 +553,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         evidence_class=args.evidence_class,
         target=args.target,
     )
+    if args.summary_json is not None:
+        _write_json(args.summary_json.expanduser().resolve(), result["runs"])
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
     return 0 if result["status"] in {"complete", "planned"} else 1
 

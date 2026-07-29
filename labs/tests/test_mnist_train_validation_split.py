@@ -222,3 +222,85 @@ def test_provenance_exposes_exact_indices_and_stable_hashes(monkeypatch):
     # The compatibility mode continues to yield the conventional (image, label)
     # pair even though exact source indices remain available in the bundle.
     assert len(next(iter(loaders.validation_loader))) == 2
+
+
+def test_official_test_loader_is_separate_and_uses_test_affine_indices(monkeypatch):
+    class FakeOfficialMnist:
+        calls = []
+
+        def __init__(self, *, root, train, download, transform):
+            del root, download, transform
+            self.calls.append(bool(train))
+
+        def __len__(self):
+            return 10_000
+
+        def __getitem__(self, index):
+            raise AssertionError(f"unexpected item read: {index}")
+
+    monkeypatch.setattr(dataset_module.datasets, "MNIST", FakeOfficialMnist)
+    affine_config = dataset_module.affine_config_from_preset("medium", seed=1729)
+
+    loader = dataset_module.build_mnist_official_test_loader(
+        batch_size=64,
+        root="unused",
+        download=False,
+        normalize=True,
+        normalize_mean=0.1307,
+        normalize_std=0.3081,
+        normalize_scale=0.3,
+        affine_config=affine_config,
+    )
+
+    assert FakeOfficialMnist.calls == [False]
+    assert loader.batch_size == 64
+    assert len(loader.dataset) == 10_000
+    assert loader.dataset.split_offset == 10_000_000
+
+
+def test_affine_train_validation_factory_builds_terminal_test_only_on_request(
+    monkeypatch,
+):
+    train_validation = object()
+    official_test = object()
+    captured = {}
+
+    def fake_train_validation(**kwargs):
+        captured["train_validation"] = kwargs
+        return train_validation
+
+    def fake_official_test(**kwargs):
+        captured["official_test"] = kwargs
+        return official_test
+
+    monkeypatch.setattr(
+        dataset_module,
+        "build_mnist_train_validation_loaders",
+        fake_train_validation,
+    )
+    monkeypatch.setattr(
+        dataset_module,
+        "build_mnist_official_test_loader",
+        fake_official_test,
+    )
+    dataset = dataset_module.AffineMnistTrainValidationDataset(
+        name="mnist",
+        batch_size=16,
+        device="cpu",
+        root="unused",
+        train=True,
+        download=False,
+        normalize=True,
+        normalize_std=0.3081,
+        normalize_scale=0.3,
+        split_seed=0,
+        shuffle_seed=0,
+        validation_batch_size=64,
+        official_test_batch_size=64,
+    )
+
+    assert dataset.build() is train_validation
+    assert "official_test" not in captured
+    assert dataset.build_official_test_loader() is official_test
+    assert captured["train_validation"]["affine_config"]["preset"] == "medium"
+    assert captured["official_test"]["affine_config"]["seed"] == 1729

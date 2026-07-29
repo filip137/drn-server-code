@@ -2,10 +2,43 @@
 
 Updated: 2026-07-29
 
-Status: scientific design approved and authorized for agent execution. Agents
-may validate the immutable configs/manifests, run the `T/K` and learning-rate
-studies, and interpret their results without separate per-stage approval. The
-frozen scientific gates, ceilings, routing, and scope below remain binding.
+Status: scientific design approved. The user-fixed `T=K=8` six-surface rho
+study completed on 2026-07-29 with 91 trained cells and all search bounds
+closed. Its selected points are recorded in
+[`experimental_manifest.md`](experimental_manifest.md#conv3_pd_unbounded_rho_t8k8_20260729t125734z--conv3-perfect-diode-rho-selection).
+That execution used `weight_min=0` and `weight_max=null`, whereas the frozen
+wide-range contract below is `[0,100]`; it therefore remains explicitly
+labeled unbounded selector evidence and does not silently certify an identical
+selection surface. Filip authorized consuming its exact selected vectors under
+the downstream `[0,100]` paper contract on 2026-07-29. Those vectors are
+published in
+[`perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json`](../configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json).
+Long-confirmation evidence remains pending. The frozen scientific gates,
+ceilings, routing, and scope below remain binding for successor work.
+
+## Completed unbounded LR handoff
+
+The selected rho targets were converted with each surface's measured proposal
+units and `q90_cap` bias policy during the completed run. The handoff copies
+the resulting named rates from the winning `cell.json` artifacts; downstream
+runs must not recompute them from rho.
+The paper configs apply `[0,100]` by explicit user authorization while
+retaining the `weight_max=null` source-study limitation in their provenance.
+
+Runtime vector order is:
+
+```text
+[C0,C1,C2,D,B0,B1,B2]
+```
+
+| Scheme | Optimizer | Selected rho `(conv,dense)` | Parameter-wise LR vector |
+|---|---|---|---|
+| baseline | SGD | `(0.001,0.03)` | `C0=2.2203793618679493, C1=6.284350813613316, C2=4.669784642297713, D=1.1922264543625982, B0=2.2203793618679493, B1=6.284350813613316, B2=2.2923855388642425` |
+| baseline | Adam | `(0.027,0.27)` | `C0=B0=0.0026037179886572314, C1=B1=0.00046993113678684014, C2=B2=0.0003322605058323205, D=0.001023541308739098` |
+| ours | SGD | `(0.009,0.03)` | `C0=B0=3.1300877318089113, C1=B1=8.482972347315009, C2=6.24175381011778, D=0.17870849773668998, B2=0.3438784410185788` |
+| ours | Adam | `(0.081,0.09)` | `C0=B0=0.007802510895760823, C1=B1=0.0013830409123187907, C2=B2=0.000979562021138172, D=0.00032928176432380754` |
+| legacy | SGD | `(0.003,0.01)` | `C0=B0=0.08008038240763024, C1=0.17028521248059242, C2=0.12192769431164927, D=0.003557075376857609, B1=0.10380168739104166, B2=0.00011789689061778969` |
+| legacy | Adam | `(0.027,0.01)` | `C0=B0=0.0026002998888117633, C1=B1=0.0004587373495931551, C2=B2=0.00032513151419594926, D=3.648613773749338e-05` |
 
 ## Scope
 

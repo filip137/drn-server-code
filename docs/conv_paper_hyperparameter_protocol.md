@@ -55,8 +55,8 @@ Changing an earlier stage invalidates its dependent later stages.
 | Stage | Authority | Status |
 |---|---|---|
 | Paper comparison | [`conv_paper_experiment_definition.md`](conv_paper_experiment_definition.md) | frozen |
-| Conv1/Conv2 ordinary-MNIST rho | [`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md) | nine interim unbounded vectors authorized; three rows missing; terminal evidence incomplete |
-| Conv3 ordinary-MNIST `T/K` and rho | [`perfectdiode_conv3_learning_protocol.md`](perfectdiode_conv3_learning_protocol.md) | protocol authorized; terminal handoffs incomplete |
+| Conv1/Conv2 ordinary-MNIST rho | [`perfectdiode_learning_protocol.md`](perfectdiode_learning_protocol.md) | all 12 current unbounded vectors fixed; Conv1 review and Conv2 confirmation/terminal evidence incomplete |
+| Conv3 ordinary-MNIST `T/K` and rho | [`perfectdiode_conv3_learning_protocol.md`](perfectdiode_conv3_learning_protocol.md) | fixed `T=K=8` unbounded six-surface rho study and LR handoff complete; downstream `[0,100]` use explicitly authorized with source mismatch retained; confirmation pending |
 | Bounded initializer and rho | [`perfectdiode_bounded_weight_protocol.md`](perfectdiode_bounded_weight_protocol.md) | all-depth selector specified; execution pending |
 | Execution and targets | [`experiment_workflow.md`](experiment_workflow.md) | active |
 | Result reporting | [`experiment_reporting.md`](experiment_reporting.md) | active |
@@ -85,17 +85,22 @@ weight contracts, or initializers.
 
 Complete paper-grid execution remains incomplete because:
 
-- only nine Conv1/Conv2 wide-range surfaces have user-directed interim
-  vectors; Conv1 legacy Adam and Conv2 ours SGD/Adam remain unresolved;
-- all Conv1/Conv2 surfaces still need terminal selection and confirmation;
-- Conv3 `T/K` and wide-range rho handoffs are not terminal;
+- all 12 Conv1/Conv2 wide-range surfaces have current user-directed vectors,
+  but Conv1 confirmation review and terminal selector publication are pending;
+- Conv2 has three-epoch evidence only and no long confirmation;
+- Conv3's fixed-`T=K=8`, `weight_max=null` rho search is complete; Filip
+  explicitly authorized consuming its six selected LR vectors under the
+  `[0,100]` paper contract, while the source-contract mismatch remains recorded
+  as a limitation;
 - the two bounded initializer families have not completed all 18 surfaces;
-- no global bounded initializer has been selected;
-- Conv3 epoch budget, final model seeds, checkpoint rules, and inclusion rules
-  remain pending.
+- no global bounded initializer has been selected.
 
-Conv1's current paper budget is 10 epochs and Conv2's is 30 epochs. Do not
-invent the unresolved Conv3 or final multi-seed choices.
+The first wide-range paper batch is frozen at model/loader seed `0`: Conv1 uses
+10 epochs and Conv2/Conv3 use 30. It selects the best checkpoint by
+medium-affine validation accuracy, evaluates the official medium-affine test
+split once from that checkpoint, and includes every predeclared arm that meets
+the exact completion and artifact-integrity criteria. Later multi-seed scope
+remains a separate decision.
 
 ## Historical Material
 

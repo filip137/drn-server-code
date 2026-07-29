@@ -67,6 +67,54 @@ def require_semantic_json(path: Path) -> dict[str, object]:
     }
 
 
+def validate_task_rows(
+    job_id: str,
+    tasks: Sequence[dict[str, str]],
+    *,
+    expected_tasks: int,
+    expected_account: str,
+    expected_partition: str,
+    expected_qos: str,
+    expected_constraint: str,
+) -> None:
+    if len(tasks) != expected_tasks:
+        raise RuntimeError(
+            f"Expected {expected_tasks} task row(s), found {len(tasks)}: {tasks!r}."
+        )
+    raw_ids = [row["JobIDRaw"] for row in tasks]
+    if expected_tasks == 1:
+        allowed = {job_id, f"{job_id}_0"}
+        if raw_ids[0] not in allowed:
+            raise RuntimeError(
+                f"Unexpected singleton canary task row {raw_ids[0]!r}; "
+                f"expected one of {sorted(allowed)!r}."
+            )
+    elif sorted(raw_ids) != [f"{job_id}_{index}" for index in range(expected_tasks)]:
+        raise RuntimeError(
+            "Unexpected, missing, or duplicate array task rows: "
+            f"{raw_ids!r}."
+        )
+
+    for row in tasks:
+        expected = {
+            "State": "COMPLETED",
+            "ExitCode": "0:0",
+            "Account": expected_account,
+            "Partition": expected_partition,
+            "QOS": expected_qos,
+            "Constraints": expected_constraint,
+        }
+        mismatches = {
+            key: {"expected": value, "actual": row.get(key)}
+            for key, value in expected.items()
+            if row.get(key) != value
+        }
+        if mismatches:
+            raise RuntimeError(f"Canary scheduler contract mismatch: {mismatches!r}.")
+        if "gres/gpu=1" not in row.get("AllocTRES", ""):
+            raise RuntimeError(f"Expected one allocated GPU, got {row.get('AllocTRES')!r}.")
+
+
 def verify(args: argparse.Namespace) -> dict[str, object]:
     command = [
         "sacct",
@@ -79,28 +127,15 @@ def verify(args: argparse.Namespace) -> dict[str, object]:
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
     rows = parse_sacct(completed.stdout)
     tasks = task_rows(args.job_id, rows)
-    if len(tasks) != args.expected_tasks:
-        raise RuntimeError(
-            f"Expected {args.expected_tasks} task row(s), found {len(tasks)}: {tasks!r}."
-        )
-    for row in tasks:
-        expected = {
-            "State": "COMPLETED",
-            "ExitCode": "0:0",
-            "Account": args.expected_account,
-            "Partition": args.expected_partition,
-            "QOS": args.expected_qos,
-            "Constraints": args.expected_constraint,
-        }
-        mismatches = {
-            key: {"expected": value, "actual": row.get(key)}
-            for key, value in expected.items()
-            if row.get(key) != value
-        }
-        if mismatches:
-            raise RuntimeError(f"Canary scheduler contract mismatch: {mismatches!r}.")
-        if "gres/gpu=1" not in row.get("AllocTRES", ""):
-            raise RuntimeError(f"Expected one allocated GPU, got {row.get('AllocTRES')!r}.")
+    validate_task_rows(
+        args.job_id,
+        tasks,
+        expected_tasks=args.expected_tasks,
+        expected_account=args.expected_account,
+        expected_partition=args.expected_partition,
+        expected_qos=args.expected_qos,
+        expected_constraint=args.expected_constraint,
+    )
 
     semantic = require_semantic_json(Path(args.require_file))
     receipt = {

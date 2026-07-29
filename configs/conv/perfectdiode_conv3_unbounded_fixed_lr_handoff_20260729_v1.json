@@ -1,0 +1,312 @@
+{
+  "schema_version": "mnist-conv-perfectdiode-selected-lr-handoff/v1",
+  "handoff_id": "perfectdiode-conv3-unbounded-selected-lr-20260729-v1",
+  "created_at": "2026-07-29",
+  "status": {
+    "rho_selection_complete": true,
+    "all_search_bounds_closed": true,
+    "use_for_current_unbounded_results": true,
+    "values_copied_from_selected_cell_artifacts": true,
+    "long_confirmation": "not_run",
+    "paper_metric": false,
+    "paper_config_uses_documented_0_100_wide_range_contract": true,
+    "source_selection_contract_exact_match": false
+  },
+  "usage": {
+    "runnable_config": false,
+    "instruction": "Generate one complete exact-run config per entry and copy both the ordered vector and named mapping unchanged.",
+    "recompute_from_rho": false,
+    "downstream_dataset": "deterministic_medium_affine_mnist",
+    "selection_dataset": "ordinary_mnist_55000_train_5000_validation",
+    "official_test_read": false,
+    "downstream_weight_contract": [
+      0.0,
+      100.0
+    ],
+    "downstream_weight_contract_authorized_by": "Filip",
+    "downstream_weight_contract_authorized_at": "2026-07-29",
+    "source_contract_note": "The rho source used weight_min=0 and weight_max=null. Filip explicitly authorized consuming these fixed values under the [0,100] paper contract."
+  },
+  "source_study": {
+    "run_id": "conv3_pd_unbounded_rho_t8k8_20260729T125734Z",
+    "analysis_path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/analysis",
+    "final_receipt_path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/analysis/final_receipt.json",
+    "best_points_path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/analysis/best_validation_by_surface.json",
+    "full_manifest_sha256": "07bc63932bbe3df5dbc9d0013432315392fed3feca3555b16ca7cf8403120190",
+    "selection_metric": "minimum_final_validation_loss",
+    "trained_cells": 91,
+    "initial_cells": 54,
+    "expansion_cells": 37,
+    "seed": 0,
+    "epochs_per_cell": 3
+  },
+  "scientific_surface": {
+    "architecture": "conv3",
+    "training_algorithm": "BPTT",
+    "non_linearity": "perfect_diode",
+    "perfect_diode": {
+      "clamp_epsilon": 1e-08
+    },
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "channels": [
+      64,
+      128,
+      256
+    ],
+    "kernel_sizes": [
+      3,
+      3,
+      3
+    ],
+    "strides": [
+      2,
+      2,
+      1
+    ],
+    "paddings": [
+      1,
+      1,
+      1
+    ],
+    "pooling": "none",
+    "input_gain": 360.0,
+    "T": 8,
+    "K": 8,
+    "weight_min": 0.0,
+    "weight_max": 100.0,
+    "weight_initialization": "kaiming_uniform",
+    "bias_policy": "q90_cap",
+    "parameter_order": [
+      "ConvWeight_0",
+      "ConvWeight_1",
+      "ConvWeight_2",
+      "DenseWeight_0",
+      "Bias_0",
+      "Bias_1",
+      "Bias_2"
+    ],
+    "schemes": {
+      "baseline": {
+        "run_name": "mnist_bp_amp_v1_c1",
+        "voltage_amp": 1.0,
+        "current_amp": 1.0
+      },
+      "ours": {
+        "run_name": "mnist_bp_amp_v4_c1",
+        "voltage_amp": 4.0,
+        "current_amp": 1.0
+      },
+      "legacy": {
+        "run_name": "mnist_bp_amp_v4_c0p25",
+        "voltage_amp": 4.0,
+        "current_amp": 0.25
+      }
+    }
+  },
+  "parameter_notation": {
+    "C_i": "ConvWeight_i",
+    "B_i": "Bias_i",
+    "D": "DenseWeight_0"
+  },
+  "entries": [
+    {
+      "entry_id": "conv3_baseline_sgd",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "rho_conv": 0.001,
+      "rho_dense": 0.03,
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 2.2203793618679493,
+        "ConvWeight_1": 6.284350813613316,
+        "ConvWeight_2": 4.669784642297713,
+        "DenseWeight_0": 1.1922264543625982,
+        "Bias_0": 2.2203793618679493,
+        "Bias_1": 6.284350813613316,
+        "Bias_2": 2.2923855388642425
+      },
+      "ordered_learning_rate_vector": [
+        2.2203793618679493,
+        6.284350813613316,
+        4.669784642297713,
+        1.1922264543625982,
+        2.2203793618679493,
+        6.284350813613316,
+        2.2923855388642425
+      ],
+      "validation": {
+        "loss": 0.09482917375564576,
+        "accuracy": 0.9474
+      },
+      "source_cell": {
+        "path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/remote_full/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/expansions/baseline_sgd_lower/surfaces/conv3_baseline--sgd/cells/002_rc_0p001_rd_0p03/cell.json",
+        "sha256": "bc718a692d17377a5b1dcc4e3fd1fc1a5addc58225051a312be6dd906efc7785"
+      }
+    },
+    {
+      "entry_id": "conv3_baseline_adam",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "rho_conv": 0.027,
+      "rho_dense": 0.27,
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.0026037179886572314,
+        "ConvWeight_1": 0.00046993113678684014,
+        "ConvWeight_2": 0.0003322605058323205,
+        "DenseWeight_0": 0.001023541308739098,
+        "Bias_0": 0.0026037179886572314,
+        "Bias_1": 0.00046993113678684014,
+        "Bias_2": 0.0003322605058323205
+      },
+      "ordered_learning_rate_vector": [
+        0.0026037179886572314,
+        0.00046993113678684014,
+        0.0003322605058323205,
+        0.001023541308739098,
+        0.0026037179886572314,
+        0.00046993113678684014,
+        0.0003322605058323205
+      ],
+      "validation": {
+        "loss": 0.06915622573494912,
+        "accuracy": 0.962
+      },
+      "source_cell": {
+        "path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/remote_full/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/surfaces/conv3_baseline--adam/cells/005_rc_0p027_rd_0p27/cell.json",
+        "sha256": "1e2f8af367a31f7818fd0b48f8895e4083711f70ee9b1ddda46d937541b71bd9"
+      }
+    },
+    {
+      "entry_id": "conv3_ours_sgd",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "rho_conv": 0.009,
+      "rho_dense": 0.03,
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 3.1300877318089113,
+        "ConvWeight_1": 8.482972347315009,
+        "ConvWeight_2": 6.24175381011778,
+        "DenseWeight_0": 0.17870849773668998,
+        "Bias_0": 3.1300877318089113,
+        "Bias_1": 8.482972347315009,
+        "Bias_2": 0.3438784410185788
+      },
+      "ordered_learning_rate_vector": [
+        3.1300877318089113,
+        8.482972347315009,
+        6.24175381011778,
+        0.17870849773668998,
+        3.1300877318089113,
+        8.482972347315009,
+        0.3438784410185788
+      ],
+      "validation": {
+        "loss": 0.051004323840141294,
+        "accuracy": 0.9718
+      },
+      "source_cell": {
+        "path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/remote_full/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/surfaces/conv3_ours--sgd/cells/000_rc_0p009_rd_0p03/cell.json",
+        "sha256": "f87a215522ef65f591f3ab595242e1ddf1c595e3d6955d51f5f8cacdd579d5cf"
+      }
+    },
+    {
+      "entry_id": "conv3_ours_adam",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "rho_conv": 0.081,
+      "rho_dense": 0.09,
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.007802510895760823,
+        "ConvWeight_1": 0.0013830409123187907,
+        "ConvWeight_2": 0.000979562021138172,
+        "DenseWeight_0": 0.00032928176432380754,
+        "Bias_0": 0.007802510895760823,
+        "Bias_1": 0.0013830409123187907,
+        "Bias_2": 0.000979562021138172
+      },
+      "ordered_learning_rate_vector": [
+        0.007802510895760823,
+        0.0013830409123187907,
+        0.000979562021138172,
+        0.00032928176432380754,
+        0.007802510895760823,
+        0.0013830409123187907,
+        0.000979562021138172
+      ],
+      "validation": {
+        "loss": 0.043398484462499616,
+        "accuracy": 0.977
+      },
+      "source_cell": {
+        "path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/remote_full/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/surfaces/conv3_ours--adam/cells/007_rc_0p081_rd_0p09/cell.json",
+        "sha256": "e483e0218c437f570a0c1b4e12e17e0eac91a3328cc4a63bceaa757a37f3be29"
+      }
+    },
+    {
+      "entry_id": "conv3_legacy_sgd",
+      "scheme": "legacy",
+      "optimizer": "SGD",
+      "rho_conv": 0.003,
+      "rho_dense": 0.01,
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.08008038240763024,
+        "ConvWeight_1": 0.17028521248059242,
+        "ConvWeight_2": 0.12192769431164927,
+        "DenseWeight_0": 0.003557075376857609,
+        "Bias_0": 0.08008038240763024,
+        "Bias_1": 0.10380168739104166,
+        "Bias_2": 0.00011789689061778969
+      },
+      "ordered_learning_rate_vector": [
+        0.08008038240763024,
+        0.17028521248059242,
+        0.12192769431164927,
+        0.003557075376857609,
+        0.08008038240763024,
+        0.10380168739104166,
+        0.00011789689061778969
+      ],
+      "validation": {
+        "loss": 0.04871859822273254,
+        "accuracy": 0.9744
+      },
+      "source_cell": {
+        "path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/remote_full/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/surfaces/conv3_legacy--sgd/cells/004_rc_0p003_rd_0p01/cell.json",
+        "sha256": "a2a091f54518cb39b8b9d552ff8d8aad0b4ac814ce8b7bf7a362b3dce5b20a60"
+      }
+    },
+    {
+      "entry_id": "conv3_legacy_adam",
+      "scheme": "legacy",
+      "optimizer": "Adam",
+      "rho_conv": 0.027,
+      "rho_dense": 0.01,
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.0026002998888117633,
+        "ConvWeight_1": 0.0004587373495931551,
+        "ConvWeight_2": 0.00032513151419594926,
+        "DenseWeight_0": 3.648613773749338e-05,
+        "Bias_0": 0.0026002998888117633,
+        "Bias_1": 0.0004587373495931551,
+        "Bias_2": 0.00032513151419594926
+      },
+      "ordered_learning_rate_vector": [
+        0.0026002998888117633,
+        0.0004587373495931551,
+        0.00032513151419594926,
+        3.648613773749338e-05,
+        0.0026002998888117633,
+        0.0004587373495931551,
+        0.00032513151419594926
+      ],
+      "validation": {
+        "loss": 0.0398358548656106,
+        "accuracy": 0.9796
+      },
+      "source_cell": {
+        "path": "results/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/remote_full/conv3_pd_unbounded_rho_t8k8_20260729T125734Z/expansions/legacy_adam_upper/surfaces/conv3_legacy--adam/cells/006_rc_0p027_rd_0p01/cell.json",
+        "sha256": "bd8970636b8a92999219fa2b38e8124a74fc081f95efc8c5ff52365380decf75"
+      }
+    }
+  ]
+}

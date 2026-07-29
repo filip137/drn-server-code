@@ -22,11 +22,34 @@ The existing
 immutable Conv1/Conv2 predecessor for the bounded-initializer question. It
 does not by itself implement the active all-depth global selector.
 
+The current machine-readable Conv1/Conv2 wide-range LR authority is
+`perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json`. It contains
+all 12 user-authorized vectors at the supplied precision. It is a handoff, not
+a complete runnable training config; generate one complete exact-run config
+per entry and copy its named mapping and ordered vector unchanged.
+The trainer runtime order is weights first, then the dense weight, then biases;
+the handoff and `experiments.exact_run` validate that ordering against the
+named mapping before training.
+
 The immutable
-`perfectdiode_conv12_best_observed_confirmation_20260727_v1.json` contains
-diagnostic entries beyond the nine interim wide-range vectors currently
-authorized in `docs/perfectdiode_learning_protocol.md`. Do not launch that
-file wholesale or infer the three missing interim rows from it.
+`perfectdiode_conv12_best_observed_confirmation_20260727_v1.json` is the
+full-precision diagnostic predecessor. It is not launch authority. Do not
+launch it wholesale or silently replace the user-authorized values with its
+longer decimal representations.
+
+The selected Conv3 unbounded LR vectors are recorded in
+`perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json`. Its six
+vectors are copied exactly from the winning `cell.json` artifacts, including
+the bias-specific `q90_cap` values. The source study used `weight_min=0`,
+`weight_max=null`; Filip explicitly authorized using those fixed vectors in
+the downstream `[0,100]` paper configs, and the source-contract mismatch stays
+recorded in the handoff.
+
+The 18 complete seed-0 wide-range paper configs are under
+`paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/`. They use
+deterministic medium-affine MNIST, Conv1/Conv2/Conv3 budgets of 10/30/30
+epochs, best-validation checkpoint selection, and one terminal official-test
+evaluation.
 
 Maintained low-level training uses:
 

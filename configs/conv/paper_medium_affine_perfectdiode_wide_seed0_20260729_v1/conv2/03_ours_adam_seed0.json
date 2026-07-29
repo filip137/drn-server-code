@@ -1,0 +1,237 @@
+{
+  "arm_id": "conv2_ours_adam_seed0",
+  "batch_state_policy": "reset_each_batch",
+  "beta": 1.0,
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.AffineMnistTrainValidationDataset",
+      "params": {
+        "affine_config": {
+          "degrees": 25.0,
+          "deterministic_by_original_index_and_split": true,
+          "enabled": true,
+          "fill": 0,
+          "interpolation": "bilinear",
+          "preset": "medium",
+          "scale": [
+            0.8,
+            1.2
+          ],
+          "seed": 1729,
+          "shear": 0.0,
+          "translate": [
+            0.2,
+            0.2
+          ]
+        },
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "num_workers": 0,
+        "official_test_batch_size": 64,
+        "pin_memory": false,
+        "root": "/lustre/fsn1/projects/rech/umg/ucy17uy/datasets/mnist",
+        "shuffle_seed": 0,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "epoch_split": "validation",
+    "inclusion_rule": "Include every predeclared arm completing the exact epoch budget with finite metrics and verified artifacts; retry only unchanged operational failures and never exclude by outcome.",
+    "official_test": {
+      "checkpoint": "best_validation",
+      "expected_examples": 10000,
+      "policy": "terminal_once"
+    }
+  },
+  "handoff": {
+    "downstream_weight_contract_authorized_at": "2026-07-29",
+    "downstream_weight_contract_authorized_by": "Filip",
+    "entry_id": "conv2_ours_adam",
+    "id": "perfectdiode-conv12-unbounded-fixed-lr-20260729-v1",
+    "path": "configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json",
+    "sha256": "be353c88ec924206e2adf5b960e77ea914dc67800841e6e00534c859f709ac14",
+    "source_selection_weight_contract_exact_match": true
+  },
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 30,
+    "model_key": "mnist_bp_conv_amp"
+  },
+  "learning_rates_by_parameter": {
+    "Bias_0": 0.00260036,
+    "Bias_1": 0.000458651,
+    "ConvWeight_0": 0.00260036,
+    "ConvWeight_1": 0.000458651,
+    "DenseWeight_0": 0.000155136
+  },
+  "log_interval": 500,
+  "lr": [
+    0.00260036,
+    0.000458651,
+    0.000155136,
+    0.00260036,
+    0.000458651
+  ],
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 100.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 6,
+    "num_iterations_training": 6,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 4.0,
+    "weight_init_mode": "kaiming_uniform",
+    "weight_max": 100.0,
+    "weight_min": 0.0
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          128,
+          7,
+          7
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "amsgrad": false,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "capturable": false,
+    "differentiable": false,
+    "eps": 1e-08,
+    "foreach": false,
+    "fused": false,
+    "learning_rate": [
+      0.00260036,
+      0.000458651,
+      0.000155136,
+      0.00260036,
+      0.000458651
+    ],
+    "lr_decay": 1.0,
+    "maximize": false,
+    "momentum": 0.0,
+    "name": "Adam",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "DenseWeight_0",
+    "Bias_0",
+    "Bias_1"
+  ],
+  "reporting": {
+    "arm_id": "conv2_ours_adam_seed0",
+    "evidence_class": "paper_medium_affine",
+    "paper_facing": true,
+    "study_id": "perfectdiode-paper-medium-affine-wide-seed0-20260729-v1"
+  },
+  "schema_version": "mnist-conv-paper-exact-run/v1",
+  "seed": 0,
+  "study_id": "perfectdiode-paper-medium-affine-wide-seed0-20260729-v1",
+  "training_algorithm": "BP"
+}

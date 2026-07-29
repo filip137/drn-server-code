@@ -821,6 +821,62 @@ def build_mnist_train_validation_loaders(
     )
 
 
+def build_mnist_official_test_loader(
+    *,
+    batch_size,
+    root,
+    download,
+    normalize,
+    normalize_std,
+    normalize_mean=0.1307,
+    normalize_scale=1.0,
+    affine_config=None,
+    num_workers=0,
+    pin_memory=False,
+):
+    """Build only the official MNIST test loader for terminal evaluation."""
+
+    if int(batch_size) <= 0:
+        raise ValueError(f"Expected a positive test batch size, got {batch_size}.")
+    if int(num_workers) < 0:
+        raise ValueError(f"Expected a non-negative worker count, got {num_workers}.")
+
+    transforms_list = [transforms.ToTensor()]
+    if normalize:
+        transforms_list.append(
+            transforms.Normalize(
+                mean=(float(normalize_mean),), std=(float(normalize_std),)
+            )
+        )
+        scale = float(normalize_scale)
+        if abs(scale - 1.0) > 1e-12:
+            transforms_list.append(
+                transforms.Lambda(lambda tensor, s=scale: tensor * s)
+            )
+    transform = transforms.Compose(transforms_list)
+
+    test_dataset = datasets.MNIST(
+        root=root,
+        train=False,
+        download=download,
+        transform=None if affine_config is not None else transform,
+    )
+    if affine_config is not None:
+        test_dataset = DeterministicAffineImageDataset(
+            test_dataset,
+            transform=transform,
+            affine_config=affine_config,
+            split="test",
+        )
+    return DataLoader(
+        test_dataset,
+        batch_size=int(batch_size),
+        shuffle=False,
+        num_workers=int(num_workers),
+        pin_memory=bool(pin_memory),
+    )
+
+
 class MnistTrainValidationDataset(Datasets):
     """Adapter exposing the deterministic 55k/5k MNIST split to trainers."""
 
@@ -862,6 +918,79 @@ class MnistTrainValidationDataset(Datasets):
 
     def build(self):
         return build_mnist_train_validation_loaders(**self.params)
+
+
+class AffineMnistTrainValidationDataset(MnistTrainValidationDataset):
+    """Deterministic affine 55k/5k training with terminal test construction."""
+
+    def __init__(
+        self,
+        name,
+        batch_size,
+        device,
+        root,
+        train,
+        download,
+        normalize,
+        normalize_std,
+        normalize_mean=0.1307,
+        normalize_scale=1.0,
+        affine_config=None,
+        affine_preset="medium",
+        affine_seed=1729,
+        affine_degrees=None,
+        affine_translate=None,
+        affine_scale=None,
+        affine_shear=None,
+        split_seed=0,
+        shuffle_seed=0,
+        validation_batch_size=MNIST_LR_STUDY_VALIDATION_BATCH_SIZE,
+        official_test_batch_size=64,
+        num_workers=0,
+        pin_memory=False,
+    ):
+        if affine_config is None:
+            affine_config = affine_config_from_preset(
+                affine_preset,
+                degrees=affine_degrees,
+                translate=affine_translate,
+                scale=affine_scale,
+                shear=affine_shear,
+                seed=affine_seed,
+            )
+        super().__init__(
+            name=name,
+            batch_size=batch_size,
+            device=device,
+            root=root,
+            train=train,
+            download=download,
+            normalize=normalize,
+            normalize_std=normalize_std,
+            normalize_mean=normalize_mean,
+            normalize_scale=normalize_scale,
+            affine_config=affine_config,
+            split_seed=split_seed,
+            shuffle_seed=shuffle_seed,
+            validation_batch_size=validation_batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+        self.official_test_batch_size = int(official_test_batch_size)
+
+    def build_official_test_loader(self):
+        return build_mnist_official_test_loader(
+            batch_size=self.official_test_batch_size,
+            root=self.params["root"],
+            download=self.params["download"],
+            normalize=self.params["normalize"],
+            normalize_std=self.params["normalize_std"],
+            normalize_mean=self.params["normalize_mean"],
+            normalize_scale=self.params["normalize_scale"],
+            affine_config=self.params["affine_config"],
+            num_workers=self.params["num_workers"],
+            pin_memory=self.params["pin_memory"],
+        )
 
 
 class MnistDataset(Datasets):

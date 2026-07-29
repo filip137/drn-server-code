@@ -505,6 +505,117 @@ def _checkpoint_best_then_callback(
     return best_accuracy, best_epoch, should_stop
 
 
+def _evaluate_image_loader(
+    *,
+    loader,
+    network,
+    free_layers,
+    cost_fn,
+    minimizer_inference,
+    device,
+    max_batches,
+    split_label,
+    epoch,
+    epochs,
+    log_interval,
+):
+    running_loss = 0.0
+    running_correct = 0
+    seen = 0
+    total_batches = len(loader)
+    batches_this_evaluation = (
+        min(total_batches, int(max_batches))
+        if max_batches is not None
+        else total_batches
+    )
+    for batch_idx, (images, labels) in enumerate(loader):
+        if max_batches is not None and batch_idx >= max_batches:
+            break
+        images = images.to(device)
+        labels = labels.to(device)
+        _require_finite_tensor(
+            images,
+            f"{split_label} input",
+            epoch=epoch,
+            batch=batch_idx + 1,
+        )
+        network.set_input(images, reset=True)
+        minimizer_inference.compute_equilibrium()
+        _require_finite_variables(
+            free_layers,
+            f"{split_label} inference layer",
+            epoch=epoch,
+            batch=batch_idx + 1,
+        )
+        cost_fn.set_target(labels)
+        batch_cost = cost_fn.eval()
+        _require_finite_tensor(
+            batch_cost,
+            f"{split_label} cost",
+            epoch=epoch,
+            batch=batch_idx + 1,
+        )
+        batch_loss = _require_finite_scalar(
+            batch_cost.mean().item(),
+            f"{split_label} batch loss",
+            epoch=epoch,
+            batch=batch_idx + 1,
+        )
+        errors = cost_fn.error_fn()
+        batch_correct = int((~errors).sum().item())
+        running_loss += batch_loss * images.size(0)
+        running_correct += batch_correct
+        seen += images.size(0)
+
+        if _should_log_batch(batch_idx, batches_this_evaluation, log_interval):
+            print(
+                f"[{split_label}] Epoch {epoch}/{epochs} | "
+                f"Batch {batch_idx+1}/{total_batches} | "
+                f"running loss={running_loss / seen:.4f} "
+                f"acc={running_correct / seen * 100:.2f}%",
+                flush=True,
+            )
+    if not seen:
+        raise RuntimeError(
+            f"Expected the {split_label} loader to yield at least one example. "
+            "Provided value: 0 examples."
+        )
+    return (
+        _require_finite_scalar(
+            running_loss / seen,
+            f"{split_label} loss",
+            epoch=epoch,
+        ),
+        _require_finite_scalar(
+            running_correct / seen,
+            f"{split_label} accuracy",
+            epoch=epoch,
+        ),
+        int(seen),
+    )
+
+
+def _terminal_official_test_policy(config):
+    evaluation = config.get("evaluation", {})
+    if evaluation is None:
+        evaluation = {}
+    if not isinstance(evaluation, dict):
+        raise ValueError(
+            "Expected config['evaluation'] to be an object. "
+            f"Provided value: {evaluation!r}."
+        )
+    checkpoint_selection = evaluation.get("checkpoint_selection")
+    official_test = evaluation.get("official_test", {})
+    if official_test is None:
+        official_test = {}
+    if not isinstance(official_test, dict):
+        raise ValueError(
+            "Expected config['evaluation']['official_test'] to be an object. "
+            f"Provided value: {official_test!r}."
+        )
+    return checkpoint_selection, str(official_test.get("policy", "disabled"))
+
+
 def _make_reporting_epoch_callback(
     reporting_run_dir,
     dataset_provenance,
@@ -909,6 +1020,7 @@ def _train_image_task(
     optimizer_step_callback=None,
     apply_optimizer_steps=True,
     reporting_run_dir=None,
+    skip_terminal_official_test=False,
 ):
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
@@ -1094,6 +1206,16 @@ def _train_image_task(
         init_checkpoint_path = None
     checkpoint_params = getattr(energy_fn, "_params", energy_fn.params())
     param_schema = _param_schema(checkpoint_params)
+    configured_parameter_order = config.get("parameter_order")
+    if configured_parameter_order is not None:
+        actual_parameter_order = [name for name, _parameter in param_schema]
+        if list(configured_parameter_order) != actual_parameter_order:
+            raise ValueError(
+                "Expected config['parameter_order'] to equal the trainer's runtime "
+                "parameter order. "
+                f"Provided values: configured={configured_parameter_order!r}, "
+                f"runtime={actual_parameter_order!r}."
+            )
     _require_finite_variables(checkpoint_params, "initial parameter")
 
     network = Network(energy_fn)
@@ -1148,7 +1270,8 @@ def _train_image_task(
     dataset_params.setdefault("device", device)
     if "root" in dataset_params:
         dataset_params["root"] = os.path.expanduser(str(dataset_params["root"]))
-    loader_result = dataset_factory(**dataset_params).build()
+    dataset_builder = dataset_factory(**dataset_params)
+    loader_result = dataset_builder.build()
     dataset_provenance = None
     if hasattr(loader_result, "train_loader") and hasattr(loader_result, "validation_loader"):
         train_loader = loader_result.train_loader
@@ -1167,6 +1290,27 @@ def _train_image_task(
     else:
         train_loader = loader_result
         test_loader = None
+    checkpoint_selection, official_test_policy = _terminal_official_test_policy(config)
+    if official_test_policy not in {"disabled", "terminal_once"}:
+        raise ValueError(
+            "Expected official-test policy to be 'disabled' or 'terminal_once'. "
+            f"Provided value: {official_test_policy!r}."
+        )
+    if official_test_policy == "terminal_once":
+        if dataset_provenance is None:
+            raise ValueError(
+                "Terminal official-test evaluation requires a train/validation dataset."
+            )
+        if checkpoint_selection != "maximum_validation_accuracy":
+            raise ValueError(
+                "Terminal official-test evaluation requires "
+                "evaluation.checkpoint_selection='maximum_validation_accuracy'."
+            )
+        if not hasattr(dataset_builder, "build_official_test_loader"):
+            raise ValueError(
+                "Terminal official-test evaluation requires the dataset factory "
+                "to provide build_official_test_loader()."
+            )
 
     epoch_callback = _make_reporting_epoch_callback(
         reporting_run_dir,
@@ -1269,6 +1413,12 @@ def _train_image_task(
             "num_iterations_training": training_iterations,
             "num_iterations_inference": inference_iterations,
             "beta": beta_value,
+        },
+        "evaluation": {
+            "epoch_split": "validation" if dataset_provenance is not None else "test",
+            "checkpoint_selection": checkpoint_selection,
+            "official_test_policy": official_test_policy,
+            "official_test_skipped": bool(skip_terminal_official_test),
         },
         "amplification": {
             "voltage_amp": float(model_cfg["voltage_amp"]),
@@ -1486,76 +1636,19 @@ def _train_image_task(
         history["accuracy"].append(epoch_train_acc)
 
         if test_loader is not None:
-            test_running_loss = 0.0
-            test_correct = 0
-            test_seen = 0
             optimizer.zero_grad()
-            test_total_batches = len(test_loader)
-            test_batches_this_epoch = (
-                min(test_total_batches, int(max_test_batches))
-                if max_test_batches is not None
-                else test_total_batches
-            )
-            for test_batch_idx, (images, labels) in enumerate(test_loader):
-                if max_test_batches is not None and test_batch_idx >= max_test_batches:
-                    break
-                images = images.to(device)
-                labels = labels.to(device)
-                _require_finite_tensor(
-                    images,
-                    "test input",
-                    epoch=epoch + 1,
-                    batch=test_batch_idx + 1,
-                )
-                network.set_input(images, reset=True)
-                minimizer_inference.compute_equilibrium()
-                _require_finite_variables(
-                    free_layers,
-                    "test inference layer",
-                    epoch=epoch + 1,
-                    batch=test_batch_idx + 1,
-                )
-                cost_fn.set_target(labels)
-                batch_cost = cost_fn.eval()
-                _require_finite_tensor(
-                    batch_cost,
-                    "test cost",
-                    epoch=epoch + 1,
-                    batch=test_batch_idx + 1,
-                )
-                batch_loss = _require_finite_scalar(
-                    batch_cost.mean().item(),
-                    "test batch loss",
-                    epoch=epoch + 1,
-                    batch=test_batch_idx + 1,
-                )
-                errors = cost_fn.error_fn()
-                batch_correct = int((~errors).sum().item())
-                test_running_loss += batch_loss * images.size(0)
-                test_correct += batch_correct
-                test_seen += images.size(0)
-
-                avg_loss = test_running_loss / test_seen
-                acc = test_correct / test_seen
-                if _should_log_batch(test_batch_idx, test_batches_this_epoch, log_interval):
-                    print(
-                        f"[Test] Epoch {epoch+1}/{epochs} | Batch {test_batch_idx+1}/{test_total_batches} | running loss={avg_loss:.4f} acc={acc*100:.2f}%",
-                        flush=True,
-                    )
-            if not test_seen:
-                raise RuntimeError(
-                    f"Expected the test loader to yield at least one example in epoch {epoch + 1}. "
-                    "Provided value: 0 examples."
-                )
-            epoch_test_loss = _require_finite_scalar(
-                test_running_loss / test_seen,
-                "epoch test loss",
+            epoch_test_loss, epoch_test_acc, _test_seen = _evaluate_image_loader(
+                loader=test_loader,
+                network=network,
+                free_layers=free_layers,
+                cost_fn=cost_fn,
+                minimizer_inference=minimizer_inference,
+                device=device,
+                max_batches=max_test_batches,
+                split_label="Validation" if dataset_provenance is not None else "Test",
                 epoch=epoch + 1,
-            )
-            epoch_test_acc = _require_finite_scalar(
-                test_correct / test_seen,
-                "epoch test accuracy",
-                epoch=epoch + 1,
+                epochs=epochs,
+                log_interval=log_interval,
             )
             history["test_loss"].append(epoch_test_loss)
             history["test_accuracy"].append(epoch_test_acc)
@@ -1635,6 +1728,42 @@ def _train_image_task(
         elif history["accuracy"]:
             best_test_accuracy = history["accuracy"][-1]
 
+    official_test_loss = None
+    official_test_accuracy = None
+    official_test_examples = 0
+    official_test_evaluations = 0
+    if official_test_policy == "terminal_once" and not skip_terminal_official_test:
+        energy_fn.load(best_model_path)
+        _require_finite_variables(
+            checkpoint_params,
+            "best-validation checkpoint parameter",
+        )
+        official_test_loader = dataset_builder.build_official_test_loader()
+        official_test_loss, official_test_accuracy, official_test_examples = (
+            _evaluate_image_loader(
+                loader=official_test_loader,
+                network=network,
+                free_layers=free_layers,
+                cost_fn=cost_fn,
+                minimizer_inference=minimizer_inference,
+                device=device,
+                max_batches=None,
+                split_label="OfficialTest",
+                epoch=best_epoch,
+                epochs=epochs,
+                log_interval=log_interval,
+            )
+        )
+        official_test_evaluations = 1
+        energy_fn.load(final_model_path)
+        _require_finite_variables(checkpoint_params, "restored final parameter")
+        summary["official_test_loss"] = official_test_loss
+        summary["official_test_accuracy"] = official_test_accuracy
+        summary["official_test_error"] = 1.0 - official_test_accuracy
+        summary["official_test_checkpoint"] = "best_validation"
+        summary["official_test_evaluations"] = official_test_evaluations
+        summary["official_test_examples"] = official_test_examples
+
     weights_metadata = {
         "voltage_amp": float(model_cfg["voltage_amp"]),
         "current_amp": float(model_cfg["current_amp"]),
@@ -1672,6 +1801,22 @@ def _train_image_task(
         "final_test_accuracy": summary.get("final_test_accuracy"),
         "final_test_loss": summary.get("final_test_loss"),
         "test_error": summary.get("test_error"),
+        "best_validation_accuracy": (
+            summary.get("best_test_accuracy") if dataset_provenance is not None else None
+        ),
+        "final_validation_accuracy": (
+            summary.get("final_test_accuracy") if dataset_provenance is not None else None
+        ),
+        "final_validation_loss": (
+            summary.get("final_test_loss") if dataset_provenance is not None else None
+        ),
+        "official_test_accuracy": official_test_accuracy,
+        "official_test_loss": official_test_loss,
+        "official_test_examples": official_test_examples,
+        "official_test_evaluations": official_test_evaluations,
+        "official_test_checkpoint": (
+            "best_validation" if official_test_evaluations else None
+        ),
         "lr_decay": lr_decay_value,
         "optimizer": optimizer_details,
         "optimizer_steps_applied": bool(apply_optimizer_steps),
@@ -1765,6 +1910,7 @@ def train_mnist_conv(
     optimizer_step_callback=None,
     apply_optimizer_steps=True,
     reporting_run_dir=None,
+    skip_terminal_official_test=False,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1793,6 +1939,7 @@ def train_mnist_conv(
         optimizer_step_callback=optimizer_step_callback,
         apply_optimizer_steps=apply_optimizer_steps,
         reporting_run_dir=reporting_run_dir,
+        skip_terminal_official_test=skip_terminal_official_test,
     )
 
 
@@ -1814,6 +1961,7 @@ def train_tiny_grid(
     init_checkpoint_path=None,
     batch_state_policy=None,
     reporting_run_dir=None,
+    skip_terminal_official_test=False,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1836,6 +1984,7 @@ def train_tiny_grid(
         init_checkpoint_path=init_checkpoint_path,
         batch_state_policy=batch_state_policy,
         reporting_run_dir=reporting_run_dir,
+        skip_terminal_official_test=skip_terminal_official_test,
     )
 
 
@@ -1931,6 +2080,11 @@ def main(argv=None):
         default=None,
         help="Random seed for initialization and dataloader order.",
     )
+    parser.add_argument(
+        "--skip-terminal-official-test",
+        action="store_true",
+        help="Skip a configured terminal official-test evaluation (smoke runs only).",
+    )
 
     args = parser.parse_args(argv)
     config_path = Path(args.config).expanduser().resolve()
@@ -2020,6 +2174,7 @@ def main(argv=None):
         lr_decay=lr_decay,
         init_checkpoint_path=args.init_checkpoint,
         reporting_run_dir=args.reporting_run_dir,
+        skip_terminal_official_test=args.skip_terminal_official_test,
     )
     if model_key != "tiny3x3":
         train_kwargs["dataset_key"] = dataset_key

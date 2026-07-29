@@ -3,12 +3,12 @@
 Updated: 2026-07-29
 
 Status: protocol and implementation frozen and tested. Fixed-`T/K` security
-checks, probes, canaries, and promoted core candidates are measured. Nine
-user-directed interim LR vectors are authorized below for current unbounded
-results. Three Conv1/Conv2 surfaces remain without an interim vector, and
-selector publication, terminal evidence, and long confirmations remain
-incomplete. The gains and Conv1/Conv2 `T/K` values below are user-fixed
-diagnostic choices, not calibration measurements.
+checks, probes, canaries, and promoted core candidates are measured. All 12
+user-directed LR vectors are fixed below for current unbounded results.
+Conv1's ten-epoch confirmations are complete and await final review; Conv2
+still has three-epoch evidence only. Selector publication and terminal
+evidence remain incomplete. The gains and Conv1/Conv2 `T/K` values below are
+user-fixed diagnostic choices, not calibration measurements.
 
 ## Scope
 
@@ -284,12 +284,14 @@ core screen also does not yet freeze a terminal learning-rate handoff; a vector
 becomes authoritative only after the selection and confirmation stages below
 resolve its full parameter-specific surface.
 
-## Interim unbounded-result LR vectors
+## Current fixed unbounded-result LR vectors
 
-Filip supplied the following interim vectors on 2026-07-29. For now, use each
-vector unchanged for its matching wide-range/unbounded result row. This is an
-explicit user-directed interim handoff; it does not retrospectively make the
-incomplete selector terminal.
+Filip supplied the complete 12-vector set on 2026-07-29. For now, use each
+vector unchanged, at the supplied precision, for its matching
+wide-range/unbounded result row. The machine-readable authority is
+[`perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json`](../configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json).
+This is an explicit user-directed current handoff; it does not retrospectively
+make the incomplete selector terminal.
 
 Notation maps directly to the scientific parameter names:
 
@@ -306,14 +308,20 @@ D   = DenseWeight_0
 | Conv1 | ours | SGD | `C0=B0=0.0375994, D=0.00311655` |
 | Conv1 | ours | Adam | `C0=B0=8.66753e-4, D=1.09388e-4` |
 | Conv1 | legacy | SGD | `C0=B0=2.05753e-4, D=4.76259e-5` |
+| Conv1 | legacy | Adam | `C0=B0=2.88917e-4, D=3.64618e-5` |
 | Conv2 | baseline | SGD | `C0=B0=7.90864, C1=B1=3.81476, D=0.820630` |
 | Conv2 | baseline | Adam | `C0=B0=2.60078e-3, C1=B1=4.59053e-4, D=4.67660e-4` |
+| Conv2 | ours | SGD | `C0=B0=0.523358, C1=B1=0.246043, D=0.0520201` |
+| Conv2 | ours | Adam | `C0=B0=2.60036e-3, C1=B1=4.58651e-4, D=1.55136e-4` |
 | Conv2 | legacy | SGD | `C0=B0=0.00496733, C1=0.00367839, B1=6.74726e-4, D=0.00236044` |
 | Conv2 | legacy | Adam | `C0=B0=8.66750e-4, C1=B1=1.52841e-4, D=5.16982e-5` |
 
-No interim vector was supplied for Conv1 legacy Adam, Conv2 ours SGD, or
-Conv2 ours Adam. Leave those rows unresolved; do not recover values for them
-from an older config, diagnostic winner, or unpublished selector output.
+All six Conv1 vectors completed ten-epoch ordinary-MNIST confirmations and
+reached `95.60%` to `96.48%` validation accuracy. Those confirmation results
+still await final review. The six Conv2 vectors remain supported by
+three-epoch best-observed evidence only, reaching `95.96%` to `97.78%`
+validation accuracy; no Conv2 long confirmation is implied. These accuracies
+are selection and confirmation diagnostics, never paper-facing measurements.
 
 ## Stages, resume, and output
 

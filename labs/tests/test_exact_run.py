@@ -8,6 +8,9 @@ import pytest
 
 from labs import mnist_train
 from experiments.exact_run import (
+    _completion_errors,
+    _git_state,
+    _terminal_metrics,
     build_train_command,
     load_exact_config,
     run,
@@ -69,6 +72,27 @@ def test_load_exact_config_rejects_unsupported_adam_mode(tmp_path: Path) -> None
         load_exact_config(path)
 
 
+def test_load_exact_config_binds_named_rates_to_runtime_order(tmp_path: Path) -> None:
+    value = _config()
+    value.update(
+        {
+            "parameter_order": ["ConvWeight_0", "DenseWeight_0"],
+            "learning_rates_by_parameter": {
+                "ConvWeight_0": 0.1,
+                "DenseWeight_0": 0.02,
+            },
+        }
+    )
+    path = tmp_path / "ordered.json"
+    path.write_text(json.dumps(value), encoding="utf-8")
+    assert load_exact_config(path)["lr"] == [0.1, 0.02]
+
+    value["parameter_order"] = ["DenseWeight_0", "ConvWeight_0"]
+    path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(ValueError, match="derived from the named mapping"):
+        load_exact_config(path)
+
+
 def test_slurm_array_environment_selects_one_config(tmp_path: Path) -> None:
     paths = [tmp_path / "a.json", tmp_path / "b.json"]
     selected = selected_configs(
@@ -88,7 +112,7 @@ def test_smoke_command_caps_training_and_validation(tmp_path: Path) -> None:
     )
 
     assert command[0] == sys.executable
-    assert command[-8:] == [
+    assert command[-9:] == [
         "--device",
         "cuda",
         "--epochs",
@@ -97,7 +121,77 @@ def test_smoke_command_caps_training_and_validation(tmp_path: Path) -> None:
         "1",
         "--max-test-batches",
         "1",
+        "--skip-terminal-official-test",
     ]
+
+
+def test_paper_completion_requires_one_full_official_test() -> None:
+    config = {
+        "evaluation": {
+            "official_test": {
+                "policy": "terminal_once",
+            }
+        }
+    }
+    valid = {
+        "official_test_evaluations": 1,
+        "official_test_examples": 10_000,
+        "official_test_checkpoint": "best_validation",
+        "official_test_accuracy": 0.9,
+        "official_test_loss": 0.2,
+    }
+    assert _completion_errors(config, valid, smoke=False) == []
+    assert _completion_errors(config, {}, smoke=True) == []
+    assert "exactly one" in _completion_errors(config, {}, smoke=False)[0]
+
+
+def test_git_state_uses_frozen_archive_identity_when_git_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EXPERIMENT_SOURCE_COMMIT", "abc123")
+    monkeypatch.setenv("EXPERIMENT_SOURCE_ARCHIVE_SHA256", "deadbeef")
+
+    def unavailable(*args: object, **kwargs: object) -> object:
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr("experiments.exact_run.subprocess.run", unavailable)
+
+    assert _git_state() == {
+        "commit": "abc123",
+        "dirty": None,
+        "source_archive_sha256": "deadbeef",
+    }
+
+
+def test_terminal_metrics_separates_validation_from_official_test() -> None:
+    metrics = {
+        "best_epoch": 3,
+        "final_train_loss": 0.3,
+        "final_train_accuracy": 0.8,
+        "best_train_accuracy": 0.85,
+        "final_test_loss": 0.25,
+        "final_test_accuracy": 0.86,
+        "best_test_accuracy": 0.88,
+        "official_test_loss": 0.27,
+        "official_test_accuracy": 0.84,
+        "official_test_checkpoint": "best_validation",
+        "official_test_examples": 10_000,
+        "official_test_evaluations": 1,
+        "dataset_provenance": {
+            "schema": "mnist-train-validation-split/v1",
+        },
+    }
+
+    terminal = _terminal_metrics(metrics)
+
+    assert terminal["validation"]["final_accuracy"] == 0.86
+    assert terminal["test"] == {
+        "loss": 0.27,
+        "accuracy": 0.84,
+        "checkpoint": "best_validation",
+        "examples": 10_000,
+        "evaluations": 1,
+    }
 
 
 def test_dry_run_is_indexed_and_has_no_output_side_effect(

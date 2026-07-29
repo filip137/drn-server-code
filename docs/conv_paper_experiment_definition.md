@@ -2,8 +2,9 @@
 
 Updated: 2026-07-29
 
-Status: frozen comparison contract. Learning-rate handoffs and some final-run
-choices remain pending in the [protocol index](conv_paper_hyperparameter_protocol.md).
+Status: frozen comparison contract. The first seed-0 wide-range execution
+choices are frozen; bounded handoffs and later multi-seed scope remain pending
+in the [protocol index](conv_paper_hyperparameter_protocol.md).
 
 ## Question
 
@@ -121,3 +122,23 @@ The medium-affine paper config consumes the corresponding ordinary-MNIST
 handoff unchanged. It must not recalibrate rho or rewrite raw learning rates.
 Changing architecture, scheme, optimizer, `T/K`, weight contract, or
 initializer invalidates the dependent handoff.
+
+## First Wide-Range Execution
+
+The first `[0,100]` batch uses model seed `0`, loader seed `0`, and affine seed
+`1729`. Conv1 trains for 10 epochs; Conv2 and Conv3 train for 30.
+
+The 60,000-example training split is deterministically partitioned into 55,000
+training and 5,000 validation examples before applying the fixed-by-original-
+index affine transform. Checkpoint selection uses maximum validation accuracy.
+After training completes, the official 10,000-example affine test split is
+evaluated exactly once from that selected checkpoint.
+
+All 18 predeclared architecture x scheme x optimizer rows are included if they
+complete the exact budget with finite metrics and verified artifacts.
+Operational failures may be retried only with the unchanged scientific config;
+outcomes are never an exclusion criterion.
+
+Filip authorized consuming the Conv3 LR vectors selected under
+`weight_max=null` in these downstream `[0,100]` configs. The source-contract
+mismatch remains a declared limitation.

@@ -1,0 +1,451 @@
+{
+  "architectures": {
+    "conv1": {
+      "array": "0-5%4",
+      "epochs": 10,
+      "time_limit": "03:00:00"
+    },
+    "conv2": {
+      "array": "0-5%4",
+      "epochs": 30,
+      "time_limit": "06:00:00"
+    },
+    "conv3": {
+      "array": "0-5%4",
+      "epochs": 30,
+      "time_limit": "06:00:00"
+    }
+  },
+  "dataset": "deterministic_medium_affine_mnist_55000_5000_terminal_test_once",
+  "execution": {
+    "result_root": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/perfectdiode-paper-medium-affine-wide-seed0-20260729-v1",
+    "slurm": {
+      "account": "fmu@v100",
+      "constraint": "v100-16g",
+      "cpus_per_task": 10,
+      "gpus_per_task": 1,
+      "memory": "40G",
+      "module": "pytorch-gpu/py3/2.5.0",
+      "partition": "gpu_p13",
+      "qos": "qos_gpu-t3"
+    },
+    "target": "jean-zay",
+    "wrapper": "experiments/run_paper_medium_affine_seed0_jeanzay.slurm"
+  },
+  "handoffs": [
+    {
+      "path": "configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json",
+      "sha256": "be353c88ec924206e2adf5b960e77ea914dc67800841e6e00534c859f709ac14"
+    },
+    {
+      "path": "configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json",
+      "sha256": "47c88be060efbbff49708d3ed9ef94f38c0bc4955858e7f0ea9cf648aecc70bb"
+    }
+  ],
+  "runs": [
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_seed0",
+      "array_index": 0,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/00_baseline_sgd_seed0.json",
+      "config_sha256": "dd3f1323415ba04b02f16a6c5ee26edb409c4a670413d30d5f8fc132b247c36e",
+      "epochs": 10,
+      "learning_rates": [
+        0.142696,
+        0.0120238,
+        0.142696
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_adam_seed0",
+      "array_index": 1,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/01_baseline_adam_seed0.json",
+      "config_sha256": "2e28fb6fbe7611028f21c28a6a93fef49e4a4e5a0e782a111bb9fa9b9930abff",
+      "epochs": 10,
+      "learning_rates": [
+        0.000866763,
+        0.000109401,
+        0.000866763
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_sgd_seed0",
+      "array_index": 2,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/02_ours_sgd_seed0.json",
+      "config_sha256": "33eb477a2379418e2e3f07ce619807ed28013f5bb49adbf64065df59e635c5ab",
+      "epochs": 10,
+      "learning_rates": [
+        0.0375994,
+        0.00311655,
+        0.0375994
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_adam_seed0",
+      "array_index": 3,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/03_ours_adam_seed0.json",
+      "config_sha256": "4ed3869403856a5a8d5035fc72b7d2b45749ae75dfbee2a2f1cf2a0cfaa3762b",
+      "epochs": 10,
+      "learning_rates": [
+        0.000866753,
+        0.000109388,
+        0.000866753
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_sgd_seed0",
+      "array_index": 4,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/04_legacy_sgd_seed0.json",
+      "config_sha256": "04d5731127afc0d0b9b13fb90331b7dbdcc48c759dfbfdf14d426d1d285bd3fc",
+      "epochs": 10,
+      "learning_rates": [
+        0.000205753,
+        4.76259e-05,
+        0.000205753
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_adam_seed0",
+      "array_index": 5,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/05_legacy_adam_seed0.json",
+      "config_sha256": "d65c9e2b94d85e41daebef40279726f065e302fd77f04edf28099264527b6d68",
+      "epochs": 10,
+      "learning_rates": [
+        0.000288917,
+        3.64618e-05,
+        0.000288917
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ]
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_seed0",
+      "array_index": 0,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/00_baseline_sgd_seed0.json",
+      "config_sha256": "579f9486c3f97d4cbd392cade6c043326dee30f96110b3da547aba938a9011ae",
+      "epochs": 30,
+      "learning_rates": [
+        7.90864,
+        3.81476,
+        0.82063,
+        7.90864,
+        3.81476
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ]
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_adam_seed0",
+      "array_index": 1,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/01_baseline_adam_seed0.json",
+      "config_sha256": "4c36eafa73df02fa162cb85e3f7cd0972639ca57af2864d2fcd85ec0ce1b5626",
+      "epochs": 30,
+      "learning_rates": [
+        0.00260078,
+        0.000459053,
+        0.00046766,
+        0.00260078,
+        0.000459053
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ]
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_ours_sgd_seed0",
+      "array_index": 2,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/02_ours_sgd_seed0.json",
+      "config_sha256": "b06574ba1bf83c936425ba90acad962261b947edcc3a704190637b4ca2bc6b1b",
+      "epochs": 30,
+      "learning_rates": [
+        0.523358,
+        0.246043,
+        0.0520201,
+        0.523358,
+        0.246043
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ]
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_ours_adam_seed0",
+      "array_index": 3,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/03_ours_adam_seed0.json",
+      "config_sha256": "fbd062a5900fdb6ef70032e98fb2624fcb456f75ba9e35e17935d0709c786417",
+      "epochs": 30,
+      "learning_rates": [
+        0.00260036,
+        0.000458651,
+        0.000155136,
+        0.00260036,
+        0.000458651
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ]
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_legacy_sgd_seed0",
+      "array_index": 4,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/04_legacy_sgd_seed0.json",
+      "config_sha256": "9611ec0e12ee148c1841071859df407785eed022cc8d7161ead208fc7acea4bd",
+      "epochs": 30,
+      "learning_rates": [
+        0.00496733,
+        0.00367839,
+        0.00236044,
+        0.00496733,
+        0.000674726
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ]
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_legacy_adam_seed0",
+      "array_index": 5,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/05_legacy_adam_seed0.json",
+      "config_sha256": "2231111fd1a8a5c6962025da0a1480654305dc1a4ccf0de3cd675e8f0afeffcb",
+      "epochs": 30,
+      "learning_rates": [
+        0.00086675,
+        0.000152841,
+        5.16982e-05,
+        0.00086675,
+        0.000152841
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ]
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_seed0",
+      "array_index": 0,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/00_baseline_sgd_seed0.json",
+      "config_sha256": "c1e10a701a9b42cb75787e905b94b70d0de964cfdfefb7f411d64ea61fdb2fb7",
+      "epochs": 30,
+      "learning_rates": [
+        2.2203793618679493,
+        6.284350813613316,
+        4.669784642297713,
+        1.1922264543625982,
+        2.2203793618679493,
+        6.284350813613316,
+        2.2923855388642425
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ]
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_adam_seed0",
+      "array_index": 1,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/01_baseline_adam_seed0.json",
+      "config_sha256": "34b39f744da3988ada60c8a928e9675430709548f37cf75d2e271ebd5fd73b4e",
+      "epochs": 30,
+      "learning_rates": [
+        0.0026037179886572314,
+        0.00046993113678684014,
+        0.0003322605058323205,
+        0.001023541308739098,
+        0.0026037179886572314,
+        0.00046993113678684014,
+        0.0003322605058323205
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ]
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_ours_sgd_seed0",
+      "array_index": 2,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/02_ours_sgd_seed0.json",
+      "config_sha256": "c512c41f541edbbd65b2778bbd339ca90ba22260372d467f1b7df883b30b1644",
+      "epochs": 30,
+      "learning_rates": [
+        3.1300877318089113,
+        8.482972347315009,
+        6.24175381011778,
+        0.17870849773668998,
+        3.1300877318089113,
+        8.482972347315009,
+        0.3438784410185788
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ]
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_ours_adam_seed0",
+      "array_index": 3,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/03_ours_adam_seed0.json",
+      "config_sha256": "86040da0d9a5d7b65ce5444fe88fe1cc962579e451979856a2a3b37702b1887f",
+      "epochs": 30,
+      "learning_rates": [
+        0.007802510895760823,
+        0.0013830409123187907,
+        0.000979562021138172,
+        0.00032928176432380754,
+        0.007802510895760823,
+        0.0013830409123187907,
+        0.000979562021138172
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ]
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_legacy_sgd_seed0",
+      "array_index": 4,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/04_legacy_sgd_seed0.json",
+      "config_sha256": "9f294d3e956e68e1bf2e70d6e3e39fad1185c65a50497cafbd76989764d7ea84",
+      "epochs": 30,
+      "learning_rates": [
+        0.08008038240763024,
+        0.17028521248059242,
+        0.12192769431164927,
+        0.003557075376857609,
+        0.08008038240763024,
+        0.10380168739104166,
+        0.00011789689061778969
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ]
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_legacy_adam_seed0",
+      "array_index": 5,
+      "config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/05_legacy_adam_seed0.json",
+      "config_sha256": "6b1341fa23243ec63cc415a84731868ec7e1ba2bbbd919a4f73d193c290fa290",
+      "epochs": 30,
+      "learning_rates": [
+        0.0026002998888117633,
+        0.0004587373495931551,
+        0.00032513151419594926,
+        3.648613773749338e-05,
+        0.0026002998888117633,
+        0.0004587373495931551,
+        0.00032513151419594926
+      ],
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ]
+    }
+  ],
+  "schema_version": "mnist-conv-paper-study-manifest/v1",
+  "seed": 0,
+  "status": "frozen_launch_candidate",
+  "study_id": "perfectdiode-paper-medium-affine-wide-seed0-20260729-v1",
+  "weight_contract": [
+    0.0,
+    100.0
+  ]
+}
