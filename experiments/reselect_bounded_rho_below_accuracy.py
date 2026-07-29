@@ -114,6 +114,19 @@ def _confined_edge(
     return None
 
 
+def _selected_edge(
+    selection: Mapping[str, Any],
+    axis: str,
+    values: Sequence[float],
+) -> str | None:
+    selected = float(selection["selected"][axis])
+    if selected == min(values):
+        return "lower"
+    if selected == max(values):
+        return "upper"
+    return None
+
+
 def _expanded_value(values: Sequence[float], edge: str) -> float:
     if edge == "lower":
         return min(values) / 3.0
@@ -164,8 +177,8 @@ def reselect_surface(
             f"Expected a 3x3 core for {surface['surface_id']}, got "
             f"{core_conv!r} x {core_dense!r}."
         )
-    conv_edge = _confined_edge(selection["plateau"], "rho_conv", core_conv)
-    dense_edge = _confined_edge(selection["plateau"], "rho_dense", core_dense)
+    conv_edge = _selected_edge(selection, "rho_conv", core_conv)
+    dense_edge = _selected_edge(selection, "rho_dense", core_dense)
     expanded_conv = list(core_conv)
     expanded_dense = list(core_dense)
     new_pairs: set[tuple[float, float]] = set()
@@ -208,11 +221,11 @@ def reselect_surface(
         list(candidate_by_pair.values()),
         float(study["rho_search"]["inclusive_loss_plateau"]),
     )
-    outer_conv_edge = _confined_edge(
-        final_selection["plateau"], "rho_conv", expanded_conv
+    outer_conv_edge = _selected_edge(
+        final_selection, "rho_conv", expanded_conv
     )
-    outer_dense_edge = _confined_edge(
-        final_selection["plateau"], "rho_dense", expanded_dense
+    outer_dense_edge = _selected_edge(
+        final_selection, "rho_dense", expanded_dense
     )
     range_bounded = outer_conv_edge is not None or outer_dense_edge is not None
     backup = surface_dir / "selection.pre_below_accuracy_policy.json"

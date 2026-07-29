@@ -218,10 +218,10 @@ publishes the all-depth global bounded-initializer decision.
 
 For these focused bounded studies, 90% remains a reported performance
 threshold. If no safety-clean core candidate reaches it, selection falls back
-to the lowest-loss completed candidate. A fallback plateau confined to a
-tested edge receives the same single factor-of-three expansion wave, and the
-terminal result explicitly reports whether the explored rho range is still
-bounded or is bracketed.
+to the lowest-loss completed candidate. A fallback selected point on a tested
+edge receives the same single factor-of-three expansion wave, and the terminal
+result explicitly reports whether the explored rho range is still bounded or
+is bracketed.
 
 ## During And After
 

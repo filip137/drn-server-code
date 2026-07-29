@@ -7,10 +7,10 @@ import torch
 
 import experiments.run_conv12_bounded_rho as bounded_rho_runner
 from experiments.reselect_bounded_rho_below_accuracy import (
-    _confined_edge as reselect_confined_edge,
+    _select_best_safe as reselect_best_safe,
 )
 from experiments.reselect_bounded_rho_below_accuracy import (
-    _select_best_safe as reselect_best_safe,
+    _selected_edge as reselect_selected_edge,
 )
 from experiments.run_conv12_bounded_rho import (
     _has_clean_canary,
@@ -328,8 +328,8 @@ def test_compatibility_reselector_detects_below_accuracy_boundary() -> None:
 
     assert selection["selected"]["cell_id"] == "best"
     assert (
-        reselect_confined_edge(
-            selection["plateau"],
+        reselect_selected_edge(
+            selection,
             "rho_conv",
             [0.001, 0.003, 0.009],
         )

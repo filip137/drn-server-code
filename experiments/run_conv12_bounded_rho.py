@@ -877,6 +877,21 @@ def _confined_edge(
     return None
 
 
+def _selection_edge(
+    selection: Mapping[str, Any],
+    axis: str,
+    values: Sequence[float],
+) -> str | None:
+    if selection.get("selection_basis") != "best_safe_below_accuracy":
+        return _confined_edge(selection["plateau"], axis, values)
+    selected = float(selection["selected"][axis])
+    if selected == min(values):
+        return "lower"
+    if selected == max(values):
+        return "upper"
+    return None
+
+
 def run_rho_surface(
     study: Mapping[str, Any],
     output_root: Path,
@@ -1029,8 +1044,8 @@ def run_rho_surface(
         _write_json(selection_path, result)
         return result
 
-    conv_edge = _confined_edge(selection["plateau"], "rho_conv", core_conv)
-    dense_edge = _confined_edge(selection["plateau"], "rho_dense", core_dense)
+    conv_edge = _selection_edge(selection, "rho_conv", core_conv)
+    dense_edge = _selection_edge(selection, "rho_dense", core_dense)
     expanded_conv = list(core_conv)
     expanded_dense = list(core_dense)
     new_pairs: set[tuple[float, float]] = set()
@@ -1093,11 +1108,11 @@ def run_rho_surface(
             search.get("select_best_safe_below_accuracy", False)
         ),
     )
-    outer_conv_edge = _confined_edge(
-        final_selection["plateau"], "rho_conv", expanded_conv
+    outer_conv_edge = _selection_edge(
+        final_selection, "rho_conv", expanded_conv
     )
-    outer_dense_edge = _confined_edge(
-        final_selection["plateau"], "rho_dense", expanded_dense
+    outer_dense_edge = _selection_edge(
+        final_selection, "rho_dense", expanded_dense
     )
     range_bounded = bool(
         outer_conv_edge is not None or outer_dense_edge is not None
