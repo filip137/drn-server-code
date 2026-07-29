@@ -10,6 +10,8 @@ import torch
 from experiments.rho_search import (
     OptimizerProbe,
     _cell_signature,
+    _git_state,
+    _indexed_cells,
     derive_learning_rates,
     linear_quantile,
     nominal_proposal,
@@ -264,6 +266,8 @@ def test_dry_run_does_not_create_output_or_import_trainer(tmp_path: Path) -> Non
         shuffle_seed=0,
         device=None,
         probe_only=False,
+        index=None,
+        collect_only=False,
         force=False,
         dry_run=True,
     )
@@ -272,6 +276,40 @@ def test_dry_run_does_not_create_output_or_import_trainer(tmp_path: Path) -> Non
 
     assert result["cells"] == 4
     assert not output.exists()
+
+
+def test_indexed_cells_selects_one_cartesian_entry() -> None:
+    all_pairs, selected = _indexed_cells(
+        [0.001, 0.003],
+        [0.01, 0.03],
+        index=2,
+    )
+
+    assert all_pairs == [
+        (0.001, 0.01),
+        (0.001, 0.03),
+        (0.003, 0.01),
+        (0.003, 0.03),
+    ]
+    assert selected == [(2, 0.003, 0.01)]
+
+
+def test_indexed_cells_rejects_out_of_range_index() -> None:
+    with pytest.raises(ValueError, match="--index"):
+        _indexed_cells([0.001], [0.01], index=1)
+
+
+def test_git_state_survives_missing_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing_git(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr("experiments.rho_search.subprocess.run", missing_git)
+
+    state = _git_state()
+
+    assert state["commit"] is None
+    assert state["dirty"] is None
+    assert len(state["working_tree_sha256"]) == 64
 
 
 @pytest.mark.parametrize("value", [0.0, -1.0, float("nan")])

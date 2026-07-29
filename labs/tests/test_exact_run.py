@@ -151,6 +151,65 @@ def test_run_writes_per_case_record_and_propagates_failure(
     record = json.loads(record_path.read_text(encoding="utf-8"))
     assert record["returncode"] == 7
     assert record["status"] == "failed"
+    reporting_status = json.loads(
+        (record_path.parent / "status.json").read_text(encoding="utf-8")
+    )
+    assert reporting_status["state"] == "failed"
+    assert reporting_status["error"]["returncode"] == 7
+    assert not (record_path.parent / "result.json").exists()
+
+
+def test_successful_run_writes_canonical_result_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _write_config(tmp_path / "sgd.json")
+    output_root = tmp_path / "results"
+    monkeypatch.setattr(
+        "experiments.exact_run._git_state",
+        lambda: {"commit": "abc", "dirty": False},
+    )
+
+    def successful(command: list[str], **kwargs: object) -> object:
+        output = Path(command[command.index("--output-dir") + 1])
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "metrics.json").write_text(
+            json.dumps(
+                {
+                    "best_epoch": 1,
+                    "final_train_loss": 0.3,
+                    "final_train_accuracy": 0.8,
+                    "best_train_accuracy": 0.8,
+                    "final_test_loss": 0.2,
+                    "final_test_accuracy": 0.9,
+                    "best_test_accuracy": 0.9,
+                    "dataset_provenance": {
+                        "schema": "mnist-train-validation-split/v1"
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (output / "final_model.pt").write_bytes(b"checkpoint")
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr("experiments.exact_run.subprocess.run", successful)
+    result = run(
+        [config],
+        output_root=output_root,
+        study_id="paper-conv1",
+        evidence_class="medium_affine_experiment",
+    )
+
+    run_dir = Path(result["runs"][0]["output_dir"])
+    reporting_result = json.loads(
+        (run_dir / "result.json").read_text(encoding="utf-8")
+    )
+    assert reporting_result["study_id"] == "paper-conv1"
+    assert reporting_result["terminal_metrics"]["validation"][
+        "final_accuracy"
+    ] == 0.9
+    assert (run_dir / "checkpoints" / "final_model.pt").is_symlink()
 
 
 def test_existing_case_directory_is_not_reused(

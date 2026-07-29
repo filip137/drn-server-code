@@ -196,6 +196,9 @@ implement the complete 640-step scientific-canary, factor-of-three expansion,
 
 ## During And After
 
+- Follow the canonical run-bundle and promotion rules in
+  [`experiment_reporting.md`](experiment_reporting.md). A failed run records
+  its error in `status.json` and must not publish a successful `result.json`.
 - Record the resolved config, command, commit, environment, target/job
   identity, logs, metrics, checkpoints, and completion record in one
   run-specific directory.
@@ -207,5 +210,9 @@ implement the complete 640-step scientific-canary, factor-of-three expansion,
   evidence.
 - Analyze outputs against declared completion criteria. Label partial
   evidence, confounds, and deviations explicitly.
+- Keep live `running` state in the generated block of
+  [`current_simulations.md`](current_simulations.md). Add study conclusions to
+  [`experimental_manifest.md`](experimental_manifest.md) only after the
+  relevant arms and seeds have been analyzed.
 - Update `docs/current_state.md` with terminal scientific status, not transient
   busy/idle node state.

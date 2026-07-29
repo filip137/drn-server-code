@@ -32,3 +32,27 @@ def test_generated_config_has_explicit_sgd(monkeypatch) -> None:
         "momentum": 0.0,
         "weight_decay": 0.0,
     }
+
+
+def test_generated_config_accepts_unbounded_upper_weight(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "conv-sweep",
+            "--minimizer-config",
+            "labs/configs/mnist_minimizer_fixed_iterations.json",
+            "--weight-min",
+            "0",
+            "--weight-max",
+            "none",
+        ],
+    )
+    args = parse_args()
+    config = _build_config(
+        args,
+        RunSpec("perfect_diode", "mnist_bp_amp_v1_c1", 0, 1.0, 1.0),
+    )
+
+    assert config["model_base"]["weight_min"] == 0.0
+    assert config["model_base"]["weight_max"] is None

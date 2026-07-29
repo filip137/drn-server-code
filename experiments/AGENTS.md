@@ -28,6 +28,12 @@ This guidance applies to runners, launchers, collectors, and monitors in
   step for training), and writes an artifact.
 - Give every run its own output directory. Record the config, command, commit,
   environment, host/job identity, logs, metrics, and checkpoints there.
+- New runners and maintained active runners use the lightweight bundle in
+  `docs/experiment_reporting.md`: immutable `manifest.json`, atomic
+  `status.json`, append-only `metrics.jsonl`, and successful-only
+  `result.json`.
+- Generated active reporting may summarize operational state. Scientific
+  outcomes and interpretation remain manual in `docs/experimental_manifest.md`.
 - Keep local and Slurm entry points on the same command/config contract.
 - Keep one scientific surface on one recorded target. Host selection must not
   become a scheme-dependent experimental factor.

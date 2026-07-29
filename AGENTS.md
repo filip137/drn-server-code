@@ -56,6 +56,9 @@ Conv3. Start with:
 `docs/current_state.md` is the concise dashboard and node inventory.
 `docs/experiment_workflow.md` is the execution guide. Historical and archived
 documents are provenance, not authority for new runs.
+New runs follow `docs/experiment_reporting.md`; live state is generated in
+`docs/current_simulations.md`, and analyzed conclusions are curated manually
+in `docs/experimental_manifest.md`.
 
 Ordinary MNIST is used for `T/K`, rho, learning-rate, and bounded-initializer
 selection. Deterministic medium-affine MNIST is used for paper runs. A
@@ -92,6 +95,9 @@ Follow `docs/experiment_workflow.md`.
   the protocol requires matched comparisons.
 - Save the resolved config, exact command, commit, environment summary, logs,
   metrics, and checkpoints in one run-specific directory.
+- For new active runs, write the canonical `manifest.json`, `status.json`,
+  `metrics.jsonl`, and successful-only `result.json` bundle defined by
+  `docs/experiment_reporting.md`.
 - Diagnose operational failures and retry when the cause is understood and the
   science, target class, and budget remain in scope. Agents may cancel and
   replace jobs they launched when those jobs are invalid, obsolete, or

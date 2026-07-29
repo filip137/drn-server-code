@@ -21,10 +21,11 @@ except Exception:
 
 # Ensure project modules are importable
 LABS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = LABS_DIR.parent
 PROJECT_ROOT = LABS_DIR.parent / "energy-based-learning"
 DEFAULT_IMAGE_RUNS_BASE = LABS_DIR.parent / "simulation_results" / "experiments_labs"
 
-for path in (LABS_DIR, PROJECT_ROOT):
+for path in (LABS_DIR, REPO_ROOT, PROJECT_ROOT):
     if str(path) not in sys.path:
         sys.path.append(str(path))
 
@@ -475,6 +476,61 @@ def _checkpoint_best_then_callback(
     return best_accuracy, best_epoch, should_stop
 
 
+def _make_reporting_epoch_callback(
+    reporting_run_dir,
+    dataset_provenance,
+    epochs,
+    user_callback,
+):
+    if reporting_run_dir is None:
+        return user_callback
+
+    from experiments.reporting import append_metric, update_status_progress
+
+    run_dir = Path(reporting_run_dir).expanduser().resolve()
+    evaluation_split = (
+        "validation"
+        if isinstance(dataset_provenance, dict)
+        and dataset_provenance.get("schema") == "mnist-train-validation-split/v1"
+        else "test"
+    )
+
+    def callback(epoch_info, history):
+        epoch = int(epoch_info["epoch"])
+        append_metric(
+            run_dir / "metrics.jsonl",
+            {
+                "kind": "epoch",
+                "epoch": epoch,
+                "evaluation_split": evaluation_split,
+                "metrics": {
+                    "train_loss": epoch_info["train_loss"],
+                    "train_accuracy": epoch_info["train_accuracy"],
+                    f"{evaluation_split}_loss": epoch_info["test_loss"],
+                    f"{evaluation_split}_accuracy": epoch_info["test_accuracy"],
+                    "is_best": bool(epoch_info["is_best"]),
+                    "best_epoch": epoch_info["best_epoch"],
+                    f"best_{evaluation_split}_accuracy": epoch_info[
+                        "best_accuracy"
+                    ],
+                },
+            },
+        )
+        update_status_progress(
+            run_dir,
+            {
+                "stage": "training",
+                "epoch": epoch,
+                "epochs": int(epochs),
+            },
+        )
+        if user_callback is None:
+            return False
+        return bool(user_callback(epoch_info, history))
+
+    return callback
+
+
 def _default_quadratic_params():
     return {"diode_conductance": 1.0, "v_min": -1e6, "v_max": 1e6}
 
@@ -822,6 +878,7 @@ def _train_image_task(
     weight_decay=None,
     gradient_callback=None,
     apply_optimizer_steps=True,
+    reporting_run_dir=None,
 ):
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
@@ -1080,6 +1137,13 @@ def _train_image_task(
     else:
         train_loader = loader_result
         test_loader = None
+
+    epoch_callback = _make_reporting_epoch_callback(
+        reporting_run_dir,
+        dataset_provenance,
+        epochs,
+        epoch_callback,
+    )
 
     if training_algorithm == "EP":
         params = augmented_fn.params()
@@ -1618,6 +1682,7 @@ def train_mnist_conv(
     weight_decay=None,
     gradient_callback=None,
     apply_optimizer_steps=True,
+    reporting_run_dir=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1644,6 +1709,7 @@ def train_mnist_conv(
         weight_decay=weight_decay,
         gradient_callback=gradient_callback,
         apply_optimizer_steps=apply_optimizer_steps,
+        reporting_run_dir=reporting_run_dir,
     )
 
 
@@ -1664,6 +1730,7 @@ def train_tiny_grid(
     lr_decay=None,
     init_checkpoint_path=None,
     batch_state_policy=None,
+    reporting_run_dir=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1685,6 +1752,7 @@ def train_tiny_grid(
         lr_decay=lr_decay,
         init_checkpoint_path=init_checkpoint_path,
         batch_state_policy=batch_state_policy,
+        reporting_run_dir=reporting_run_dir,
     )
 
 
@@ -1749,6 +1817,12 @@ def main(argv=None):
         type=str,
         default=None,
         help="Optional directory for run artifacts such as config.used.json, run_metadata.json, and TensorBoard events.",
+    )
+    parser.add_argument(
+        "--reporting-run-dir",
+        type=str,
+        default=None,
+        help="Canonical run directory whose metrics.jsonl and status.json are updated.",
     )
     parser.add_argument(
         "--init-checkpoint",
@@ -1862,6 +1936,7 @@ def main(argv=None):
         seed=args.seed,
         lr_decay=lr_decay,
         init_checkpoint_path=args.init_checkpoint,
+        reporting_run_dir=args.reporting_run_dir,
     )
     if model_key != "tiny3x3":
         train_kwargs["dataset_key"] = dataset_key

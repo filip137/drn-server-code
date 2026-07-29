@@ -83,8 +83,8 @@ labs/experiments/
 !labs/figures_for_paper_digits/**
 
 # Local run/data noise
-.codex
-.codex/
+.codex/*
+!.codex/config.toml
 data/
 logs/
 runs/

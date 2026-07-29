@@ -93,6 +93,12 @@ REQUIRED_RUN_FILES = [
 ]
 
 
+def _optional_float(value: str) -> float | None:
+    if value.strip().lower() in {"none", "null"}:
+        return None
+    return float(value)
+
+
 @dataclass(frozen=True)
 class RunSpec:
     non_linearity: str
@@ -705,7 +711,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dim", type=int, default=20)
     parser.add_argument("--weight-gains", type=float, nargs="+", default=[1.0])
     parser.add_argument("--weight-min", type=float, default=0.0)
-    parser.add_argument("--weight-max", type=float, default=100.0)
+    parser.add_argument(
+        "--weight-max",
+        type=_optional_float,
+        default=100.0,
+        help="Upper weight bound, or 'none'/'null' for no finite upper bound.",
+    )
     parser.add_argument("--weight-init-mode", default="kaiming_uniform")
     parser.add_argument("--input-gain", type=float, default=100.0)
     parser.add_argument("--trainable-amplification", action="store_true")

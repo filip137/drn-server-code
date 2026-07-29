@@ -59,6 +59,7 @@ Changing an earlier stage invalidates its dependent later stages.
 | Conv3 ordinary-MNIST `T/K` and rho | [`perfectdiode_conv3_learning_protocol.md`](perfectdiode_conv3_learning_protocol.md) | protocol authorized; terminal handoffs incomplete |
 | Bounded initializer and rho | [`perfectdiode_bounded_weight_protocol.md`](perfectdiode_bounded_weight_protocol.md) | all-depth selector specified; execution pending |
 | Execution and targets | [`experiment_workflow.md`](experiment_workflow.md) | active |
+| Result reporting | [`experiment_reporting.md`](experiment_reporting.md) | active |
 | Dashboard and nodes | [`current_state.md`](current_state.md) | active |
 
 The immutable Conv1/Conv2 bounded-initialization JSON predates the all-depth

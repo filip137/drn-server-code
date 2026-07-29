@@ -14,6 +14,16 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+try:
+    from experiments.reporting import (
+        complete_run,
+        fail_run,
+        runtime_context,
+        start_run,
+    )
+except ModuleNotFoundError:  # Support direct execution from the repository root.
+    from reporting import complete_run, fail_run, runtime_context, start_run
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -129,6 +139,7 @@ def build_train_command(
     *,
     device: str | None = None,
     smoke: bool = False,
+    reporting_run_dir: Path | None = None,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -138,6 +149,8 @@ def build_train_command(
         "--output-dir",
         str(output_dir),
     ]
+    if reporting_run_dir is not None:
+        command.extend(["--reporting-run-dir", str(reporting_run_dir)])
     if device:
         command.extend(["--device", device])
     if smoke:
@@ -175,6 +188,63 @@ def _git_state() -> dict[str, Any]:
     }
 
 
+def _dataset_contract(config: Mapping[str, Any]) -> dict[str, Any]:
+    lab = config.get("lab", {})
+    dataset_key = str(lab.get("dataset_key", "mnist"))
+    datasets = config.get("datasets", {})
+    dataset = datasets.get(dataset_key, {}) if isinstance(datasets, Mapping) else {}
+    factory = dataset.get("factory") if isinstance(dataset, Mapping) else None
+    params = dataset.get("params", {}) if isinstance(dataset, Mapping) else {}
+    train_validation = bool(factory and "TrainValidation" in str(factory))
+    return {
+        "key": dataset_key,
+        "factory": factory,
+        "params": params,
+        "evaluation_split": "validation" if train_validation else "test",
+        "official_test_read": False if train_validation else None,
+    }
+
+
+def _evidence_class(config: Mapping[str, Any], override: str | None) -> str:
+    if override:
+        return override
+    reporting = config.get("reporting", {})
+    if isinstance(reporting, Mapping) and reporting.get("evidence_class"):
+        return str(reporting["evidence_class"])
+    dataset = _dataset_contract(config)
+    if dataset["evaluation_split"] == "validation":
+        return "ordinary_mnist_selection"
+    if dataset["key"] == "mnist" and dataset["factory"] and "Affine" in str(
+        dataset["factory"]
+    ):
+        return "medium_affine_experiment"
+    return "diagnostic"
+
+
+def _terminal_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    dataset = metrics.get("dataset_provenance", {})
+    split = (
+        "validation"
+        if isinstance(dataset, Mapping)
+        and dataset.get("schema") == "mnist-train-validation-split/v1"
+        else "test"
+    )
+    result = {
+        "best_epoch": metrics.get("best_epoch"),
+        "train": {
+            "final_loss": metrics.get("final_train_loss"),
+            "final_accuracy": metrics.get("final_train_accuracy"),
+            "best_accuracy": metrics.get("best_train_accuracy"),
+        },
+        split: {
+            "final_loss": metrics.get("final_test_loss"),
+            "final_accuracy": metrics.get("final_test_accuracy"),
+            "best_accuracy": metrics.get("best_test_accuracy"),
+        },
+    }
+    return result
+
+
 def run(
     configs: Sequence[Path],
     *,
@@ -183,6 +253,9 @@ def run(
     smoke: bool = False,
     index: int | None = None,
     dry_run: bool = False,
+    study_id: str | None = None,
+    evidence_class: str | None = None,
+    target: str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     chosen = selected_configs(configs, index, environ=environ)
@@ -201,7 +274,20 @@ def run(
             case_dir,
             device=device,
             smoke=smoke,
+            reporting_run_dir=case_dir,
         )
+        reporting = config.get("reporting", {})
+        arm_id = (
+            str(reporting["arm_id"])
+            if isinstance(reporting, Mapping) and reporting.get("arm_id")
+            else config_path.stem
+        )
+        resolved_study_id = study_id or output_root.name
+        runtime = runtime_context(
+            target=target,
+            environ=os.environ if environ is None else environ,
+        )
+        runtime["device"] = device
         record = {
             "index": position,
             "config": str(config_path),
@@ -230,12 +316,68 @@ def run(
                 f"Expected a new or empty output directory. Provided value: {case_dir}."
             )
 
+        manifest = {
+            "study_id": resolved_study_id,
+            "run_id": case_dir.name,
+            "arm_id": arm_id,
+            "evidence_class": _evidence_class(config, evidence_class),
+            "smoke": smoke,
+            "configuration": {
+                "path": str(config_path),
+                "sha256": config_sha256,
+                "resolved": config,
+                "learning_rates": config["lr"],
+                "optimizer": config["optimizer"]["name"],
+                "epochs": record["epochs"],
+            },
+            "dataset": _dataset_contract(config),
+            "command": command,
+            "git": git_state,
+            "runtime": runtime,
+            "inputs": [
+                {
+                    "role": "scientific_config",
+                    "path": str(config_path),
+                    "sha256": config_sha256,
+                }
+            ],
+        }
+        start_run(case_dir, manifest)
         record_path = case_dir / "exact_run.json"
         _write_json(record_path, record)
-        completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
+        try:
+            completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
+        except BaseException as error:
+            record["status"] = "failed"
+            record["error"] = str(error)
+            _write_json(record_path, record)
+            fail_run(case_dir, error=error)
+            raise
         record["returncode"] = completed.returncode
         record["status"] = "complete" if completed.returncode == 0 else "failed"
         _write_json(record_path, record)
+        if completed.returncode:
+            fail_run(
+                case_dir,
+                error=f"Training command exited with status {completed.returncode}.",
+                returncode=completed.returncode,
+            )
+        else:
+            metrics_path = case_dir / "metrics.json"
+            metrics = (
+                json.loads(metrics_path.read_text(encoding="utf-8"))
+                if metrics_path.exists()
+                else {}
+            )
+            complete_run(
+                case_dir,
+                terminal_metrics=_terminal_metrics(metrics),
+                completion={
+                    "criteria_met": True,
+                    "returncode": completed.returncode,
+                    "smoke": smoke,
+                },
+            )
         results.append(record)
         if completed.returncode:
             break
@@ -260,6 +402,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--index", type=int)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--study-id")
+    parser.add_argument("--evidence-class")
+    parser.add_argument("--target")
     return parser.parse_args(argv)
 
 
@@ -272,6 +417,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         smoke=args.smoke,
         index=args.index,
         dry_run=args.dry_run,
+        study_id=args.study_id,
+        evidence_class=args.evidence_class,
+        target=args.target,
     )
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
     return 0 if result["status"] in {"complete", "planned"} else 1

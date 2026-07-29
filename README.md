@@ -17,7 +17,14 @@ Start here:
 - [`docs/perfectdiode_bounded_weight_protocol.md`](docs/perfectdiode_bounded_weight_protocol.md)
   defines bounded-initializer selection; and
 - [`docs/experiment_workflow.md`](docs/experiment_workflow.md) documents local,
-  Akib, Trex, and Jean Zay execution.
+  Akib, Trex, and Jean Zay execution; and
+- [`docs/experiment_reporting.md`](docs/experiment_reporting.md) defines run
+  bundles, live reporting, study analysis, and the finished-study ledger.
+
+Live runs appear in
+[`docs/current_simulations.md`](docs/current_simulations.md). Reviewed study
+conclusions are added manually to
+[`docs/experimental_manifest.md`](docs/experimental_manifest.md).
 
 Scientific runners own their readable configs and outputs.
 `python -m experiments.launch` transports an existing command to a configured

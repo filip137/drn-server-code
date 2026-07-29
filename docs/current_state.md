@@ -3,7 +3,9 @@
 Updated: 2026-07-29
 
 This is a dashboard, not a second protocol. Selection rules remain in the
-[active protocol index](conv_paper_hyperparameter_protocol.md).
+[active protocol index](conv_paper_hyperparameter_protocol.md). Live running
+state is generated separately in
+[`current_simulations.md`](current_simulations.md).
 
 ## Current Focus
 

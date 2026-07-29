@@ -422,9 +422,12 @@ Terminal LR reasons include `selected_seed0_ordinary_mnist_three_epoch_screen`,
 `unresolved_post_training_tk`. Every one of the six declared surfaces must
 have one terminal selected-or-unresolved record.
 
-Publish separate diagnostic comparison cards for T/K and the six-surface LR
-screen through the existing result registry. A successful handoff freezes the
-LR vector for its matching medium-affine wide-range row, but no
+Report T/K and the six-surface LR screen through the canonical run bundles and
+study-analysis layout in
+[`experiment_reporting.md`](experiment_reporting.md). After review, add the
+supported conclusion to the manual experimental manifest. Existing
+result-registry cards remain historical evidence. A successful handoff freezes
+the LR vector for its matching medium-affine wide-range row, but no
 ordinary-MNIST accuracy or checkpoint is a paper result.
 
 ## Execution Contract

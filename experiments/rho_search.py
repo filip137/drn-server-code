@@ -12,10 +12,21 @@ import json
 import math
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import torch
+
+try:
+    from experiments.reporting import (
+        complete_run,
+        fail_run,
+        runtime_context,
+        start_run,
+    )
+except ModuleNotFoundError:  # Support direct execution from the repository root.
+    from reporting import complete_run, fail_run, runtime_context, start_run
 
 
 PARAMETER_RE = re.compile(r"^(ConvWeight|DenseWeight|Bias)_(\d+)$")
@@ -427,6 +438,7 @@ def _run_trainer(
     device: str | None,
     gradient_callback=None,
     apply_optimizer_steps: bool = True,
+    reporting_run_dir: Path | None = None,
 ) -> dict[str, Any]:
     from labs.mnist_train import train_mnist_conv
 
@@ -448,6 +460,7 @@ def _run_trainer(
         lr_decay=1.0,
         gradient_callback=gradient_callback,
         apply_optimizer_steps=apply_optimizer_steps,
+        reporting_run_dir=reporting_run_dir,
     )
 
 
@@ -477,6 +490,22 @@ def _summary_row(index: int, rho_conv: float, rho_dense: float, cell_dir: Path) 
     }
 
 
+def _terminal_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "best_epoch": metrics.get("best_epoch"),
+        "train": {
+            "final_loss": metrics.get("final_train_loss"),
+            "final_accuracy": metrics.get("final_train_accuracy"),
+            "best_accuracy": metrics.get("best_train_accuracy"),
+        },
+        "validation": {
+            "final_loss": metrics.get("final_test_loss"),
+            "final_accuracy": metrics.get("final_test_accuracy"),
+            "best_accuracy": metrics.get("best_test_accuracy"),
+        },
+    }
+
+
 def _write_summary(output_root: Path, rows: Sequence[Mapping[str, Any]]) -> None:
     _write_json(output_root / "summary.json", list(rows))
     fieldnames = list(rows[0]) if rows else [
@@ -490,35 +519,61 @@ def _write_summary(output_root: Path, rows: Sequence[Mapping[str, Any]]) -> None
         writer.writerows(rows)
 
 
+def _indexed_cells(
+    rhos_conv: Sequence[float],
+    rhos_dense: Sequence[float],
+    index: int | None,
+) -> tuple[list[tuple[float, float]], list[tuple[int, float, float]]]:
+    pairs = list(itertools.product(rhos_conv, rhos_dense))
+    if index is None:
+        return pairs, [
+            (cell_index, rho_conv, rho_dense)
+            for cell_index, (rho_conv, rho_dense) in enumerate(pairs)
+        ]
+    if index < 0 or index >= len(pairs):
+        raise ValueError(
+            f"Expected --index in [0, {len(pairs) - 1}]. Provided value: {index!r}."
+        )
+    rho_conv, rho_dense = pairs[index]
+    return pairs, [(index, rho_conv, rho_dense)]
+
+
 def _git_state() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    diff = subprocess.run(
-        ["git", "diff", "--binary", "HEAD", "--"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-    )
     fingerprint = hashlib.sha256()
-    fingerprint.update(status.stdout.encode("utf-8"))
-    fingerprint.update(diff.stdout)
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        diff = subprocess.run(
+            ["git", "diff", "--binary", "HEAD", "--"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        commit_value = None
+        dirty_value = None
+    else:
+        fingerprint.update(status.stdout.encode("utf-8"))
+        fingerprint.update(diff.stdout)
+        commit_value = commit.stdout.strip() if commit.returncode == 0 else None
+        dirty_value = bool(status.stdout.strip()) if status.returncode == 0 else None
     fingerprint.update(Path(__file__).read_bytes())
     return {
-        "commit": commit.stdout.strip() if commit.returncode == 0 else None,
-        "dirty": bool(status.stdout.strip()) if status.returncode == 0 else None,
+        "commit": commit_value,
+        "dirty": dirty_value,
         "working_tree_sha256": fingerprint.hexdigest(),
     }
 
@@ -565,6 +620,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     counts = tuple(args.probe_batches)
     rate_count = _configured_rate_count(base)
     output_root = Path(args.output_root).expanduser().resolve()
+    study_id = getattr(args, "study_id", None) or output_root.name
+    target = getattr(args, "target", None)
+    all_pairs, selected_cells = _indexed_cells(rhos_conv, rhos_dense, args.index)
+    if args.collect_only and args.index is not None:
+        raise ValueError("--collect-only and --index are mutually exclusive.")
     resolved = {
         "schema_version": "conv-rho-search/v1",
         "source_config": str(base_path),
@@ -585,11 +645,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "device": args.device,
     }
     if args.dry_run:
-        resolved["cells"] = len(rhos_conv) * len(rhos_dense)
-        return resolved
+        planned = dict(resolved)
+        planned["cells"] = len(all_pairs)
+        planned["selected_indices"] = [index for index, _, _ in selected_cells]
+        planned["mode"] = "collect" if args.collect_only else "run"
+        return planned
 
     output_root.mkdir(parents=True, exist_ok=True)
-    _write_json(output_root / "resolved.json", resolved)
+    resolved_path = output_root / "resolved.json"
+    if resolved_path.exists():
+        existing_resolved = json.loads(resolved_path.read_text(encoding="utf-8"))
+        if existing_resolved != resolved:
+            raise RuntimeError(
+                "Existing resolved.json does not match this rho-search command. "
+                f"Path: {resolved_path}."
+            )
+    elif args.index is not None or args.collect_only:
+        raise RuntimeError(
+            "Indexed and collection modes require a completed probe invocation to "
+            f"create {resolved_path} first."
+        )
+    else:
+        _write_json(resolved_path, resolved)
     probe_path = output_root / "probe.json"
     probe = None
     if probe_path.exists() and not args.force:
@@ -640,10 +717,52 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.probe_only:
         return {"probe": str(probe_path), "status": "complete"}
 
+    if args.collect_only:
+        rows = []
+        missing = []
+        for index, (rho_conv, rho_dense) in enumerate(all_pairs):
+            name = (
+                f"{index:03d}_rc_{_float_token(rho_conv)}_"
+                f"rd_{_float_token(rho_dense)}"
+            )
+            cell_dir = output_root / "cells" / name
+            cell_path = cell_dir / "cell.json"
+            if not cell_path.exists():
+                missing.append(str(cell_path))
+                continue
+            cell = json.loads(cell_path.read_text(encoding="utf-8"))
+            expected_signature = _cell_signature(
+                resolved,
+                probe,
+                rho_conv,
+                rho_dense,
+            )
+            if cell.get("signature") != expected_signature:
+                raise RuntimeError(
+                    f"Cell signature mismatch while collecting {cell_path}."
+                )
+            if cell.get("status") not in {"complete", "failed_nonfinite"}:
+                missing.append(f"{cell_path} (status={cell.get('status')!r})")
+                continue
+            if cell["status"] == "complete" and not (cell_dir / "metrics.json").exists():
+                missing.append(str(cell_dir / "metrics.json"))
+                continue
+            rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
+        if missing:
+            raise RuntimeError(
+                "Cannot collect an incomplete rho grid. Missing or incomplete entries: "
+                + ", ".join(missing)
+            )
+        _write_summary(output_root, rows)
+        return {
+            "status": "complete",
+            "probe": str(probe_path),
+            "summary": str(output_root / "summary.json"),
+            "cells": len(rows),
+        }
+
     rows = []
-    for index, (rho_conv, rho_dense) in enumerate(
-        itertools.product(rhos_conv, rhos_dense)
-    ):
+    for index, rho_conv, rho_dense in selected_cells:
         name = (
             f"{index:03d}_rc_{_float_token(rho_conv)}_"
             f"rd_{_float_token(rho_dense)}"
@@ -699,23 +818,101 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         config_path = cell_dir / "source_config.json"
         _write_json(config_path, candidate_config)
+        start_run(
+            cell_dir,
+            {
+                "study_id": study_id,
+                "run_id": name,
+                "arm_id": f"{optimizer_name.lower()}-rho-{rho_conv:g}-{rho_dense:g}",
+                "evidence_class": "ordinary_mnist_selection",
+                "configuration": {
+                    "path": str(config_path),
+                    "sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+                    "resolved": candidate_config,
+                    "optimizer": optimizer_name,
+                    "learning_rates": rate_vector,
+                    "rho_conv": rho_conv,
+                    "rho_dense": rho_dense,
+                    "epochs": epochs,
+                },
+                "dataset": {
+                    "key": "mnist",
+                    "variant": "ordinary",
+                    "evaluation_split": "validation",
+                    "split_seed": args.split_seed,
+                    "official_test_read": False,
+                },
+                "command": getattr(args, "reporting_command", None)
+                or {
+                    "module": "experiments.rho_search",
+                    "cell_index": index,
+                },
+                "git": resolved["code"],
+                "runtime": {
+                    **runtime_context(target=target),
+                    "device": args.device,
+                },
+                "inputs": [
+                    {
+                        "role": "source_config",
+                        "path": str(base_path),
+                        "sha256": resolved["source_config_sha256"],
+                    },
+                    {
+                        "role": "optimizer_probe",
+                        "path": str(probe_path),
+                        "sha256": hashlib.sha256(probe_path.read_bytes()).hexdigest(),
+                    },
+                ],
+            },
+        )
         from labs.mnist_train import NonFiniteTrainingError
 
         try:
-            _run_trainer(config_path, cell_dir, device=args.device)
+            _run_trainer(
+                config_path,
+                cell_dir,
+                device=args.device,
+                reporting_run_dir=cell_dir,
+            )
         except NonFiniteTrainingError as error:
             cell["status"] = "failed_nonfinite"
             cell["error"] = str(error)
+            _write_json(cell_path, cell)
+            fail_run(cell_dir, error=error)
+        except BaseException as error:
+            cell["status"] = "failed"
+            cell["error"] = str(error)
+            _write_json(cell_path, cell)
+            fail_run(cell_dir, error=error)
+            raise
         else:
             cell["status"] = "complete"
-        _write_json(cell_path, cell)
+            _write_json(cell_path, cell)
+            metrics = json.loads(
+                (cell_dir / "metrics.json").read_text(encoding="utf-8")
+            )
+            complete_run(
+                cell_dir,
+                terminal_metrics=_terminal_metrics(metrics),
+                completion={
+                    "criteria_met": True,
+                    "rho_cell_complete": True,
+                    "official_test_read": False,
+                },
+            )
         rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
 
-    _write_summary(output_root, rows)
+    if args.index is None:
+        _write_summary(output_root, rows)
+        summary_path = output_root / "summary.json"
+    else:
+        summary_path = output_root / "shards" / f"{args.index:03d}.json"
+        _write_json(summary_path, rows[0])
     return {
         "status": "complete",
         "probe": str(probe_path),
-        "summary": str(output_root / "summary.json"),
+        "summary": str(summary_path),
         "cells": len(rows),
     }
 
@@ -737,14 +934,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--split-seed", type=int, default=0)
     parser.add_argument("--shuffle-seed", type=int, default=0)
     parser.add_argument("--device")
+    parser.add_argument("--study-id")
+    parser.add_argument("--target")
     parser.add_argument("--probe-only", action="store_true")
+    parser.add_argument("--index", type=int, help="Run one Cartesian-grid cell by index")
+    parser.add_argument(
+        "--collect-only",
+        action="store_true",
+        help="Validate all indexed cells and write the combined summary",
+    )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    result = run(parse_args(argv))
+    args = parse_args(argv)
+    args.reporting_command = [
+        sys.executable,
+        "-m",
+        "experiments.rho_search",
+        *(list(argv) if argv is not None else sys.argv[1:]),
+    ]
+    result = run(args)
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
     return 0
 

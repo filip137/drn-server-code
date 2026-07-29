@@ -1,0 +1,9 @@
+# Low-friction defaults for this trusted experiment worktree.
+#
+# Routine edits and commands run automatically inside the worktree.
+# Exceptional boundary crossings go to automatic review first, minimizing
+# user interruptions.
+
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
