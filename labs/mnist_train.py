@@ -390,6 +390,35 @@ def _require_finite_tensor(value, label, *, epoch=None, batch=None):
         )
 
 
+def _require_finite_optimizer_state(optimizer, *, epoch=None, batch=None):
+    """Fail immediately when a tensor or scalar optimizer state is non-finite."""
+
+    def visit(value, label):
+        if torch.is_tensor(value):
+            _require_finite_tensor(value, label, epoch=epoch, batch=batch)
+        elif isinstance(value, dict):
+            for index, (key, item) in enumerate(value.items()):
+                key_label = repr(key) if isinstance(key, (str, int)) else str(index)
+                visit(item, f"{label}[{key_label}]")
+        elif isinstance(value, (list, tuple)):
+            for index, item in enumerate(value):
+                visit(item, f"{label}[{index}]")
+        elif isinstance(value, (float, np.floating)) and not math.isfinite(
+            float(value)
+        ):
+            location = []
+            if epoch is not None:
+                location.append(f"epoch={epoch}")
+            if batch is not None:
+                location.append(f"batch={batch}")
+            where = f" at {', '.join(location)}" if location else ""
+            raise NonFiniteTrainingError(
+                f"Expected {label} to be finite{where}. Provided value: {value!r}."
+            )
+
+    visit(optimizer.state, "optimizer state")
+
+
 def _require_finite_scalar(value, label, *, epoch=None, batch=None):
     try:
         numeric = float(value)
@@ -877,6 +906,7 @@ def _train_image_task(
     momentum=None,
     weight_decay=None,
     gradient_callback=None,
+    optimizer_step_callback=None,
     apply_optimizer_steps=True,
     reporting_run_dir=None,
 ):
@@ -1353,12 +1383,30 @@ def _train_image_task(
                         {
                             "epoch": epoch + 1,
                             "batch": batch_idx + 1,
+                            "loss": batch_loss,
                             "parameters": tuple(params),
                             "gradients": tuple(grads[:len(params)]),
                         }
                     )
                 )
             if apply_optimizer_steps:
+                tracked_indices = (
+                    [
+                        index
+                        for index, param in enumerate(params)
+                        if str(getattr(param, "name", "")).strip().startswith(
+                            ("ConvWeight_", "DenseWeight_")
+                        )
+                    ]
+                    if optimizer_step_callback is not None
+                    else []
+                )
+                pre_optimizer_states = {
+                    str(getattr(params[index], "name", "")).strip(): (
+                        params[index].state.detach().clone()
+                    )
+                    for index in tracked_indices
+                }
                 optimizer.step()
                 _require_finite_variables(
                     energy_params + cost_params,
@@ -1366,6 +1414,17 @@ def _train_image_task(
                     epoch=epoch + 1,
                     batch=batch_idx + 1,
                 )
+                _require_finite_optimizer_state(
+                    optimizer,
+                    epoch=epoch + 1,
+                    batch=batch_idx + 1,
+                )
+                post_optimizer_states = {
+                    str(getattr(params[index], "name", "")).strip(): (
+                        params[index].state.detach().clone()
+                    )
+                    for index in tracked_indices
+                }
                 for param in energy_params:
                     param.clamp_()
                 _require_finite_variables(
@@ -1374,6 +1433,28 @@ def _train_image_task(
                     epoch=epoch + 1,
                     batch=batch_idx + 1,
                 )
+                if optimizer_step_callback is not None:
+                    stop_after_batch = bool(
+                        optimizer_step_callback(
+                            {
+                                "epoch": epoch + 1,
+                                "batch": batch_idx + 1,
+                                "loss": batch_loss,
+                                "parameters": tuple(params),
+                                "gradients": tuple(grads[:len(params)]),
+                                "pre_optimizer_states": pre_optimizer_states,
+                                "post_optimizer_states": post_optimizer_states,
+                                "post_projection_states": {
+                                    str(
+                                        getattr(params[index], "name", "")
+                                    ).strip(): (
+                                        params[index].state.detach().clone()
+                                    )
+                                    for index in tracked_indices
+                                },
+                            }
+                        )
+                    ) or stop_after_batch
 
             acc = running_correct / seen
             avg_loss = running_loss / seen
@@ -1681,6 +1762,7 @@ def train_mnist_conv(
     momentum=None,
     weight_decay=None,
     gradient_callback=None,
+    optimizer_step_callback=None,
     apply_optimizer_steps=True,
     reporting_run_dir=None,
 ):
@@ -1708,6 +1790,7 @@ def train_mnist_conv(
         momentum=momentum,
         weight_decay=weight_decay,
         gradient_callback=gradient_callback,
+        optimizer_step_callback=optimizer_step_callback,
         apply_optimizer_steps=apply_optimizer_steps,
         reporting_run_dir=reporting_run_dir,
     )

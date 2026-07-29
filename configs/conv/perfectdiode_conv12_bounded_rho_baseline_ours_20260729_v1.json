@@ -1,0 +1,154 @@
+{
+  "schema_version": "perfectdiode-conv12-bounded-rho-study/v1",
+  "study_id": "perfectdiode-conv12-bounded-rho-baseline-ours-seed0-20260729-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "scope": {
+    "architectures": [
+      "conv1",
+      "conv2"
+    ],
+    "schemes": [
+      "baseline",
+      "ours"
+    ],
+    "optimizers": [
+      "SGD",
+      "Adam"
+    ],
+    "initializers": [
+      "bounded_uniform",
+      "bounded_kaiming_uniform"
+    ],
+    "excluded": [
+      "legacy",
+      "conv3"
+    ]
+  },
+  "dataset": {
+    "root": "~/datasets/mnist",
+    "model_seed": 0,
+    "split_seed": 0,
+    "shuffle_seed": 0,
+    "train_size": 55000,
+    "validation_size": 5000,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "official_test_read": false,
+    "normalize_mean": 0.1307,
+    "normalize_std": 0.3081,
+    "normalize_scale": 0.3
+  },
+  "model": {
+    "kernel_size": 3,
+    "padding": 1,
+    "output_dim": 20,
+    "weight_min": 1e-05,
+    "weight_max": 0.0001,
+    "weight_gain": 1.0,
+    "non_linearity": "perfect_diode",
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_min": -1000000.0,
+      "v_max": 1000000.0
+    },
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_t": 0.025,
+      "V_off": 0.0
+    },
+    "hard_sigmoid_param": {
+      "g_on": 100.0,
+      "g_off": 0.0,
+      "v_min": -1.5,
+      "v_max": 1.5
+    },
+    "architectures": {
+      "conv1": {
+        "channels": [
+          64
+        ],
+        "strides": [
+          2
+        ],
+        "input_gain": 40.0,
+        "T": 4,
+        "K": 4
+      },
+      "conv2": {
+        "channels": [
+          64,
+          128
+        ],
+        "strides": [
+          2,
+          2
+        ],
+        "input_gain": 100.0,
+        "T": 6,
+        "K": 6
+      }
+    },
+    "schemes": {
+      "baseline": {
+        "voltage_amp": 1.0,
+        "current_amp": 1.0
+      },
+      "ours": {
+        "voltage_amp": 4.0,
+        "current_amp": 1.0
+      }
+    }
+  },
+  "fixed_tk_security": {
+    "reference_T": 64,
+    "reference_K": 64,
+    "cohort_examples": 256,
+    "batch_size": 32,
+    "gradient_zero_epsilon": 1e-12,
+    "relative_gradient_l2_norm_delta_maximum": 0.1,
+    "absolute_zero_fraction_delta_maximum": 0.02,
+    "gradient_vector_cosine_minimum": 0.9
+  },
+  "rho_search": {
+    "center": {
+      "rho_conv": 0.003,
+      "rho_dense": 0.01
+    },
+    "center_downward_factor": 3.0,
+    "maximum_center_attempts": 6,
+    "core_factors": [
+      0.3333333333333333,
+      1.0,
+      3.0
+    ],
+    "maximum_expansion_waves": 1,
+    "probe_batches": [
+      32,
+      64,
+      128
+    ],
+    "probe_stability_tolerance": 0.1,
+    "bias_policy": "q90_cap",
+    "canary_steps": 640,
+    "candidate_epochs": 3,
+    "expected_candidate_steps": 10314,
+    "minimum_validation_accuracy": 0.9,
+    "inclusive_loss_plateau": 0.02,
+    "safety": {
+      "warmup_steps": 32,
+      "loss_ema_decay": 0.98,
+      "loss_ema_factor": 4.0,
+      "gradient_rms_factor": 100.0,
+      "persistence_steps": 8,
+      "bound_occupancy": "report_only",
+      "projection_efficiency": "report_only"
+    }
+  },
+  "execution": {
+    "target": "main",
+    "device": "cuda",
+    "gpus": 1,
+    "surface_concurrency": 1,
+    "result_root": "results/perfectdiode-conv12-bounded-rho-baseline-ours-tk46-seed0-v1"
+  }
+}

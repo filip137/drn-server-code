@@ -31,6 +31,7 @@ except ModuleNotFoundError:  # Support direct execution from the repository root
 
 PARAMETER_RE = re.compile(r"^(ConvWeight|DenseWeight|Bias)_(\d+)$")
 DEFAULT_PROBE_COUNTS = (32, 64, 128)
+DEFAULT_CANARY_STEPS = 640
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -322,6 +323,302 @@ class OptimizerProbe:
         }
 
 
+class SafetyRejection(RuntimeError):
+    """A restarted canary or candidate crossed a terminal safety gate."""
+
+    def __init__(self, failure: Mapping[str, Any]):
+        self.failure = dict(failure)
+        super().__init__(
+            "Training safety rejection: "
+            + json.dumps(self.failure, sort_keys=True, allow_nan=False)
+        )
+
+
+class TrainingSafetyMonitor:
+    """Observe optimizer transitions without treating clipping as rejection.
+
+    Bound occupancy and projection efficiency are retained for diagnosis and
+    selection tie-breaking only.  The terminal gates are sustained loss-EMA
+    growth and sustained bounded-weight gradient-RMS growth; the trainer
+    independently fails on any non-finite loss, gradient, parameter, update,
+    or optimizer state.
+    """
+
+    def __init__(
+        self,
+        *,
+        warmup_steps: int = 32,
+        ema_decay: float = 0.98,
+        loss_factor: float = 4.0,
+        gradient_factor: float = 100.0,
+        persistence: int = 8,
+        zero_proposal_epsilon: float = 1e-30,
+    ):
+        self.warmup_steps = int(warmup_steps)
+        self.ema_decay = float(ema_decay)
+        self.loss_factor = float(loss_factor)
+        self.gradient_factor = float(gradient_factor)
+        self.persistence = int(persistence)
+        self.zero_proposal_epsilon = float(zero_proposal_epsilon)
+        if self.warmup_steps <= 0 or self.persistence <= 0:
+            raise ValueError("Safety warmup and persistence must be positive.")
+        for value, label in (
+            (self.ema_decay, "ema_decay"),
+            (self.loss_factor, "loss_factor"),
+            (self.gradient_factor, "gradient_factor"),
+            (self.zero_proposal_epsilon, "zero_proposal_epsilon"),
+        ):
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"Expected finite non-negative {label}, got {value!r}.")
+        if not 0.0 <= self.ema_decay < 1.0:
+            raise ValueError(
+                f"Expected ema_decay in [0, 1), got {self.ema_decay!r}."
+            )
+
+        self.step = 0
+        self.loss_ema: float | None = None
+        self.prior_loss_ema_minimum = math.inf
+        self.loss_streak = 0
+        self.maximum_loss_streak = 0
+        self.gradient_samples: dict[str, list[float]] = {}
+        self.gradient_reference: dict[str, float] = {}
+        self.gradient_streak: dict[str, int] = {}
+        self.maximum_gradient_streak: dict[str, int] = {}
+        self.maximum_gradient_rms: dict[str, float] = {}
+        self.initial_occupancy: dict[str, float] = {}
+        self.maximum_occupancy: dict[str, float] = {}
+        self.final_occupancy: dict[str, float] = {}
+        self.projection_efficiencies: dict[str, list[float]] = {}
+        self.proposed_update_rms: dict[str, list[float]] = {}
+        self.applied_update_rms: dict[str, list[float]] = {}
+        self.failure: dict[str, Any] | None = None
+
+    @staticmethod
+    def _occupancy(state: torch.Tensor, parameter: Any) -> float:
+        lower = float(parameter.min_cond)
+        upper = float(parameter.max_cond)
+        if not math.isfinite(lower) or not math.isfinite(upper) or lower >= upper:
+            raise ValueError(
+                f"Expected finite ordered bounds for {parameter.name!r}; "
+                f"provided {(parameter.min_cond, parameter.max_cond)!r}."
+            )
+        values = state.detach()
+        return float(((values <= lower) | (values >= upper)).to(torch.float64).mean().item())
+
+    def _failure_record(self, kind: str, parameter: str | None) -> dict[str, Any]:
+        return {
+            "kind": kind,
+            "parameter": parameter,
+            "onset_step": self.step - self.persistence + 1,
+            "confirmed_step": self.step,
+        }
+
+    def __call__(self, batch: Mapping[str, Any]) -> bool:
+        if self.failure is not None:
+            raise RuntimeError("Safety monitor called after a confirmed rejection.")
+        self.step += 1
+        loss = float(batch["loss"])
+        if not math.isfinite(loss):
+            raise SafetyRejection(
+                {
+                    "kind": "nonfinite_loss",
+                    "parameter": None,
+                    "onset_step": self.step,
+                    "confirmed_step": self.step,
+                }
+            )
+        self.loss_ema = (
+            loss
+            if self.loss_ema is None
+            else self.ema_decay * self.loss_ema + (1.0 - self.ema_decay) * loss
+        )
+
+        parameters = {
+            str(getattr(parameter, "name", "")).strip(): parameter
+            for parameter in batch["parameters"]
+        }
+        gradients = {
+            str(getattr(parameter, "name", "")).strip(): gradient
+            for parameter, gradient in zip(batch["parameters"], batch["gradients"])
+        }
+        pre = batch["pre_optimizer_states"]
+        proposed = batch["post_optimizer_states"]
+        applied = batch["post_projection_states"]
+        names = sorted(pre)
+        if not names or set(names) != set(proposed) or set(names) != set(applied):
+            raise RuntimeError(
+                "Expected matched bounded-weight transition states. "
+                f"Provided names: pre={sorted(pre)!r}, "
+                f"proposed={sorted(proposed)!r}, applied={sorted(applied)!r}."
+            )
+
+        failures: list[dict[str, Any]] = []
+        for name in names:
+            if name not in parameters or name not in gradients:
+                raise RuntimeError(f"Missing parameter or gradient for {name!r}.")
+            gradient_rms = rms(gradients[name])
+            proposal_rms = rms(proposed[name] - pre[name])
+            achieved_rms = rms(applied[name] - pre[name])
+            occupancy = self._occupancy(applied[name], parameters[name])
+            for value, label in (
+                (gradient_rms, "gradient RMS"),
+                (proposal_rms, "proposed update RMS"),
+                (achieved_rms, "applied update RMS"),
+                (occupancy, "bound occupancy"),
+            ):
+                if not math.isfinite(value) or value < 0.0:
+                    raise SafetyRejection(
+                        {
+                            "kind": "nonfinite_diagnostic",
+                            "parameter": name,
+                            "diagnostic": label,
+                            "onset_step": self.step,
+                            "confirmed_step": self.step,
+                        }
+                    )
+
+            if name not in self.gradient_samples:
+                initial = self._occupancy(pre[name], parameters[name])
+                self.gradient_samples[name] = []
+                self.gradient_streak[name] = 0
+                self.maximum_gradient_streak[name] = 0
+                self.maximum_gradient_rms[name] = gradient_rms
+                self.initial_occupancy[name] = initial
+                self.maximum_occupancy[name] = initial
+                self.projection_efficiencies[name] = []
+                self.proposed_update_rms[name] = []
+                self.applied_update_rms[name] = []
+
+            self.maximum_gradient_rms[name] = max(
+                self.maximum_gradient_rms[name], gradient_rms
+            )
+            self.maximum_occupancy[name] = max(
+                self.maximum_occupancy[name], occupancy
+            )
+            self.final_occupancy[name] = occupancy
+            self.proposed_update_rms[name].append(proposal_rms)
+            self.applied_update_rms[name].append(achieved_rms)
+            if proposal_rms > self.zero_proposal_epsilon:
+                efficiency = achieved_rms / proposal_rms
+                if math.isfinite(efficiency) and efficiency >= 0.0:
+                    self.projection_efficiencies[name].append(efficiency)
+
+            if self.step <= self.warmup_steps:
+                self.gradient_samples[name].append(gradient_rms)
+                if self.step == self.warmup_steps:
+                    self.gradient_reference[name] = linear_quantile(
+                        self.gradient_samples[name], 0.5
+                    )
+            else:
+                reference = self.gradient_reference[name]
+                if gradient_rms > self.gradient_factor * reference:
+                    self.gradient_streak[name] += 1
+                    self.maximum_gradient_streak[name] = max(
+                        self.maximum_gradient_streak[name],
+                        self.gradient_streak[name],
+                    )
+                    if self.gradient_streak[name] == self.persistence:
+                        failures.append(
+                            self._failure_record("gradient_rms_explosion", name)
+                        )
+                else:
+                    self.gradient_streak[name] = 0
+
+        if self.step <= self.warmup_steps:
+            self.prior_loss_ema_minimum = min(
+                self.prior_loss_ema_minimum, self.loss_ema
+            )
+        else:
+            if self.loss_ema > self.loss_factor * self.prior_loss_ema_minimum:
+                self.loss_streak += 1
+                self.maximum_loss_streak = max(
+                    self.maximum_loss_streak, self.loss_streak
+                )
+                if self.loss_streak == self.persistence:
+                    failures.append(self._failure_record("loss_ema_explosion", None))
+            else:
+                self.loss_streak = 0
+            self.prior_loss_ema_minimum = min(
+                self.prior_loss_ema_minimum, self.loss_ema
+            )
+
+        if failures:
+            self.failure = min(
+                failures,
+                key=lambda item: (
+                    item["onset_step"],
+                    item["kind"],
+                    item["parameter"] or "",
+                ),
+            )
+            raise SafetyRejection(self.failure)
+        return False
+
+    def summary(self) -> dict[str, Any]:
+        projection_by_parameter = {
+            name: (
+                linear_quantile(values, 0.5) if values else None
+            )
+            for name, values in self.projection_efficiencies.items()
+        }
+        all_projection = [
+            value
+            for values in self.projection_efficiencies.values()
+            for value in values
+        ]
+        return {
+            "schema_version": "conv-rho-training-safety/v1",
+            "processed_steps": self.step,
+            "terminal_gates": {
+                "nonfinite_values": True,
+                "warmup_steps": self.warmup_steps,
+                "loss_ema_decay": self.ema_decay,
+                "loss_ema_factor": self.loss_factor,
+                "gradient_rms_factor": self.gradient_factor,
+                "persistence_steps": self.persistence,
+            },
+            "report_only_diagnostics": {
+                "bound_occupancy": True,
+                "projection_efficiency": True,
+                "used_for_rejection": False,
+            },
+            "loss_ema": self.loss_ema,
+            "prior_loss_ema_minimum": (
+                self.prior_loss_ema_minimum
+                if math.isfinite(self.prior_loss_ema_minimum)
+                else None
+            ),
+            "maximum_loss_violation_streak": self.maximum_loss_streak,
+            "first_warmup_gradient_rms_median_by_parameter": (
+                self.gradient_reference
+            ),
+            "maximum_gradient_rms_by_parameter": self.maximum_gradient_rms,
+            "maximum_gradient_violation_streak_by_parameter": (
+                self.maximum_gradient_streak
+            ),
+            "initial_bound_occupancy_by_parameter": self.initial_occupancy,
+            "maximum_bound_occupancy_by_parameter": self.maximum_occupancy,
+            "final_bound_occupancy_by_parameter": self.final_occupancy,
+            "median_projection_efficiency_by_parameter": projection_by_parameter,
+            "median_projection_efficiency": (
+                linear_quantile(all_projection, 0.5)
+                if all_projection
+                else None
+            ),
+            "median_proposed_update_rms_by_parameter": {
+                name: linear_quantile(values, 0.5)
+                for name, values in self.proposed_update_rms.items()
+                if values
+            },
+            "median_applied_update_rms_by_parameter": {
+                name: linear_quantile(values, 0.5)
+                for name, values in self.applied_update_rms.items()
+                if values
+            },
+            "safety_failure": self.failure,
+        }
+
+
 def derive_learning_rates(
     probe: Mapping[str, Any],
     rho_conv: float,
@@ -437,6 +734,7 @@ def _run_trainer(
     *,
     device: str | None,
     gradient_callback=None,
+    optimizer_step_callback=None,
     apply_optimizer_steps: bool = True,
     reporting_run_dir: Path | None = None,
 ) -> dict[str, Any]:
@@ -459,6 +757,7 @@ def _run_trainer(
         seed=config.get("seed"),
         lr_decay=1.0,
         gradient_callback=gradient_callback,
+        optimizer_step_callback=optimizer_step_callback,
         apply_optimizer_steps=apply_optimizer_steps,
         reporting_run_dir=reporting_run_dir,
     )
@@ -476,6 +775,12 @@ def _summary_row(index: int, rho_conv: float, rho_dense: float, cell_dir: Path) 
         if cell["status"] == "complete" and metrics_path.exists()
         else {}
     )
+    diagnostics_path = cell_dir / "safety_diagnostics.json"
+    diagnostics = (
+        json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        if diagnostics_path.exists()
+        else {}
+    )
     return {
         "index": index,
         "optimizer": cell["optimizer"],
@@ -485,6 +790,10 @@ def _summary_row(index: int, rho_conv: float, rho_dense: float, cell_dir: Path) 
         "final_validation_loss": metrics.get("final_test_loss"),
         "final_validation_accuracy": metrics.get("final_test_accuracy"),
         "best_validation_accuracy": metrics.get("best_test_accuracy"),
+        "selection_eligible": cell.get("selection_eligible"),
+        "median_projection_efficiency": diagnostics.get(
+            "median_projection_efficiency"
+        ),
         "learning_rates": json.dumps(cell["learning_rate_vector"]),
         "path": str(cell_dir),
     }
@@ -511,7 +820,8 @@ def _write_summary(output_root: Path, rows: Sequence[Mapping[str, Any]]) -> None
     fieldnames = list(rows[0]) if rows else [
         "index", "optimizer", "rho_conv", "rho_dense", "status",
         "final_validation_loss", "final_validation_accuracy",
-        "best_validation_accuracy", "learning_rates", "path",
+        "best_validation_accuracy", "selection_eligible",
+        "median_projection_efficiency", "learning_rates", "path",
     ]
     with (output_root / "summary.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -600,6 +910,12 @@ def _cell_signature(
         "max_validation_batches": resolved["max_validation_batches"],
         "split_seed": resolved["split_seed"],
         "shuffle_seed": resolved["shuffle_seed"],
+        "canary_steps": resolved.get("canary_steps"),
+        "expected_candidate_steps": resolved.get("expected_candidate_steps"),
+        "minimum_validation_accuracy": resolved.get(
+            "minimum_validation_accuracy"
+        ),
+        "safety": resolved.get("safety"),
     }
 
 
@@ -618,6 +934,46 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     rhos_conv = [_positive(value, "rho_conv") for value in args.rho_conv]
     rhos_dense = [_positive(value, "rho_dense") for value in args.rho_dense]
     counts = tuple(args.probe_batches)
+    canary_steps = int(getattr(args, "canary_steps", DEFAULT_CANARY_STEPS))
+    if canary_steps <= 0:
+        raise ValueError(
+            f"Expected --canary-steps to be positive. Provided value: {canary_steps!r}."
+        )
+    expected_candidate_steps = getattr(args, "expected_candidate_steps", None)
+    if expected_candidate_steps is not None:
+        expected_candidate_steps = int(expected_candidate_steps)
+        if expected_candidate_steps <= 0:
+            raise ValueError(
+                "Expected --expected-candidate-steps to be positive when supplied. "
+                f"Provided value: {expected_candidate_steps!r}."
+            )
+    minimum_validation_accuracy = float(
+        getattr(args, "minimum_validation_accuracy", 0.90)
+    )
+    if not 0.0 <= minimum_validation_accuracy <= 1.0:
+        raise ValueError(
+            "Expected --minimum-validation-accuracy in [0, 1]. "
+            f"Provided value: {minimum_validation_accuracy!r}."
+        )
+    safety = {
+        "warmup_steps": int(getattr(args, "safety_warmup_steps", 32)),
+        "ema_decay": float(getattr(args, "safety_ema_decay", 0.98)),
+        "loss_factor": float(getattr(args, "safety_loss_factor", 4.0)),
+        "gradient_factor": float(
+            getattr(args, "safety_gradient_factor", 100.0)
+        ),
+        "persistence": int(getattr(args, "safety_persistence", 8)),
+        "bound_occupancy": "report_only",
+        "projection_efficiency": "report_only",
+    }
+    # Validate the supplied safety values before writing a resolved contract.
+    TrainingSafetyMonitor(
+        warmup_steps=safety["warmup_steps"],
+        ema_decay=safety["ema_decay"],
+        loss_factor=safety["loss_factor"],
+        gradient_factor=safety["gradient_factor"],
+        persistence=safety["persistence"],
+    )
     rate_count = _configured_rate_count(base)
     output_root = Path(args.output_root).expanduser().resolve()
     study_id = getattr(args, "study_id", None) or output_root.name
@@ -643,6 +999,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "shuffle_seed": args.shuffle_seed,
         "validation_batch_size": args.validation_batch_size,
         "device": args.device,
+        "canary_steps": canary_steps,
+        "expected_candidate_steps": expected_candidate_steps,
+        "minimum_validation_accuracy": minimum_validation_accuracy,
+        "safety": safety,
     }
     if args.dry_run:
         planned = dict(resolved)
@@ -741,7 +1101,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 raise RuntimeError(
                     f"Cell signature mismatch while collecting {cell_path}."
                 )
-            if cell.get("status") not in {"complete", "failed_nonfinite"}:
+            if cell.get("status") not in {
+                "complete",
+                "canary_rejected_nonfinite",
+                "canary_rejected_safety",
+                "candidate_rejected_nonfinite",
+                "candidate_rejected_safety",
+            }:
                 missing.append(f"{cell_path} (status={cell.get('status')!r})")
                 continue
             if cell["status"] == "complete" and not (cell_dir / "metrics.json").exists():
@@ -779,7 +1145,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         existing.get("status") == "complete"
                         and (cell_dir / "metrics.json").exists()
                     )
-                    or existing.get("status") == "failed_nonfinite"
+                    or existing.get("status")
+                    in {
+                        "canary_rejected_nonfinite",
+                        "canary_rejected_safety",
+                        "candidate_rejected_nonfinite",
+                        "candidate_rejected_safety",
+                    }
+                    or (
+                        getattr(args, "canary_only", False)
+                        and existing.get("status") == "canary_clean"
+                    )
                 )
             )
             if reusable:
@@ -818,66 +1194,185 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         config_path = cell_dir / "source_config.json"
         _write_json(config_path, candidate_config)
-        start_run(
-            cell_dir,
-            {
-                "study_id": study_id,
-                "run_id": name,
-                "arm_id": f"{optimizer_name.lower()}-rho-{rho_conv:g}-{rho_dense:g}",
-                "evidence_class": "ordinary_mnist_selection",
-                "configuration": {
-                    "path": str(config_path),
-                    "sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
-                    "resolved": candidate_config,
-                    "optimizer": optimizer_name,
-                    "learning_rates": rate_vector,
-                    "rho_conv": rho_conv,
-                    "rho_dense": rho_dense,
-                    "epochs": epochs,
-                },
-                "dataset": {
-                    "key": "mnist",
-                    "variant": "ordinary",
-                    "evaluation_split": "validation",
-                    "split_seed": args.split_seed,
-                    "official_test_read": False,
-                },
-                "command": getattr(args, "reporting_command", None)
-                or {
-                    "module": "experiments.rho_search",
-                    "cell_index": index,
-                },
-                "git": resolved["code"],
-                "runtime": {
-                    **runtime_context(target=target),
-                    "device": args.device,
-                },
-                "inputs": [
-                    {
-                        "role": "source_config",
-                        "path": str(base_path),
-                        "sha256": resolved["source_config_sha256"],
-                    },
-                    {
-                        "role": "optimizer_probe",
-                        "path": str(probe_path),
-                        "sha256": hashlib.sha256(probe_path.read_bytes()).hexdigest(),
-                    },
-                ],
-            },
-        )
         from labs.mnist_train import NonFiniteTrainingError
 
+        reporting_manifest = {
+            "study_id": study_id,
+            "run_id": name,
+            "arm_id": f"{optimizer_name.lower()}-rho-{rho_conv:g}-{rho_dense:g}",
+            "evidence_class": "ordinary_mnist_selection",
+            "configuration": {
+                "path": str(config_path),
+                "sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+                "resolved": candidate_config,
+                "optimizer": optimizer_name,
+                "learning_rates": rate_vector,
+                "rho_conv": rho_conv,
+                "rho_dense": rho_dense,
+                "epochs": epochs,
+                "canary_steps": canary_steps,
+                "safety": safety,
+            },
+            "dataset": {
+                "key": "mnist",
+                "variant": "ordinary",
+                "evaluation_split": "validation",
+                "split_seed": args.split_seed,
+                "official_test_read": False,
+            },
+            "command": getattr(args, "reporting_command", None)
+            or {
+                "module": "experiments.rho_search",
+                "cell_index": index,
+            },
+            "git": resolved["code"],
+            "runtime": {
+                **runtime_context(target=target),
+                "device": args.device,
+            },
+            "inputs": [
+                {
+                    "role": "source_config",
+                    "path": str(base_path),
+                    "sha256": resolved["source_config_sha256"],
+                },
+                {
+                    "role": "optimizer_probe",
+                    "path": str(probe_path),
+                    "sha256": hashlib.sha256(probe_path.read_bytes()).hexdigest(),
+                },
+            ],
+        }
+        canary_path = cell_dir / "canary.json"
+        canary = None
+        if canary_path.exists() and not args.force:
+            candidate_canary = json.loads(canary_path.read_text(encoding="utf-8"))
+            if (
+                candidate_canary.get("signature") == signature
+                and candidate_canary.get("status")
+                in {"clean", "rejected_nonfinite", "rejected_safety"}
+            ):
+                canary = candidate_canary
+        if canary is None:
+            canary_dir = cell_dir / "canary"
+            canary_config = prepare_training_config(
+                base,
+                optimizer_name,
+                rate_vector,
+                epochs=1,
+                max_batches=canary_steps,
+                max_validation_batches=1,
+                split_seed=args.split_seed,
+                shuffle_seed=args.shuffle_seed,
+                validation_batch_size=args.validation_batch_size,
+            )
+            canary_config_path = canary_dir / "source_config.json"
+            _write_json(canary_config_path, canary_config)
+            canary_monitor = TrainingSafetyMonitor(
+                warmup_steps=safety["warmup_steps"],
+                ema_decay=safety["ema_decay"],
+                loss_factor=safety["loss_factor"],
+                gradient_factor=safety["gradient_factor"],
+                persistence=safety["persistence"],
+            )
+            canary = {
+                "schema_version": "conv-rho-canary/v1",
+                "signature": signature,
+                "requested_steps": canary_steps,
+                "status": "running",
+            }
+            _write_json(canary_path, canary)
+            try:
+                _run_trainer(
+                    canary_config_path,
+                    canary_dir,
+                    device=args.device,
+                    optimizer_step_callback=canary_monitor,
+                )
+            except SafetyRejection as error:
+                canary["status"] = "rejected_safety"
+                canary["failure"] = error.failure
+            except NonFiniteTrainingError as error:
+                canary["status"] = "rejected_nonfinite"
+                canary["failure"] = {
+                    "kind": "nonfinite_training_value",
+                    "message": str(error),
+                    "confirmed_step": canary_monitor.step + 1,
+                }
+            except BaseException:
+                canary["status"] = "failed"
+                _write_json(canary_path, canary)
+                raise
+            else:
+                if canary_monitor.step != canary_steps:
+                    raise RuntimeError(
+                        f"Expected canary to complete {canary_steps} optimizer steps. "
+                        f"Provided value: {canary_monitor.step}."
+                    )
+                canary["status"] = "clean"
+            finally:
+                diagnostics = canary_monitor.summary()
+                if canary.get("failure") is not None:
+                    diagnostics["safety_failure"] = canary["failure"]
+                _write_json(canary_dir / "safety_diagnostics.json", diagnostics)
+            canary["completed_steps"] = canary_monitor.step
+            _write_json(canary_path, canary)
+
+        if canary["status"] != "clean":
+            cell["status"] = f"canary_{canary['status']}"
+            cell["canary"] = canary
+            _write_json(cell_path, cell)
+            if not getattr(args, "canary_only", False):
+                start_run(cell_dir, reporting_manifest)
+                fail_run(
+                    cell_dir,
+                    error=SafetyRejection(
+                        canary.get(
+                            "failure",
+                            {"kind": canary["status"], "parameter": None},
+                        )
+                    ),
+                )
+            rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
+            continue
+
+        if getattr(args, "canary_only", False):
+            cell["status"] = "canary_clean"
+            cell["canary"] = canary
+            _write_json(cell_path, cell)
+            rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
+            continue
+
+        start_run(cell_dir, reporting_manifest)
+        candidate_monitor = TrainingSafetyMonitor(
+            warmup_steps=safety["warmup_steps"],
+            ema_decay=safety["ema_decay"],
+            loss_factor=safety["loss_factor"],
+            gradient_factor=safety["gradient_factor"],
+            persistence=safety["persistence"],
+        )
         try:
             _run_trainer(
                 config_path,
                 cell_dir,
                 device=args.device,
+                optimizer_step_callback=candidate_monitor,
                 reporting_run_dir=cell_dir,
             )
-        except NonFiniteTrainingError as error:
-            cell["status"] = "failed_nonfinite"
+        except SafetyRejection as error:
+            cell["status"] = "candidate_rejected_safety"
             cell["error"] = str(error)
+            cell["safety_failure"] = error.failure
+            _write_json(cell_path, cell)
+            fail_run(cell_dir, error=error)
+        except NonFiniteTrainingError as error:
+            cell["status"] = "candidate_rejected_nonfinite"
+            cell["error"] = str(error)
+            cell["safety_failure"] = {
+                "kind": "nonfinite_training_value",
+                "message": str(error),
+                "confirmed_step": candidate_monitor.step + 1,
+            }
             _write_json(cell_path, cell)
             fail_run(cell_dir, error=error)
         except BaseException as error:
@@ -887,20 +1382,46 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             fail_run(cell_dir, error=error)
             raise
         else:
+            if (
+                expected_candidate_steps is not None
+                and candidate_monitor.step != expected_candidate_steps
+            ):
+                error = RuntimeError(
+                    "Candidate optimizer-step count does not match the resolved "
+                    f"contract: expected={expected_candidate_steps}, "
+                    f"observed={candidate_monitor.step}."
+                )
+                cell["status"] = "failed"
+                cell["error"] = str(error)
+                _write_json(cell_path, cell)
+                fail_run(cell_dir, error=error)
+                raise error
             cell["status"] = "complete"
-            _write_json(cell_path, cell)
             metrics = json.loads(
                 (cell_dir / "metrics.json").read_text(encoding="utf-8")
             )
+            final_accuracy = float(metrics["final_test_accuracy"])
+            cell["selection_eligible"] = (
+                final_accuracy >= minimum_validation_accuracy
+            )
+            cell["completed_steps"] = candidate_monitor.step
+            _write_json(cell_path, cell)
             complete_run(
                 cell_dir,
                 terminal_metrics=_terminal_metrics(metrics),
                 completion={
-                    "criteria_met": True,
+                    "criteria_met": cell["selection_eligible"],
                     "rho_cell_complete": True,
+                    "safety_admissible": True,
+                    "minimum_validation_accuracy": minimum_validation_accuracy,
                     "official_test_read": False,
                 },
             )
+        finally:
+            diagnostics = candidate_monitor.summary()
+            if cell.get("safety_failure") is not None:
+                diagnostics["safety_failure"] = cell["safety_failure"]
+            _write_json(cell_dir / "safety_diagnostics.json", diagnostics)
         rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
 
     if args.index is None:
@@ -937,6 +1458,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--study-id")
     parser.add_argument("--target")
     parser.add_argument("--probe-only", action="store_true")
+    parser.add_argument(
+        "--canary-only",
+        action="store_true",
+        help="Run or resume the selected cell's restarted canary without promotion.",
+    )
+    parser.add_argument("--canary-steps", type=int, default=DEFAULT_CANARY_STEPS)
+    parser.add_argument("--expected-candidate-steps", type=int)
+    parser.add_argument("--minimum-validation-accuracy", type=float, default=0.90)
+    parser.add_argument("--safety-warmup-steps", type=int, default=32)
+    parser.add_argument("--safety-ema-decay", type=float, default=0.98)
+    parser.add_argument("--safety-loss-factor", type=float, default=4.0)
+    parser.add_argument("--safety-gradient-factor", type=float, default=100.0)
+    parser.add_argument("--safety-persistence", type=int, default=8)
     parser.add_argument("--index", type=int, help="Run one Cartesian-grid cell by index")
     parser.add_argument(
         "--collect-only",

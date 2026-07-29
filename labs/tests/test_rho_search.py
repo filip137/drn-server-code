@@ -9,6 +9,8 @@ import torch
 
 from experiments.rho_search import (
     OptimizerProbe,
+    SafetyRejection,
+    TrainingSafetyMonitor,
     _cell_signature,
     _git_state,
     _indexed_cells,
@@ -22,9 +24,40 @@ from experiments.rho_search import (
 
 
 class FakeParameter:
-    def __init__(self, name: str, state: torch.Tensor):
+    def __init__(
+        self,
+        name: str,
+        state: torch.Tensor,
+        min_cond: float | None = None,
+        max_cond: float | None = None,
+    ):
         self.name = name
         self.state = state
+        self.min_cond = min_cond
+        self.max_cond = max_cond
+
+
+def _safety_batch(
+    parameter: FakeParameter,
+    *,
+    loss: float = 1.0,
+    gradient: float = 1.0,
+    proposed: float = 0.0,
+    applied: float = 0.0,
+) -> dict:
+    initial = torch.full_like(parameter.state, 5.5e-5)
+    return {
+        "loss": loss,
+        "parameters": (parameter,),
+        "gradients": (torch.full_like(parameter.state, gradient),),
+        "pre_optimizer_states": {parameter.name: initial},
+        "post_optimizer_states": {
+            parameter.name: torch.full_like(parameter.state, proposed)
+        },
+        "post_projection_states": {
+            parameter.name: torch.full_like(parameter.state, applied)
+        },
+    }
 
 
 def _base_config() -> dict:
@@ -127,6 +160,61 @@ def test_probe_collects_units_and_leaves_parameters_unchanged() -> None:
     assert result["bias_q90_unit_by_parameter"]["Bias_0"] == 2.0
     for parameter, expected in zip(parameters, before):
         assert torch.equal(parameter.state, expected)
+
+
+def test_bound_occupancy_and_projection_efficiency_are_report_only() -> None:
+    parameter = FakeParameter(
+        "ConvWeight_0",
+        torch.full((4,), 5.5e-5),
+        min_cond=1e-5,
+        max_cond=1e-4,
+    )
+    monitor = TrainingSafetyMonitor()
+
+    for _ in range(64):
+        monitor(
+            _safety_batch(
+                parameter,
+                proposed=1.0,
+                applied=1e-4,
+            )
+        )
+
+    result = monitor.summary()
+    assert result["safety_failure"] is None
+    assert result["maximum_bound_occupancy_by_parameter"]["ConvWeight_0"] == 1.0
+    assert result["median_projection_efficiency"] < 1e-3
+    assert result["report_only_diagnostics"]["used_for_rejection"] is False
+
+
+def test_sustained_gradient_growth_rejects_after_warmup() -> None:
+    parameter = FakeParameter(
+        "ConvWeight_0",
+        torch.full((4,), 5.5e-5),
+        min_cond=1e-5,
+        max_cond=1e-4,
+    )
+    monitor = TrainingSafetyMonitor()
+    for _ in range(32):
+        monitor(_safety_batch(parameter, gradient=1.0, proposed=5.5e-5, applied=5.5e-5))
+
+    with pytest.raises(SafetyRejection) as caught:
+        for _ in range(8):
+            monitor(
+                _safety_batch(
+                    parameter,
+                    gradient=101.0,
+                    proposed=5.5e-5,
+                    applied=5.5e-5,
+                )
+            )
+
+    assert caught.value.failure == {
+        "kind": "gradient_rms_explosion",
+        "parameter": "ConvWeight_0",
+        "onset_step": 33,
+        "confirmed_step": 40,
+    }
 
 
 def test_derive_learning_rates_applies_bias_q90_cap() -> None:

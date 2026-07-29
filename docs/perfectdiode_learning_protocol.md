@@ -192,11 +192,11 @@ Canaries and candidates use these fail-closed gates:
 - after the first 32 steps, loss EMA greater than four times its prior minimum
   for eight consecutive steps;
 - bounded-weight gradient RMS greater than 100 times its first-32-step median
-  for eight steps;
-- bounded-weight combined-bound occupancy more than `0.20` above its initial
-  value for 16 steps;
-- bounded-weight projection efficiency below `0.50` for 16 steps, ignoring
-  numerically zero proposals.
+  for eight steps.
+
+Bound occupancy and projection efficiency are recorded for diagnosis and
+selection tie-breaking only. Excessive occupancy at `[1e-5,1e-4]` and poor
+projection efficiency do not reject a canary or candidate.
 
 A candidate passes only when it is safety-admissible, completes exactly
 10,314 steps, and reaches final validation accuracy `>=90%`. Exactly 90%

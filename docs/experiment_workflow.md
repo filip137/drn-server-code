@@ -189,10 +189,21 @@ median_batch(
 )
 ```
 
-The command implements probe and grid execution. It does not by itself
-implement the complete 640-step scientific-canary, factor-of-three expansion,
-2% plateau selection, global bounded-initializer selection, or post-training
-`T/K` audit. Those remain requirements of the active perfect-diode protocols.
+The command implements the optimizer probe, a restarted safety canary for each
+cell, and candidate-grid execution. Bound occupancy and projection efficiency
+are report-only diagnostics. The focused Conv1/Conv2 bounded study adds
+adaptive center attempts, one factor-of-three expansion wave, and the 2% loss
+plateau selector:
+
+```bash
+python -m experiments.run_conv12_bounded_rho plan
+python -m experiments.run_conv12_bounded_rho smoke --surface-index 0
+python -m experiments.run_conv12_bounded_rho run-all
+```
+
+The focused runner deliberately excludes legacy and Conv3. It therefore does
+not publish the all-depth global bounded-initializer decision or perform the
+post-training Conv3 audit.
 
 ## During And After
 
