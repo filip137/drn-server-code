@@ -118,7 +118,9 @@
     "probe_batches": [
       32,
       64,
-      128
+      128,
+      256,
+      512
     ],
     "probe_stability_tolerance": 0.1,
     "bias_policy": "q90_cap",
