@@ -9,11 +9,19 @@ import pytest
 
 from experiments.continue_conv2_bounded_rho import (
     DEFAULT_STUDY,
+    REPO_ROOT,
     _seed_imported_probe,
     _surface_for_target,
     continuation_axes_and_pairs,
     load_study,
     surface_specs,
+)
+
+WAVE3_STUDY = (
+    REPO_ROOT
+    / "configs"
+    / "conv"
+    / "perfectdiode_conv2_bounded_rho_continuation_wave3_20260730_v1.json"
 )
 
 
@@ -26,6 +34,17 @@ def test_continuation_config_declares_seven_expansions_and_35_cells() -> None:
     assert sum(surface["expected_new_cells"] for surface in surfaces) == 35
     assert {surface["target"] for surface in surfaces} == {"main", "akib", "trex"}
     assert all("legacy" not in surface["surface_id"] for surface in surfaces)
+
+
+def test_wave3_config_contains_only_six_bounded_surfaces_and_30_cells() -> None:
+    _path, study, _base_path, _base = load_study(WAVE3_STUDY)
+    surfaces = surface_specs(study)
+
+    assert study["continuation"]["wave"] == 3
+    assert len(surfaces) == 6
+    assert sum(surface["expected_new_cells"] for surface in surfaces) == 30
+    assert {surface["target"] for surface in surfaces} == {"main", "akib"}
+    assert all(surface["parent_record"] == "continuation.json" for surface in surfaces)
 
 
 @pytest.mark.parametrize(

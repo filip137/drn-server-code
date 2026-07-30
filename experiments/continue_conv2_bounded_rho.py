@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a provenance-linked second rho expansion for bounded Conv2 surfaces."""
+"""Run a provenance-linked outward rho expansion for bounded Conv2 surfaces."""
 
 from __future__ import annotations
 
@@ -80,8 +80,9 @@ def load_study(
                 f"Expected scope.{key}={expected!r}; provided {scope.get(key)!r}."
             )
     continuation = study["continuation"]
-    if int(continuation["wave"]) != 2 or float(continuation["factor"]) != 3.0:
-        raise ValueError("The Conv2 continuation must be the factor-three second wave.")
+    wave = int(continuation["wave"])
+    if wave < 2 or float(continuation["factor"]) != 3.0:
+        raise ValueError("The Conv2 continuation must be a factor-three later wave.")
     if continuation.get("bound_occupancy") != "report_only":
         raise ValueError("Bound occupancy must remain report-only.")
     if continuation.get("projection_efficiency") != "report_only":
@@ -93,21 +94,41 @@ def load_study(
     if _sha256_file(base_path) != study["parent"]["study_config_sha256"]:
         raise RuntimeError("The parent bounded-study config hash does not match.")
     _loaded_base_path, base = load_base_study(base_path)
-    if base["study_id"] != study["parent"]["study_id"]:
-        raise ValueError("The continuation names a different parent study.")
+    expected_base_study_id = study["parent"].get(
+        "base_study_id", study["parent"]["study_id"]
+    )
+    if base["study_id"] != expected_base_study_id:
+        raise ValueError("The continuation names a different base scientific study.")
 
-    expected_ids = [
-        surface["surface_id"]
+    base_surfaces = {
+        surface["surface_id"]: surface
         for surface in base_surface_specs(base)
         if surface["architecture"] == "conv2"
-    ]
+    }
     surfaces = study["surfaces"]
-    if [surface["surface_id"] for surface in surfaces] != expected_ids:
-        raise ValueError("Continuation surfaces must cover all eight parent Conv2 rows.")
-    if [int(surface["index"]) for surface in surfaces] != list(range(8)):
+    if not surfaces or any(
+        surface["surface_id"] not in base_surfaces for surface in surfaces
+    ):
+        raise ValueError("Continuation surfaces must be known parent Conv2 rows.")
+    if len({surface["surface_id"] for surface in surfaces}) != len(surfaces):
+        raise ValueError("Continuation surface identifiers must be unique.")
+    if [int(surface["index"]) for surface in surfaces] != list(range(len(surfaces))):
         raise ValueError("Continuation surface indices must be contiguous from zero.")
+    for surface in surfaces:
+        expected_parent_index = int(
+            base_surfaces[surface["surface_id"]]["index"]
+        )
+        if int(surface["parent_surface_index"]) != expected_parent_index:
+            raise ValueError(
+                f"Unexpected parent surface index for {surface['surface_id']}."
+            )
     expanded = [surface for surface in surfaces if surface["expand"]]
-    if len(expanded) != 7 or sum(int(surface["expected_new_cells"]) for surface in expanded) != 35:
+    new_cell_budget = sum(
+        int(surface["expected_new_cells"]) for surface in expanded
+    )
+    if new_cell_budget != int(study["execution"]["new_cell_budget"]):
+        raise ValueError("The declared continuation cell budget is inconsistent.")
+    if wave == 2 and (len(expanded) != 7 or new_cell_budget != 35):
         raise ValueError("The declared continuation must contain seven surfaces and 35 cells.")
     return source, study, base_path, base
 
@@ -154,12 +175,27 @@ def _parent_surface(
     surface: Mapping[str, Any],
 ) -> tuple[Path, dict[str, Any]]:
     surface_dir = parent_root / "surfaces" / surface["surface_id"]
-    selection_path = surface_dir / "selection.json"
-    if _sha256_file(selection_path) != surface["parent_selection_sha256"]:
-        raise RuntimeError(
-            f"Parent selection hash mismatch for {surface['surface_id']}."
+    record_path = surface_dir / surface.get("parent_record", "selection.json")
+    expected_sha256 = surface.get(
+        "parent_record_sha256", surface.get("parent_selection_sha256")
+    )
+    if not isinstance(expected_sha256, str):
+        raise ValueError(
+            f"Missing parent-record hash for {surface['surface_id']}."
         )
-    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    if _sha256_file(record_path) != expected_sha256:
+        raise RuntimeError(
+            f"Parent record hash mismatch for {surface['surface_id']}."
+        )
+    selection = json.loads(record_path.read_text(encoding="utf-8"))
+    if "expansion" not in selection:
+        expanded_axes = selection.get("continuation", {}).get("expanded_axes")
+        if not isinstance(expanded_axes, Mapping):
+            raise RuntimeError(
+                f"Parent continuation has no expanded axes: {record_path}."
+            )
+        selection = copy.deepcopy(selection)
+        selection["expansion"] = {"expanded_axes": expanded_axes}
     expected_expand = dict(surface["expand"])
     range_status = selection["rho_range_status"]
     if expected_expand:
@@ -199,6 +235,7 @@ def _seed_imported_probe(
     rho_root: Path,
     *,
     surface_id: str,
+    continuation_wave: int = 2,
 ) -> dict[str, Any]:
     contract = _search_contract(args)
     parent_probe = json.loads(parent_probe_path.read_text(encoding="utf-8"))
@@ -234,7 +271,7 @@ def _seed_imported_probe(
                 allow_nan=False,
             ).encode("utf-8")
         ).hexdigest(),
-        "reason": "user_directed_conv2_second_rho_expansion",
+        "reason": f"user_directed_conv2_rho_expansion_wave_{continuation_wave}",
     }
     imported_probe["search_signature"] = contract
     rho_root.mkdir(parents=True, exist_ok=True)
@@ -264,6 +301,7 @@ def _args(
     index: int | None,
     smoke: bool,
     study_id: str,
+    continuation_wave: int,
 ) -> Namespace:
     parent_surface = {
         "index": int(surface["parent_surface_index"]),
@@ -298,7 +336,7 @@ def _args(
         "module": "experiments.continue_conv2_bounded_rho",
         "surface_index": int(surface["index"]),
         "cell_index": index,
-        "continuation_wave": 2,
+        "continuation_wave": continuation_wave,
     }
     return args
 
@@ -340,7 +378,7 @@ def _materialize(
         "parent_study_id": study["parent"]["study_id"],
         "parent_root": str(parent_root),
         "code": _git_state(),
-        "continuation_wave": 2,
+        "continuation_wave": int(study["continuation"]["wave"]),
         "protocol_deviation": study["continuation"]["protocol_deviation"],
         "surface_count": len(study["surfaces"]),
         "new_cell_budget": sum(
@@ -392,7 +430,7 @@ def run_surface(
             ),
             "rho_range_status": parent_selection["rho_range_status"],
             "continuation": {
-                "wave": 2,
+                "wave": int(study["continuation"]["wave"]),
                 "triggered": False,
                 "reason": "parent_range_already_bracketed",
                 "new_cell_count": 0,
@@ -425,12 +463,14 @@ def run_surface(
         index=None,
         smoke=smoke,
         study_id=study["study_id"],
+        continuation_wave=int(study["continuation"]["wave"]),
     )
     _seed_imported_probe(
         probe_args,
         parent_probe,
         rho_root,
         surface_id=surface["surface_id"],
+        continuation_wave=int(study["continuation"]["wave"]),
     )
     run_rho_search(probe_args)
 
@@ -448,6 +488,7 @@ def run_surface(
             index=index,
             smoke=smoke,
             study_id=study["study_id"],
+            continuation_wave=int(study["continuation"]["wave"]),
         )
         run_rho_search(cell_args)
         cell = json.loads((cell_dir / "cell.json").read_text(encoding="utf-8"))
@@ -492,14 +533,19 @@ def run_surface(
         ),
         "parent": {
             "study_id": study["parent"]["study_id"],
-            "selection_path": str(parent_surface_dir / "selection.json"),
-            "selection_sha256": surface["parent_selection_sha256"],
+            "record_path": str(
+                parent_surface_dir
+                / surface.get("parent_record", "selection.json")
+            ),
+            "record_sha256": surface.get(
+                "parent_record_sha256", surface.get("parent_selection_sha256")
+            ),
             "status": parent_selection["status"],
             "selected": parent_selection["selected"],
             "expanded_axes": parent_selection["expansion"]["expanded_axes"],
         },
         "continuation": {
-            "wave": 2,
+            "wave": int(study["continuation"]["wave"]),
             "triggered": True,
             "factor": float(study["continuation"]["factor"]),
             "expanded_edges": dict(surface["expand"]),
