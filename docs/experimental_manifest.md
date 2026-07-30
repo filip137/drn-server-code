@@ -1,6 +1,6 @@
 # Experimental Manifest
 
-Updated: 2026-07-29
+Updated: 2026-07-30
 
 This is the manually curated ledger of analyzed studies. It is not generated
 from raw metrics and does not track transient job state.
@@ -55,6 +55,93 @@ mapping in that runtime order.
 | Conv2 | legacy | Adam | `C0=B0=8.66750e-4, C1=B1=1.52841e-4, D=5.16982e-5` |
 
 ## Finished Studies
+
+## `perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1` — bounded Conv2 rho continuation and weight-distribution diagnosis
+
+- Analyzed: 2026-07-30
+- Evidence class: `ordinary_mnist_selection`
+- Outcome: `mixed`
+- Scientific question: After the initial bounded Conv2 baseline/ours rho
+  search failed to reach 90% validation accuracy, do factor-of-three rho
+  extensions locate better three-epoch operating points, and do the selected
+  conductance distributions explain the remaining shortfall?
+- Runs and seeds: Seed 0; two bounded initializers, baseline and ours, SGD and
+  Adam. Wave two added 35 terminal cells over eight surfaces. User-directed
+  wave three added 30 terminal cells over the six wave-two boundary-selected
+  surfaces; all 30 canonical wave-three bundles validated. Legacy, Conv1, and
+  Conv3 were excluded. Bound occupancy and projection efficiency were
+  report-only diagnostics.
+- Setup: Ordinary MNIST 55,000/5,000 deterministic train/validation split;
+  official test split not read; Conv2 perfect-diode BPTT with fixed
+  `T=K=6`; input gain 100; channels `[64,128]`; asynchronous minimizer;
+  batch size 16; validation batch size 64; three epochs per cell. Conductance
+  weights were projected to `[1e-5,1e-4]`. Initializers were full-range
+  bounded uniform and bounded Kaiming uniform. Schemes were baseline
+  `(voltage_amp=1,current_amp=1)` and ours
+  `(voltage_amp=4,current_amp=1)`.
+- Headline measurements: No surface reached the 90% reporting threshold.
+  “Unbounded” below means that the selected rho is bracketed by the tested
+  search range, not that the conductance weights lacked physical bounds.
+
+  | Initializer | Scheme | Optimizer | `rho_conv` | `rho_dense` | Validation accuracy | Rho range |
+  |---|---|---|---:|---:|---:|---|
+  | bounded uniform | baseline | SGD | 0.001 | 0.000370370 | 77.28% | unbounded/bracketed |
+  | bounded uniform | baseline | Adam | 0.081 | 0.00333333 | 85.30% | unbounded/bracketed |
+  | bounded uniform | ours | SGD | 0.000333333 | 0.000123457 | 85.80% | bounded at dense lower edge |
+  | bounded uniform | ours | Adam | 0.027 | 0.01 | 87.80% | unbounded/bracketed |
+  | bounded Kaiming | baseline | SGD | 0.000111111 | 0.00111111 | 63.66% | bounded at dense lower edge |
+  | bounded Kaiming | baseline | Adam | 0.081 | 0.00333333 | 85.26% | unbounded/bracketed |
+  | bounded Kaiming | ours | SGD | 0.003 | 0.01 | 10.08% | unbounded/bracketed |
+  | bounded Kaiming | ours | Adam | 0.081 | 0.03 | 88.10% | unbounded/bracketed |
+
+- Weight-distribution measurements: The Kaiming initializer starts
+  `ConvWeight_1` and `DenseWeight_0` in very narrow normalized supports
+  `[0.449,0.551]` and `[0.485,0.515]`, respectively, inside the physical
+  interval. Every 85%--88% selected row moved the final deeper-layer means
+  downward: `ConvWeight_1` ended at `1.83e-5`--`2.47e-5`. The two weak
+  Kaiming-SGD rows did not: baseline/SGD ended at `5.09e-5`, while
+  ours/SGD shifted upward to `6.05e-5`; its dense mean also shifted upward to
+  `6.12e-5`. The latter row remained at chance from epoch one
+  (`10.04%,10.08%,10.08%`) with loss approximately `0.5`.
+- Interpretation: Exact bound occupancy is not the primary explanation.
+  Strong Adam rows have as much as 80%--93% exact occupancy in an early
+  convolutional layer, and useful low-bound accumulation accompanies the
+  downward deeper-layer shift. The clearest pathological case is
+  Kaiming/ours/SGD: initializer-specific proposal normalization produced raw
+  rates of `4.85e-5`, `3.27e-3`, and `8.47e-5` for the two convolutional and
+  dense weights. These are roughly 304x, 456x, and 127x the corresponding
+  rates in the successful bounded-uniform/ours/SGD selection. The final
+  conductances are broadly redistributed but carry no useful class signal,
+  and neighboring cells either remained at chance or encountered sustained
+  gradient-RMS rejection. For the other seven selections, the best epoch was
+  epoch three and validation accuracy was still increasing. Their shortfall
+  from 90% is therefore primarily consistent with the deliberately short
+  training budget; it is not evidence that projection alone prevents
+  learning. Kaiming/baseline/SGD also remains rho-bounded and improved from
+  `20.12%` to `48.46%` to `63.66%`, so it is visibly under-trained as well as
+  poorly positioned.
+- Limitations and protocol deviations: This is a one-seed, three-epoch
+  selection diagnostic and is not paper-facing accuracy evidence. Weight
+  distributions show association, not causality; a read-only gradient replay
+  or longer matched confirmation would be needed to distinguish persistent
+  gradient imbalance from an early transient. Wave three was an explicit
+  extra continuation beyond the protocol's original single expansion wave.
+  Trex was occupied by an unrelated job, so two Trex-planned wave-two
+  surfaces ran on main with recorded target failover; scientific configs and
+  cohorts were unchanged.
+- Raw results:
+  [`wave two`](../results/perfectdiode-conv2-bounded-rho-continuation-wave2-seed0-v1)
+  and
+  [`wave three`](../results/perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1).
+- Analysis:
+  [machine-readable summary](../results/perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1/analysis/weight_distribution/summary.json),
+  [layer table](../results/perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1/analysis/weight_distribution/layer_statistics.csv),
+  [histograms](../results/perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1/analysis/weight_distribution/selected_weight_histograms.png),
+  and
+  [diagnostic comparison](../results/perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1/analysis/weight_distribution/weight_diagnostics.png).
+- Provenance: continuation implementation commits `ca2c44f5`, `c9bd9da6`,
+  and `a8c5b00f`; wave-three canonical summary reports
+  `official_test_read=false`.
 
 ## `conv3_pd_unbounded_rho_t8k8_20260729T125734Z` — Conv3 perfect-diode rho selection
 
