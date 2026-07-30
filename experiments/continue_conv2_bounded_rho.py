@@ -543,6 +543,10 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
             records.append(
                 {
                     **dict(surface),
+                    "target": record.get("target", surface["target"]),
+                    "planned_target": record.get(
+                        "planned_target", surface["target"]
+                    ),
                     "status": record["status"],
                     "selected": record.get("selected"),
                     "accuracy_gate_met": record.get("accuracy_gate_met"),
@@ -602,8 +606,34 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--surface-index", type=int, default=0)
     parser.add_argument("--target", choices=("main", "akib", "trex"))
+    parser.add_argument(
+        "--allow-target-failover",
+        action="store_true",
+        help=(
+            "Allow --target to replace the planned surface target while "
+            "recording both targets in the result."
+        ),
+    )
     parser.add_argument("--device")
     return parser.parse_args(argv)
+
+
+def _surface_for_target(
+    surface: Mapping[str, Any],
+    requested_target: str | None,
+    *,
+    allow_failover: bool,
+) -> dict[str, Any]:
+    resolved = dict(surface)
+    planned_target = str(surface["target"])
+    if requested_target is None or requested_target == planned_target:
+        return resolved
+    if not allow_failover:
+        raise ValueError("Requested target does not match the recorded surface target.")
+    resolved["planned_target"] = planned_target
+    resolved["target"] = requested_target
+    resolved["target_failover_reason"] = "planned_target_occupied"
+    return resolved
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -673,9 +703,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "official_test_read": False,
         }
     elif args.command == "smoke":
-        surface = surfaces[args.surface_index]
-        if args.target is not None and args.target != surface["target"]:
-            raise ValueError("Smoke target does not match the recorded surface target.")
+        surface = _surface_for_target(
+            surfaces[args.surface_index],
+            args.target,
+            allow_failover=args.allow_target_failover,
+        )
         result = run_surface(
             study_path,
             study,
@@ -687,9 +719,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             smoke=True,
         )
     elif args.command == "run-surface":
-        surface = surfaces[args.surface_index]
-        if args.target is not None and args.target != surface["target"]:
-            raise ValueError("Run target does not match the recorded surface target.")
+        surface = _surface_for_target(
+            surfaces[args.surface_index],
+            args.target,
+            allow_failover=args.allow_target_failover,
+        )
         result = run_surface(
             study_path,
             study,

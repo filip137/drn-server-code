@@ -10,6 +10,7 @@ import pytest
 from experiments.continue_conv2_bounded_rho import (
     DEFAULT_STUDY,
     _seed_imported_probe,
+    _surface_for_target,
     continuation_axes_and_pairs,
     load_study,
     surface_specs,
@@ -102,3 +103,17 @@ def test_imported_probe_is_rebound_to_continuation_contract(
     assert json.loads(
         (tmp_path / "continuation" / "resolved.json").read_text()
     ) == contract
+
+
+def test_target_failover_is_explicit_and_fail_closed() -> None:
+    surface = {"surface_id": "surface", "target": "trex"}
+
+    with pytest.raises(ValueError, match="does not match"):
+        _surface_for_target(surface, "akib", allow_failover=False)
+
+    resolved = _surface_for_target(surface, "akib", allow_failover=True)
+
+    assert resolved["target"] == "akib"
+    assert resolved["planned_target"] == "trex"
+    assert resolved["target_failover_reason"] == "planned_target_occupied"
+    assert surface["target"] == "trex"
