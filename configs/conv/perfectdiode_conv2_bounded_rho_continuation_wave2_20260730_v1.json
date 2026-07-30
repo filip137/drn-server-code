@@ -1,0 +1,171 @@
+{
+  "schema_version": "perfectdiode-conv2-bounded-rho-continuation/v1",
+  "study_id": "perfectdiode-conv2-bounded-rho-continuation-wave2-seed0-20260730-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "scope": {
+    "architectures": [
+      "conv2"
+    ],
+    "schemes": [
+      "baseline",
+      "ours"
+    ],
+    "optimizers": [
+      "SGD",
+      "Adam"
+    ],
+    "initializers": [
+      "bounded_uniform",
+      "bounded_kaiming_uniform"
+    ],
+    "excluded": [
+      "legacy",
+      "conv1",
+      "conv3"
+    ]
+  },
+  "dataset": {
+    "name": "ordinary_mnist_train_validation",
+    "split_seed": 0,
+    "shuffle_seed": 0,
+    "official_test_read": false
+  },
+  "parent": {
+    "study_id": "perfectdiode-conv12-bounded-rho-baseline-ours-seed0-20260729-v1",
+    "study_config": "configs/conv/perfectdiode_conv12_bounded_rho_baseline_ours_20260729_v1.json",
+    "study_config_sha256": "e7f8afa4d7cb4ef84d305f04dcaa797ee8726c6fbe30ad17b77b4d98012eb61b",
+    "local_result_root": "results/perfectdiode-conv12-bounded-rho-baseline-ours-tk46-seed0-v1"
+  },
+  "continuation": {
+    "wave": 2,
+    "factor": 3.0,
+    "selection_rule": "parent_candidates_plus_new_cells_with_parent_2pct_loss_plateau_and_tiebreaks",
+    "protocol_deviation": "user_directed_second_expansion_wave_beyond_original_single_wave_ceiling",
+    "bound_occupancy": "report_only",
+    "projection_efficiency": "report_only"
+  },
+  "surfaces": [
+    {
+      "index": 0,
+      "parent_surface_index": 4,
+      "surface_id": "bounded_uniform__conv2__baseline__sgd",
+      "initializer": "bounded_uniform",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "target": "akib",
+      "parent_selection_sha256": "4db15c1542cadb96b18564fdb0ccd533faf3b0586f4a596f10d1894772f93a9a",
+      "expand": {
+        "rho_dense": "lower"
+      },
+      "expected_new_cells": 4
+    },
+    {
+      "index": 1,
+      "parent_surface_index": 5,
+      "surface_id": "bounded_uniform__conv2__baseline__adam",
+      "initializer": "bounded_uniform",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "target": "main",
+      "parent_selection_sha256": "210604b4d82ca7c29a750ce5bf1ec4a8eafae34e672d123d452de1e17a353d66",
+      "expand": {
+        "rho_conv": "upper"
+      },
+      "expected_new_cells": 4
+    },
+    {
+      "index": 2,
+      "parent_surface_index": 6,
+      "surface_id": "bounded_uniform__conv2__ours__sgd",
+      "initializer": "bounded_uniform",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "target": "main",
+      "parent_selection_sha256": "505f6f932db50c2826b597458456587564ff4d4190ee57931c13494c6605e08f",
+      "expand": {
+        "rho_conv": "lower",
+        "rho_dense": "lower"
+      },
+      "expected_new_cells": 9
+    },
+    {
+      "index": 3,
+      "parent_surface_index": 7,
+      "surface_id": "bounded_uniform__conv2__ours__adam",
+      "initializer": "bounded_uniform",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "target": "akib",
+      "parent_selection_sha256": "f5d048089f82f6d9ba921ddeda41d74da25eb5cfe2b620e2e0192c072fca29f8",
+      "expand": {
+        "rho_conv": "upper"
+      },
+      "expected_new_cells": 3
+    },
+    {
+      "index": 4,
+      "parent_surface_index": 12,
+      "surface_id": "bounded_kaiming_uniform__conv2__baseline__sgd",
+      "initializer": "bounded_kaiming_uniform",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "target": "trex",
+      "parent_selection_sha256": "8565c93b78d015fd661e594fac4b0969d440443a8380b0a6638f164fbb2c8137",
+      "expand": {
+        "rho_conv": "lower"
+      },
+      "expected_new_cells": 3
+    },
+    {
+      "index": 5,
+      "parent_surface_index": 13,
+      "surface_id": "bounded_kaiming_uniform__conv2__baseline__adam",
+      "initializer": "bounded_kaiming_uniform",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "target": "akib",
+      "parent_selection_sha256": "86de5434fb81b6bd9227a39e0f83cab25da44e6d6a8937394c1775eb413b7089",
+      "expand": {
+        "rho_conv": "upper"
+      },
+      "expected_new_cells": 4
+    },
+    {
+      "index": 6,
+      "parent_surface_index": 14,
+      "surface_id": "bounded_kaiming_uniform__conv2__ours__sgd",
+      "initializer": "bounded_kaiming_uniform",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "target": "akib",
+      "parent_selection_sha256": "abfac7850f6d9a21003dd141d35e8f87665185c33c43a973d46c134fad3d2fc3",
+      "expand": {},
+      "expected_new_cells": 0
+    },
+    {
+      "index": 7,
+      "parent_surface_index": 15,
+      "surface_id": "bounded_kaiming_uniform__conv2__ours__adam",
+      "initializer": "bounded_kaiming_uniform",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "target": "trex",
+      "parent_selection_sha256": "6781dd8277e59bd6487104033d3d59e19f980f90351977fe2766b94e332ceb94",
+      "expand": {
+        "rho_conv": "upper",
+        "rho_dense": "upper"
+      },
+      "expected_new_cells": 8
+    }
+  ],
+  "execution": {
+    "device": "cuda",
+    "gpus": 3,
+    "surface_concurrency_per_gpu": 1,
+    "candidate_epochs": 3,
+    "new_cell_budget": 35,
+    "candidate_epoch_budget": 105,
+    "expected_duration": "about 1-2 hours after all recorded target lanes are available",
+    "result_root": "results/perfectdiode-conv2-bounded-rho-continuation-wave2-seed0-v1"
+  }
+}

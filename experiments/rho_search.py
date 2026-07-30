@@ -1201,6 +1201,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "run_id": name,
             "arm_id": f"{optimizer_name.lower()}-rho-{rho_conv:g}-{rho_dense:g}",
             "evidence_class": "ordinary_mnist_selection",
+            "smoke": bool(getattr(args, "smoke", False)),
             "configuration": {
                 "path": str(config_path),
                 "sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
