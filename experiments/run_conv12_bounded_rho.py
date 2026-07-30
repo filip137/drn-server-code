@@ -1392,6 +1392,20 @@ def _reported_range_status(record: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _reported_accuracy_gate_met(record: Mapping[str, Any]) -> bool | None:
+    selection = record.get("selection")
+    if isinstance(selection, Mapping):
+        explicit = selection.get("accuracy_gate_met")
+        if isinstance(explicit, bool):
+            return explicit
+    selected = record.get("selected")
+    if isinstance(selected, Mapping):
+        eligible = selected.get("selection_eligible")
+        if isinstance(eligible, bool):
+            return eligible
+    return None
+
+
 def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
     records = []
     for surface in surface_specs(study):
@@ -1403,11 +1417,7 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
                     **surface,
                     "status": record["status"],
                     "selected": record.get("selected"),
-                    "accuracy_gate_met": (
-                        record.get("selection", {}).get("accuracy_gate_met")
-                        if isinstance(record.get("selection"), Mapping)
-                        else None
-                    ),
+                    "accuracy_gate_met": _reported_accuracy_gate_met(record),
                     "rho_range_status": _reported_range_status(record),
                     "suspicious_accuracy_status": record.get(
                         "suspicious_accuracy_status"

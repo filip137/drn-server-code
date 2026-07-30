@@ -465,6 +465,32 @@ def test_collect_reports_range_and_below_accuracy_fields(tmp_path) -> None:
     assert record["suspicious_accuracy_status"]["remains_below_floor"] is True
 
 
+def test_collect_recovers_accuracy_gate_from_pre_fallback_selection(tmp_path) -> None:
+    _path, study = load_study()
+    surface = surface_specs(study)[0]
+    selection_path = (
+        tmp_path / "surfaces" / surface["surface_id"] / "selection.json"
+    )
+    selection_path.parent.mkdir(parents=True)
+    selection_path.write_text(
+        """{
+          "status": "complete",
+          "selected": {
+            "rho_conv": 0.001,
+            "rho_dense": 0.01,
+            "selection_eligible": true
+          },
+          "selection": {}
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    summary = collect(study, tmp_path)
+
+    assert summary["surfaces"][0]["accuracy_gate_met"] is True
+
+
 def test_collect_treats_below_accuracy_fallbacks_as_complete(tmp_path) -> None:
     _path, study = load_study()
     statuses = (
