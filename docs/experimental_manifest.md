@@ -56,6 +56,88 @@ mapping in that runtime order.
 
 ## Finished Studies
 
+## `perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1` — bounded Conv1/Conv2 checkpoint mechanisms
+
+- Analyzed: 2026-07-31
+- Evidence class: `ordinary_mnist_selection_mechanism_diagnostic`
+- Outcome: `mixed`
+- Scientific question: Do the selected `[1e-5,1e-4]` bounded-rho Conv1/Conv2
+  checkpoints fail because conductances accumulate at the physical limits or
+  because projection removes most proposed updates, and do any failures have a
+  different gradient mechanism?
+- Runs and seeds: Seed 0; all 16 canonical baseline/ours selections across
+  Conv1/Conv2, two bounded initializers, and SGD/Adam, plus the five completed
+  historical legacy selections (four Conv1 and bounded-uniform/SGD Conv2).
+  Initialization, best-validation, and final checkpoints gave 63 guarded
+  checkpoint roles. Historical legacy remains a separate, incomplete evidence
+  panel.
+- Setup: Ordinary MNIST, `T=K=4` for Conv1 and `T=K=6` for Conv2, physical
+  conductance projection to `[1e-5,1e-4]`, and no official-test access. Raw
+  gradients were replayed without optimizer steps on the same first 16
+  deterministic training minibatches (256 examples). All source result and
+  selection hashes matched; all 63 source files and replayed tensor states were
+  unchanged. SGD proposal replay is exact for the saved zero-momentum,
+  zero-weight-decay contract. Adam moments were not saved, so only recorded
+  training projection diagnostics are authoritative for Adam; fresh-state
+  proposal replay is labeled as a shadow.
+- Headline measurements: Whole-model exact-bound occupancy never exceeds
+  `41.96%`, so no final model has a majority of all conductances exactly pinned.
+  Pinning is nevertheless severe within specific Conv2 layers: the maximum is
+  `94.44%`, and baseline/Adam has `92.26%`--`93.40%` exact occupancy in
+  `ConvWeight_1`. Conv2 baseline/Adam records only `0.091`--`0.096` aggregate
+  projection efficiency; its first two convolution tensors retain as little as
+  `0.006`--`0.079` of proposed RMS during training and `0.382`--`0.416` of
+  feasible raw-gradient L2 at the final checkpoint. Matched ours/Adam lowers
+  aggregate occupancy by `4.48`--`16.27` points, raises recorded projection
+  efficiency by `0.320`--`0.403`, and improves accuracy by `2.50`--`2.84`
+  points.
+- Failure diagnosis: Kaiming/ours/SGD Conv2 is the clear non-clipping failure.
+  It remains at `10.08%`; all conductance tensors have zero median proposed
+  update RMS, final `ConvWeight_0` has zero gradient on all 16 replay batches,
+  and the deeper tensors have zero gradient on 15 of 16. Their means moved
+  upward to normalized conductance positions `0.561` and `0.569`. The raw
+  conductance rates are approximately `304x/456x/127x` the corresponding
+  successful bounded-uniform/ours/SGD rates. This is consistent with an early
+  oversized operating-point shift followed by dead-gradient collapse, not
+  projection clipping. The high recorded projection ratio is conditional on
+  nonzero proposals and is therefore not evidence of active learning here.
+- Broader interpretation: Conv1 ours improves all four matched rows by
+  `2.38`--`3.34` points while reducing bound occupancy and modestly improving
+  projection. Historical legacy Conv1 combines `94.46%`--`95.60%` accuracy,
+  `0.64%`--`6.12%` aggregate exact occupancy, and `0.931`--`0.983` projection
+  efficiency, but its predecessor training policy prevents a causal matched
+  claim. Historical bounded-uniform/legacy/SGD Conv2 and active
+  bounded-uniform/ours/SGD have nearly equal training projection efficiency
+  (`0.957` versus `0.958`) despite `93.80%` versus `85.80%` accuracy, so clipping
+  cannot explain the full historical gap. Every non-collapsed active Conv2 row
+  selects epoch three as best, consistent with the short selection budget also
+  limiting accuracy.
+- Rho-range status: Four active choices remain boundary-selected: both Conv1
+  Kaiming/SGD rows at lower/lower, Conv2 Kaiming/baseline/SGD at dense lower,
+  and Conv2 bounded-uniform/ours/SGD at dense lower. The other 12 active choices
+  are bracketed (`unbounded` in the search terminology). Bound occupancy and
+  projection efficiency remained report-only and excluded no checkpoint.
+- Limitations and deviations: One seed and three training epochs; ordinary
+  MNIST is diagnostic rather than paper-facing evidence; only
+  initialization/best/final checkpoints exist; historical coverage and policy
+  are unmatched; checkpoint replay establishes association rather than
+  causality. The first local smoke attempt failed before replay because the
+  optional OpenMP workaround hid CUDA on this host; the second completed replay
+  but exposed an SGD-only report-builder bug. Both are retained, and the fixed
+  third smoke passed all nine guards before the full run.
+- Analysis:
+  [reviewed report](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/report.md),
+  [surface summary](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/surface_summary.csv),
+  [layer distributions](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/weight_distribution_by_layer.csv),
+  [recorded training projection](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/training_projection_summary.csv),
+  [gradient replay](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/checkpoint_gradient_summary.csv),
+  [checkpoint guards](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/checkpoint_guards.json),
+  and
+  [plots](../results/perfectdiode-conv12-bounded-rho-checkpoint-analysis-seed0-v1/analysis/).
+- Provenance: implementation commits `7b03095b` and `6e7cc751`; the full
+  replay manifest records a clean `6e7cc751` checkout and the frozen cohort
+  hash `ffac016d871e7c49c2574c8dfe00b892bb38865e1f533458d2cb83c5362da6dc`.
+
 ## `perfectdiode-conv2-bounded-rho-continuation-wave3-seed0-v1` — bounded Conv2 rho continuation and weight-distribution diagnosis
 
 - Analyzed: 2026-07-30
