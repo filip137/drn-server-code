@@ -5,6 +5,7 @@ import torch
 
 from experiments.analyze_bounded_rho_checkpoints import (
     LEGACY_SELECTED_CELLS,
+    _build_summary,
     _distribution_stats,
     _gradient_comparison,
     _gradient_geometry,
@@ -119,3 +120,52 @@ def test_historical_legacy_scope_is_explicitly_incomplete():
         for item in LEGACY_SELECTED_CELLS
         if item["architecture"] == "conv2"
     } == {("conv2", "bounded_uniform", "SGD")}
+
+
+def test_summary_allows_sgd_only_smoke_subset(tmp_path):
+    surface = _surface(tmp_path)
+    summary = _build_summary(
+        surfaces=[surface],
+        surface_rows=[],
+        weight_rows=[
+            {
+                "checkpoint_role": "final",
+                "parameter_name": "ConvWeight_0",
+                "combined_exact_bound_fraction": 0.25,
+                "surface_id": surface.surface_id,
+            },
+            {
+                "checkpoint_role": "final",
+                "parameter_name": "ALL_CONDUCTANCE_WEIGHTS",
+                "combined_exact_bound_fraction": 0.2,
+                "surface_id": surface.surface_id,
+            },
+        ],
+        training_rows=[
+            {
+                "evidence_panel": "active_matched_baseline_ours",
+                "parameter_name": "ConvWeight_0",
+                "median_projection_efficiency": 0.8,
+                "surface_id": surface.surface_id,
+            }
+        ],
+        gradient_rows=[
+            {
+                "checkpoint_role": "final",
+                "parameter_type": "conductance_weight",
+                "parameter_name": "ConvWeight_0",
+                "surface_id": surface.surface_id,
+                "optimizer": "SGD",
+                "tangent_gradient_efficiency_l2_median": 0.7,
+                "projection_efficiency_l2_median": 0.6,
+                "gradient_zero_fraction_median": 0.0,
+            }
+        ],
+        cohort={"example_count": 16, "batch_count": 1},
+        device="cuda",
+    )
+
+    assert summary["extremes"]["minimum_fresh_adam_shadow_projection_efficiency"] is None
+    assert summary["extremes"]["minimum_exact_sgd_proposal_projection_efficiency"][
+        "value"
+    ] == pytest.approx(0.6)

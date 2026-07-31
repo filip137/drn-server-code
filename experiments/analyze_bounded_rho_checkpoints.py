@@ -1731,9 +1731,13 @@ def _build_summary(
         sgd_proposals,
         key=lambda row: float(row["projection_efficiency_l2_median"]),
     )
-    min_adam = min(
-        adam_proposals,
-        key=lambda row: float(row["projection_efficiency_l2_median"]),
+    min_adam = (
+        min(
+            adam_proposals,
+            key=lambda row: float(row["projection_efficiency_l2_median"]),
+        )
+        if adam_proposals
+        else None
     )
     return {
         "schema_version": SCHEMA,
@@ -1782,11 +1786,15 @@ def _build_summary(
                 "parameter_name": min_sgd["parameter_name"],
                 "value": min_sgd["projection_efficiency_l2_median"],
             },
-            "minimum_fresh_adam_shadow_projection_efficiency": {
-                "surface_id": min_adam["surface_id"],
-                "parameter_name": min_adam["parameter_name"],
-                "value": min_adam["projection_efficiency_l2_median"],
-            },
+            "minimum_fresh_adam_shadow_projection_efficiency": (
+                {
+                    "surface_id": min_adam["surface_id"],
+                    "parameter_name": min_adam["parameter_name"],
+                    "value": min_adam["projection_efficiency_l2_median"],
+                }
+                if min_adam is not None
+                else None
+            ),
         },
         "exact_zero_final_gradient_layers": [
             {
@@ -1964,6 +1972,17 @@ def _write_report(
     surface_rows: Sequence[Mapping[str, Any]],
 ) -> None:
     extremes = summary["extremes"]
+    adam_extreme = extremes["minimum_fresh_adam_shadow_projection_efficiency"]
+    adam_extreme_line = (
+        "- Fresh-moment Adam shadow projection efficiency: not covered by this "
+        "subset."
+        if adam_extreme is None
+        else (
+            "- Lowest fresh-moment Adam shadow projection efficiency: "
+            f"{float(adam_extreme['value']):.3f}; this is not a reconstruction "
+            "of unsaved Adam moments."
+        )
+    )
     lines = [
         "# Bounded Conv1/Conv2 checkpoint mechanism analysis",
         "",
@@ -1984,7 +2003,7 @@ def _write_report(
         f"- Lowest recorded active per-layer training projection efficiency: {float(extremes['minimum_recorded_active_layer_projection_efficiency']['value']):.3f} in `{extremes['minimum_recorded_active_layer_projection_efficiency']['surface_id']}` / `{extremes['minimum_recorded_active_layer_projection_efficiency']['parameter_name']}`.",
         f"- Lowest final feasible raw-gradient L2 fraction: {float(extremes['minimum_final_tangent_gradient_efficiency']['value']):.3f} in `{extremes['minimum_final_tangent_gradient_efficiency']['surface_id']}` / `{extremes['minimum_final_tangent_gradient_efficiency']['parameter_name']}`.",
         f"- Lowest exact SGD one-step projection efficiency: {float(extremes['minimum_exact_sgd_proposal_projection_efficiency']['value']):.3f}.",
-        f"- Lowest fresh-moment Adam shadow projection efficiency: {float(extremes['minimum_fresh_adam_shadow_projection_efficiency']['value']):.3f}; this is not a reconstruction of unsaved Adam moments.",
+        adam_extreme_line,
         "",
         "## Surface summary",
         "",
