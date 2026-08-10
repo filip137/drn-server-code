@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from argparse import Namespace
 from pathlib import Path
@@ -24,6 +25,7 @@ from experiments.rho_search import (
     verify_zero_bias_checkpoint,
     verify_zero_bias_run_checkpoints,
 )
+from labs.mnist_train import train_mnist_conv
 
 
 class FakeParameter:
@@ -38,6 +40,14 @@ class FakeParameter:
         self.state = state
         self.min_cond = min_cond
         self.max_cond = max_cond
+
+
+def test_conv_trainer_exposes_epoch_checkpoint_contract() -> None:
+    parameter = inspect.signature(train_mnist_conv).parameters[
+        "checkpoint_every_epoch"
+    ]
+
+    assert parameter.default is False
 
 
 def _safety_batch(

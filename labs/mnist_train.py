@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime
+import hashlib
 import json
 import math
 import os
@@ -448,6 +449,97 @@ def _require_finite_variables(variables, label, *, epoch=None, batch=None):
             epoch=epoch,
             batch=batch,
         )
+
+
+def _sha256_path(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _save_epoch_diagnostic_checkpoint(
+    *,
+    run_dir,
+    epoch,
+    energy_fn,
+    optimizer,
+    parameters,
+):
+    """Save an immutable model/optimizer checkpoint for one diagnostic epoch."""
+
+    checkpoint_dir = Path(run_dir) / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    epoch_value = int(epoch)
+    model_path = checkpoint_dir / f"epoch_{epoch_value:03d}_model.pt"
+    optimizer_path = checkpoint_dir / f"epoch_{epoch_value:03d}_optimizer.pt"
+    if model_path.exists() or optimizer_path.exists():
+        raise FileExistsError(
+            "Expected new diagnostic checkpoint paths. "
+            f"Provided value: model={model_path}, optimizer={optimizer_path}."
+        )
+
+    energy_fn.save(model_path)
+    model_sha256 = _sha256_path(model_path)
+    optimizer_payload = {
+        "schema_version": "mnist-conv-diagnostic-optimizer-checkpoint/v1",
+        "epoch": epoch_value,
+        "model_checkpoint": model_path.name,
+        "model_checkpoint_sha256": model_sha256,
+        "parameter_names": [
+            str(getattr(parameter, "name", "")).strip()
+            for parameter in parameters
+        ],
+        "optimizer_parameter_groups": [
+            {
+                "group_index": group_index,
+                "learning_rate": float(group["lr"]),
+                "parameter_names": [
+                    str(getattr(parameter, "name", "")).strip()
+                    for parameter in parameters
+                    if any(candidate is parameter.state for candidate in group["params"])
+                ],
+            }
+            for group_index, group in enumerate(optimizer.param_groups)
+        ],
+        "optimizer_class": type(optimizer).__name__,
+        "optimizer_state_dict": optimizer.state_dict(),
+        "rng_state": {
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "torch_cpu": torch.get_rng_state(),
+            "torch_cuda": (
+                torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
+            ),
+        },
+    }
+    temporary = optimizer_path.with_name(
+        f".{optimizer_path.name}.{os.getpid()}.tmp"
+    )
+    try:
+        torch.save(optimizer_payload, temporary)
+        os.replace(temporary, optimizer_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+    record = {
+        "schema_version": "mnist-conv-diagnostic-epoch-checkpoint/v1",
+        "epoch": epoch_value,
+        "model_path": str(model_path.relative_to(run_dir)),
+        "model_size_bytes": model_path.stat().st_size,
+        "model_sha256": model_sha256,
+        "optimizer_path": str(optimizer_path.relative_to(run_dir)),
+        "optimizer_size_bytes": optimizer_path.stat().st_size,
+        "optimizer_sha256": _sha256_path(optimizer_path),
+    }
+    index_path = Path(run_dir) / "epoch_checkpoint_index.jsonl"
+    with index_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return record
 
 
 def _write_json(path, payload):
@@ -1021,6 +1113,7 @@ def _train_image_task(
     apply_optimizer_steps=True,
     reporting_run_dir=None,
     skip_terminal_official_test=False,
+    checkpoint_every_epoch=False,
 ):
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
@@ -1035,6 +1128,7 @@ def _train_image_task(
     epochs = int(epochs)
     if epochs <= 0:
         raise ValueError(f"Expected epochs to be a positive integer. Provided value: {epochs!r}.")
+    checkpoint_every_epoch = bool(checkpoint_every_epoch)
     training_algorithm = _normalize_training_algorithm(
         training_algorithm if training_algorithm is not None else config.get("training_algorithm")
     )
@@ -1414,6 +1508,14 @@ def _train_image_task(
             "num_iterations_inference": inference_iterations,
             "beta": beta_value,
         },
+        "diagnostics": {
+            "checkpoint_every_epoch": checkpoint_every_epoch,
+            "epoch_checkpoint_index_path": (
+                str(run_dir / "epoch_checkpoint_index.jsonl")
+                if checkpoint_every_epoch
+                else None
+            ),
+        },
         "evaluation": {
             "epoch_split": "validation" if dataset_provenance is not None else "test",
             "checkpoint_selection": checkpoint_selection,
@@ -1449,6 +1551,17 @@ def _train_image_task(
     best_epoch = None
     best_model_path = run_dir / "best_model.pt"
     stop_training = False
+    epoch_checkpoint_records = []
+    if checkpoint_every_epoch:
+        epoch_checkpoint_records.append(
+            _save_epoch_diagnostic_checkpoint(
+                run_dir=run_dir,
+                epoch=0,
+                energy_fn=energy_fn,
+                optimizer=optimizer,
+                parameters=params,
+            )
+        )
     for epoch in range(epochs):
         running_loss = 0.0
         running_correct = 0
@@ -1682,6 +1795,16 @@ def _train_image_task(
             history=history,
             epoch_callback=epoch_callback,
         )
+        if checkpoint_every_epoch:
+            epoch_checkpoint_records.append(
+                _save_epoch_diagnostic_checkpoint(
+                    run_dir=run_dir,
+                    epoch=epoch + 1,
+                    energy_fn=energy_fn,
+                    optimizer=optimizer,
+                    parameters=params,
+                )
+            )
         if should_stop:
             stop_training = True
             break
@@ -1820,6 +1943,13 @@ def _train_image_task(
         "lr_decay": lr_decay_value,
         "optimizer": optimizer_details,
         "optimizer_steps_applied": bool(apply_optimizer_steps),
+        "checkpoint_every_epoch": checkpoint_every_epoch,
+        "epoch_checkpoint_index_path": (
+            str(run_dir / "epoch_checkpoint_index.jsonl")
+            if checkpoint_every_epoch
+            else None
+        ),
+        "epoch_checkpoint_count": len(epoch_checkpoint_records),
         "dataset_provenance": dataset_provenance,
         "final_learning_rate": [float(group["lr"]) for group in optimizer.param_groups],
         "checkpoint_path": str(final_model_path),
@@ -1848,6 +1978,13 @@ def _train_image_task(
         "lr_decay": lr_decay_value,
         "optimizer": optimizer_details,
         "optimizer_steps_applied": bool(apply_optimizer_steps),
+        "checkpoint_every_epoch": checkpoint_every_epoch,
+        "epoch_checkpoint_index_path": (
+            str(run_dir / "epoch_checkpoint_index.jsonl")
+            if checkpoint_every_epoch
+            else None
+        ),
+        "epoch_checkpoint_count": len(epoch_checkpoint_records),
         "beta": beta_value,
         "training_algorithm": training_algorithm,
         "batch_state_policy": batch_state_policy,
@@ -1875,6 +2012,11 @@ def _train_image_task(
     summary["best_model_path"] = str(best_model_path)
     summary["weights_final_path"] = str(weights_final_path)
     summary["weights_best_path"] = str(weights_best_path)
+    summary["epoch_checkpoint_index_path"] = (
+        str(run_dir / "epoch_checkpoint_index.jsonl")
+        if checkpoint_every_epoch
+        else None
+    )
     history["summary"] = summary
     history["run_dir"] = str(run_dir)
     history["event_files"] = event_files
@@ -1911,6 +2053,7 @@ def train_mnist_conv(
     apply_optimizer_steps=True,
     reporting_run_dir=None,
     skip_terminal_official_test=False,
+    checkpoint_every_epoch=False,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -1940,6 +2083,7 @@ def train_mnist_conv(
         apply_optimizer_steps=apply_optimizer_steps,
         reporting_run_dir=reporting_run_dir,
         skip_terminal_official_test=skip_terminal_official_test,
+        checkpoint_every_epoch=checkpoint_every_epoch,
     )
 
 
