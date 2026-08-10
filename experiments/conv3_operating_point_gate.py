@@ -425,10 +425,10 @@ def _residual_audit(
         context["network"].set_input(images, reset=True)
         with torch.no_grad():
             context["minimizer_inference"].compute_equilibrium()
-            gradients = [
-                context["energy_fn"].grad_layer_fn(layer)().detach()
-                for layer in free_layers
-            ]
+        gradients = [
+            context["energy_fn"].grad_layer_fn(layer)().detach()
+            for layer in free_layers
+        ]
         for index, (layer, gradient) in enumerate(zip(free_layers, gradients)):
             state = layer.state.detach()
             raw = gradient.abs()

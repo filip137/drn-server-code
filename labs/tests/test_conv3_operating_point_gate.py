@@ -59,6 +59,51 @@ def test_projected_kkt_residual_rejects_outward_boundary_gradients() -> None:
     assert _clamp_occupancy_per_sample(state, epsilon=1.0e-8).item() == 1.0
 
 
+def test_residual_audit_enables_autograd_for_energy_derivative() -> None:
+    class Layer:
+        def __init__(self) -> None:
+            self.state = torch.ones((1, 2), requires_grad=True)
+
+    class Network:
+        def set_input(self, _images, *, reset) -> None:
+            assert reset is True
+
+    class Minimizer:
+        def compute_equilibrium(self) -> None:
+            assert torch.is_grad_enabled() is False
+
+    class Energy:
+        @staticmethod
+        def grad_layer_fn(layer):
+            def gradient():
+                assert torch.is_grad_enabled() is True
+                energy = layer.state.square().sum()
+                return torch.autograd.grad(energy, layer.state)[0]
+
+            return gradient
+
+    layer = Layer()
+    context = {
+        "parameters": [layer],
+        "free_layers": [layer],
+        "network": Network(),
+        "minimizer_inference": Minimizer(),
+        "energy_fn": Energy(),
+        "inference_iterations": 8,
+    }
+
+    result = gate_module._residual_audit(
+        context,
+        [(torch.zeros((1, 1)), torch.zeros(1, dtype=torch.long))],
+        expected_examples=1,
+        threshold=3.0,
+        clamp_epsilon=1.0e-12,
+    )
+
+    assert result["passed"] is True
+    assert result["layers"][0]["selected_residual"]["p90"] == pytest.approx(2.0)
+
+
 def test_gradient_gate_passes_identical_live_reference() -> None:
     rows = [
         _gradient_row([1.0, 2.0, 0.0, 4.0], batch_index=index)
