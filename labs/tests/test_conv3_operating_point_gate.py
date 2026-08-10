@@ -11,6 +11,7 @@ from experiments.conv3_operating_point_gate import (
     _clamp_occupancy_per_sample,
     _projected_perfect_diode_residual,
     assess_gradient_gate,
+    assess_reference_gradient_viability,
 )
 
 
@@ -85,6 +86,54 @@ def test_gradient_gate_fails_dead_k64_reference_even_when_vectors_match() -> Non
     assert result["reference_viable"] is False
     assert result["passed"] is False
     assert all(row["reference_proposal_units_all_finite_positive"] is False for row in result["parameters"])
+
+
+def test_reference_viability_can_be_assessed_without_a_k8_comparison() -> None:
+    rows = [
+        _gradient_row([1.0, 2.0, 0.0, 4.0], batch_index=index)
+        for index in range(8)
+    ]
+    reference = {
+        name: rows for name in ("ConvWeight_0", "ConvWeight_1", "ConvWeight_2")
+    }
+
+    result = assess_reference_gradient_viability(reference, DEFAULT_CONTRACT)
+
+    assert result["reference_viable"] is True
+    assert [row["parameter"] for row in result["parameters"]] == [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+    ]
+
+
+def test_gradient_gate_uses_finite_positive_median_proposal_unit() -> None:
+    rows = [
+        _gradient_row([1.0, 2.0, 3.0, 4.0], batch_index=index)
+        for index in range(8)
+    ]
+    rows[0] = {**rows[0], "nominal_sgd_lr1_proposal_unit": 0.0}
+    operational = {
+        name: rows for name in ("ConvWeight_0", "ConvWeight_1", "ConvWeight_2")
+    }
+    reference = {name: rows for name in operational}
+
+    result = assess_gradient_gate(operational, reference, DEFAULT_CONTRACT)
+
+    assert result["reference_viable"] is True
+    assert result["passed"] is True
+    assert all(
+        row["reference_nominal_sgd_lr1_proposal_unit_median"] > 0.0
+        for row in result["parameters"]
+    )
+    assert all(
+        row["reference_proposal_units_all_finite"] is True
+        for row in result["parameters"]
+    )
+    assert all(
+        row["reference_proposal_units_all_finite_positive"] is False
+        for row in result["parameters"]
+    )
 
 
 def test_gradient_gate_enforces_norm_zero_fraction_and_cosine_boundaries() -> None:
@@ -199,5 +248,79 @@ def test_runtime_keeps_t_sentinel_out_of_k_comparison(tmp_path, monkeypatch) -> 
     assert result["security_passed"] is True
     assert calls == [(8, 8), (64, 8), (8, 64)]
     assert result["gradient"]["operational"] == {"T": 8, "K": 8}
+    assert result["gradient"]["reference"] == {"T": 8, "K": 64}
+    assert output.is_file()
+
+
+def test_k64_viability_runtime_replays_only_t8_k64(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "source.json"
+    checkpoint = tmp_path / "epoch_001_model.pt"
+    output = tmp_path / "k64.json"
+    source.write_text("{}\n", encoding="utf-8")
+    checkpoint.write_bytes(b"checkpoint")
+    calls = []
+
+    monkeypatch.setattr(gate_module, "_model_config", lambda _config: {})
+    monkeypatch.setattr(
+        gate_module, "_validate_source_contract", lambda _config, _model: None
+    )
+    monkeypatch.setattr(
+        gate_module,
+        "_load_training_cohort",
+        lambda *_args, **_kwargs: (
+            [(torch.zeros((32, 1, 1, 1)), torch.zeros(32, dtype=torch.long))],
+            {
+                "cohort_original_indices": list(range(32)),
+                "cohort_original_indices_sha256": "indices",
+            },
+        ),
+    )
+
+    def fake_context(
+        _config,
+        _checkpoint,
+        *,
+        device,
+        inference_iterations,
+        training_iterations,
+    ):
+        del device
+        calls.append((inference_iterations, training_iterations))
+        return {
+            "parameter_sha256": "parameters",
+            "training_iterations": training_iterations,
+        }
+
+    monkeypatch.setattr(gate_module, "_build_model_context", fake_context)
+    monkeypatch.setattr(
+        gate_module,
+        "_cache_free_equilibria",
+        lambda *_args, **_kwargs: ([tuple()], "free"),
+    )
+    live_rows = [_gradient_row([1.0, 2.0, 3.0, 4.0], batch_index=0)]
+    monkeypatch.setattr(
+        gate_module,
+        "_gradient_observations",
+        lambda context, *_args, **_kwargs: {
+            "K": context["training_iterations"],
+            "by_parameter": {
+                name: live_rows
+                for name in ("ConvWeight_0", "ConvWeight_1", "ConvWeight_2")
+            },
+        },
+    )
+
+    result = gate_module.run_conv3_k64_gradient_viability_gate(
+        source,
+        checkpoint,
+        device="cpu",
+        output_path=output,
+        smoke=True,
+    )
+
+    assert calls == [(8, 64)]
+    assert result["status"] == "complete"
+    assert result["viability_passed"] is True
+    assert result["checkpoint_unchanged"] is True
     assert result["gradient"]["reference"] == {"T": 8, "K": 64}
     assert output.is_file()

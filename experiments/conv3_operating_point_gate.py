@@ -41,6 +41,9 @@ from training.sgd import Backprop
 
 
 SCHEMA_VERSION = "perfectdiode-conv3-bounded-uniform-operating-point-gate/v1"
+K64_VIABILITY_SCHEMA_VERSION = (
+    "perfectdiode-conv3-bounded-uniform-k64-gradient-viability/v1"
+)
 EXPECTED_CONV_WEIGHTS = ("ConvWeight_0", "ConvWeight_1", "ConvWeight_2")
 DEFAULT_CONTRACT: dict[str, Any] = {
     "selected_T": 8,
@@ -387,6 +390,21 @@ def _split_prefix_batches(
     ]
 
 
+def _cohort_tensor_sha256(
+    batches: Sequence[tuple[torch.Tensor, torch.Tensor]],
+) -> str:
+    """Hash cohort bytes independently of how they were split into batches."""
+
+    if not batches:
+        raise ValueError("Expected a non-empty cohort.")
+    return _sha256_named_tensors(
+        [
+            ("images", torch.cat([images for images, _labels in batches], dim=0)),
+            ("labels", torch.cat([labels for _images, labels in batches], dim=0)),
+        ]
+    )
+
+
 def _residual_audit(
     context: Mapping[str, Any],
     batches: Sequence[tuple[torch.Tensor, torch.Tensor]],
@@ -565,6 +583,73 @@ def _gradient_observations(
     }
 
 
+def assess_reference_gradient_viability(
+    reference: Mapping[str, Sequence[Mapping[str, Any]]],
+    contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Assess only the protocol's high-K Conv-gradient viability gates."""
+
+    if tuple(sorted(reference)) != tuple(sorted(EXPECTED_CONV_WEIGHTS)):
+        raise ValueError(
+            "Expected exactly the three Conv3 weight-gradient parameter sets."
+        )
+    records = []
+    for name in sorted(reference):
+        reference_rows = tuple(reference[name])
+        if not reference_rows:
+            raise ValueError(f"Expected non-empty high-K gradient rows for {name}.")
+        for expected_batch, row in enumerate(reference_rows):
+            if int(row["batch_index"]) != expected_batch:
+                raise ValueError(
+                    f"Expected ordered contiguous high-K batches for {name}; "
+                    f"got {row['batch_index']!r} at position {expected_batch}."
+                )
+            vector = row["vector"].detach().to(dtype=torch.float64, device="cpu")
+            if not torch.isfinite(vector).all():
+                raise ValueError(f"Non-finite high-K gradient vector for {name}.")
+
+        reference_rms = [float(row["gradient_rms"]) for row in reference_rows]
+        reference_zero = [float(row["zero_fraction"]) for row in reference_rows]
+        proposal_units = [
+            float(row["nominal_sgd_lr1_proposal_unit"]) for row in reference_rows
+        ]
+        median_reference_rms = _linear_quantile(reference_rms, 0.50)
+        q90_reference_zero = _linear_quantile(reference_zero, 0.90)
+        median_proposal_unit = _linear_quantile(proposal_units, 0.50)
+        proposal_units_all_finite = all(
+            math.isfinite(value) for value in proposal_units
+        )
+        reference_viable = bool(
+            math.isfinite(median_reference_rms)
+            and median_reference_rms
+            > float(contract["reference_median_gradient_rms_minimum"])
+            and math.isfinite(q90_reference_zero)
+            and q90_reference_zero
+            < float(contract["reference_q90_zero_fraction_maximum"])
+            and proposal_units_all_finite
+            and math.isfinite(median_proposal_unit)
+            and median_proposal_unit > 0.0
+        )
+        records.append(
+            {
+                "parameter": name,
+                "batch_count": len(reference_rows),
+                "reference_gradient_rms_median": median_reference_rms,
+                "reference_gradient_zero_fraction_q90": q90_reference_zero,
+                "reference_nominal_sgd_lr1_proposal_unit_median": median_proposal_unit,
+                "reference_proposal_units_all_finite": proposal_units_all_finite,
+                "reference_proposal_units_all_finite_positive": all(
+                    math.isfinite(value) and value > 0.0 for value in proposal_units
+                ),
+                "reference_viable": reference_viable,
+            }
+        )
+    return {
+        "reference_viable": all(row["reference_viable"] for row in records),
+        "parameters": records,
+    }
+
+
 def assess_gradient_gate(
     operational: Mapping[str, Sequence[Mapping[str, Any]]],
     reference: Mapping[str, Sequence[Mapping[str, Any]]],
@@ -631,6 +716,9 @@ def assess_gradient_gate(
         median_reference_rms = _linear_quantile(reference_rms, 0.50)
         q90_reference_zero = _linear_quantile(reference_zero, 0.90)
         median_proposal_unit = _linear_quantile(proposal_units, 0.50)
+        proposal_units_all_finite = all(
+            math.isfinite(value) for value in proposal_units
+        )
         reference_viable = bool(
             math.isfinite(median_reference_rms)
             and median_reference_rms
@@ -638,7 +726,9 @@ def assess_gradient_gate(
             and math.isfinite(q90_reference_zero)
             and q90_reference_zero
             < float(contract["reference_q90_zero_fraction_maximum"])
-            and all(math.isfinite(value) and value > 0.0 for value in proposal_units)
+            and proposal_units_all_finite
+            and math.isfinite(median_proposal_unit)
+            and median_proposal_unit > 0.0
         )
         comparison_passed = bool(
             math.isfinite(relative_norm_delta)
@@ -664,6 +754,7 @@ def assess_gradient_gate(
                 "reference_gradient_rms_median": median_reference_rms,
                 "reference_gradient_zero_fraction_q90": q90_reference_zero,
                 "reference_nominal_sgd_lr1_proposal_unit_median": median_proposal_unit,
+                "reference_proposal_units_all_finite": proposal_units_all_finite,
                 "reference_proposal_units_all_finite_positive": all(
                     math.isfinite(value) and value > 0.0 for value in proposal_units
                 ),
@@ -679,6 +770,108 @@ def assess_gradient_gate(
         "passed": all(row["passed"] for row in records),
         "parameters": records,
     }
+
+
+def run_conv3_k64_gradient_viability_gate(
+    source_config_path: str | Path,
+    checkpoint_path: str | Path,
+    *,
+    device: str | torch.device,
+    output_path: str | Path | None = None,
+    smoke: bool = False,
+) -> dict[str, Any]:
+    """Replay one checkpoint and require viable K64 gradients for all Conv weights."""
+
+    source = Path(source_config_path).expanduser().resolve()
+    checkpoint = Path(checkpoint_path).expanduser().resolve()
+    if not source.is_file() or not checkpoint.is_file():
+        raise FileNotFoundError(
+            f"Missing source config or checkpoint: {source}, {checkpoint}."
+        )
+    config = json.loads(source.read_text(encoding="utf-8"))
+    model_cfg = _model_config(config)
+    _validate_source_contract(config, model_cfg)
+    resolved_device = torch.device(device)
+    if resolved_device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(f"Requested unavailable CUDA device {resolved_device}.")
+
+    contract = dict(DEFAULT_CONTRACT)
+    if smoke:
+        contract["gradient_examples"] = contract["gradient_batch_size"]
+    checkpoint_sha256 = _sha256_file(checkpoint)
+    gradient_batches, cohort = _load_training_cohort(
+        config,
+        batch_size=int(contract["gradient_batch_size"]),
+        examples=int(contract["gradient_examples"]),
+    )
+    cohort["gradient_prefix_examples"] = int(contract["gradient_examples"])
+    cohort["gradient_batch_size"] = int(contract["gradient_batch_size"])
+    cohort["gradient_prefix_original_indices_sha256"] = cohort[
+        "cohort_original_indices_sha256"
+    ]
+    cohort["gradient_prefix_tensor_sha256"] = _cohort_tensor_sha256(
+        gradient_batches
+    )
+
+    reference_k = _build_model_context(
+        config,
+        checkpoint,
+        device=resolved_device,
+        inference_iterations=int(contract["selected_T"]),
+        training_iterations=int(contract["reference_K"]),
+    )
+    free_equilibria, free_sha256 = _cache_free_equilibria(
+        reference_k, gradient_batches
+    )
+    reference_gradients = _gradient_observations(
+        reference_k,
+        gradient_batches,
+        free_equilibria,
+        zero_epsilon=float(contract["gradient_zero_epsilon"]),
+    )
+    assessment = assess_reference_gradient_viability(
+        reference_gradients["by_parameter"], contract
+    )
+    checkpoint_sha256_after = _sha256_file(checkpoint)
+    if checkpoint_sha256_after != checkpoint_sha256:
+        raise RuntimeError("Checkpoint bytes changed during read-only K64 replay.")
+
+    passed = bool(assessment["reference_viable"])
+    result = {
+        "schema_version": K64_VIABILITY_SCHEMA_VERSION,
+        "status": "complete" if passed else "unresolved_tk_gradient_viability",
+        "viability_passed": passed,
+        "scientifically_complete": not smoke,
+        "smoke": smoke,
+        "contract": contract,
+        "source_config": str(source),
+        "source_config_sha256": _sha256_file(source),
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": checkpoint_sha256,
+        "checkpoint_sha256_after_replay": checkpoint_sha256_after,
+        "checkpoint_unchanged": True,
+        "parameter_sha256": reference_k["parameter_sha256"],
+        "device": str(resolved_device),
+        "dataset_cohort": cohort,
+        "gradient": {
+            "reference": {
+                "T": int(contract["selected_T"]),
+                "K": int(contract["reference_K"]),
+            },
+            "shared_free_equilibria_sha256": free_sha256,
+            **assessment,
+        },
+        "official_test_read": False,
+    }
+    if output_path is not None:
+        destination = Path(output_path).expanduser().resolve()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(_json_safe(result), indent=2, sort_keys=True, allow_nan=False)
+            + "\n",
+            encoding="utf-8",
+        )
+    return result
 
 
 def run_conv3_operating_point_gate(
@@ -706,6 +899,7 @@ def run_conv3_operating_point_gate(
     if smoke:
         contract["residual_examples"] = contract["residual_batch_size"]
         contract["gradient_examples"] = contract["gradient_batch_size"]
+    checkpoint_sha256 = _sha256_file(checkpoint)
     residual_batches, cohort = _load_training_cohort(
         config,
         batch_size=int(contract["residual_batch_size"]),
@@ -720,6 +914,9 @@ def run_conv3_operating_point_gate(
     cohort["gradient_batch_size"] = int(contract["gradient_batch_size"])
     cohort["gradient_prefix_original_indices_sha256"] = _sha256_json(
         cohort["cohort_original_indices"][: int(contract["gradient_examples"])]
+    )
+    cohort["gradient_prefix_tensor_sha256"] = _cohort_tensor_sha256(
+        gradient_batches
     )
 
     operational = _build_model_context(
@@ -808,6 +1005,10 @@ def run_conv3_operating_point_gate(
     else:
         status = "complete"
 
+    checkpoint_sha256_after = _sha256_file(checkpoint)
+    if checkpoint_sha256_after != checkpoint_sha256:
+        raise RuntimeError("Checkpoint bytes changed during read-only T/K replay.")
+
     result = {
         "schema_version": SCHEMA_VERSION,
         "status": status,
@@ -818,7 +1019,9 @@ def run_conv3_operating_point_gate(
         "source_config": str(source),
         "source_config_sha256": _sha256_file(source),
         "checkpoint": str(checkpoint),
-        "checkpoint_sha256": _sha256_file(checkpoint),
+        "checkpoint_sha256": checkpoint_sha256,
+        "checkpoint_sha256_after_replay": checkpoint_sha256_after,
+        "checkpoint_unchanged": True,
         "parameter_sha256": operational["parameter_sha256"],
         "device": str(resolved_device),
         "dataset_cohort": cohort,

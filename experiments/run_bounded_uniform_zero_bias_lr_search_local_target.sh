@@ -123,6 +123,7 @@ cd "${PDBLR_SOURCE_ROOT}"
   "${STUDY_ID}" \
   "${PDBLR_ENVIRONMENT_ID}" <<'PY'
 import hashlib
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -196,6 +197,10 @@ import sys
 from itertools import product
 from pathlib import Path
 
+from experiments.run_conv12_bounded_rho import (
+    validate_conv3_selected_post_training_tk_evidence,
+)
+
 (
     study_arg,
     output_root_arg,
@@ -242,6 +247,27 @@ for key in ("initializer", "architecture", "scheme", "optimizer"):
 if selection.get("official_test_read") is not False:
     raise SystemExit(f"Selection does not prove official_test_read=false: {selection!r}")
 
+asset_record_path = (
+    output_root
+    / "assets"
+    / surface["initializer"]
+    / surface["architecture"]
+    / "asset.json"
+)
+if not asset_record_path.is_file() or asset_record_path.stat().st_size <= 0:
+    raise SystemExit(f"Missing shared-initialization record: {asset_record_path}")
+asset_record = json.loads(asset_record_path.read_text(encoding="utf-8"))
+asset_checkpoint = Path(asset_record["checkpoint"])
+if not asset_checkpoint.is_file() or asset_checkpoint.stat().st_size <= 0:
+    raise SystemExit(f"Missing shared-initialization checkpoint: {asset_checkpoint}")
+asset_checkpoint_sha256 = hashlib.sha256(asset_checkpoint.read_bytes()).hexdigest()
+if asset_checkpoint_sha256 != asset_record.get("checkpoint_sha256"):
+    raise SystemExit(
+        "Shared-initialization checkpoint SHA-256 mismatch: "
+        f"record={asset_record.get('checkpoint_sha256')}, "
+        f"observed={asset_checkpoint_sha256}"
+    )
+
 terminal_unresolved = {
     "unresolved_after_boundary_expansion",
     "unresolved_dead_gradient",
@@ -257,12 +283,63 @@ terminal_unresolved = {
 }
 status = selection.get("status")
 selected = selection.get("selected")
+conv3_post_training_tk_validation = None
+if surface["architecture"] == "conv3" and status in {
+    "complete",
+    "unresolved_post_training_tk",
+}:
+    operating_point_gate_path = (
+        output_root
+        / "fixed_tk"
+        / surface["initializer"]
+        / surface["architecture"]
+        / surface["scheme"]
+        / "result.json"
+    )
+    conv3_post_training_tk_validation = (
+        validate_conv3_selected_post_training_tk_evidence(
+            study_path,
+            selection_path,
+            operating_point_gate_path,
+        )
+    )
+    expected_post_pass = status == "complete"
+    if (
+        conv3_post_training_tk_validation.get("post_training_tk_passed")
+        is not expected_post_pass
+    ):
+        raise SystemExit(
+            "Conv3 selection status disagrees with strict post-training T/K "
+            f"validation: {conv3_post_training_tk_validation!r}"
+        )
 if status == "complete":
     if not isinstance(selected, dict):
         raise SystemExit(f"Complete selection lacks a selected cell: {selection!r}")
+    if surface["architecture"] == "conv3":
+        post_training_tk = selection.get("post_training_tk")
+        post_epochs = (
+            post_training_tk.get("epochs", [])
+            if isinstance(post_training_tk, dict)
+            else []
+        )
+        if not (
+            isinstance(post_training_tk, dict)
+            and post_training_tk.get("status") == "complete"
+            and post_training_tk.get("passed") is True
+            and len(post_epochs) == 3
+            and all(epoch.get("passed") is True for epoch in post_epochs)
+        ):
+            raise SystemExit(
+                "Complete Conv3 selection lacks three passing post-training "
+                f"T/K epoch receipts: {selection!r}"
+            )
     if selected.get("status") != "complete" or selected.get("selection_eligible") is not True:
         raise SystemExit(f"Selected cell is not complete and eligible: {selected!r}")
-    run_dir = Path(selected["path"])
+    run_dir = (
+        Path(conv3_post_training_tk_validation["selected_run_dir"])
+        if conv3_post_training_tk_validation is not None
+        else Path(selected["path"])
+    )
     required = {
         "manifest": run_dir / "manifest.json",
         "status": run_dir / "status.json",
@@ -280,6 +357,22 @@ if status == "complete":
         raise SystemExit(f"Selected-cell completion criteria failed: {run_result!r}")
     if run_result.get("completion", {}).get("official_test_read") is not False:
         raise SystemExit(f"Selected cell read the official test: {run_result!r}")
+    safety_artifacts = [
+        artifact
+        for artifact in run_result.get("artifacts", [])
+        if artifact.get("path") == "artifacts/safety_diagnostics.json"
+    ]
+    if len(safety_artifacts) != 1:
+        raise SystemExit(
+            "Selected-cell result must index exactly one safety_diagnostics.json: "
+            f"{run_result!r}"
+        )
+    safety_path = run_dir / safety_artifacts[0]["path"]
+    safety_sha256 = hashlib.sha256(safety_path.read_bytes()).hexdigest()
+    if safety_sha256 != safety_artifacts[0].get("sha256"):
+        raise SystemExit(
+            f"Selected-cell safety-diagnostics hash mismatch: {safety_path}"
+        )
     selected_run_dir = str(run_dir)
 elif status in terminal_unresolved:
     if selected is not None:
@@ -301,6 +394,9 @@ receipt = {
     "selection_path": str(selection_path),
     "selection_status": status,
     "selected_run_dir": selected_run_dir,
+    "shared_initialization_checkpoint": str(asset_checkpoint),
+    "shared_initialization_checkpoint_sha256": asset_checkpoint_sha256,
+    "conv3_post_training_tk_validation": conv3_post_training_tk_validation,
     "semantic_status": "pass",
     "official_test_read": False,
 }

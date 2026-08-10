@@ -225,6 +225,7 @@
       "conv3": {
         "bound_occupancy_increase_maximum": 0.2,
         "projection_efficiency_minimum": 0.5,
+        "zero_proposal_epsilon": 1e-12,
         "boundary_persistence_steps": 16
       }
     }

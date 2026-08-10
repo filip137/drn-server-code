@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import torch
 
+import experiments.rho_search as rho_module
 from experiments.rho_search import (
     OptimizerProbe,
     SafetyRejection,
@@ -198,6 +199,27 @@ def test_zero_bias_probe_ignores_bias_instability_but_records_it() -> None:
     assert result["bias_q90_unit_by_parameter"]["Bias_0"] > 1.0
 
 
+def test_probe_reports_nonpositive_weight_unit_as_unresolved() -> None:
+    parameters = (
+        FakeParameter("ConvWeight_0", torch.ones(4)),
+        FakeParameter("DenseWeight_0", torch.ones(4)),
+    )
+    probe = OptimizerProbe("SGD", batch_counts=(2,))
+    zero_gradients = (torch.zeros(4), torch.zeros(4))
+
+    assert probe({"parameters": parameters, "gradients": zero_gradients}) is False
+    assert probe({"parameters": parameters, "gradients": zero_gradients}) is True
+    result = probe.result()
+
+    assert result["status"] == "unresolved_probe"
+    assert result["probe_stable"] is True
+    assert result["proposal_units_valid"] is False
+    assert result["invalid_weight_proposal_units"] == {
+        "ConvWeight_0": 0.0,
+        "DenseWeight_0": 0.0,
+    }
+
+
 def test_bound_occupancy_and_projection_efficiency_are_report_only() -> None:
     parameter = FakeParameter(
         "ConvWeight_0",
@@ -281,6 +303,37 @@ def test_persistent_low_projection_efficiency_is_a_hard_gate() -> None:
         "onset_step": 1,
         "confirmed_step": 16,
     }
+
+
+def test_projection_efficiency_ignores_protocol_zero_proposals() -> None:
+    parameter = FakeParameter(
+        "ConvWeight_0",
+        torch.full((4,), 5.5e-5, dtype=torch.float64),
+        min_cond=1e-5,
+        max_cond=1e-4,
+    )
+    monitor = TrainingSafetyMonitor(
+        projection_efficiency_minimum=0.50,
+        zero_proposal_epsilon=1e-12,
+        boundary_persistence=16,
+    )
+
+    for _ in range(20):
+        monitor(
+            _safety_batch(
+                parameter,
+                proposed=5.5e-5 + 5e-13,
+                applied=5.5e-5,
+            )
+        )
+
+    result = monitor.summary()
+    assert result["safety_failure"] is None
+    assert result["terminal_gates"]["zero_proposal_epsilon"] == 1e-12
+    assert result["median_projection_efficiency"] is None
+    assert result[
+        "maximum_projection_efficiency_violation_streak_by_parameter"
+    ]["ConvWeight_0"] == 0
 
 
 def test_sustained_gradient_growth_rejects_after_warmup() -> None:
@@ -592,6 +645,201 @@ def test_zero_bias_checkpoint_guard_rejects_any_nonzero_bias(tmp_path: Path) -> 
 
     with pytest.raises(RuntimeError, match="nonzero Bias elements"):
         verify_zero_bias_checkpoint(checkpoint, ["Bias_0"])
+
+
+@pytest.mark.parametrize(
+    ("gate_passed", "expected_status", "expected_eligible"),
+    (
+        (True, "complete", True),
+        (False, "candidate_rejected_post_training_tk", False),
+        (None, "failed", False),
+    ),
+)
+def test_post_candidate_gate_precedes_canonical_completion_and_is_indexed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    gate_passed: bool,
+    expected_status: str,
+    expected_eligible: bool,
+) -> None:
+    config_path = tmp_path / "source.json"
+    config_path.write_text(json.dumps(_base_config()), encoding="utf-8")
+    output = tmp_path / "rho"
+    checkpoint_flags = []
+
+    monkeypatch.setattr(
+        rho_module,
+        "_git_state",
+        lambda: {
+            "commit": "a" * 40,
+            "dirty": False,
+            "working_tree_sha256": "b" * 64,
+        },
+    )
+
+    def fake_trainer(
+        config,
+        output_dir,
+        *,
+        device,
+        gradient_callback=None,
+        optimizer_step_callback=None,
+        apply_optimizer_steps=True,
+        reporting_run_dir=None,
+        checkpoint_every_epoch=False,
+    ):
+        del config, device, apply_optimizer_steps, reporting_run_dir
+        root = Path(output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        parameters = (
+            FakeParameter("ConvWeight_0", torch.ones(4), 1e-5, 1e-4),
+            FakeParameter("DenseWeight_0", torch.ones(4), 1e-5, 1e-4),
+            FakeParameter("Bias_0", torch.zeros(4), 1e-5, 1e-4),
+        )
+        gradients = (torch.ones(4), torch.ones(4), torch.ones(4))
+        if gradient_callback is not None:
+            for _ in range(2):
+                gradient_callback({"parameters": parameters, "gradients": gradients})
+        if optimizer_step_callback is not None:
+            optimizer_step_callback(
+                {
+                    "loss": 1.0,
+                    "parameters": parameters,
+                    "gradients": gradients,
+                    "pre_optimizer_states": {
+                        parameter.name: parameter.state.clone()
+                        for parameter in parameters
+                    },
+                    "post_optimizer_states": {
+                        parameter.name: parameter.state.clone()
+                        for parameter in parameters
+                    },
+                    "post_projection_states": {
+                        parameter.name: parameter.state.clone()
+                        for parameter in parameters
+                    },
+                }
+            )
+        checkpoint_flags.append((root.name, checkpoint_every_epoch))
+        (root / "best_model.pt").write_bytes(b"best")
+        (root / "final_model.pt").write_bytes(b"final")
+        rho_module._write_json(
+            root / "metrics.json",
+            {
+                "dataset_provenance": {"split": "train_validation"},
+                "final_test_accuracy": 0.95,
+                "final_test_loss": 0.1,
+                "best_test_accuracy": 0.95,
+                "final_train_accuracy": 0.9,
+                "final_train_loss": 0.2,
+                "best_train_accuracy": 0.9,
+            },
+        )
+        return {}
+
+    monkeypatch.setattr(rho_module, "_run_trainer", fake_trainer)
+
+    def post_gate(cell_dir: Path, cell: dict) -> dict:
+        assert cell["status"] == "candidate_trained_pending_post_gate"
+        if gate_passed is None:
+            raise OSError("simulated post-candidate receipt I/O failure")
+        summary = cell_dir / "epochwise_k64_viability.json"
+        rho_module._write_json(
+            summary,
+            {
+                "status": "complete" if gate_passed else "unresolved_tk_gradient_viability",
+                "passed": gate_passed,
+            },
+        )
+        return {
+            "status": "complete" if gate_passed else "unresolved_tk_gradient_viability",
+            "passed": gate_passed,
+            "summary_path": str(summary.resolve()),
+            "summary_sha256": rho_module._file_sha256(summary),
+        }
+
+    args = Namespace(
+        config=str(config_path),
+        output_root=str(output),
+        rho_conv=[0.001],
+        rho_dense=[0.01],
+        optimizer="SGD",
+        bias_policy="q90_cap",
+        probe_batches=[2],
+        stability_tolerance=0.1,
+        epochs=1,
+        checkpoint_every_epoch=True,
+        post_candidate_gate_name="conv3_epochwise_k64_viability",
+        post_candidate_callback=post_gate,
+        max_batches=1,
+        max_validation_batches=1,
+        validation_batch_size=64,
+        split_seed=0,
+        shuffle_seed=0,
+        device="cpu",
+        study_id="post-gate-test",
+        target="main",
+        probe_only=False,
+        canary_only=False,
+        canary_steps=1,
+        expected_candidate_steps=1,
+        minimum_validation_accuracy=0.9,
+        safety_warmup_steps=32,
+        safety_ema_decay=0.98,
+        safety_loss_factor=4.0,
+        safety_gradient_factor=100.0,
+        safety_persistence=8,
+        safety_bound_occupancy_increase_maximum=None,
+        safety_projection_efficiency_minimum=None,
+        safety_zero_proposal_epsilon=1e-30,
+        safety_boundary_persistence=16,
+        index=None,
+        collect_only=False,
+        force=False,
+        dry_run=False,
+        reporting_command={"test": "post_candidate_gate"},
+    )
+
+    if gate_passed is None:
+        with pytest.raises(OSError, match="post-candidate receipt I/O failure"):
+            run(args)
+        cell_dir = next((output / "cells").iterdir())
+        cell = json.loads((cell_dir / "cell.json").read_text(encoding="utf-8"))
+        status = json.loads((cell_dir / "status.json").read_text(encoding="utf-8"))
+        assert cell["status"] == expected_status
+        assert cell["selection_eligible"] is expected_eligible
+        assert status["state"] == "failed"
+        assert status["error"]["type"] == "OSError"
+        assert not (cell_dir / "result.json").exists()
+        return
+
+    result = run(args)
+
+    assert result["status"] == "complete"
+    cell_dir = next((output / "cells").iterdir())
+    cell = json.loads((cell_dir / "cell.json").read_text(encoding="utf-8"))
+    canonical = json.loads((cell_dir / "result.json").read_text(encoding="utf-8"))
+    assert cell["status"] == expected_status
+    assert cell["selection_eligible"] is expected_eligible
+    assert canonical["completion"]["criteria_met"] is expected_eligible
+    assert canonical["completion"]["post_training_tk_admissible"] is gate_passed
+    assert canonical["completion"]["post_candidate_gate"] == cell[
+        "post_candidate_gate"
+    ]
+    gate_artifact = next(
+        artifact
+        for artifact in canonical["artifacts"]
+        if artifact["path"] == "artifacts/epochwise_k64_viability.json"
+    )
+    assert gate_artifact["sha256"] == cell["post_candidate_gate"][
+        "artifact_sha256"
+    ]
+    assert (cell_dir / "status.json").is_file()
+    assert checkpoint_flags[-1] == (cell_dir.name, True)
+    call_count = len(checkpoint_flags)
+    resumed = run(args)
+    assert resumed["status"] == "complete"
+    assert len(checkpoint_flags) == call_count
 
 
 @pytest.mark.parametrize("value", [0.0, -1.0, float("nan")])

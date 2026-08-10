@@ -175,6 +175,7 @@ def test_zero_bias_rho_args_record_actual_target_and_conv3_hard_gates(
     assert args.bias_policy == "zero"
     assert args.safety_bound_occupancy_increase_maximum == 0.20
     assert args.safety_projection_efficiency_minimum == 0.50
+    assert args.safety_zero_proposal_epsilon == 1e-12
     assert args.safety_boundary_persistence == 16
 
 
@@ -295,6 +296,45 @@ def test_completed_center_cell_reuses_its_clean_canary(tmp_path) -> None:
     assert _has_clean_canary(cell_dir, {"status": "canary_clean"}) is True
 
 
+def test_surface_records_unresolved_probe_without_launching_cells(
+    tmp_path, monkeypatch
+) -> None:
+    _path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    surface = surface_specs(study)[0]
+    monkeypatch.setattr(
+        bounded_rho_runner,
+        "run_rho_search",
+        lambda _args: {
+            "status": "unresolved_probe",
+            "probe_stable": False,
+            "proposal_units_valid": True,
+            "unstable_parameters": ["ConvWeight_0"],
+            "invalid_weight_proposal_units": {},
+        },
+    )
+
+    result = bounded_rho_runner.run_rho_surface(
+        study,
+        tmp_path,
+        surface,
+        tmp_path / "source.json",
+        device="cuda",
+    )
+
+    assert result["status"] == "unresolved_probe"
+    assert result["selected"] is None
+    assert result["candidates"] == []
+    selection = json.loads(
+        (
+            tmp_path
+            / "surfaces"
+            / surface["surface_id"]
+            / "selection.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert selection == result
+
+
 def test_conv3_fixed_grid_runs_all_nine_cells_without_center_search(
     tmp_path, monkeypatch
 ) -> None:
@@ -302,7 +342,11 @@ def test_conv3_fixed_grid_runs_all_nine_cells_without_center_search(
     surface = surface_specs(study)[0]
     calls = []
 
-    monkeypatch.setattr(bounded_rho_runner, "run_rho_search", lambda _args: {})
+    monkeypatch.setattr(
+        bounded_rho_runner,
+        "run_rho_search",
+        lambda _args: {"status": "complete"},
+    )
 
     def fake_run_cell(
         _study,
@@ -373,7 +417,11 @@ def test_suspiciously_low_fixed_grid_widens_toward_better_edges(
     surface = surface_specs(study)[0]
     calls = []
 
-    monkeypatch.setattr(bounded_rho_runner, "run_rho_search", lambda _args: {})
+    monkeypatch.setattr(
+        bounded_rho_runner,
+        "run_rho_search",
+        lambda _args: {"status": "complete"},
+    )
 
     def fake_run_cell(
         _study,

@@ -20,6 +20,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import numpy as np
 import torch
 
 from experiments.rho_search import (
@@ -257,6 +258,7 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
         expected_conv3_safety = {
             "bound_occupancy_increase_maximum": 0.20,
             "projection_efficiency_minimum": 0.50,
+            "zero_proposal_epsilon": 1e-12,
             "boundary_persistence_steps": 16,
         }
         if safety_by_architecture != {"conv3": expected_conv3_safety}:
@@ -994,6 +996,10 @@ def _rho_args(
 ) -> Namespace:
     search = _surface_search(study, surface)
     safety = search["safety"]
+    conv3_post_training_tk = bool(
+        _study_variant(study) == "conv123_zero_bias"
+        and surface["architecture"] == "conv3"
+    )
     return Namespace(
         config=str(source_config),
         output_root=str(rho_root),
@@ -1004,6 +1010,10 @@ def _rho_args(
         probe_batches=[2] if smoke else list(search["probe_batches"]),
         stability_tolerance=1e9 if smoke else search["probe_stability_tolerance"],
         epochs=1 if smoke else int(search["candidate_epochs"]),
+        checkpoint_every_epoch=conv3_post_training_tk,
+        post_candidate_gate_name=(
+            "conv3_epochwise_k64_viability" if conv3_post_training_tk else None
+        ),
         max_batches=1 if smoke else None,
         max_validation_batches=1 if smoke else None,
         validation_batch_size=int(study["dataset"]["validation_batch_size"]),
@@ -1031,6 +1041,9 @@ def _rho_args(
         ),
         safety_projection_efficiency_minimum=safety.get(
             "projection_efficiency_minimum"
+        ),
+        safety_zero_proposal_epsilon=float(
+            safety.get("zero_proposal_epsilon", 1e-30)
         ),
         safety_boundary_persistence=int(
             safety.get("boundary_persistence_steps", 16)
@@ -1072,27 +1085,67 @@ def _run_rho_cell(
     target: str | None = None,
     canary_only: bool,
     smoke: bool = False,
+    operating_point_gate: Mapping[str, Any] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     index = _rho_index(rho_conv_axis, rho_dense_axis, rho_conv, rho_dense)
     conv_index, dense_index = divmod(index, len(rho_dense_axis))
     rho_conv = rho_conv_axis[conv_index]
     rho_dense = rho_dense_axis[dense_index]
-    run_rho_search(
-        _rho_args(
+    checkpoint_epochs = bool(
+        _study_variant(study) == "conv123_zero_bias"
+        and surface["architecture"] == "conv3"
+        and not canary_only
+    )
+    rho_args = _rho_args(
+        study,
+        surface,
+        source_config,
+        rho_root,
+        rho_conv_axis,
+        rho_dense_axis,
+        device=device,
+        target=target,
+        index=index,
+        canary_only=canary_only,
+        smoke=smoke,
+    )
+    if checkpoint_epochs:
+        def post_candidate_gate(
+            cell_dir: Path,
+            cell_record: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            return ensure_conv3_candidate_epochwise_viability(
+                study,
+                surface,
+                cell_dir,
+                cell_record,
+                device=device,
+                smoke=smoke,
+                operating_point_gate=operating_point_gate,
+            )
+
+        rho_args.post_candidate_callback = post_candidate_gate
+    run_rho_search(rho_args)
+    cell_dir, cell = _cell(rho_root, index, rho_conv, rho_dense)
+    if checkpoint_epochs and cell.get("status") in {
+        "complete",
+        "candidate_rejected_post_training_tk",
+    }:
+        if operating_point_gate is None:
+            raise RuntimeError(
+                "A completed Conv3 candidate requires its initialization "
+                "operating-point gate for strict evidence validation."
+            )
+        _validate_conv3_candidate_epochwise_summary(
             study,
             surface,
-            source_config,
-            rho_root,
-            rho_conv_axis,
-            rho_dense_axis,
-            device=device,
-            target=target,
-            index=index,
-            canary_only=canary_only,
+            cell_dir,
+            cell,
+            operating_point_gate,
             smoke=smoke,
+            require_canonical_result=True,
         )
-    )
-    return _cell(rho_root, index, rho_conv, rho_dense)
+    return cell_dir, cell
 
 
 def _has_clean_canary(cell_dir: Path, cell: Mapping[str, Any]) -> bool:
@@ -1108,6 +1161,1171 @@ def _has_clean_canary(cell_dir: Path, cell: Mapping[str, Any]) -> bool:
         canary.get("status") == "clean"
         and int(canary.get("completed_steps", -1))
         == int(canary.get("requested_steps", -2))
+    )
+
+
+def _conv3_gradient_cohort_binding(result: Mapping[str, Any]) -> dict[str, Any]:
+    cohort = result.get("dataset_cohort")
+    if not isinstance(cohort, Mapping):
+        raise ValueError("A Conv3 T/K gate is missing its dataset cohort.")
+    keys = (
+        "source_split",
+        "split_seed",
+        "shuffle_seed",
+        "train_indices_sha256",
+        "validation_indices_sha256",
+        "gradient_prefix_examples",
+        "gradient_batch_size",
+        "gradient_prefix_original_indices_sha256",
+        "gradient_prefix_tensor_sha256",
+    )
+    missing = [key for key in keys if cohort.get(key) is None]
+    if missing:
+        raise ValueError(f"A Conv3 T/K gate has incomplete cohort binding: {missing!r}.")
+    return {key: cohort[key] for key in keys}
+
+
+def _conv3_full_cohort_binding(result: Mapping[str, Any]) -> dict[str, Any]:
+    cohort = result.get("dataset_cohort")
+    if not isinstance(cohort, Mapping):
+        raise ValueError("A Conv3 T/K gate is missing its dataset cohort.")
+    binding = _conv3_gradient_cohort_binding(result)
+    keys = (
+        "examples",
+        "batch_size",
+        "cohort_original_indices_sha256",
+        "cohort_tensor_sha256",
+    )
+    missing = [key for key in keys if cohort.get(key) is None]
+    if missing:
+        raise ValueError(
+            f"A Conv3 residual gate has incomplete cohort binding: {missing!r}."
+        )
+    binding.update({key: cohort[key] for key in keys})
+    return binding
+
+
+def _artifact_beneath(root: Path, relative: str, *, label: str) -> Path:
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()):
+        raise RuntimeError(f"{label} escapes its candidate directory: {relative!r}.")
+    if not path.is_file():
+        raise RuntimeError(f"Missing {label}: {path}.")
+    return path
+
+
+def _candidate_epoch_records(
+    cell_dir: Path,
+    *,
+    expected_epochs: int,
+) -> list[dict[str, Any]]:
+    """Load and hash-verify the trainer's authoritative epoch index and metrics."""
+
+    index_path = cell_dir / "epoch_checkpoint_index.jsonl"
+    metrics_path = cell_dir / "metrics.json"
+    if not index_path.is_file() or not metrics_path.is_file():
+        raise RuntimeError(
+            "Conv3 post-training gates require metrics.json and "
+            "epoch_checkpoint_index.jsonl."
+        )
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    if metrics.get("checkpoint_every_epoch") is not True:
+        raise RuntimeError("Conv3 candidates must enable checkpoint_every_epoch.")
+    if int(metrics.get("epoch_checkpoint_count", -1)) != expected_epochs + 1:
+        raise RuntimeError(
+            "Unexpected Conv3 epoch checkpoint count: "
+            f"expected={expected_epochs + 1}, "
+            f"observed={metrics.get('epoch_checkpoint_count')!r}."
+        )
+
+    rows: dict[int, dict[str, Any]] = {}
+    for line_number, line in enumerate(
+        index_path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        epoch = int(row["epoch"])
+        if epoch in rows:
+            raise RuntimeError(f"Duplicate epoch {epoch} in {index_path}.")
+        model_path = _artifact_beneath(
+            cell_dir, str(row["model_path"]), label=f"epoch {epoch} model checkpoint"
+        )
+        optimizer_path = _artifact_beneath(
+            cell_dir,
+            str(row["optimizer_path"]),
+            label=f"epoch {epoch} optimizer checkpoint",
+        )
+        for path, prefix in ((model_path, "model"), (optimizer_path, "optimizer")):
+            expected_sha256 = str(row[f"{prefix}_sha256"])
+            observed_sha256 = _sha256_file(path)
+            if observed_sha256 != expected_sha256:
+                raise RuntimeError(
+                    f"Epoch {epoch} {prefix} checkpoint hash mismatch at line "
+                    f"{line_number}: {path}."
+                )
+            if int(row[f"{prefix}_size_bytes"]) != path.stat().st_size:
+                raise RuntimeError(
+                    f"Epoch {epoch} {prefix} checkpoint size mismatch: {path}."
+                )
+        rows[epoch] = {
+            "epoch": epoch,
+            "checkpoint": str(model_path),
+            "checkpoint_relative_path": str(row["model_path"]),
+            "checkpoint_sha256": str(row["model_sha256"]),
+            "optimizer_checkpoint": str(optimizer_path),
+            "optimizer_checkpoint_relative_path": str(row["optimizer_path"]),
+            "optimizer_checkpoint_sha256": str(row["optimizer_sha256"]),
+        }
+    expected = set(range(expected_epochs + 1))
+    if set(rows) != expected:
+        raise RuntimeError(
+            f"Expected epoch checkpoint set {sorted(expected)!r}, got {sorted(rows)!r}."
+        )
+
+    loss_path = cell_dir / "loss_test.npy"
+    accuracy_path = cell_dir / "accuracy_test.npy"
+    if not loss_path.is_file() or not accuracy_path.is_file():
+        raise RuntimeError("Missing Conv3 epochwise validation metric arrays.")
+    losses = np.load(loss_path, allow_pickle=False)
+    accuracies = np.load(accuracy_path, allow_pickle=False)
+    if losses.shape != (expected_epochs,) or accuracies.shape != (expected_epochs,):
+        raise RuntimeError(
+            "Unexpected Conv3 epochwise validation metric shapes: "
+            f"loss={losses.shape!r}, accuracy={accuracies.shape!r}."
+        )
+    records = []
+    for epoch in range(1, expected_epochs + 1):
+        record = dict(rows[epoch])
+        record.update(
+            {
+                "validation_loss": float(losses[epoch - 1]),
+                "validation_accuracy": float(accuracies[epoch - 1]),
+            }
+        )
+        records.append(record)
+    return records
+
+
+def _validate_conv3_k64_gate_receipt(
+    gate: Mapping[str, Any],
+    checkpoint: Mapping[str, Any],
+    *,
+    source_config_sha256: str,
+    expected_cohort: Mapping[str, Any],
+    smoke: bool,
+) -> tuple[bool, dict[str, Any]]:
+    expected_schema = "perfectdiode-conv3-bounded-uniform-k64-gradient-viability/v1"
+    if gate.get("schema_version") != expected_schema:
+        raise RuntimeError(f"Unexpected Conv3 K64 receipt schema: {gate.get('schema_version')!r}.")
+    if gate.get("checkpoint_sha256") != checkpoint["checkpoint_sha256"]:
+        raise RuntimeError("Conv3 K64 receipt/checkpoint hash mismatch.")
+    if gate.get("checkpoint_sha256_after_replay") != checkpoint["checkpoint_sha256"]:
+        raise RuntimeError("Conv3 K64 receipt lacks a matching post-replay checkpoint hash.")
+    if gate.get("source_config_sha256") != source_config_sha256:
+        raise RuntimeError("Conv3 K64 receipt/source-config hash mismatch.")
+    if gate.get("checkpoint_unchanged") is not True:
+        raise RuntimeError("Conv3 K64 replay did not prove the checkpoint unchanged.")
+    if gate.get("smoke") is not smoke:
+        raise RuntimeError("Conv3 K64 receipt smoke/production mismatch.")
+    if not smoke and gate.get("scientifically_complete") is not True:
+        raise RuntimeError("Conv3 K64 production receipt is scientifically incomplete.")
+    observed_cohort = _conv3_gradient_cohort_binding(gate)
+    if observed_cohort != dict(expected_cohort):
+        raise RuntimeError("Conv3 K64 receipt uses a different frozen gradient cohort.")
+    status = gate.get("status")
+    viability = gate.get("viability_passed")
+    if status == "complete" and viability is True:
+        passed = True
+    elif status == "unresolved_tk_gradient_viability" and viability is False:
+        passed = False
+    else:
+        raise RuntimeError(
+            "Inconsistent Conv3 K64 scientific status/viability fields: "
+            f"status={status!r}, viability_passed={viability!r}."
+        )
+    if gate.get("official_test_read") is not False:
+        raise RuntimeError("Conv3 K64 receipt violates official-test isolation.")
+    return passed, observed_cohort
+
+
+def _validate_conv3_full_gate_receipt(
+    gate: Mapping[str, Any],
+    checkpoint: Mapping[str, Any],
+    *,
+    source_config_sha256: str,
+    expected_cohort: Mapping[str, Any],
+    smoke: bool,
+) -> tuple[bool, dict[str, Any]]:
+    expected_schema = "perfectdiode-conv3-bounded-uniform-operating-point-gate/v1"
+    if gate.get("schema_version") != expected_schema:
+        raise RuntimeError(f"Unexpected Conv3 full T/K receipt schema: {gate.get('schema_version')!r}.")
+    if gate.get("checkpoint_sha256") != checkpoint["checkpoint_sha256"]:
+        raise RuntimeError("Conv3 full T/K receipt/checkpoint hash mismatch.")
+    if gate.get("checkpoint_sha256_after_replay") != checkpoint["checkpoint_sha256"]:
+        raise RuntimeError(
+            "Conv3 full T/K receipt lacks a matching post-replay checkpoint hash."
+        )
+    if gate.get("source_config_sha256") != source_config_sha256:
+        raise RuntimeError("Conv3 full T/K receipt/source-config hash mismatch.")
+    if gate.get("checkpoint_unchanged") is not True:
+        raise RuntimeError("Conv3 full T/K replay did not prove the checkpoint unchanged.")
+    if gate.get("smoke") is not smoke:
+        raise RuntimeError("Conv3 full T/K receipt smoke/production mismatch.")
+    if not smoke and gate.get("scientifically_complete") is not True:
+        raise RuntimeError("Conv3 full T/K production receipt is scientifically incomplete.")
+    observed_cohort = _conv3_full_cohort_binding(gate)
+    if observed_cohort != dict(expected_cohort):
+        raise RuntimeError("Conv3 full T/K receipt uses different frozen cohorts.")
+    status = gate.get("status")
+    security_passed = gate.get("security_passed")
+    negative_statuses = {
+        "unresolved_tk_residual",
+        "unresolved_tk_gradient_viability",
+        "unresolved_fixed_tk_gradient_mismatch",
+    }
+    if status == "complete" and security_passed is True:
+        passed = True
+    elif status in negative_statuses and security_passed is False:
+        passed = False
+    else:
+        raise RuntimeError(
+            "Inconsistent Conv3 full T/K scientific status/security fields: "
+            f"status={status!r}, security_passed={security_passed!r}."
+        )
+    if gate.get("official_test_read") is not False:
+        raise RuntimeError("Conv3 full T/K receipt violates official-test isolation.")
+    return passed, observed_cohort
+
+
+def _validate_conv3_initial_operating_point_gate(
+    gate: Mapping[str, Any], *, smoke: bool
+) -> None:
+    """Validate the initialization gate that freezes all later replay cohorts."""
+
+    if gate.get("schema_version") != (
+        "perfectdiode-conv3-bounded-uniform-operating-point-gate/v1"
+    ):
+        raise RuntimeError("Unexpected Conv3 initialization operating-point schema.")
+    if gate.get("status") != "complete" or gate.get("security_passed") is not True:
+        raise RuntimeError("Conv3 post-training replay requires a passing initialization gate.")
+    if gate.get("checkpoint_unchanged") is not True:
+        raise RuntimeError("The Conv3 initialization gate did not preserve its checkpoint.")
+    if gate.get("checkpoint_sha256_after_replay") != gate.get("checkpoint_sha256"):
+        raise RuntimeError(
+            "The Conv3 initialization gate has inconsistent checkpoint hashes."
+        )
+    if gate.get("smoke") is not smoke:
+        raise RuntimeError("Conv3 initialization gate smoke/production mismatch.")
+    if not smoke and gate.get("scientifically_complete") is not True:
+        raise RuntimeError("The Conv3 initialization gate is scientifically incomplete.")
+    if gate.get("official_test_read") is not False:
+        raise RuntimeError("The Conv3 initialization gate violates official-test isolation.")
+    _conv3_full_cohort_binding(gate)
+
+
+def _conv3_candidate_gate_context(
+    study: Mapping[str, Any],
+    surface: Mapping[str, Any],
+    cell_dir: Path,
+    cell: Mapping[str, Any],
+    operating_point_gate: Mapping[str, Any],
+    *,
+    smoke: bool,
+) -> tuple[Path, list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Resolve the current, hash-bound inputs to an epochwise K64 gate."""
+
+    _validate_conv3_initial_operating_point_gate(operating_point_gate, smoke=smoke)
+    expected_epochs = 1 if smoke else int(
+        _surface_search(study, surface)["candidate_epochs"]
+    )
+    source_path = cell_dir / "source_config.json"
+    if not source_path.is_file():
+        raise RuntimeError(f"Missing candidate source config: {source_path}.")
+    checkpoints = _candidate_epoch_records(cell_dir, expected_epochs=expected_epochs)
+    expected_cohort = _conv3_gradient_cohort_binding(operating_point_gate)
+    signature = {
+        "cell_signature": cell.get("signature"),
+        "source_config_sha256": _sha256_file(source_path),
+        "checkpoint_index_sha256": _sha256_file(
+            cell_dir / "epoch_checkpoint_index.jsonl"
+        ),
+        "metrics_sha256": _sha256_file(cell_dir / "metrics.json"),
+        "loss_test_sha256": _sha256_file(cell_dir / "loss_test.npy"),
+        "accuracy_test_sha256": _sha256_file(cell_dir / "accuracy_test.npy"),
+        "expected_epochs": expected_epochs,
+        "smoke": smoke,
+        "expected_gradient_cohort": expected_cohort,
+    }
+    return source_path, checkpoints, expected_cohort, signature
+
+
+def _validate_conv3_candidate_epochwise_summary(
+    study: Mapping[str, Any],
+    surface: Mapping[str, Any],
+    cell_dir: Path,
+    cell: Mapping[str, Any],
+    operating_point_gate: Mapping[str, Any],
+    *,
+    smoke: bool,
+    require_canonical_result: bool,
+) -> dict[str, Any]:
+    """Strictly validate one candidate's flat K64 summary and detailed receipts."""
+
+    from experiments.reporting import validate_run
+
+    summary_path = cell_dir / "epochwise_k64_viability.json"
+    if not summary_path.is_file():
+        raise RuntimeError(f"Missing Conv3 epochwise K64 summary: {summary_path}.")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    if not isinstance(summary, Mapping):
+        raise RuntimeError("Conv3 epochwise K64 summary must be a JSON object.")
+    source_path, checkpoints, expected_cohort, signature = (
+        _conv3_candidate_gate_context(
+            study,
+            surface,
+            cell_dir,
+            cell,
+            operating_point_gate,
+            smoke=smoke,
+        )
+    )
+    if summary.get("schema_version") != (
+        "perfectdiode-conv3-bounded-uniform-epochwise-k64-viability/v1"
+    ):
+        raise RuntimeError("Unexpected Conv3 epochwise K64 summary schema.")
+    if summary.get("signature") != signature:
+        raise RuntimeError("Conv3 epochwise K64 summary signature is stale or corrupt.")
+    if summary.get("official_test_read") is not False:
+        raise RuntimeError("Conv3 epochwise K64 summary violates official-test isolation.")
+    expected_epochs = int(signature["expected_epochs"])
+    if summary.get("expected_epochs") != expected_epochs:
+        raise RuntimeError("Conv3 epochwise K64 summary epoch-count mismatch.")
+    if summary.get("expected_gradient_cohort") != expected_cohort:
+        raise RuntimeError("Conv3 epochwise K64 summary cohort binding mismatch.")
+    if summary.get("candidate_metrics_sha256") != signature["metrics_sha256"]:
+        raise RuntimeError("Conv3 epochwise K64 summary metrics hash mismatch.")
+    if (
+        summary.get("epoch_checkpoint_index_sha256")
+        != signature["checkpoint_index_sha256"]
+    ):
+        raise RuntimeError("Conv3 epochwise K64 summary checkpoint-index hash mismatch.")
+
+    rows = summary.get("epochs")
+    if not isinstance(rows, list) or len(rows) != expected_epochs:
+        raise RuntimeError("Conv3 epochwise K64 summary has incomplete epoch coverage.")
+    rows_by_epoch: dict[int, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("epoch"), int):
+            raise RuntimeError("Conv3 epochwise K64 summary has an invalid epoch row.")
+        epoch = int(row["epoch"])
+        if epoch in rows_by_epoch:
+            raise RuntimeError(f"Duplicate Conv3 K64 summary epoch {epoch}.")
+        rows_by_epoch[epoch] = row
+    expected_epoch_set = set(range(1, expected_epochs + 1))
+    if set(rows_by_epoch) != expected_epoch_set:
+        raise RuntimeError("Conv3 epochwise K64 summary has the wrong epoch set.")
+
+    observed_passes: list[bool] = []
+    for checkpoint in checkpoints:
+        epoch = int(checkpoint["epoch"])
+        row = rows_by_epoch[epoch]
+        for key in (
+            "checkpoint_relative_path",
+            "checkpoint_sha256",
+            "optimizer_checkpoint_relative_path",
+            "optimizer_checkpoint_sha256",
+            "validation_loss",
+            "validation_accuracy",
+        ):
+            if row.get(key) != checkpoint[key]:
+                raise RuntimeError(
+                    f"Conv3 K64 epoch {epoch} has a stale {key} binding."
+                )
+        expected_relative = (
+            f"post_training_tk/epochwise_k64_viability/epoch_{epoch:03d}.json"
+        )
+        if row.get("gate_artifact_relative_path") != expected_relative:
+            raise RuntimeError(
+                f"Conv3 K64 epoch {epoch} has an unexpected receipt path."
+            )
+        receipt_path = _artifact_beneath(
+            cell_dir,
+            expected_relative,
+            label=f"epoch {epoch} Conv3 K64 receipt",
+        )
+        if row.get("gate_artifact_sha256") != _sha256_file(receipt_path):
+            raise RuntimeError(f"Conv3 K64 epoch {epoch} receipt hash mismatch.")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(receipt, Mapping):
+            raise RuntimeError(f"Conv3 K64 epoch {epoch} receipt is not a JSON object.")
+        receipt_passed, observed_cohort = _validate_conv3_k64_gate_receipt(
+            receipt,
+            checkpoint,
+            source_config_sha256=_sha256_file(source_path),
+            expected_cohort=expected_cohort,
+            smoke=smoke,
+        )
+        if row.get("gate_status") != receipt.get("status"):
+            raise RuntimeError(f"Conv3 K64 epoch {epoch} status binding mismatch.")
+        if row.get("gradient_cohort") != observed_cohort:
+            raise RuntimeError(f"Conv3 K64 epoch {epoch} cohort record mismatch.")
+        if row.get("cohort_matches_operating_point") is not True:
+            raise RuntimeError(f"Conv3 K64 epoch {epoch} lacks its cohort proof.")
+        if row.get("passed") is not receipt_passed or row.get("error") is not None:
+            raise RuntimeError(f"Conv3 K64 epoch {epoch} outcome record mismatch.")
+        observed_passes.append(receipt_passed)
+
+    passed = bool(observed_passes and all(observed_passes))
+    expected_status = "complete" if passed else "unresolved_tk_gradient_viability"
+    if summary.get("passed") is not passed or summary.get("status") != expected_status:
+        raise RuntimeError("Conv3 epochwise K64 aggregate outcome is inconsistent.")
+
+    if require_canonical_result:
+        cell_path = cell_dir / "cell.json"
+        result_path = cell_dir / "result.json"
+        status_path = cell_dir / "status.json"
+        if not cell_path.is_file() or not result_path.is_file() or not status_path.is_file():
+            raise RuntimeError("Conv3 candidate is missing its canonical completion bundle.")
+        canonical_cell = json.loads(cell_path.read_text(encoding="utf-8"))
+        if canonical_cell.get("signature") != signature["cell_signature"]:
+            raise RuntimeError("Conv3 candidate cell signature changed after the K64 gate.")
+        expected_cell_status = (
+            "complete" if passed else "candidate_rejected_post_training_tk"
+        )
+        if canonical_cell.get("status") != expected_cell_status:
+            raise RuntimeError("Conv3 candidate cell status disagrees with its K64 gate.")
+        gate_record = canonical_cell.get("post_candidate_gate")
+        if not isinstance(gate_record, Mapping):
+            raise RuntimeError("Conv3 candidate cell lacks its post-candidate gate record.")
+        if (
+            gate_record.get("name") != "conv3_epochwise_k64_viability"
+            or gate_record.get("status") != expected_status
+            or gate_record.get("passed") is not passed
+            or gate_record.get("artifact_sha256") != _sha256_file(summary_path)
+        ):
+            raise RuntimeError("Conv3 candidate post-candidate gate record is inconsistent.")
+        if canonical_cell.get("selection_eligible") is not bool(
+            canonical_cell.get("training_accuracy_selection_eligible") and passed
+        ):
+            raise RuntimeError("Conv3 candidate eligibility disagrees with its K64 gate.")
+        validation_errors = validate_run(cell_dir)
+        if validation_errors:
+            raise RuntimeError(
+                "Invalid canonical Conv3 candidate run: " + "; ".join(validation_errors)
+            )
+        canonical_status = json.loads(status_path.read_text(encoding="utf-8"))
+        canonical_result = json.loads(result_path.read_text(encoding="utf-8"))
+        if (
+            canonical_status.get("state") != "complete"
+            or canonical_status.get("result_sha256") != _sha256_file(result_path)
+        ):
+            raise RuntimeError("Conv3 candidate canonical status/result binding failed.")
+        completion = canonical_result.get("completion")
+        if not isinstance(completion, Mapping):
+            raise RuntimeError("Conv3 candidate result lacks completion evidence.")
+        if (
+            completion.get("post_candidate_gate") != gate_record
+            or completion.get("post_training_tk_admissible") is not passed
+            or completion.get("criteria_met")
+            is not canonical_cell.get("selection_eligible")
+            or completion.get("official_test_read") is not False
+        ):
+            raise RuntimeError("Conv3 candidate canonical completion is inconsistent.")
+        indexed = [
+            artifact
+            for artifact in canonical_result.get("artifacts", ())
+            if artifact.get("path") == "artifacts/epochwise_k64_viability.json"
+        ]
+        if len(indexed) != 1 or indexed[0].get("sha256") != _sha256_file(summary_path):
+            raise RuntimeError(
+                "Conv3 candidate result does not uniquely index its flat K64 summary."
+            )
+
+    return {
+        **dict(summary),
+        "summary_path": str(summary_path.resolve()),
+        "summary_sha256": _sha256_file(summary_path),
+    }
+
+
+def ensure_conv3_candidate_epochwise_viability(
+    study: Mapping[str, Any],
+    surface: Mapping[str, Any],
+    cell_dir: Path,
+    cell: Mapping[str, Any],
+    *,
+    device: str,
+    smoke: bool,
+    operating_point_gate: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Require K64 Conv-gradient viability after every promoted epoch."""
+
+    from experiments.conv3_operating_point_gate import (
+        run_conv3_k64_gradient_viability_gate,
+    )
+
+    if (
+        _study_variant(study) != "conv123_zero_bias"
+        or surface["architecture"] != "conv3"
+    ):
+        raise ValueError("Epochwise K64 viability is bound to the new Conv3 study.")
+    if operating_point_gate is None:
+        raise RuntimeError(
+            "Conv3 epochwise replay requires the initialization operating-point gate."
+        )
+    source_path, checkpoints, expected_cohort, signature = (
+        _conv3_candidate_gate_context(
+            study,
+            surface,
+            cell_dir,
+            cell,
+            operating_point_gate,
+            smoke=smoke,
+        )
+    )
+    expected_epochs = int(signature["expected_epochs"])
+    gate_root = cell_dir / "post_training_tk" / "epochwise_k64_viability"
+    # Reporting materializes only flat root artifacts, so this SHA-binding
+    # summary must live at the candidate root even though detailed receipts do not.
+    summary_path = cell_dir / "epochwise_k64_viability.json"
+    if summary_path.is_file():
+        return _validate_conv3_candidate_epochwise_summary(
+            study,
+            surface,
+            cell_dir,
+            cell,
+            operating_point_gate,
+            smoke=smoke,
+            require_canonical_result=False,
+        )
+
+    epoch_results = []
+    for checkpoint in checkpoints:
+        epoch = int(checkpoint["epoch"])
+        output_path = gate_root / f"epoch_{epoch:03d}.json"
+        returned_gate = run_conv3_k64_gradient_viability_gate(
+            source_path,
+            checkpoint["checkpoint"],
+            device=device,
+            output_path=output_path,
+            smoke=smoke,
+        )
+        if not output_path.is_file():
+            raise RuntimeError(
+                f"Conv3 K64 gate did not write its epoch {epoch} receipt."
+            )
+        gate = json.loads(output_path.read_text(encoding="utf-8"))
+        if not isinstance(returned_gate, Mapping) or any(
+            returned_gate.get(key) != gate.get(key)
+            for key in (
+                "schema_version",
+                "status",
+                "viability_passed",
+                "checkpoint_sha256",
+                "source_config_sha256",
+                "smoke",
+                "official_test_read",
+            )
+        ):
+            raise RuntimeError(
+                f"Conv3 K64 epoch {epoch} returned/written receipt mismatch."
+            )
+        passed, observed_cohort = _validate_conv3_k64_gate_receipt(
+            gate,
+            checkpoint,
+            source_config_sha256=signature["source_config_sha256"],
+            expected_cohort=expected_cohort,
+            smoke=smoke,
+        )
+        epoch_results.append(
+            {
+                **checkpoint,
+                "gate_artifact": str(output_path.resolve()),
+                "gate_artifact_relative_path": str(output_path.relative_to(cell_dir)),
+                "gate_artifact_sha256": _sha256_file(output_path),
+                "gate_status": gate.get("status"),
+                "gradient_cohort": observed_cohort,
+                "cohort_matches_operating_point": True,
+                "passed": passed,
+                "error": None,
+            }
+        )
+
+    passed = bool(
+        len(epoch_results) == expected_epochs
+        and all(row["passed"] for row in epoch_results)
+    )
+    summary = {
+        "schema_version": (
+            "perfectdiode-conv3-bounded-uniform-epochwise-k64-viability/v1"
+        ),
+        "status": "complete" if passed else "unresolved_tk_gradient_viability",
+        "passed": passed,
+        "signature": signature,
+        "candidate_cell": str(cell_dir.resolve()),
+        "candidate_metrics": str((cell_dir / "metrics.json").resolve()),
+        "candidate_metrics_sha256": _sha256_file(cell_dir / "metrics.json"),
+        "epoch_checkpoint_index": str(
+            (cell_dir / "epoch_checkpoint_index.jsonl").resolve()
+        ),
+        "epoch_checkpoint_index_sha256": _sha256_file(
+            cell_dir / "epoch_checkpoint_index.jsonl"
+        ),
+        "expected_epochs": expected_epochs,
+        "expected_gradient_cohort": expected_cohort,
+        "epochs": epoch_results,
+        "official_test_read": False,
+    }
+    _write_json(summary_path, summary)
+    return _validate_conv3_candidate_epochwise_summary(
+        study,
+        surface,
+        cell_dir,
+        cell,
+        operating_point_gate,
+        smoke=smoke,
+        require_canonical_result=False,
+    )
+
+
+def _validate_conv3_selected_post_summary(
+    study: Mapping[str, Any],
+    surface: Mapping[str, Any],
+    selected: Mapping[str, Any],
+    operating_point_gate: Mapping[str, Any],
+    *,
+    output_path: Path,
+    smoke: bool,
+    cell_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Validate a selected-candidate replay without rerunning any computation."""
+
+    if cell_dir is None:
+        cell_dir = Path(str(selected["path"])).expanduser().resolve()
+    else:
+        cell_dir = cell_dir.expanduser().resolve()
+    output_path = output_path.expanduser().resolve()
+    if not output_path.is_file():
+        raise RuntimeError(f"Missing selected Conv3 post-training summary: {output_path}.")
+    cell_path = cell_dir / "cell.json"
+    source_path = cell_dir / "source_config.json"
+    if not cell_path.is_file() or not source_path.is_file():
+        raise RuntimeError("Selected Conv3 candidate is missing cell/source evidence.")
+    cell = json.loads(cell_path.read_text(encoding="utf-8"))
+    if selected.get("cell_id") != cell_dir.name:
+        raise RuntimeError("Selected Conv3 cell id does not match its candidate directory.")
+    viability = _validate_conv3_candidate_epochwise_summary(
+        study,
+        surface,
+        cell_dir,
+        cell,
+        operating_point_gate,
+        smoke=smoke,
+        require_canonical_result=True,
+    )
+    if viability.get("passed") is not True:
+        raise RuntimeError("A Conv3 candidate with a failed K64 gate cannot be selected.")
+    viability_path = cell_dir / "epochwise_k64_viability.json"
+    expected_epochs = 1 if smoke else int(
+        _surface_search(study, surface)["candidate_epochs"]
+    )
+    checkpoints = _candidate_epoch_records(cell_dir, expected_epochs=expected_epochs)
+    expected_full_cohort = _conv3_full_cohort_binding(operating_point_gate)
+    expected_gradient_cohort = _conv3_gradient_cohort_binding(operating_point_gate)
+    viability_epochs = {
+        int(row["epoch"]): row for row in viability.get("epochs", ())
+    }
+    signature = {
+        "surface_id": surface["surface_id"],
+        "selected_cell_id": selected["cell_id"],
+        "cell_sha256": _sha256_file(cell_path),
+        "source_config_sha256": _sha256_file(source_path),
+        "epoch_checkpoint_index_sha256": _sha256_file(
+            cell_dir / "epoch_checkpoint_index.jsonl"
+        ),
+        "epochwise_k64_viability_sha256": _sha256_file(viability_path),
+        "operating_point_gate_sha256": _sha256_json(operating_point_gate),
+        "expected_full_cohort": expected_full_cohort,
+        "expected_epochs": expected_epochs,
+        "smoke": smoke,
+    }
+    summary = json.loads(output_path.read_text(encoding="utf-8"))
+    if not isinstance(summary, Mapping):
+        raise RuntimeError("Selected Conv3 post-training summary must be a JSON object.")
+    if summary.get("schema_version") != (
+        "perfectdiode-conv3-bounded-uniform-selected-post-training-tk/v1"
+    ):
+        raise RuntimeError("Unexpected selected Conv3 post-training summary schema.")
+    if summary.get("signature") != signature:
+        raise RuntimeError("Selected Conv3 post-training summary signature is stale or corrupt.")
+    if summary.get("surface_id") != surface["surface_id"]:
+        raise RuntimeError("Selected Conv3 summary surface binding mismatch.")
+    if summary.get("selected_cell_id") != selected["cell_id"]:
+        raise RuntimeError("Selected Conv3 summary candidate binding mismatch.")
+    if summary.get("selected_candidate_cell_sha256") != signature["cell_sha256"]:
+        raise RuntimeError("Selected Conv3 summary cell hash mismatch.")
+    if summary.get("source_config_sha256") != signature["source_config_sha256"]:
+        raise RuntimeError("Selected Conv3 summary source-config hash mismatch.")
+    if (
+        summary.get("candidate_epochwise_k64_viability_sha256")
+        != signature["epochwise_k64_viability_sha256"]
+        or summary.get("candidate_epochwise_k64_viability_bound") is not True
+    ):
+        raise RuntimeError("Selected Conv3 summary is not bound to its K64 evidence.")
+    if summary.get("operating_point_gate_checkpoint_sha256") != (
+        operating_point_gate.get("checkpoint_sha256")
+    ):
+        raise RuntimeError("Selected Conv3 summary initialization checkpoint mismatch.")
+    if summary.get("expected_full_cohort") != expected_full_cohort:
+        raise RuntimeError("Selected Conv3 summary full-cohort binding mismatch.")
+    if summary.get("expected_epochs") != expected_epochs:
+        raise RuntimeError("Selected Conv3 summary epoch-count mismatch.")
+    if summary.get("official_test_read") is not False:
+        raise RuntimeError("Selected Conv3 summary violates official-test isolation.")
+
+    rows = summary.get("epochs")
+    if not isinstance(rows, list) or len(rows) != expected_epochs:
+        raise RuntimeError("Selected Conv3 summary has incomplete epoch coverage.")
+    rows_by_epoch: dict[int, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("epoch"), int):
+            raise RuntimeError("Selected Conv3 summary has an invalid epoch row.")
+        epoch = int(row["epoch"])
+        if epoch in rows_by_epoch:
+            raise RuntimeError(f"Duplicate selected Conv3 replay epoch {epoch}.")
+        rows_by_epoch[epoch] = row
+    expected_epoch_set = set(range(1, expected_epochs + 1))
+    if set(rows_by_epoch) != expected_epoch_set:
+        raise RuntimeError("Selected Conv3 summary has the wrong epoch set.")
+
+    observed_passes: list[bool] = []
+    for checkpoint in checkpoints:
+        epoch = int(checkpoint["epoch"])
+        row = rows_by_epoch[epoch]
+        for key in (
+            "checkpoint_relative_path",
+            "checkpoint_sha256",
+            "optimizer_checkpoint_relative_path",
+            "optimizer_checkpoint_sha256",
+            "validation_loss",
+            "validation_accuracy",
+        ):
+            if row.get(key) != checkpoint[key]:
+                raise RuntimeError(
+                    f"Selected Conv3 epoch {epoch} has a stale {key} binding."
+                )
+        expected_relative = f"post_training_tk/selected_epochs/epoch_{epoch:03d}.json"
+        if row.get("gate_artifact_relative_path") != expected_relative:
+            raise RuntimeError(
+                f"Selected Conv3 epoch {epoch} has an unexpected receipt path."
+            )
+        receipt_path = _artifact_beneath(
+            output_path.parent,
+            expected_relative,
+            label=f"selected epoch {epoch} Conv3 full T/K receipt",
+        )
+        if row.get("gate_artifact_sha256") != _sha256_file(receipt_path):
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} receipt hash mismatch.")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(receipt, Mapping):
+            raise RuntimeError(
+                f"Selected Conv3 epoch {epoch} receipt is not a JSON object."
+            )
+        receipt_passed, observed_cohort = _validate_conv3_full_gate_receipt(
+            receipt,
+            checkpoint,
+            source_config_sha256=signature["source_config_sha256"],
+            expected_cohort=expected_full_cohort,
+            smoke=smoke,
+        )
+        k64_epoch = viability_epochs.get(epoch)
+        if not isinstance(k64_epoch, Mapping):
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} lacks K64 evidence.")
+        if (
+            k64_epoch.get("passed") is not True
+            or k64_epoch.get("checkpoint_sha256") != checkpoint["checkpoint_sha256"]
+            or k64_epoch.get("gradient_cohort") != expected_gradient_cohort
+        ):
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} K64 binding failed.")
+        if row.get("gate_status") != receipt.get("status"):
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} status binding mismatch.")
+        if row.get("full_cohort") != observed_cohort:
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} cohort record mismatch.")
+        if row.get("cohort_matches_operating_point") is not True:
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} lacks its cohort proof.")
+        if row.get("epochwise_k64_receipt_bound") is not True:
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} lacks its K64 receipt proof.")
+        if row.get("passed") is not receipt_passed or row.get("error") is not None:
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} outcome record mismatch.")
+        observed_passes.append(receipt_passed)
+
+    passed = bool(observed_passes and all(observed_passes))
+    expected_status = "complete" if passed else "unresolved_post_training_tk"
+    if summary.get("passed") is not passed or summary.get("status") != expected_status:
+        raise RuntimeError("Selected Conv3 aggregate post-training outcome is inconsistent.")
+    return {
+        **dict(summary),
+        "summary_path": str(output_path),
+        "summary_sha256": _sha256_file(output_path),
+    }
+
+
+def run_conv3_selected_post_training_tk(
+    study: Mapping[str, Any],
+    surface: Mapping[str, Any],
+    selected: Mapping[str, Any],
+    operating_point_gate: Mapping[str, Any],
+    *,
+    output_path: Path,
+    device: str,
+    smoke: bool = False,
+) -> dict[str, Any]:
+    """Replay every selected candidate epoch at T8/T64 and K8/K64."""
+
+    from experiments.conv3_operating_point_gate import (
+        run_conv3_operating_point_gate,
+    )
+
+    if (
+        _study_variant(study) != "conv123_zero_bias"
+        or surface["architecture"] != "conv3"
+    ):
+        raise ValueError("Selected post-training T/K replay is Conv3-only.")
+    _validate_conv3_initial_operating_point_gate(operating_point_gate, smoke=smoke)
+    cell_dir = Path(str(selected["path"])).expanduser().resolve()
+    cell_path = cell_dir / "cell.json"
+    source_path = cell_dir / "source_config.json"
+    viability_path = cell_dir / "epochwise_k64_viability.json"
+    if not cell_path.is_file() or not source_path.is_file() or not viability_path.is_file():
+        raise RuntimeError(
+            "Selected Conv3 replay requires the candidate cell, source config, "
+            "and epochwise K64 viability summary."
+        )
+    cell = json.loads(cell_path.read_text(encoding="utf-8"))
+    viability = _validate_conv3_candidate_epochwise_summary(
+        study,
+        surface,
+        cell_dir,
+        cell,
+        operating_point_gate,
+        smoke=smoke,
+        require_canonical_result=True,
+    )
+    if viability.get("passed") is not True:
+        raise RuntimeError("A Conv3 candidate with a failed K64 gate cannot be selected.")
+    expected_epochs = 1 if smoke else int(_surface_search(study, surface)["candidate_epochs"])
+    checkpoints = _candidate_epoch_records(cell_dir, expected_epochs=expected_epochs)
+    expected_full_cohort = _conv3_full_cohort_binding(operating_point_gate)
+    expected_gradient_cohort = _conv3_gradient_cohort_binding(
+        operating_point_gate
+    )
+    viability_epochs = {
+        int(row["epoch"]): row for row in viability.get("epochs", ())
+    }
+    candidate_viability_bound = True
+    signature = {
+        "surface_id": surface["surface_id"],
+        "selected_cell_id": selected["cell_id"],
+        "cell_sha256": _sha256_file(cell_path),
+        "source_config_sha256": _sha256_file(source_path),
+        "epoch_checkpoint_index_sha256": _sha256_file(
+            cell_dir / "epoch_checkpoint_index.jsonl"
+        ),
+        "epochwise_k64_viability_sha256": _sha256_file(viability_path),
+        "operating_point_gate_sha256": _sha256_json(operating_point_gate),
+        "expected_full_cohort": expected_full_cohort,
+        "expected_epochs": expected_epochs,
+        "smoke": smoke,
+    }
+    if output_path.is_file():
+        return _validate_conv3_selected_post_summary(
+            study,
+            surface,
+            selected,
+            operating_point_gate,
+            output_path=output_path,
+            smoke=smoke,
+            cell_dir=cell_dir,
+        )
+
+    receipt_root = output_path.parent / "post_training_tk" / "selected_epochs"
+    epoch_results = []
+    for checkpoint in checkpoints:
+        epoch = int(checkpoint["epoch"])
+        receipt_path = receipt_root / f"epoch_{epoch:03d}.json"
+        returned_gate = run_conv3_operating_point_gate(
+            source_path,
+            checkpoint["checkpoint"],
+            device=device,
+            output_path=receipt_path,
+            smoke=smoke,
+        )
+        if not receipt_path.is_file():
+            raise RuntimeError(
+                f"Selected Conv3 gate did not write its epoch {epoch} receipt."
+            )
+        gate = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(returned_gate, Mapping) or any(
+            returned_gate.get(key) != gate.get(key)
+            for key in (
+                "schema_version",
+                "status",
+                "security_passed",
+                "checkpoint_sha256",
+                "source_config_sha256",
+                "smoke",
+                "official_test_read",
+            )
+        ):
+            raise RuntimeError(
+                f"Selected Conv3 epoch {epoch} returned/written receipt mismatch."
+            )
+        passed, observed_full_cohort = _validate_conv3_full_gate_receipt(
+            gate,
+            checkpoint,
+            source_config_sha256=signature["source_config_sha256"],
+            expected_cohort=expected_full_cohort,
+            smoke=smoke,
+        )
+        k64_epoch = viability_epochs.get(epoch)
+        if not isinstance(k64_epoch, Mapping):
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} lacks K64 evidence.")
+        if (
+            k64_epoch.get("passed") is not True
+            or k64_epoch.get("checkpoint_sha256")
+            != checkpoint["checkpoint_sha256"]
+            or k64_epoch.get("gradient_cohort") != expected_gradient_cohort
+        ):
+            raise RuntimeError(f"Selected Conv3 epoch {epoch} K64 binding failed.")
+        epoch_results.append(
+            {
+                **checkpoint,
+                "gate_artifact": str(receipt_path.resolve()),
+                "gate_artifact_relative_path": str(
+                    receipt_path.relative_to(output_path.parent)
+                ),
+                "gate_artifact_sha256": _sha256_file(receipt_path),
+                "gate_status": gate.get("status"),
+                "full_cohort": observed_full_cohort,
+                "cohort_matches_operating_point": True,
+                "epochwise_k64_receipt_bound": True,
+                "passed": passed,
+                "error": None,
+            }
+        )
+    passed = bool(
+        candidate_viability_bound
+        and len(epoch_results) == expected_epochs
+        and all(row["passed"] for row in epoch_results)
+    )
+    summary = {
+        "schema_version": (
+            "perfectdiode-conv3-bounded-uniform-selected-post-training-tk/v1"
+        ),
+        "status": "complete" if passed else "unresolved_post_training_tk",
+        "passed": passed,
+        "signature": signature,
+        "surface_id": surface["surface_id"],
+        "selected_cell_id": selected["cell_id"],
+        "selected_candidate": str(cell_dir),
+        "selected_candidate_cell_sha256": _sha256_file(cell_path),
+        "source_config": str(source_path.resolve()),
+        "source_config_sha256": _sha256_file(source_path),
+        "candidate_epochwise_k64_viability": str(viability_path.resolve()),
+        "candidate_epochwise_k64_viability_sha256": _sha256_file(
+            viability_path
+        ),
+        "candidate_epochwise_k64_viability_bound": candidate_viability_bound,
+        "operating_point_gate_checkpoint_sha256": operating_point_gate.get(
+            "checkpoint_sha256"
+        ),
+        "expected_full_cohort": expected_full_cohort,
+        "expected_epochs": expected_epochs,
+        "epochs": epoch_results,
+        "official_test_read": False,
+    }
+    _write_json(output_path, summary)
+    return _validate_conv3_selected_post_summary(
+        study,
+        surface,
+        selected,
+        operating_point_gate,
+        output_path=output_path,
+        smoke=smoke,
+        cell_dir=cell_dir,
+    )
+
+
+def _validate_conv3_selection_post_evidence(
+    study: Mapping[str, Any],
+    surface: Mapping[str, Any],
+    selection_path: Path,
+    operating_point_gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate selection, candidate, and both layers of post-training evidence."""
+
+    selection_path = selection_path.expanduser().resolve()
+    if not selection_path.is_file():
+        raise RuntimeError(f"Missing Conv3 surface selection: {selection_path}.")
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    if not isinstance(selection, Mapping):
+        raise RuntimeError("Conv3 surface selection must be a JSON object.")
+    if selection.get("schema_version") != _artifact_schema(study, "surface"):
+        raise RuntimeError("Unexpected Conv3 surface-selection schema.")
+    for key in ("surface_id", "initializer", "architecture", "scheme", "optimizer"):
+        if selection.get(key) != surface.get(key):
+            raise RuntimeError(f"Conv3 selection {key} binding mismatch.")
+    if selection.get("official_test_read") is not False:
+        raise RuntimeError("Conv3 selection violates official-test isolation.")
+    _validate_conv3_initial_operating_point_gate(
+        operating_point_gate, smoke=False
+    )
+
+    post_record = selection.get("post_training_tk")
+    if not isinstance(post_record, Mapping):
+        raise RuntimeError("Conv3 post-training selection lacks its summary record.")
+    status = selection.get("status")
+    passed = post_record.get("passed") is True
+    selector = selection.get("selection")
+    if not isinstance(selector, Mapping):
+        raise RuntimeError("Conv3 post-training selection lacks selector evidence.")
+    if passed:
+        if status not in {
+            "complete",
+            "complete_below_accuracy_bracketed",
+            "complete_below_accuracy_range_bounded",
+        }:
+            raise RuntimeError("Passing Conv3 post-training evidence has invalid status.")
+        selected = selection.get("selected")
+        provisional = selection.get("pre_post_training_tk_selected")
+        if not isinstance(selected, Mapping) or provisional != selected:
+            raise RuntimeError("Passing Conv3 selection lost its selected candidate binding.")
+        if selector.get("selected") != selected:
+            raise RuntimeError("Passing Conv3 selector disagrees with the selected candidate.")
+        if selector.get("post_training_tk_passed") is not True:
+            raise RuntimeError("Passing Conv3 selector lacks its post-training proof.")
+    else:
+        if status != "unresolved_post_training_tk":
+            raise RuntimeError("Failed Conv3 post-training evidence has invalid status.")
+        if selection.get("selected") is not None or selector.get("selected") is not None:
+            raise RuntimeError("Failed Conv3 post-training evidence retained a selection.")
+        provisional = selection.get("pre_post_training_tk_selected")
+        if not isinstance(provisional, Mapping):
+            raise RuntimeError("Failed Conv3 post-training evidence lost its candidate binding.")
+        if selector.get("pre_post_training_tk_selected") != provisional:
+            raise RuntimeError("Failed Conv3 selector has a mismatched provisional candidate.")
+        if selector.get("post_training_tk_passed") is not False:
+            raise RuntimeError("Failed Conv3 selector lacks its post-training outcome.")
+        selected = provisional
+
+    cell_id = str(selected.get("cell_id", ""))
+    if not cell_id or Path(cell_id).name != cell_id:
+        raise RuntimeError("Conv3 selection contains an invalid candidate cell id.")
+    cell_dir = selection_path.parent / "rho" / "cells" / cell_id
+    recorded_cell_path = Path(str(selected.get("path", ""))).expanduser().resolve()
+    if recorded_cell_path != cell_dir.resolve():
+        raise RuntimeError(
+            "Conv3 selected candidate path does not match the trusted surface cell."
+        )
+    output_path = selection_path.parent / "selected_post_training_tk.json"
+    summary = _validate_conv3_selected_post_summary(
+        study,
+        surface,
+        selected,
+        operating_point_gate,
+        output_path=output_path,
+        smoke=False,
+        cell_dir=cell_dir,
+    )
+    if summary.get("passed") is not passed:
+        raise RuntimeError("Conv3 selection and selected post-training summary disagree.")
+    summary_document = json.loads(output_path.read_text(encoding="utf-8"))
+    expected_post_keys = set(summary_document) | {"summary_path", "summary_sha256"}
+    if set(post_record) != expected_post_keys:
+        raise RuntimeError("Conv3 embedded post-training summary has unexpected fields.")
+    for key, value in summary_document.items():
+        if post_record.get(key) != value:
+            raise RuntimeError(
+                f"Conv3 embedded post-training summary differs at {key!r}."
+            )
+    recorded_path = Path(str(post_record.get("summary_path", "")))
+    if recorded_path.name != output_path.name:
+        raise RuntimeError("Conv3 embedded post-training summary path is inconsistent.")
+    if post_record.get("summary_sha256") != _sha256_file(output_path):
+        raise RuntimeError("Conv3 embedded post-training summary hash mismatch.")
+    if (
+        selected.get("status") != "complete"
+        or selected.get("selection_eligible") is not True
+    ):
+        raise RuntimeError("Conv3 provisional candidate is not complete and eligible.")
+    canonical_cell = json.loads((cell_dir / "cell.json").read_text(encoding="utf-8"))
+    reconstructed_selected = _candidate_record(cell_dir, canonical_cell)
+    if dict(selected) != reconstructed_selected:
+        raise RuntimeError(
+            "Conv3 selected candidate record does not match canonical candidate evidence."
+        )
+    candidates = selection.get("candidates")
+    if not isinstance(candidates, list) or sum(
+        candidate == selected for candidate in candidates
+    ) != 1:
+        raise RuntimeError(
+            "Conv3 selected candidate is not uniquely present in the surface candidates."
+        )
+
+    return {
+        "schema_version": (
+            "perfectdiode-conv3-selected-post-training-tk-validation/v1"
+        ),
+        "status": "valid",
+        "surface_id": surface["surface_id"],
+        "post_training_tk_passed": passed,
+        "selected_cell_id": cell_id,
+        "selected_run_dir": str(cell_dir.resolve()),
+        "epoch_count": len(summary["epochs"]),
+        "selection_sha256": _sha256_file(selection_path),
+        "selected_post_training_tk_sha256": _sha256_file(output_path),
+        "epochwise_k64_viability_sha256": summary[
+            "candidate_epochwise_k64_viability_sha256"
+        ],
+        "canonical_candidate_result_sha256": _sha256_file(
+            cell_dir / "result.json"
+        ),
+        "operating_point_gate_sha256": _sha256_json(operating_point_gate),
+        "official_test_read": False,
+    }
+
+
+def validate_conv3_selected_post_training_tk_evidence(
+    study_path: str | Path,
+    selection_path: str | Path,
+    operating_point_gate_path: str | Path,
+) -> dict[str, Any]:
+    """Public read-only transport validator for terminal Conv3 post-T/K evidence."""
+
+    _resolved_study_path, study = load_study(study_path)
+    resolved_selection_path = Path(selection_path).expanduser().resolve()
+    selection = json.loads(resolved_selection_path.read_text(encoding="utf-8"))
+    surface_id = selection.get("surface_id")
+    matches = [
+        surface for surface in surface_specs(study) if surface["surface_id"] == surface_id
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"Unknown or ambiguous Conv3 surface id: {surface_id!r}.")
+    surface = matches[0]
+    if surface["architecture"] != "conv3":
+        raise ValueError("The Conv3 post-training validator received a non-Conv3 surface.")
+    gate_path = Path(operating_point_gate_path).expanduser().resolve()
+    if not gate_path.is_file():
+        raise RuntimeError(f"Missing Conv3 initialization operating-point gate: {gate_path}.")
+    operating_point_gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    if not isinstance(operating_point_gate, Mapping):
+        raise RuntimeError("Conv3 initialization operating-point gate must be a JSON object.")
+    return _validate_conv3_selection_post_evidence(
+        study,
+        surface,
+        resolved_selection_path,
+        operating_point_gate,
     )
 
 
@@ -1134,6 +2352,28 @@ def _candidate_record(cell_dir: Path, cell: Mapping[str, Any]) -> dict[str, Any]
         diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
         record["median_projection_efficiency"] = diagnostics.get(
             "median_projection_efficiency"
+        )
+    viability_path = (
+        cell_dir / "epochwise_k64_viability.json"
+    )
+    if viability_path.is_file():
+        viability = json.loads(viability_path.read_text(encoding="utf-8"))
+        record["training_accuracy_selection_eligible"] = bool(
+            cell.get(
+                "training_accuracy_selection_eligible",
+                record["selection_eligible"],
+            )
+        )
+        record["epochwise_conv_gradient_viability"] = {
+            "path": str(viability_path.resolve()),
+            "sha256": _sha256_file(viability_path),
+            "status": viability.get("status"),
+            "passed": viability.get("passed") is True,
+            "expected_epochs": viability.get("expected_epochs"),
+            "checked_epochs": [row.get("epoch") for row in viability.get("epochs", ())],
+        }
+        record["selection_eligible"] = bool(
+            record["selection_eligible"] and viability.get("passed") is True
         )
     return record
 
@@ -1276,15 +2516,46 @@ def run_rho_surface(
     *,
     device: str,
     target: str | None = None,
+    operating_point_gate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     surface_dir = output_root / "surfaces" / surface["surface_id"]
     selection_path = surface_dir / "selection.json"
     if selection_path.exists():
-        return json.loads(selection_path.read_text(encoding="utf-8"))
+        existing = json.loads(selection_path.read_text(encoding="utf-8"))
+        conv3_post_training_surface = bool(
+            _study_variant(study) == "conv123_zero_bias"
+            and surface["architecture"] == "conv3"
+        )
+        post_record = existing.get("post_training_tk")
+        if not conv3_post_training_surface:
+            return existing
+        if isinstance(post_record, Mapping):
+            if operating_point_gate is None:
+                raise RuntimeError(
+                    "Resuming a Conv3 post-training selection requires its "
+                    "initialization operating-point gate."
+                )
+            _validate_conv3_selection_post_evidence(
+                study,
+                surface,
+                selection_path,
+                operating_point_gate,
+            )
+            return existing
+        elif existing.get("selected") is None:
+            if existing.get("status") == "unresolved_post_training_tk":
+                raise RuntimeError(
+                    "Conv3 unresolved_post_training_tk selection is missing its evidence."
+                )
+            return existing
+        else:
+            raise RuntimeError(
+                "Existing Conv3 selection retained a candidate without post-training evidence."
+            )
     rho_root = surface_dir / "rho"
     search = _surface_search(study, surface)
     rho_conv_axis, rho_dense_axis = _rho_axes(study, surface)
-    run_rho_search(
+    probe_result = run_rho_search(
         _rho_args(
             study,
             surface,
@@ -1298,6 +2569,18 @@ def run_rho_surface(
             probe_only=True,
         )
     )
+    if probe_result.get("status") != "complete":
+        result = {
+            "schema_version": _artifact_schema(study, "surface"),
+            **dict(surface),
+            "status": "unresolved_probe",
+            "probe": probe_result,
+            "candidates": [],
+            "selected": None,
+            "official_test_read": False,
+        }
+        _write_json(selection_path, result)
+        return result
 
     core_mode = search.get("core_mode", "adaptive_safe_center")
     safe_center = None
@@ -1312,6 +2595,8 @@ def run_rho_surface(
                 "device": device,
                 "canary_only": True,
             }
+            if operating_point_gate is not None:
+                cell_kwargs["operating_point_gate"] = operating_point_gate
             if target is not None:
                 cell_kwargs["target"] = target
             cell_dir, cell = _run_rho_cell(
@@ -1396,7 +2681,12 @@ def run_rho_surface(
     candidate_by_pair: dict[tuple[float, float], dict[str, Any]] = {}
     for rho_conv in core_conv:
         for rho_dense in core_dense:
-            cell_kwargs = {"device": device, "canary_only": False}
+            cell_kwargs = {
+                "device": device,
+                "canary_only": False,
+            }
+            if operating_point_gate is not None:
+                cell_kwargs["operating_point_gate"] = operating_point_gate
             if target is not None:
                 cell_kwargs["target"] = target
             cell_dir, cell = _run_rho_cell(
@@ -1499,7 +2789,12 @@ def run_rho_surface(
         new_pairs.update((value, new_dense) for value in expanded_conv)
 
     for rho_conv, rho_dense in sorted(new_pairs):
-        cell_kwargs = {"device": device, "canary_only": False}
+        cell_kwargs = {
+            "device": device,
+            "canary_only": False,
+        }
+        if operating_point_gate is not None:
+            cell_kwargs["operating_point_gate"] = operating_point_gate
         if target is not None:
             cell_kwargs["target"] = target
         cell_dir, cell = _run_rho_cell(
@@ -1552,6 +2847,40 @@ def run_rho_surface(
             else "complete"
         )
         selected = None if unresolved_boundary else final_selection["selected"]
+    post_training_tk = None
+    pre_post_training_tk_selected = None
+    if (
+        selected is not None
+        and _study_variant(study) == "conv123_zero_bias"
+        and surface["architecture"] == "conv3"
+    ):
+        pre_post_training_tk_selected = copy.deepcopy(selected)
+        post_path = surface_dir / "selected_post_training_tk.json"
+        if operating_point_gate is None:
+            raise RuntimeError(
+                "Selected Conv3 replay requires the initialization operating-point gate."
+            )
+        post_training_tk = run_conv3_selected_post_training_tk(
+            study,
+            surface,
+            selected,
+            operating_point_gate,
+            output_path=post_path,
+            device=device,
+            smoke=False,
+        )
+        if post_training_tk.get("passed") is not True:
+            status = "unresolved_post_training_tk"
+            selected = None
+            final_selection = copy.deepcopy(final_selection)
+            final_selection["pre_post_training_tk_selected"] = copy.deepcopy(
+                final_selection.get("selected")
+            )
+            final_selection["selected"] = None
+            final_selection["post_training_tk_passed"] = False
+        else:
+            final_selection = copy.deepcopy(final_selection)
+            final_selection["post_training_tk_passed"] = True
     result.update(
         status=status,
         core_axes={"rho_conv": core_conv, "rho_dense": core_dense},
@@ -1602,6 +2931,9 @@ def run_rho_surface(
         selection=final_selection,
         selected=selected,
     )
+    if post_training_tk is not None:
+        result["pre_post_training_tk_selected"] = pre_post_training_tk_selected
+        result["post_training_tk"] = post_training_tk
     _write_json(selection_path, result)
     return result
 
@@ -1676,7 +3008,7 @@ def run_surface(
     if smoke:
         search = _surface_search(study, surface)
         rho_conv_axis, rho_dense_axis = _rho_axes(study, surface)
-        run_rho_search(
+        probe_result = run_rho_search(
             _rho_args(
                 study,
                 surface,
@@ -1691,6 +3023,19 @@ def run_surface(
                 smoke=True,
             )
         )
+        if probe_result.get("status") != "complete":
+            result = {
+                "schema_version": _artifact_schema(study, "smoke"),
+                "status": "unresolved_probe",
+                "surface": dict(surface),
+                "asset": asset,
+                "fixed_tk_path_exercised": True,
+                "fixed_tk_diagnostics": gate,
+                "probe": probe_result,
+                "official_test_read": False,
+            }
+            _write_json(output_root / "smoke" / "result.json", result)
+            return result
         if search.get("core_mode", "adaptive_safe_center") == "fixed_grid":
             fixed = search["fixed_core"]
             representative = {
@@ -1703,6 +3048,7 @@ def run_surface(
             "device": device,
             "canary_only": False,
             "smoke": True,
+            "operating_point_gate": gate,
         }
         if target is not None:
             cell_kwargs["target"] = target
@@ -1761,6 +3107,7 @@ def run_surface(
         source_path,
         device=device,
         target=target,
+        operating_point_gate=gate,
     )
 
 

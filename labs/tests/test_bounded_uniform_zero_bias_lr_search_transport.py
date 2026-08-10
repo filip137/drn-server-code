@@ -69,6 +69,14 @@ def _assert_common_contract(text: str) -> None:
     assert "selection.json" in text
     assert 'run_dir / "status.json"' in text
     assert 'run_status.get("state") != "complete"' in text
+    assert 'artifact.get("path") == "artifacts/safety_diagnostics.json"' in text
+    assert '"shared_initialization_checkpoint_sha256"' in text
+    assert 'post_training_tk.get("passed") is True' in text
+    assert "len(post_epochs) == 3" in text
+    assert "validate_conv3_selected_post_training_tk_evidence" in text
+    assert 'output_root\n        / "fixed_tk"' in text
+    assert '"conv3_post_training_tk_validation"' in text
+    assert 'Path(conv3_post_training_tk_validation["selected_run_dir"])' in text
     assert "PDBLR_SEMANTIC_PASS" in text
     assert "transport-receipt/v1" in text
     assert "official_test_read" in text
@@ -103,7 +111,7 @@ def test_jean_zay_transport_has_exact_resource_and_pair_contract() -> None:
         "#SBATCH --constraint=v100-32g",
         "#SBATCH --gres=gpu:1",
         "#SBATCH --time=24:00:00",
-        "#SBATCH --array=0-2",
+        "#SBATCH --array=0-2%1",
     }
     assert expected_directives <= set(text.splitlines())
     assert 'MODULE_ID="pytorch-gpu/py3/2.5.0"' in text
@@ -111,8 +119,7 @@ def test_jean_zay_transport_has_exact_resource_and_pair_contract() -> None:
     assert "PAIR_END=$((PAIR_START + 1))" in text
     assert "for (( index=PAIR_START; index<=PAIR_END; index++ ))" in text
     assert (
-        'OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay/'
-        'task_${SLURM_ARRAY_TASK_ID}"'
+        'OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay"'
     ) in text
     assert '--target "${TARGET}"' in text
     assert 'TARGET="jean-zay"' in text

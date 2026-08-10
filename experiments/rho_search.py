@@ -434,11 +434,6 @@ class OptimizerProbe:
             for name, value in weight_units.items()
             if not math.isfinite(value) or value <= 0.0
         }
-        if invalid:
-            raise RuntimeError(
-                "Expected every weight proposal unit to be positive and finite. "
-                f"Provided value: {invalid!r}."
-            )
         unstable = [
             name
             for name, values in self.split_statistics.items()
@@ -447,10 +442,13 @@ class OptimizerProbe:
             )
             and values["relative_difference"] > self.stability_tolerance
         ]
+        complete = self.stable and not invalid
         return {
             "schema_version": "conv-rho-probe/v1",
-            "status": "complete" if self.stable else "unresolved_probe",
+            "status": "complete" if complete else "unresolved_probe",
             "probe_stable": self.stable,
+            "proposal_units_valid": not invalid,
+            "invalid_weight_proposal_units": invalid,
             "optimizer_name": self.optimizer_name,
             "parameter_names": self.topology["parameter_names"],
             "weight_names": self.topology["weight_names"],
@@ -826,6 +824,7 @@ class TrainingSafetyMonitor:
                 "projection_efficiency_minimum": (
                     self.projection_efficiency_minimum
                 ),
+                "zero_proposal_epsilon": self.zero_proposal_epsilon,
                 "boundary_persistence_steps": self.boundary_persistence,
             },
             "report_only_diagnostics": {
@@ -1009,6 +1008,7 @@ def _run_trainer(
     optimizer_step_callback=None,
     apply_optimizer_steps: bool = True,
     reporting_run_dir: Path | None = None,
+    checkpoint_every_epoch: bool = False,
 ) -> dict[str, Any]:
     from labs.mnist_train import train_mnist_conv
 
@@ -1032,6 +1032,7 @@ def _run_trainer(
         optimizer_step_callback=optimizer_step_callback,
         apply_optimizer_steps=apply_optimizer_steps,
         reporting_run_dir=reporting_run_dir,
+        checkpoint_every_epoch=checkpoint_every_epoch,
     )
 
 
@@ -1044,7 +1045,8 @@ def _summary_row(index: int, rho_conv: float, rho_dense: float, cell_dir: Path) 
     metrics_path = cell_dir / "metrics.json"
     metrics = (
         json.loads(metrics_path.read_text(encoding="utf-8"))
-        if cell["status"] == "complete" and metrics_path.exists()
+        if cell["status"] in {"complete", "candidate_rejected_post_training_tk"}
+        and metrics_path.exists()
         else {}
     )
     diagnostics_path = cell_dir / "safety_diagnostics.json"
@@ -1195,7 +1197,7 @@ def _cell_signature(
     probe_digest = hashlib.sha256(
         json.dumps(probe, sort_keys=True, allow_nan=False).encode("utf-8")
     ).hexdigest()
-    return {
+    signature = {
         "source_config_sha256": resolved["source_config_sha256"],
         "code": resolved["code"],
         "optimizer": resolved["optimizer"],
@@ -1215,6 +1217,13 @@ def _cell_signature(
         ),
         "safety": resolved.get("safety"),
     }
+    if "checkpoint_every_epoch" in resolved:
+        signature["checkpoint_every_epoch"] = resolved["checkpoint_every_epoch"]
+    if "post_candidate_gate_name" in resolved:
+        signature["post_candidate_gate_name"] = resolved[
+            "post_candidate_gate_name"
+        ]
+    return signature
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -1253,6 +1262,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "Expected --minimum-validation-accuracy in [0, 1]. "
             f"Provided value: {minimum_validation_accuracy!r}."
         )
+    checkpoint_every_epoch = bool(
+        getattr(args, "checkpoint_every_epoch", False)
+    )
+    post_candidate_gate_name = getattr(args, "post_candidate_gate_name", None)
+    post_candidate_callback = getattr(args, "post_candidate_callback", None)
+    if post_candidate_gate_name is not None and not isinstance(
+        post_candidate_gate_name, str
+    ):
+        raise TypeError("post_candidate_gate_name must be a string when supplied.")
+    if post_candidate_callback is not None and not callable(post_candidate_callback):
+        raise TypeError("post_candidate_callback must be callable when supplied.")
     safety = {
         "warmup_steps": int(getattr(args, "safety_warmup_steps", 32)),
         "ema_decay": float(getattr(args, "safety_ema_decay", 0.98)),
@@ -1266,6 +1286,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "projection_efficiency_minimum": getattr(
             args, "safety_projection_efficiency_minimum", None
+        ),
+        "zero_proposal_epsilon": float(
+            getattr(args, "safety_zero_proposal_epsilon", 1e-30)
         ),
         "boundary_persistence": int(
             getattr(args, "safety_boundary_persistence", 16)
@@ -1294,6 +1317,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         projection_efficiency_minimum=safety[
             "projection_efficiency_minimum"
         ],
+        zero_proposal_epsilon=safety["zero_proposal_epsilon"],
         boundary_persistence=safety["boundary_persistence"],
     )
     rate_count = _configured_rate_count(base)
@@ -1330,6 +1354,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "safety": safety,
         "target": target,
     }
+    if checkpoint_every_epoch:
+        resolved["checkpoint_every_epoch"] = True
+    if post_candidate_gate_name is not None:
+        resolved["post_candidate_gate_name"] = post_candidate_gate_name
     if args.dry_run:
         planned = dict(resolved)
         planned["cells"] = len(all_pairs)
@@ -1411,11 +1439,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         _write_json(probe_path, probe)
 
-    if probe.get("probe_stable") is not True:
-        raise RuntimeError(
-            "Rho probe remained unstable at the largest requested batch count. "
-            f"Unstable parameters: {probe.get('unstable_parameters')!r}."
-        )
+    if probe.get("status") != "complete":
+        return {
+            "probe": str(probe_path),
+            "status": "unresolved_probe",
+            "probe_stable": probe.get("probe_stable") is True,
+            "proposal_units_valid": probe.get("proposal_units_valid") is True,
+            "unstable_parameters": probe.get("unstable_parameters", []),
+            "invalid_weight_proposal_units": probe.get(
+                "invalid_weight_proposal_units", {}
+            ),
+        }
     if args.probe_only:
         return {"probe": str(probe_path), "status": "complete"}
 
@@ -1449,10 +1483,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "canary_rejected_safety",
                 "candidate_rejected_nonfinite",
                 "candidate_rejected_safety",
+                "candidate_rejected_post_training_tk",
             }:
                 missing.append(f"{cell_path} (status={cell.get('status')!r})")
                 continue
-            if cell["status"] == "complete" and not (cell_dir / "metrics.json").exists():
+            if cell["status"] in {
+                "complete",
+                "candidate_rejected_post_training_tk",
+            } and not (cell_dir / "metrics.json").exists():
                 missing.append(str(cell_dir / "metrics.json"))
                 continue
             rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
@@ -1493,6 +1531,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "canary_rejected_safety",
                         "candidate_rejected_nonfinite",
                         "candidate_rejected_safety",
+                        "candidate_rejected_post_training_tk",
                     }
                     or (
                         getattr(args, "canary_only", False)
@@ -1500,14 +1539,52 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 )
             )
+            if (
+                reusable
+                and post_candidate_gate_name is not None
+                and existing.get("status") in {
+                    "complete",
+                    "candidate_rejected_post_training_tk",
+                }
+            ):
+                result_path = cell_dir / "result.json"
+                reusable = result_path.is_file()
+                if reusable:
+                    gate_path = cell_dir / "epochwise_k64_viability.json"
+                    gate_receipt = existing.get("post_candidate_gate")
+                    result_record = json.loads(
+                        result_path.read_text(encoding="utf-8")
+                    )
+                    completion_gate = result_record.get("completion", {}).get(
+                        "post_candidate_gate"
+                    )
+                    gate_sha256 = (
+                        _file_sha256(gate_path) if gate_path.is_file() else None
+                    )
+                    artifact_bound = any(
+                        str(artifact.get("path", "")).endswith(
+                            "/epochwise_k64_viability.json"
+                        )
+                        and artifact.get("sha256") == gate_sha256
+                        for artifact in result_record.get("artifacts", ())
+                    )
+                    reusable = bool(
+                        isinstance(gate_receipt, Mapping)
+                        and gate_receipt.get("name") == post_candidate_gate_name
+                        and gate_receipt.get("artifact_sha256") == gate_sha256
+                        and completion_gate == gate_receipt
+                        and artifact_bound
+                    )
             if reusable:
                 if args.bias_policy == "zero" and existing.get("status") in {
                     "complete",
+                    "candidate_rejected_post_training_tk",
                     "canary_clean",
                 }:
                     verification_root = (
                         cell_dir
-                        if existing["status"] == "complete"
+                        if existing["status"]
+                        in {"complete", "candidate_rejected_post_training_tk"}
                         else cell_dir / "canary"
                     )
                     zero_bias_verification = verify_zero_bias_run_checkpoints(
@@ -1519,7 +1596,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                     diagnostics_path = (
                         cell_dir / "safety_diagnostics.json"
-                        if existing["status"] == "complete"
+                        if existing["status"]
+                        in {"complete", "candidate_rejected_post_training_tk"}
                         else cell_dir / "canary" / "safety_diagnostics.json"
                     )
                     diagnostics = (
@@ -1654,6 +1732,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 projection_efficiency_minimum=safety[
                     "projection_efficiency_minimum"
                 ],
+                zero_proposal_epsilon=safety["zero_proposal_epsilon"],
                 boundary_persistence=safety["boundary_persistence"],
             )
             canary = {
@@ -1776,9 +1855,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             projection_efficiency_minimum=safety[
                 "projection_efficiency_minimum"
             ],
+            zero_proposal_epsilon=safety["zero_proposal_epsilon"],
             boundary_persistence=safety["boundary_persistence"],
         )
         candidate_zero_bias_verification = None
+        candidate_completion = None
+        candidate_terminal_metrics = None
         try:
             _run_trainer(
                 config_path,
@@ -1786,6 +1868,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 device=args.device,
                 optimizer_step_callback=candidate_monitor,
                 reporting_run_dir=cell_dir,
+                checkpoint_every_epoch=checkpoint_every_epoch,
             )
             if args.bias_policy == "zero":
                 candidate_zero_bias_verification = (
@@ -1834,14 +1917,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 _write_json(cell_path, cell)
                 fail_run(cell_dir, error=error)
                 raise error
-            cell["status"] = "complete"
+            cell["status"] = (
+                "candidate_trained_pending_post_gate"
+                if post_candidate_gate_name is not None
+                else "complete"
+            )
             metrics = json.loads(
                 (cell_dir / "metrics.json").read_text(encoding="utf-8")
             )
             final_accuracy = float(metrics["final_test_accuracy"])
-            cell["selection_eligible"] = (
+            accuracy_selection_eligible = (
                 final_accuracy >= minimum_validation_accuracy
             )
+            cell["selection_eligible"] = accuracy_selection_eligible
+            if post_candidate_gate_name is not None:
+                cell["training_accuracy_selection_eligible"] = (
+                    accuracy_selection_eligible
+                )
             cell["completed_steps"] = candidate_monitor.step
             _write_json(cell_path, cell)
             completion = {
@@ -1855,11 +1947,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 completion["zero_bias_checkpoint_verification"] = (
                     candidate_zero_bias_verification
                 )
-            complete_run(
-                cell_dir,
-                terminal_metrics=_terminal_metrics(metrics),
-                completion=completion,
-            )
+            candidate_completion = completion
+            candidate_terminal_metrics = _terminal_metrics(metrics)
         finally:
             diagnostics = candidate_monitor.summary()
             if cell.get("safety_failure") is not None:
@@ -1869,6 +1958,80 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     candidate_zero_bias_verification
                 )
             _write_json(cell_dir / "safety_diagnostics.json", diagnostics)
+        if candidate_completion is not None:
+            if post_candidate_gate_name is not None:
+                if post_candidate_callback is None:
+                    error = RuntimeError(
+                        "A post-candidate scientific gate was declared but no "
+                        "callback was supplied for this new candidate."
+                    )
+                    cell["status"] = "failed"
+                    cell["error"] = str(error)
+                    _write_json(cell_path, cell)
+                    fail_run(cell_dir, error=error)
+                    raise error
+                try:
+                    gate = post_candidate_callback(cell_dir, cell)
+                except BaseException as error:
+                    cell["status"] = "failed"
+                    cell["selection_eligible"] = False
+                    cell["error"] = str(error)
+                    _write_json(cell_path, cell)
+                    fail_run(cell_dir, error=error)
+                    raise
+                if not isinstance(gate, Mapping) or not isinstance(
+                    gate.get("passed"), bool
+                ):
+                    error = RuntimeError(
+                        "The post-candidate scientific gate must return a mapping "
+                        "with a boolean 'passed' field."
+                    )
+                    cell["status"] = "failed"
+                    cell["error"] = str(error)
+                    _write_json(cell_path, cell)
+                    fail_run(cell_dir, error=error)
+                    raise error
+                gate_artifact = Path(str(gate.get("summary_path", "")))
+                gate_artifact_sha256 = gate.get("summary_sha256")
+                if (
+                    not gate_artifact.is_file()
+                    or gate_artifact_sha256 != _file_sha256(gate_artifact)
+                    or gate_artifact.parent.resolve() != cell_dir.resolve()
+                ):
+                    error = RuntimeError(
+                        "The post-candidate scientific gate must provide a "
+                        "hash-verified flat artifact at the candidate root."
+                    )
+                    cell["status"] = "failed"
+                    cell["error"] = str(error)
+                    _write_json(cell_path, cell)
+                    fail_run(cell_dir, error=error)
+                    raise error
+                gate_passed = gate["passed"] is True
+                gate_summary = {
+                    "name": post_candidate_gate_name,
+                    "status": gate.get("status"),
+                    "passed": gate_passed,
+                    "artifact": str(gate_artifact.resolve()),
+                    "artifact_sha256": gate_artifact_sha256,
+                }
+                cell["post_candidate_gate"] = gate_summary
+                cell["selection_eligible"] = bool(
+                    cell["selection_eligible"] and gate_passed
+                )
+                if not gate_passed:
+                    cell["status"] = "candidate_rejected_post_training_tk"
+                else:
+                    cell["status"] = "complete"
+                _write_json(cell_path, cell)
+                candidate_completion["post_candidate_gate"] = gate_summary
+                candidate_completion["post_training_tk_admissible"] = gate_passed
+                candidate_completion["criteria_met"] = cell["selection_eligible"]
+            complete_run(
+                cell_dir,
+                terminal_metrics=candidate_terminal_metrics,
+                completion=candidate_completion,
+            )
         rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
 
     if args.index is None:
@@ -1900,6 +2063,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--probe-batches", type=int, nargs="+", default=list(DEFAULT_PROBE_COUNTS))
     parser.add_argument("--stability-tolerance", type=float, default=0.10)
     parser.add_argument("--epochs", type=int)
+    parser.add_argument(
+        "--checkpoint-every-epoch",
+        action="store_true",
+        help="Save candidate model/optimizer checkpoints at epoch 0 and every epoch.",
+    )
     parser.add_argument("--max-batches", type=int)
     parser.add_argument("--max-validation-batches", type=int)
     parser.add_argument("--validation-batch-size", type=int, default=128)
@@ -1924,6 +2092,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--safety-persistence", type=int, default=8)
     parser.add_argument("--safety-bound-occupancy-increase-maximum", type=float)
     parser.add_argument("--safety-projection-efficiency-minimum", type=float)
+    parser.add_argument("--safety-zero-proposal-epsilon", type=float, default=1e-30)
     parser.add_argument("--safety-boundary-persistence", type=int, default=16)
     parser.add_argument("--index", type=int, help="Run one Cartesian-grid cell by index")
     parser.add_argument(
