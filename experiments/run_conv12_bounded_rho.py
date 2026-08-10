@@ -1052,6 +1052,7 @@ def _rho_args(
         collect_only=False,
         force=False,
         dry_run=False,
+        smoke=smoke,
         reporting_command={
             "module": "experiments.run_conv12_bounded_rho",
             "surface_index": surface["index"],
@@ -3032,6 +3033,7 @@ def run_surface(
                 "fixed_tk_path_exercised": True,
                 "fixed_tk_diagnostics": gate,
                 "probe": probe_result,
+                "smoke": True,
                 "official_test_read": False,
             }
             _write_json(output_root / "smoke" / "result.json", result)
@@ -3071,6 +3073,7 @@ def run_surface(
             "fixed_tk_path_exercised": True,
             "fixed_tk_diagnostics": gate,
             "rho_cell": _candidate_record(cell_dir, cell),
+            "smoke": True,
             "official_test_read": False,
         }
         _write_json(output_root / "smoke" / "result.json", result)

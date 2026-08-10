@@ -177,6 +177,25 @@ def test_zero_bias_rho_args_record_actual_target_and_conv3_hard_gates(
     assert args.safety_projection_efficiency_minimum == 0.50
     assert args.safety_zero_proposal_epsilon == 1e-12
     assert args.safety_boundary_persistence == 16
+    assert args.smoke is False
+
+    smoke_args = _rho_args(
+        study,
+        surface,
+        tmp_path / "smoke-source.json",
+        tmp_path / "smoke-rho",
+        conv,
+        dense,
+        device="cuda",
+        target="main",
+        index=0,
+        smoke=True,
+    )
+
+    assert smoke_args.smoke is True
+    assert smoke_args.study_id.endswith("-smoke")
+    assert smoke_args.epochs == 1
+    assert smoke_args.max_batches == 1
 
 
 def test_zero_bias_materialization_records_runtime_overrides(tmp_path) -> None:
