@@ -444,6 +444,34 @@ def test_terminal_unresolved_rows_keep_lrs_and_exact_occupancy_without_winner(
     assert report["winner_inferred"] is False
     assert report["unresolved_surface_ids"] == [surfaces[0]["surface_id"]]
     assert report["surfaces"][0]["receipt_status"] == "valid"
+    assert report["surfaces"][0]["terminal_status"] == (
+        "unresolved_no_safe_completed_core_candidate"
+    )
+    assert report["surfaces"][0]["terminal_status_interpretation"] == (
+        "no_accuracy_eligible_candidate"
+    )
+    assert report["surfaces"][0][
+        "canonical_safety_admissible_completed_candidate_count"
+    ] == 1
+    assert report["surfaces"][0][
+        "canonical_safety_admissible_gate_qualified_candidate_count"
+    ] == 0
+    assert "not evidence that all candidates were unsafe" in report["surfaces"][0][
+        "terminal_status_note"
+    ]
+    assert report["coverage"]["terminal_status_annotation_count"] == 1
+    assert report["terminal_status_annotations"] == [
+        {
+            "surface_id": surfaces[0]["surface_id"],
+            "raw_terminal_status": (
+                "unresolved_no_safe_completed_core_candidate"
+            ),
+            "interpretation": "no_accuracy_eligible_candidate",
+            "note": report["surfaces"][0]["terminal_status_note"],
+            "canonical_safety_admissible_completed_candidate_count": 1,
+            "canonical_safety_admissible_gate_qualified_candidate_count": 0,
+        }
+    ]
     assert report["surfaces"][0]["highest_observed_accuracy"] == pytest.approx(0.89)
     assert report["surfaces"][0]["gate_qualified_candidate_count"] == 0
     assert report["surfaces"][0]["reportable_selected_cell_id"] is None
@@ -458,6 +486,7 @@ def test_terminal_unresolved_rows_keep_lrs_and_exact_occupancy_without_winner(
         if row["row_kind"] == "candidate" and row["status"] == "complete"
     )
     assert completed["bundle_valid"] is True
+    assert completed["canonical_safety_admissible"] is True
     assert completed["num_bounded_weights"] == 8
     assert completed["exact_lower_bound_count"] == 3
     assert completed["exact_upper_bound_count"] == 2
@@ -515,6 +544,9 @@ def test_terminal_unresolved_rows_keep_lrs_and_exact_occupancy_without_winner(
     assert "never labeled winners" in report_text
     assert "highest observed (below gate; observation, not winner)" in report_text
     assert '"Bias_0":0.0,"ConvWeight_0":1e-07' in report_text
+    assert "Raw state" in report_text
+    assert "no accuracy-eligible candidate" in report_text
+    assert "It does not mean every candidate was unsafe" in report_text
 
 
 def test_terminal_surface_reports_parameter_occupancy_and_descriptive_correlations(

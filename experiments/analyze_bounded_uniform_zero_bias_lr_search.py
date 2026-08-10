@@ -65,6 +65,7 @@ RECEIPT_SCHEMA = (
 BOUNDED_WEIGHT_PREFIXES = ("ConvWeight_", "DenseWeight_")
 COMPLETED_CELL_STATUSES = {"complete", "candidate_rejected_post_training_tk"}
 TERMINAL_REJECTION_PREFIXES = ("canary_rejected_", "candidate_rejected_")
+AMBIGUOUS_UNSAFE_STATUS = "unresolved_no_safe_completed_core_candidate"
 SCHEME_COLORS = {
     "baseline": "#4c78a8",
     "ours": "#f58518",
@@ -748,6 +749,7 @@ def _bundle_evidence(
         "exact_either_bound_percent": None,
         "outside_bound_count": None,
         "outside_bound_percent": None,
+        "canonical_safety_admissible": None,
         "canonical_final_validation_accuracy": None,
         "canonical_final_validation_loss": None,
     }
@@ -872,6 +874,12 @@ def _bundle_evidence(
                 "official_test_read"
             ) is not False:
                 errors.append("candidate completion does not declare official_test_read=false")
+            if isinstance(completion, Mapping) and isinstance(
+                completion.get("safety_admissible"), bool
+            ):
+                evidence["canonical_safety_admissible"] = completion[
+                    "safety_admissible"
+                ]
             terminal = result.get("terminal_metrics")
             validation = terminal.get("validation") if isinstance(terminal, Mapping) else None
             if not isinstance(validation, Mapping):
@@ -953,6 +961,7 @@ def _blank_row(spec: Mapping[str, Any], *, shard: Shard | None) -> dict[str, Any
         "exact_either_bound_percent": None,
         "outside_bound_count": None,
         "outside_bound_percent": None,
+        "canonical_safety_admissible": None,
         "canonical_final_validation_accuracy": None,
         "canonical_final_validation_loss": None,
         "record_path": None,
@@ -1181,6 +1190,48 @@ def _candidate_report_detail(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _terminal_status_semantics(
+    *,
+    terminal_status: str | None,
+    candidates: Sequence[Mapping[str, Any]],
+    accuracy_gate: float,
+) -> dict[str, Any]:
+    safety_admissible = [
+        row
+        for row in candidates
+        if row.get("bundle_state") == "complete"
+        and row.get("bundle_valid") is True
+        and row.get("canonical_safety_admissible") is True
+    ]
+    accuracy_eligible = [
+        row for row in safety_admissible if row.get("meets_accuracy_gate") is True
+    ]
+    interpretation: str | None = None
+    note: str | None = None
+    if (
+        terminal_status == AMBIGUOUS_UNSAFE_STATUS
+        and safety_admissible
+        and not accuracy_eligible
+    ):
+        interpretation = "no_accuracy_eligible_candidate"
+        note = (
+            f"Raw terminal status retained. {len(safety_admissible)} canonical "
+            "completed candidate(s) are explicitly safety-admissible, but none "
+            f"meets the {100.0 * accuracy_gate:.1f}% accuracy gate. This is not "
+            "evidence that all candidates were unsafe."
+        )
+    return {
+        "canonical_safety_admissible_completed_candidate_count": len(
+            safety_admissible
+        ),
+        "canonical_safety_admissible_gate_qualified_candidate_count": len(
+            accuracy_eligible
+        ),
+        "terminal_status_interpretation": interpretation,
+        "terminal_status_note": note,
+    }
+
+
 def _surface_source(
     *,
     spec: Mapping[str, Any],
@@ -1377,6 +1428,11 @@ def _surface_source(
         row for row in candidates if row["meets_accuracy_gate"] is True
     ]
     reportable_selected = [row for row in candidates if row["reportable_selected"]]
+    terminal_status_semantics = _terminal_status_semantics(
+        terminal_status=selection_status,
+        candidates=candidates,
+        accuracy_gate=contract.accuracy_gate,
+    )
     summary = {
         **dict(spec),
         "target": shard.target,
@@ -1391,6 +1447,7 @@ def _surface_source(
         "canonical_complete_candidate_count": len(completed),
         "rejected_candidate_count": len(rejected),
         "gate_qualified_candidate_count": len(gate_qualified),
+        **terminal_status_semantics,
         "highest_observed_accuracy": (
             highest_observed["final_validation_accuracy"]
             if highest_observed is not None
@@ -1775,6 +1832,20 @@ def _format_correlation(value: Any) -> str:
     return "—" if value is None else f"{float(value):.3f}"
 
 
+def _format_terminal_status_interpretation(surface: Mapping[str, Any]) -> str:
+    if surface.get("terminal_status_interpretation") != (
+        "no_accuracy_eligible_candidate"
+    ):
+        return "—"
+    safety_count = surface[
+        "canonical_safety_admissible_completed_candidate_count"
+    ]
+    return (
+        "no accuracy-eligible candidate "
+        f"({safety_count} safety-admissible completed; none >= gate)"
+    )
+
+
 def _report_markdown(report: Mapping[str, Any]) -> str:
     coverage = report["coverage"]
     lines = [
@@ -1794,17 +1865,19 @@ def _report_markdown(report: Mapping[str, Any]) -> str:
         "",
         "## Surface snapshot",
         "",
-        "| Surface | Target | State | Receipt | Candidates | Complete | Rejected | "
-        "Max accuracy | >= gate | Reportable selection |",
-        "|---|---|---|---|---:|---:|---:|---:|---:|---|",
+        "| Surface | Target | Raw state | Evidence interpretation | Receipt | "
+        "Candidates | Complete | Rejected | Max accuracy | >= gate | "
+        "Reportable selection |",
+        "|---|---|---|---|---|---:|---:|---:|---:|---:|---|",
     ]
     for surface in report["surfaces"]:
         lines.append(
-            "| {surface_id} | {target} | {state} | {receipt} | {candidates} | "
+            "| {surface_id} | {target} | {state} | {interpretation} | {receipt} | {candidates} | "
             "{complete} | {rejected} | {accuracy} | {qualified} | {selected} |".format(
                 surface_id=surface["surface_id"],
                 target=surface.get("target") or "—",
                 state=surface.get("terminal_status") or surface["discovery_status"],
+                interpretation=_format_terminal_status_interpretation(surface),
                 receipt=surface.get("receipt_status") or "—",
                 candidates=surface.get("candidate_count", 0),
                 complete=surface.get("canonical_complete_candidate_count", 0),
@@ -1814,6 +1887,37 @@ def _report_markdown(report: Mapping[str, Any]) -> str:
                 selected=surface.get("reportable_selected_cell_id") or "—",
             )
         )
+    lines.extend(
+        [
+            "",
+            "## Terminal-status semantics",
+            "",
+            (
+                "Raw runner terminal-status strings are retained unchanged. Where the "
+                f"raw `{AMBIGUOUS_UNSAFE_STATUS}` status coexists with canonical "
+                "safety-admissible completed candidates but none reaches the accuracy "
+                "gate, the evidence is annotated as **no accuracy-eligible candidate**. "
+                "It does not mean every candidate was unsafe."
+            ),
+        ]
+    )
+    if report["terminal_status_annotations"]:
+        lines.append("")
+        for annotation in report["terminal_status_annotations"]:
+            lines.append(
+                "- `{surface_id}`: raw `{raw}` retained; {safe} canonical "
+                "safety-admissible completed candidate(s), {qualified} meeting the "
+                "accuracy gate — interpreted as **no accuracy-eligible candidate**.".format(
+                    surface_id=annotation["surface_id"],
+                    raw=annotation["raw_terminal_status"],
+                    safe=annotation[
+                        "canonical_safety_admissible_completed_candidate_count"
+                    ],
+                    qualified=annotation[
+                        "canonical_safety_admissible_gate_qualified_candidate_count"
+                    ],
+                )
+            )
     lines.extend(
         [
             "",
@@ -2015,8 +2119,12 @@ def analyze(
                     "receipt_path": None,
                     "candidate_count": 0,
                     "canonical_complete_candidate_count": 0,
+                    "canonical_safety_admissible_completed_candidate_count": 0,
+                    "canonical_safety_admissible_gate_qualified_candidate_count": 0,
                     "rejected_candidate_count": 0,
                     "gate_qualified_candidate_count": 0,
+                    "terminal_status_interpretation": None,
+                    "terminal_status_note": None,
                     "highest_observed_accuracy": None,
                     "highest_observed_row": None,
                     "runner_selected_cell_id": None,
@@ -2069,12 +2177,26 @@ def analyze(
                     "canonical_complete_candidate_count": sum(
                         row["canonical_complete_candidate_count"] for row in source_summaries
                     ),
+                    "canonical_safety_admissible_completed_candidate_count": sum(
+                        row[
+                            "canonical_safety_admissible_completed_candidate_count"
+                        ]
+                        for row in source_summaries
+                    ),
+                    "canonical_safety_admissible_gate_qualified_candidate_count": sum(
+                        row[
+                            "canonical_safety_admissible_gate_qualified_candidate_count"
+                        ]
+                        for row in source_summaries
+                    ),
                     "rejected_candidate_count": sum(
                         row["rejected_candidate_count"] for row in source_summaries
                     ),
                     "gate_qualified_candidate_count": sum(
                         row["gate_qualified_candidate_count"] for row in source_summaries
                     ),
+                    "terminal_status_interpretation": None,
+                    "terminal_status_note": None,
                     "highest_observed_accuracy": None,
                     "highest_observed_row": None,
                     "runner_selected_cell_id": None,
@@ -2133,6 +2255,22 @@ def analyze(
         rows=rows,
         surfaces=surface_summaries,
     )
+    terminal_status_annotations = [
+        {
+            "surface_id": surface["surface_id"],
+            "raw_terminal_status": surface["terminal_status"],
+            "interpretation": surface["terminal_status_interpretation"],
+            "note": surface["terminal_status_note"],
+            "canonical_safety_admissible_completed_candidate_count": surface[
+                "canonical_safety_admissible_completed_candidate_count"
+            ],
+            "canonical_safety_admissible_gate_qualified_candidate_count": surface[
+                "canonical_safety_admissible_gate_qualified_candidate_count"
+            ],
+        }
+        for surface in surface_summaries
+        if surface.get("terminal_status_interpretation") is not None
+    ]
     status_counts = Counter(str(row["status"]) for row in candidate_rows)
     coverage = {
         "complete": complete_coverage,
@@ -2159,6 +2297,7 @@ def analyze(
         "reportable_correlation_count": sum(
             row["status"] == "computed" for row in correlations
         ),
+        "terminal_status_annotation_count": len(terminal_status_annotations),
         "missing_surface_ids": [
             str(surface["surface_id"])
             for surface in surface_summaries
@@ -2203,6 +2342,7 @@ def analyze(
         "winner_inferred": False,
         "coverage": coverage,
         "unresolved_surface_ids": unresolved_surface_ids,
+        "terminal_status_annotations": terminal_status_annotations,
         "surfaces": surface_summaries,
         "candidate_rows": rows,
         "parameter_occupancy_rows": parameter_occupancy_rows,
