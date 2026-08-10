@@ -141,7 +141,6 @@ cd "${PDBLR_SOURCE_ROOT}"
   "${PDBLR_ENVIRONMENT_ID}" \
   "${MODULE_ID}" <<'PY'
 import hashlib
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -217,6 +216,7 @@ for (( index=PAIR_START; index<=PAIR_END; index++ )); do
     "${EXPERIMENT_SOURCE_COMMIT}" \
     "${EXPERIMENT_SOURCE_ARCHIVE_SHA256}" \
     "${PDBLR_STUDY_CONFIG_SHA256}" <<'PY'
+import hashlib
 import json
 import sys
 from itertools import product

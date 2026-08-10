@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
@@ -32,6 +33,10 @@ STUDY_CONFIG_PATH = REPO_ROOT / STUDY_CONFIG
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _python_heredocs(text: str) -> list[str]:
+    return re.findall(r"<<'PY'\n(.*?)\nPY", text, flags=re.DOTALL)
 
 
 def _assert_common_contract(text: str) -> None:
@@ -87,6 +92,26 @@ def _assert_common_contract(text: str) -> None:
 def test_transport_wrappers_are_valid_bash() -> None:
     for wrapper in (LOCAL_WRAPPER, JEAN_ZAY_WRAPPER):
         subprocess.run(["bash", "-n", str(wrapper)], check=True)
+
+
+def test_each_receipt_heredoc_imports_hashlib_where_used() -> None:
+    for wrapper in (LOCAL_WRAPPER, JEAN_ZAY_WRAPPER):
+        blocks = _python_heredocs(_read(wrapper))
+        assert len(blocks) == 2
+        for block in blocks:
+            tree = ast.parse(block)
+            hashlib_used = any(
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Load)
+                and node.id == "hashlib"
+                for node in ast.walk(tree)
+            )
+            hashlib_imported = any(
+                isinstance(node, ast.Import)
+                and any(alias.name == "hashlib" for alias in node.names)
+                for node in tree.body
+            )
+            assert not hashlib_used or hashlib_imported, wrapper
 
 
 def test_local_transport_is_sequential_and_range_bounded() -> None:
