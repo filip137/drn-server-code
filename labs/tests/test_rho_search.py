@@ -20,6 +20,8 @@ from experiments.rho_search import (
     parameter_topology,
     prepare_training_config,
     run,
+    verify_zero_bias_checkpoint,
+    verify_zero_bias_run_checkpoints,
 )
 
 
@@ -162,6 +164,40 @@ def test_probe_collects_units_and_leaves_parameters_unchanged() -> None:
         assert torch.equal(parameter.state, expected)
 
 
+def test_zero_bias_probe_ignores_bias_instability_but_records_it() -> None:
+    parameters = (
+        FakeParameter("ConvWeight_0", torch.ones(4)),
+        FakeParameter("DenseWeight_0", torch.ones(4)),
+        FakeParameter("Bias_0", torch.zeros(4)),
+    )
+    probe = OptimizerProbe(
+        "SGD",
+        batch_counts=(2,),
+        stability_tolerance=0.10,
+        stability_scope="weights_only",
+    )
+
+    assert probe(
+        {
+            "parameters": parameters,
+            "gradients": (torch.ones(4), torch.ones(4), torch.ones(4)),
+        }
+    ) is False
+    assert probe(
+        {
+            "parameters": parameters,
+            "gradients": (torch.ones(4), torch.ones(4), torch.full((4,), 100.0)),
+        }
+    ) is True
+    result = probe.result()
+
+    assert result["probe_stable"] is True
+    assert result["stability_scope"] == "weights_only"
+    assert result["unstable_parameters"] == []
+    assert result["split_half_statistics"]["Bias_0"]["relative_difference"] > 0.9
+    assert result["bias_q90_unit_by_parameter"]["Bias_0"] > 1.0
+
+
 def test_bound_occupancy_and_projection_efficiency_are_report_only() -> None:
     parameter = FakeParameter(
         "ConvWeight_0",
@@ -185,6 +221,66 @@ def test_bound_occupancy_and_projection_efficiency_are_report_only() -> None:
     assert result["maximum_bound_occupancy_by_parameter"]["ConvWeight_0"] == 1.0
     assert result["median_projection_efficiency"] < 1e-3
     assert result["report_only_diagnostics"]["used_for_rejection"] is False
+
+
+def test_persistent_bound_occupancy_increase_is_a_hard_gate() -> None:
+    parameter = FakeParameter(
+        "ConvWeight_0",
+        torch.full((4,), 5.5e-5),
+        min_cond=1e-5,
+        max_cond=1e-4,
+    )
+    monitor = TrainingSafetyMonitor(
+        bound_occupancy_increase_maximum=0.20,
+        boundary_persistence=16,
+    )
+
+    with pytest.raises(SafetyRejection) as caught:
+        for _ in range(16):
+            monitor(
+                _safety_batch(
+                    parameter,
+                    proposed=1e-4,
+                    applied=1e-4,
+                )
+            )
+
+    assert caught.value.failure == {
+        "kind": "bound_occupancy_increase",
+        "parameter": "ConvWeight_0",
+        "onset_step": 1,
+        "confirmed_step": 16,
+    }
+
+
+def test_persistent_low_projection_efficiency_is_a_hard_gate() -> None:
+    parameter = FakeParameter(
+        "ConvWeight_0",
+        torch.full((4,), 5.5e-5),
+        min_cond=1e-5,
+        max_cond=1e-4,
+    )
+    monitor = TrainingSafetyMonitor(
+        projection_efficiency_minimum=0.50,
+        boundary_persistence=16,
+    )
+
+    with pytest.raises(SafetyRejection) as caught:
+        for _ in range(16):
+            monitor(
+                _safety_batch(
+                    parameter,
+                    proposed=1e-4,
+                    applied=5.5e-5,
+                )
+            )
+
+    assert caught.value.failure == {
+        "kind": "projection_efficiency_below_minimum",
+        "parameter": "ConvWeight_0",
+        "onset_step": 1,
+        "confirmed_step": 16,
+    }
 
 
 def test_sustained_gradient_growth_rejects_after_warmup() -> None:
@@ -258,6 +354,31 @@ def test_zero_bias_unit_falls_back_to_attached_conv_rate() -> None:
 
     assert list(rates) == probe["parameter_names"]
     assert rates["Bias_0"] == rates["ConvWeight_0"] == 0.01
+
+
+def test_zero_bias_policy_sets_exact_zero_without_using_bias_units() -> None:
+    probe = {
+        "status": "complete",
+        "probe_stable": True,
+        "parameter_names": ["Bias_0", "ConvWeight_0", "DenseWeight_0"],
+        "normalization_unit_by_weight": {
+            "ConvWeight_0": 2.0,
+            "DenseWeight_0": 4.0,
+        },
+    }
+
+    rates = derive_learning_rates(
+        probe,
+        rho_conv=0.01,
+        rho_dense=0.02,
+        bias_policy="zero",
+    )
+
+    assert rates == {
+        "Bias_0": 0.0,
+        "ConvWeight_0": 0.005,
+        "DenseWeight_0": 0.005,
+    }
 
 
 def test_prepare_training_config_uses_train_validation_and_adam() -> None:
@@ -387,17 +508,90 @@ def test_indexed_cells_rejects_out_of_range_index() -> None:
         _indexed_cells([0.001], [0.01], index=1)
 
 
-def test_git_state_survives_missing_git(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_git_state_fails_closed_without_git_or_archive_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def missing_git(*args, **kwargs):
         raise FileNotFoundError("git")
 
     monkeypatch.setattr("experiments.rho_search.subprocess.run", missing_git)
+    monkeypatch.delenv("EXPERIMENT_SOURCE_COMMIT", raising=False)
+    monkeypatch.delenv("EXPERIMENT_SOURCE_ARCHIVE_SHA256", raising=False)
+
+    with pytest.raises(RuntimeError, match="EXPERIMENT_SOURCE_COMMIT"):
+        _git_state()
+
+
+def test_git_state_uses_validated_frozen_archive_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_git(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr("experiments.rho_search.subprocess.run", missing_git)
+    monkeypatch.setenv("EXPERIMENT_SOURCE_COMMIT", "A" * 40)
+    monkeypatch.setenv("EXPERIMENT_SOURCE_ARCHIVE_SHA256", "B" * 64)
 
     state = _git_state()
 
-    assert state["commit"] is None
-    assert state["dirty"] is None
-    assert len(state["working_tree_sha256"]) == 64
+    assert state == {
+        "commit": "a" * 40,
+        "dirty": False,
+        "working_tree_sha256": "b" * 64,
+        "source_kind": "frozen_archive",
+        "source_archive_sha256": "b" * 64,
+    }
+
+
+def _write_zero_bias_checkpoint(path: Path, bias_value: float = 0.0) -> None:
+    payload = {
+        "format": "drn.function.parameters",
+        "version": 1,
+        "schema": [
+            {
+                "name": "ConvWeight_0",
+                "type": "model.variable.parameter.ConvWeight",
+                "shape": [2],
+                "dtype": "torch.float32",
+            },
+            {
+                "name": "Bias_0",
+                "type": "model.variable.parameter.Bias",
+                "shape": [2],
+                "dtype": "torch.float32",
+            },
+        ],
+        "states": [
+            torch.ones(2),
+            torch.full((2,), bias_value),
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, path)
+
+
+def test_zero_bias_checkpoint_guard_records_hashes_and_counts(tmp_path: Path) -> None:
+    for name in ("final_model.pt", "best_model.pt"):
+        _write_zero_bias_checkpoint(tmp_path / name)
+
+    single = verify_zero_bias_checkpoint(
+        tmp_path / "final_model.pt", ["Bias_0"]
+    )
+    run_record = verify_zero_bias_run_checkpoints(tmp_path, ["Bias_0"])
+
+    assert single["checkpoint_sha256"]
+    assert single["nonzero_bias_element_count"] == 0
+    assert single["parameters"][0]["exact_zero"] is True
+    assert run_record["checkpoint_count"] == 2
+    assert run_record["all_exact_zero"] is True
+
+
+def test_zero_bias_checkpoint_guard_rejects_any_nonzero_bias(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "final_model.pt"
+    _write_zero_bias_checkpoint(checkpoint, bias_value=1e-12)
+
+    with pytest.raises(RuntimeError, match="nonzero Bias elements"):
+        verify_zero_bias_checkpoint(checkpoint, ["Bias_0"])
 
 
 @pytest.mark.parametrize("value", [0.0, -1.0, float("nan")])

@@ -10,6 +10,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -17,6 +18,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import torch
+
+from model.function.interaction import load_function_checkpoint_artifact
 
 try:
     from experiments.reporting import (
@@ -40,6 +43,138 @@ def _write_json(path: Path, value: Any) -> None:
         json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_zero_bias_checkpoint(
+    checkpoint: str | Path,
+    expected_bias_names: Sequence[str],
+) -> dict[str, Any]:
+    """Fail closed unless every declared Bias tensor is present and exact zero."""
+
+    path = Path(checkpoint).expanduser().resolve()
+    if not path.is_file():
+        raise RuntimeError(f"Expected zero-bias checkpoint to exist: {path}.")
+    states, schema, source_format = load_function_checkpoint_artifact(
+        path, map_location="cpu"
+    )
+    if schema is None:
+        raise RuntimeError(
+            "The zero-bias contract requires a versioned checkpoint with named "
+            f"parameter schema entries: {path}."
+        )
+
+    expected = [str(name).strip() for name in expected_bias_names]
+    if not expected or len(set(expected)) != len(expected):
+        raise ValueError(
+            "Expected a non-empty, unique sequence of zero-bias parameter names. "
+            f"Provided value: {expected!r}."
+        )
+    bias_entries: list[tuple[str, str, torch.Tensor]] = []
+    for entry, state in zip(schema, states):
+        name = str(entry["name"]).strip()
+        parameter_type = str(entry["type"])
+        name_is_bias = name.startswith("Bias_")
+        type_is_bias = parameter_type.rsplit(".", 1)[-1] == "Bias"
+        if name_is_bias != type_is_bias:
+            raise RuntimeError(
+                "Checkpoint Bias name/type classification mismatch for "
+                f"{name!r} ({parameter_type!r}) in {path}."
+            )
+        if name_is_bias:
+            bias_entries.append((name, parameter_type, state))
+
+    observed = [name for name, _parameter_type, _state in bias_entries]
+    if len(set(observed)) != len(observed) or set(observed) != set(expected):
+        raise RuntimeError(
+            "Checkpoint Bias parameter set does not match the zero-bias contract: "
+            f"expected={sorted(expected)!r}, observed={sorted(observed)!r}, "
+            f"checkpoint={path}."
+        )
+
+    per_parameter = []
+    total_elements = 0
+    total_nonzero = 0
+    by_name = {name: (parameter_type, state) for name, parameter_type, state in bias_entries}
+    for name in expected:
+        parameter_type, state = by_name[name]
+        nonzero = int(torch.count_nonzero(state).item())
+        elements = int(state.numel())
+        total_elements += elements
+        total_nonzero += nonzero
+        per_parameter.append(
+            {
+                "name": name,
+                "type": parameter_type,
+                "shape": [int(value) for value in state.shape],
+                "dtype": str(state.dtype),
+                "element_count": elements,
+                "nonzero_element_count": nonzero,
+                "exact_zero": nonzero == 0,
+            }
+        )
+    if total_nonzero != 0:
+        raise RuntimeError(
+            "Zero-bias checkpoint verification failed: "
+            f"{total_nonzero} nonzero Bias elements in {path}."
+        )
+    return {
+        "schema_version": "zero-bias-checkpoint-verification/v1",
+        "checkpoint": str(path),
+        "checkpoint_sha256": _file_sha256(path),
+        "checkpoint_source_format": source_format,
+        "expected_bias_names": expected,
+        "bias_tensor_count": len(per_parameter),
+        "bias_element_count": total_elements,
+        "nonzero_bias_element_count": total_nonzero,
+        "all_exact_zero": True,
+        "parameters": per_parameter,
+    }
+
+
+def verify_zero_bias_run_checkpoints(
+    run_dir: str | Path,
+    expected_bias_names: Sequence[str],
+    *,
+    require_terminal: bool = True,
+) -> dict[str, Any]:
+    """Verify every model checkpoint emitted by a trainer run directory."""
+
+    root = Path(run_dir).expanduser().resolve()
+    terminal_paths = [root / "final_model.pt", root / "best_model.pt"]
+    if require_terminal:
+        missing = [str(path) for path in terminal_paths if not path.is_file()]
+        if missing:
+            raise RuntimeError(
+                "Zero-bias checkpoint verification requires both terminal model "
+                f"checkpoints. Missing: {missing!r}."
+            )
+    model_paths = {path for path in terminal_paths if path.is_file()}
+    checkpoint_dir = root / "checkpoints"
+    if checkpoint_dir.is_dir():
+        model_paths.update(checkpoint_dir.glob("*_model.pt"))
+    if not model_paths:
+        raise RuntimeError(
+            f"Expected at least one saved model checkpoint beneath {root}."
+        )
+    records = [
+        verify_zero_bias_checkpoint(path, expected_bias_names)
+        for path in sorted(model_paths, key=lambda value: str(value))
+    ]
+    return {
+        "schema_version": "zero-bias-run-checkpoint-verification/v1",
+        "run_dir": str(root),
+        "checkpoint_count": len(records),
+        "all_exact_zero": True,
+        "checkpoints": records,
+    }
 
 
 def _positive(value: Any, label: str) -> float:
@@ -151,6 +286,7 @@ class OptimizerProbe:
         batch_counts: Sequence[int] = DEFAULT_PROBE_COUNTS,
         stability_tolerance: float = 0.10,
         adam_eps: float = 1e-8,
+        stability_scope: str = "all",
     ):
         counts = tuple(int(value) for value in batch_counts)
         if not counts or any(value < 2 or value % 2 for value in counts):
@@ -172,6 +308,12 @@ class OptimizerProbe:
                 f"Provided value: {stability_tolerance!r}."
             )
         self.adam_eps = _positive(adam_eps, "Adam epsilon")
+        if stability_scope not in {"all", "weights_only"}:
+            raise ValueError(
+                "Expected stability_scope to be one of ('all', 'weights_only'). "
+                f"Provided value: {stability_scope!r}."
+            )
+        self.stability_scope = stability_scope
         self.topology: dict[str, Any] | None = None
         self.parameter_refs: dict[str, Any] = {}
         self.initial_states: dict[str, torch.Tensor] = {}
@@ -255,7 +397,10 @@ class OptimizerProbe:
                 "second_half": second,
                 "relative_difference": difference,
             }
-            if difference > self.stability_tolerance:
+            required_for_stability = (
+                self.stability_scope == "all" or not name.startswith("Bias_")
+            )
+            if required_for_stability and difference > self.stability_tolerance:
                 unstable.append(name)
         self.stable = not unstable
         return self.stable or self.used_batches == self.batch_counts[-1]
@@ -297,7 +442,10 @@ class OptimizerProbe:
         unstable = [
             name
             for name, values in self.split_statistics.items()
-            if values["relative_difference"] > self.stability_tolerance
+            if (
+                self.stability_scope == "all" or not name.startswith("Bias_")
+            )
+            and values["relative_difference"] > self.stability_tolerance
         ]
         return {
             "schema_version": "conv-rho-probe/v1",
@@ -310,6 +458,7 @@ class OptimizerProbe:
             "used_batches": self.used_batches,
             "batch_counts": list(self.batch_counts),
             "stability_tolerance": self.stability_tolerance,
+            "stability_scope": self.stability_scope,
             "unstable_parameters": unstable,
             "split_half_statistics": self.split_statistics,
             "initial_parameter_sha256": parameter_sha256(self.initial_states),
@@ -353,6 +502,9 @@ class TrainingSafetyMonitor:
         gradient_factor: float = 100.0,
         persistence: int = 8,
         zero_proposal_epsilon: float = 1e-30,
+        bound_occupancy_increase_maximum: float | None = None,
+        projection_efficiency_minimum: float | None = None,
+        boundary_persistence: int = 16,
     ):
         self.warmup_steps = int(warmup_steps)
         self.ema_decay = float(ema_decay)
@@ -360,6 +512,17 @@ class TrainingSafetyMonitor:
         self.gradient_factor = float(gradient_factor)
         self.persistence = int(persistence)
         self.zero_proposal_epsilon = float(zero_proposal_epsilon)
+        self.bound_occupancy_increase_maximum = (
+            None
+            if bound_occupancy_increase_maximum is None
+            else float(bound_occupancy_increase_maximum)
+        )
+        self.projection_efficiency_minimum = (
+            None
+            if projection_efficiency_minimum is None
+            else float(projection_efficiency_minimum)
+        )
+        self.boundary_persistence = int(boundary_persistence)
         if self.warmup_steps <= 0 or self.persistence <= 0:
             raise ValueError("Safety warmup and persistence must be positive.")
         for value, label in (
@@ -373,6 +536,24 @@ class TrainingSafetyMonitor:
         if not 0.0 <= self.ema_decay < 1.0:
             raise ValueError(
                 f"Expected ema_decay in [0, 1), got {self.ema_decay!r}."
+            )
+        if self.boundary_persistence <= 0:
+            raise ValueError("Boundary-gate persistence must be positive.")
+        if (
+            self.bound_occupancy_increase_maximum is not None
+            and not 0.0 <= self.bound_occupancy_increase_maximum <= 1.0
+        ):
+            raise ValueError(
+                "Expected bound_occupancy_increase_maximum in [0, 1] or None, "
+                f"got {self.bound_occupancy_increase_maximum!r}."
+            )
+        if (
+            self.projection_efficiency_minimum is not None
+            and not 0.0 <= self.projection_efficiency_minimum <= 1.0
+        ):
+            raise ValueError(
+                "Expected projection_efficiency_minimum in [0, 1] or None, "
+                f"got {self.projection_efficiency_minimum!r}."
             )
 
         self.step = 0
@@ -391,6 +572,11 @@ class TrainingSafetyMonitor:
         self.projection_efficiencies: dict[str, list[float]] = {}
         self.proposed_update_rms: dict[str, list[float]] = {}
         self.applied_update_rms: dict[str, list[float]] = {}
+        self.occupancy_increase_streak: dict[str, int] = {}
+        self.maximum_occupancy_increase_streak: dict[str, int] = {}
+        self.maximum_occupancy_increase: dict[str, float] = {}
+        self.projection_efficiency_streak: dict[str, int] = {}
+        self.maximum_projection_efficiency_streak: dict[str, int] = {}
         self.failure: dict[str, Any] | None = None
 
     @staticmethod
@@ -405,11 +591,18 @@ class TrainingSafetyMonitor:
         values = state.detach()
         return float(((values <= lower) | (values >= upper)).to(torch.float64).mean().item())
 
-    def _failure_record(self, kind: str, parameter: str | None) -> dict[str, Any]:
+    def _failure_record(
+        self,
+        kind: str,
+        parameter: str | None,
+        *,
+        persistence: int | None = None,
+    ) -> dict[str, Any]:
+        persistence = self.persistence if persistence is None else int(persistence)
         return {
             "kind": kind,
             "parameter": parameter,
-            "onset_step": self.step - self.persistence + 1,
+            "onset_step": self.step - persistence + 1,
             "confirmed_step": self.step,
         }
 
@@ -488,6 +681,11 @@ class TrainingSafetyMonitor:
                 self.projection_efficiencies[name] = []
                 self.proposed_update_rms[name] = []
                 self.applied_update_rms[name] = []
+                self.occupancy_increase_streak[name] = 0
+                self.maximum_occupancy_increase_streak[name] = 0
+                self.maximum_occupancy_increase[name] = 0.0
+                self.projection_efficiency_streak[name] = 0
+                self.maximum_projection_efficiency_streak[name] = 0
 
             self.maximum_gradient_rms[name] = max(
                 self.maximum_gradient_rms[name], gradient_rms
@@ -498,10 +696,56 @@ class TrainingSafetyMonitor:
             self.final_occupancy[name] = occupancy
             self.proposed_update_rms[name].append(proposal_rms)
             self.applied_update_rms[name].append(achieved_rms)
+            occupancy_increase = occupancy - self.initial_occupancy[name]
+            self.maximum_occupancy_increase[name] = max(
+                self.maximum_occupancy_increase[name], occupancy_increase
+            )
+            if self.bound_occupancy_increase_maximum is not None:
+                if occupancy_increase > self.bound_occupancy_increase_maximum:
+                    self.occupancy_increase_streak[name] += 1
+                    self.maximum_occupancy_increase_streak[name] = max(
+                        self.maximum_occupancy_increase_streak[name],
+                        self.occupancy_increase_streak[name],
+                    )
+                    if (
+                        self.occupancy_increase_streak[name]
+                        == self.boundary_persistence
+                    ):
+                        failures.append(
+                            self._failure_record(
+                                "bound_occupancy_increase",
+                                name,
+                                persistence=self.boundary_persistence,
+                            )
+                        )
+                else:
+                    self.occupancy_increase_streak[name] = 0
             if proposal_rms > self.zero_proposal_epsilon:
                 efficiency = achieved_rms / proposal_rms
                 if math.isfinite(efficiency) and efficiency >= 0.0:
                     self.projection_efficiencies[name].append(efficiency)
+                    if self.projection_efficiency_minimum is not None:
+                        if efficiency < self.projection_efficiency_minimum:
+                            self.projection_efficiency_streak[name] += 1
+                            self.maximum_projection_efficiency_streak[name] = max(
+                                self.maximum_projection_efficiency_streak[name],
+                                self.projection_efficiency_streak[name],
+                            )
+                            if (
+                                self.projection_efficiency_streak[name]
+                                == self.boundary_persistence
+                            ):
+                                failures.append(
+                                    self._failure_record(
+                                        "projection_efficiency_below_minimum",
+                                        name,
+                                        persistence=self.boundary_persistence,
+                                    )
+                                )
+                        else:
+                            self.projection_efficiency_streak[name] = 0
+            elif self.projection_efficiency_minimum is not None:
+                self.projection_efficiency_streak[name] = 0
 
             if self.step <= self.warmup_steps:
                 self.gradient_samples[name].append(gradient_rms)
@@ -576,11 +820,25 @@ class TrainingSafetyMonitor:
                 "loss_ema_factor": self.loss_factor,
                 "gradient_rms_factor": self.gradient_factor,
                 "persistence_steps": self.persistence,
+                "bound_occupancy_increase_maximum": (
+                    self.bound_occupancy_increase_maximum
+                ),
+                "projection_efficiency_minimum": (
+                    self.projection_efficiency_minimum
+                ),
+                "boundary_persistence_steps": self.boundary_persistence,
             },
             "report_only_diagnostics": {
-                "bound_occupancy": True,
-                "projection_efficiency": True,
-                "used_for_rejection": False,
+                "bound_occupancy": (
+                    self.bound_occupancy_increase_maximum is None
+                ),
+                "projection_efficiency": (
+                    self.projection_efficiency_minimum is None
+                ),
+                "used_for_rejection": bool(
+                    self.bound_occupancy_increase_maximum is not None
+                    or self.projection_efficiency_minimum is not None
+                ),
             },
             "loss_ema": self.loss_ema,
             "prior_loss_ema_minimum": (
@@ -599,6 +857,15 @@ class TrainingSafetyMonitor:
             "initial_bound_occupancy_by_parameter": self.initial_occupancy,
             "maximum_bound_occupancy_by_parameter": self.maximum_occupancy,
             "final_bound_occupancy_by_parameter": self.final_occupancy,
+            "maximum_bound_occupancy_increase_by_parameter": (
+                self.maximum_occupancy_increase
+            ),
+            "maximum_bound_occupancy_increase_streak_by_parameter": (
+                self.maximum_occupancy_increase_streak
+            ),
+            "maximum_projection_efficiency_violation_streak_by_parameter": (
+                self.maximum_projection_efficiency_streak
+            ),
             "median_projection_efficiency_by_parameter": projection_by_parameter,
             "median_projection_efficiency": (
                 linear_quantile(all_projection, 0.5)
@@ -632,9 +899,9 @@ def derive_learning_rates(
         )
     rho_conv = _positive(rho_conv, "rho_conv")
     rho_dense = _positive(rho_dense, "rho_dense")
-    if bias_policy not in {"q90_cap", "tied"}:
+    if bias_policy not in {"q90_cap", "tied", "zero"}:
         raise ValueError(
-            "Expected bias_policy to be one of ('q90_cap', 'tied'). "
+            "Expected bias_policy to be one of ('q90_cap', 'tied', 'zero'). "
             f"Provided value: {bias_policy!r}."
         )
 
@@ -647,8 +914,13 @@ def derive_learning_rates(
         target = rho_conv if name.startswith("ConvWeight_") else rho_dense
         rates[name] = target / unit
 
-    bias_units = probe["bias_q90_unit_by_parameter"]
+    bias_units = (
+        {} if bias_policy == "zero" else probe["bias_q90_unit_by_parameter"]
+    )
     for bias, attached in topology["bias_to_weight"].items():
+        if bias_policy == "zero":
+            rates[bias] = 0.0
+            continue
         attached_rate = rates[attached]
         unit = float(bias_units[bias])
         if not math.isfinite(unit) or unit < 0.0:
@@ -872,7 +1144,7 @@ def _git_state() -> dict[str, Any]:
             check=False,
             capture_output=True,
         )
-    except FileNotFoundError:
+    except OSError:
         commit_value = None
         dirty_value = None
     else:
@@ -881,6 +1153,32 @@ def _git_state() -> dict[str, Any]:
         commit_value = commit.stdout.strip() if commit.returncode == 0 else None
         dirty_value = bool(status.stdout.strip()) if status.returncode == 0 else None
     fingerprint.update(Path(__file__).read_bytes())
+    if commit_value is None:
+        archive_commit = os.environ.get("EXPERIMENT_SOURCE_COMMIT", "").strip()
+        archive_sha256 = os.environ.get(
+            "EXPERIMENT_SOURCE_ARCHIVE_SHA256", ""
+        ).strip()
+        if re.fullmatch(r"[0-9a-fA-F]{40}", archive_commit) is None:
+            raise RuntimeError(
+                "Git source identity is unavailable. A frozen source archive "
+                "must provide EXPERIMENT_SOURCE_COMMIT as exactly 40 hexadecimal "
+                "characters."
+            )
+        if re.fullmatch(r"[0-9a-fA-F]{64}", archive_sha256) is None:
+            raise RuntimeError(
+                "Git source identity is unavailable. A frozen source archive "
+                "must provide EXPERIMENT_SOURCE_ARCHIVE_SHA256 as exactly 64 "
+                "hexadecimal characters."
+            )
+        archive_commit = archive_commit.lower()
+        archive_sha256 = archive_sha256.lower()
+        return {
+            "commit": archive_commit,
+            "dirty": False,
+            "working_tree_sha256": archive_sha256,
+            "source_kind": "frozen_archive",
+            "source_archive_sha256": archive_sha256,
+        }
     return {
         "commit": commit_value,
         "dirty": dirty_value,
@@ -963,9 +1261,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             getattr(args, "safety_gradient_factor", 100.0)
         ),
         "persistence": int(getattr(args, "safety_persistence", 8)),
-        "bound_occupancy": "report_only",
-        "projection_efficiency": "report_only",
+        "bound_occupancy_increase_maximum": getattr(
+            args, "safety_bound_occupancy_increase_maximum", None
+        ),
+        "projection_efficiency_minimum": getattr(
+            args, "safety_projection_efficiency_minimum", None
+        ),
+        "boundary_persistence": int(
+            getattr(args, "safety_boundary_persistence", 16)
+        ),
     }
+    safety["bound_occupancy"] = (
+        "report_only"
+        if safety["bound_occupancy_increase_maximum"] is None
+        else "reject_persistent_increase"
+    )
+    safety["projection_efficiency"] = (
+        "report_only"
+        if safety["projection_efficiency_minimum"] is None
+        else "reject_persistent_low_efficiency"
+    )
     # Validate the supplied safety values before writing a resolved contract.
     TrainingSafetyMonitor(
         warmup_steps=safety["warmup_steps"],
@@ -973,6 +1288,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         loss_factor=safety["loss_factor"],
         gradient_factor=safety["gradient_factor"],
         persistence=safety["persistence"],
+        bound_occupancy_increase_maximum=safety[
+            "bound_occupancy_increase_maximum"
+        ],
+        projection_efficiency_minimum=safety[
+            "projection_efficiency_minimum"
+        ],
+        boundary_persistence=safety["boundary_persistence"],
     )
     rate_count = _configured_rate_count(base)
     output_root = Path(args.output_root).expanduser().resolve()
@@ -990,6 +1312,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "rho_conv": rhos_conv,
         "rho_dense": rhos_dense,
         "bias_policy": args.bias_policy,
+        "probe_stability_scope": (
+            "weights_only" if args.bias_policy == "zero" else "all"
+        ),
         "probe_batches": list(counts),
         "stability_tolerance": args.stability_tolerance,
         "epochs": epochs,
@@ -1003,6 +1328,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "expected_candidate_steps": expected_candidate_steps,
         "minimum_validation_accuracy": minimum_validation_accuracy,
         "safety": safety,
+        "target": target,
     }
     if args.dry_run:
         planned = dict(resolved)
@@ -1053,6 +1379,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             counts,
             args.stability_tolerance,
             adam_eps=float(probe_config["optimizer"].get("eps", 1e-8)),
+            stability_scope=resolved["probe_stability_scope"],
         )
         _run_trainer(
             probe_config_path,
@@ -1067,6 +1394,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         probe["dataset_provenance"] = probe_metrics["dataset_provenance"]
         probe["search_signature"] = resolved
+        _write_json(probe_path, probe)
+
+    zero_bias_names = [
+        str(name).strip()
+        for name in probe.get("parameter_names", ())
+        if str(name).strip().startswith("Bias_")
+    ]
+    if args.bias_policy == "zero":
+        probe_zero_bias_verification = verify_zero_bias_run_checkpoints(
+            output_root / "probe",
+            zero_bias_names,
+        )
+        probe["zero_bias_checkpoint_verification"] = (
+            probe_zero_bias_verification
+        )
         _write_json(probe_path, probe)
 
     if probe.get("probe_stable") is not True:
@@ -1159,6 +1501,37 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
             if reusable:
+                if args.bias_policy == "zero" and existing.get("status") in {
+                    "complete",
+                    "canary_clean",
+                }:
+                    verification_root = (
+                        cell_dir
+                        if existing["status"] == "complete"
+                        else cell_dir / "canary"
+                    )
+                    zero_bias_verification = verify_zero_bias_run_checkpoints(
+                        verification_root,
+                        zero_bias_names,
+                    )
+                    existing["zero_bias_checkpoint_verification"] = (
+                        zero_bias_verification
+                    )
+                    diagnostics_path = (
+                        cell_dir / "safety_diagnostics.json"
+                        if existing["status"] == "complete"
+                        else cell_dir / "canary" / "safety_diagnostics.json"
+                    )
+                    diagnostics = (
+                        json.loads(diagnostics_path.read_text(encoding="utf-8"))
+                        if diagnostics_path.is_file()
+                        else {}
+                    )
+                    diagnostics["zero_bias_checkpoint_verification"] = (
+                        zero_bias_verification
+                    )
+                    _write_json(diagnostics_path, diagnostics)
+                    _write_json(cell_path, existing)
                 rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
                 continue
 
@@ -1275,6 +1648,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 loss_factor=safety["loss_factor"],
                 gradient_factor=safety["gradient_factor"],
                 persistence=safety["persistence"],
+                bound_occupancy_increase_maximum=safety[
+                    "bound_occupancy_increase_maximum"
+                ],
+                projection_efficiency_minimum=safety[
+                    "projection_efficiency_minimum"
+                ],
+                boundary_persistence=safety["boundary_persistence"],
             )
             canary = {
                 "schema_version": "conv-rho-canary/v1",
@@ -1282,6 +1662,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "requested_steps": canary_steps,
                 "status": "running",
             }
+            canary_zero_bias_verification = None
             _write_json(canary_path, canary)
             try:
                 _run_trainer(
@@ -1290,6 +1671,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     device=args.device,
                     optimizer_step_callback=canary_monitor,
                 )
+                if args.bias_policy == "zero":
+                    canary_zero_bias_verification = (
+                        verify_zero_bias_run_checkpoints(
+                            canary_dir,
+                            zero_bias_names,
+                        )
+                    )
+                    canary["zero_bias_checkpoint_verification"] = (
+                        canary_zero_bias_verification
+                    )
             except SafetyRejection as error:
                 canary["status"] = "rejected_safety"
                 canary["failure"] = error.failure
@@ -1315,8 +1706,36 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 diagnostics = canary_monitor.summary()
                 if canary.get("failure") is not None:
                     diagnostics["safety_failure"] = canary["failure"]
+                if canary_zero_bias_verification is not None:
+                    diagnostics["zero_bias_checkpoint_verification"] = (
+                        canary_zero_bias_verification
+                    )
                 _write_json(canary_dir / "safety_diagnostics.json", diagnostics)
             canary["completed_steps"] = canary_monitor.step
+            _write_json(canary_path, canary)
+
+        if canary["status"] == "clean" and args.bias_policy == "zero":
+            canary_zero_bias_verification = verify_zero_bias_run_checkpoints(
+                cell_dir / "canary",
+                zero_bias_names,
+            )
+            canary["zero_bias_checkpoint_verification"] = (
+                canary_zero_bias_verification
+            )
+            canary_diagnostics_path = (
+                cell_dir / "canary" / "safety_diagnostics.json"
+            )
+            canary_diagnostics = (
+                json.loads(
+                    canary_diagnostics_path.read_text(encoding="utf-8")
+                )
+                if canary_diagnostics_path.is_file()
+                else {}
+            )
+            canary_diagnostics["zero_bias_checkpoint_verification"] = (
+                canary_zero_bias_verification
+            )
+            _write_json(canary_diagnostics_path, canary_diagnostics)
             _write_json(canary_path, canary)
 
         if canary["status"] != "clean":
@@ -1351,7 +1770,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             loss_factor=safety["loss_factor"],
             gradient_factor=safety["gradient_factor"],
             persistence=safety["persistence"],
+            bound_occupancy_increase_maximum=safety[
+                "bound_occupancy_increase_maximum"
+            ],
+            projection_efficiency_minimum=safety[
+                "projection_efficiency_minimum"
+            ],
+            boundary_persistence=safety["boundary_persistence"],
         )
+        candidate_zero_bias_verification = None
         try:
             _run_trainer(
                 config_path,
@@ -1360,6 +1787,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 optimizer_step_callback=candidate_monitor,
                 reporting_run_dir=cell_dir,
             )
+            if args.bias_policy == "zero":
+                candidate_zero_bias_verification = (
+                    verify_zero_bias_run_checkpoints(
+                        cell_dir,
+                        zero_bias_names,
+                    )
+                )
+                cell["zero_bias_checkpoint_verification"] = (
+                    candidate_zero_bias_verification
+                )
         except SafetyRejection as error:
             cell["status"] = "candidate_rejected_safety"
             cell["error"] = str(error)
@@ -1407,21 +1844,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             cell["completed_steps"] = candidate_monitor.step
             _write_json(cell_path, cell)
+            completion = {
+                "criteria_met": cell["selection_eligible"],
+                "rho_cell_complete": True,
+                "safety_admissible": True,
+                "minimum_validation_accuracy": minimum_validation_accuracy,
+                "official_test_read": False,
+            }
+            if args.bias_policy == "zero":
+                completion["zero_bias_checkpoint_verification"] = (
+                    candidate_zero_bias_verification
+                )
             complete_run(
                 cell_dir,
                 terminal_metrics=_terminal_metrics(metrics),
-                completion={
-                    "criteria_met": cell["selection_eligible"],
-                    "rho_cell_complete": True,
-                    "safety_admissible": True,
-                    "minimum_validation_accuracy": minimum_validation_accuracy,
-                    "official_test_read": False,
-                },
+                completion=completion,
             )
         finally:
             diagnostics = candidate_monitor.summary()
             if cell.get("safety_failure") is not None:
                 diagnostics["safety_failure"] = cell["safety_failure"]
+            if candidate_zero_bias_verification is not None:
+                diagnostics["zero_bias_checkpoint_verification"] = (
+                    candidate_zero_bias_verification
+                )
             _write_json(cell_dir / "safety_diagnostics.json", diagnostics)
         rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
 
@@ -1446,7 +1892,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--rho-conv", type=float, nargs="+", required=True)
     parser.add_argument("--rho-dense", type=float, nargs="+", required=True)
     parser.add_argument("--optimizer", choices=("SGD", "Adam"))
-    parser.add_argument("--bias-policy", choices=("q90_cap", "tied"), default="q90_cap")
+    parser.add_argument(
+        "--bias-policy",
+        choices=("q90_cap", "tied", "zero"),
+        default="q90_cap",
+    )
     parser.add_argument("--probe-batches", type=int, nargs="+", default=list(DEFAULT_PROBE_COUNTS))
     parser.add_argument("--stability-tolerance", type=float, default=0.10)
     parser.add_argument("--epochs", type=int)
@@ -1472,6 +1922,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--safety-loss-factor", type=float, default=4.0)
     parser.add_argument("--safety-gradient-factor", type=float, default=100.0)
     parser.add_argument("--safety-persistence", type=int, default=8)
+    parser.add_argument("--safety-bound-occupancy-increase-maximum", type=float)
+    parser.add_argument("--safety-projection-efficiency-minimum", type=float)
+    parser.add_argument("--safety-boundary-persistence", type=int, default=16)
     parser.add_argument("--index", type=int, help="Run one Cartesian-grid cell by index")
     parser.add_argument(
         "--collect-only",

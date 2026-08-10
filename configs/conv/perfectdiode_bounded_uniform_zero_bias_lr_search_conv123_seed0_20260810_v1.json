@@ -1,0 +1,246 @@
+{
+  "schema_version": "perfectdiode-conv123-bounded-uniform-zero-bias-rho-study/v1",
+  "study_id": "perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "scope": {
+    "architectures": [
+      "conv1",
+      "conv2",
+      "conv3"
+    ],
+    "schemes": [
+      "baseline",
+      "ours",
+      "legacy"
+    ],
+    "optimizers": [
+      "SGD",
+      "Adam"
+    ],
+    "initializers": [
+      "bounded_uniform"
+    ],
+    "excluded": []
+  },
+  "dataset": {
+    "root": "~/datasets/mnist",
+    "model_seed": 0,
+    "split_seed": 0,
+    "shuffle_seed": 0,
+    "train_size": 55000,
+    "validation_size": 5000,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "official_test_read": false,
+    "source_train_images_sha256": "ba891046e6505d7aadcbbe25680a0738ad16aec93bde7f9b65e87a2fc25776db",
+    "source_train_labels_sha256": "65a50cbbf4e906d70832878ad85ccda5333a97f0f4c3dd2ef09a8a9eef7101c5",
+    "normalize_mean": 0.1307,
+    "normalize_std": 0.3081,
+    "normalize_scale": 0.3
+  },
+  "model": {
+    "kernel_size": 3,
+    "padding": 1,
+    "output_dim": 20,
+    "weight_min": 1e-5,
+    "weight_max": 1e-4,
+    "weight_gain": 1.0,
+    "non_linearity": "perfect_diode",
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_min": -1000000.0,
+      "v_max": 1000000.0
+    },
+    "exponential_diode_param": {
+      "I_s": 1e-6,
+      "V_t": 0.025,
+      "V_off": 0.0
+    },
+    "hard_sigmoid_param": {
+      "g_on": 100.0,
+      "g_off": 0.0,
+      "v_min": -1.5,
+      "v_max": 1.5
+    },
+    "architectures": {
+      "conv1": {
+        "channels": [
+          64
+        ],
+        "strides": [
+          2
+        ],
+        "input_gain": 40.0,
+        "T": 4,
+        "K": 4
+      },
+      "conv2": {
+        "channels": [
+          64,
+          128
+        ],
+        "strides": [
+          2,
+          2
+        ],
+        "input_gain": 100.0,
+        "T": 6,
+        "K": 6
+      },
+      "conv3": {
+        "channels": [
+          64,
+          128,
+          256
+        ],
+        "strides": [
+          2,
+          2,
+          1
+        ],
+        "input_gain": 360.0,
+        "T": 8,
+        "K": 8
+      }
+    },
+    "schemes": {
+      "baseline": {
+        "voltage_amp": 1.0,
+        "current_amp": 1.0
+      },
+      "ours": {
+        "voltage_amp": 4.0,
+        "current_amp": 1.0
+      },
+      "legacy": {
+        "voltage_amp": 4.0,
+        "current_amp": 0.25
+      }
+    }
+  },
+  "bias_contract": {
+    "initialization": "default_zero",
+    "learning_rate": 0.0,
+    "conductance_projection": false
+  },
+  "fixed_tk_security": {
+    "reference_T": 64,
+    "reference_K": 64,
+    "cohort_examples": 256,
+    "batch_size": 32,
+    "gradient_zero_epsilon": 1e-12,
+    "relative_gradient_l2_norm_delta_maximum": 0.1,
+    "absolute_zero_fraction_delta_maximum": 0.02,
+    "gradient_vector_cosine_minimum": 0.9
+  },
+  "rho_search": {
+    "center": {
+      "rho_conv": 0.003,
+      "rho_dense": 0.01
+    },
+    "center_downward_factor": 3.0,
+    "maximum_center_attempts": 6,
+    "core_factors": [
+      0.3333333333333333,
+      1.0,
+      3.0
+    ],
+    "core_policy_by_surface": {
+      "conv1__baseline": {
+        "core_mode": "adaptive_safe_center"
+      },
+      "conv1__ours": {
+        "core_mode": "adaptive_safe_center"
+      },
+      "conv1__legacy": {
+        "core_mode": "adaptive_safe_center"
+      },
+      "conv2__baseline": {
+        "core_mode": "adaptive_safe_center"
+      },
+      "conv2__ours": {
+        "core_mode": "adaptive_safe_center"
+      },
+      "conv2__legacy": {
+        "core_mode": "adaptive_safe_center"
+      },
+      "conv3__baseline": {
+        "core_mode": "fixed_grid",
+        "fixed_core": {
+          "rho_conv": [
+            0.009,
+            0.027,
+            0.081
+          ],
+          "rho_dense": [
+            0.03,
+            0.09,
+            0.27
+          ]
+        }
+      },
+      "conv3__ours": {
+        "core_mode": "fixed_grid",
+        "fixed_core": {
+          "rho_conv": [
+            0.009,
+            0.027,
+            0.081
+          ],
+          "rho_dense": [
+            0.03,
+            0.09,
+            0.27
+          ]
+        }
+      },
+      "conv3__legacy": {
+        "core_mode": "adaptive_safe_center"
+      }
+    },
+    "maximum_expansion_waves": 1,
+    "probe_batches": [
+      32,
+      64,
+      128
+    ],
+    "probe_stability_tolerance": 0.1,
+    "bias_policy": "zero",
+    "canary_steps": 640,
+    "candidate_epochs": 3,
+    "expected_candidate_steps": 10314,
+    "minimum_validation_accuracy": 0.9,
+    "select_best_safe_below_accuracy": false,
+    "inclusive_loss_plateau": 0.02,
+    "safety": {
+      "warmup_steps": 32,
+      "loss_ema_decay": 0.98,
+      "loss_ema_factor": 4.0,
+      "gradient_rms_factor": 100.0,
+      "persistence_steps": 8,
+      "bound_occupancy": "report_only",
+      "projection_efficiency": "report_only"
+    },
+    "safety_by_architecture": {
+      "conv3": {
+        "bound_occupancy_increase_maximum": 0.2,
+        "projection_efficiency_minimum": 0.5,
+        "boundary_persistence_steps": 16
+      }
+    }
+  },
+  "confirmation": {
+    "conv1_epochs": 10,
+    "conv2_epochs": 30,
+    "conv3_epochs": 30,
+    "conv3_provenance": "user_directed_extension_to_test_lr_adequacy_at_full_training_budget",
+    "restart_from_shared_initialization": true,
+    "constant_selected_learning_rates": true
+  },
+  "execution": {
+    "target": "multi-target",
+    "device": "cuda",
+    "gpus_per_surface": 1,
+    "result_root": "results/perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1/combined"
+  }
+}

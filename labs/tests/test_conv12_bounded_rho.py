@@ -15,12 +15,15 @@ from experiments.reselect_bounded_rho_below_accuracy import (
 )
 from experiments.run_conv12_bounded_rho import (
     _has_clean_canary,
+    _rho_args,
     _rho_axes,
     _rho_index,
+    _surface_search,
     build_source_config,
     collect,
     compare_fixed_tk_gradients,
     load_study,
+    materialize,
     select_candidates,
     surface_specs,
 )
@@ -30,6 +33,12 @@ CONV3_STUDY = (
     / "configs"
     / "conv"
     / "perfectdiode_conv3_bounded_rho_baseline_ours_20260729_v1.json"
+)
+CONV123_ZERO_BIAS_STUDY = (
+    Path(__file__).resolve().parents[2]
+    / "configs"
+    / "conv"
+    / "perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json"
 )
 
 
@@ -55,6 +64,149 @@ def test_conv3_study_has_eight_fixed_grid_surfaces() -> None:
     assert study["model"]["architectures"]["conv3"]["K"] == 8
     assert conv == pytest.approx([0.003, 0.009, 0.027, 0.081, 0.243])
     assert dense == pytest.approx([0.01, 0.03, 0.09, 0.27, 0.81])
+
+
+def test_zero_bias_study_has_exactly_eighteen_uniform_surfaces() -> None:
+    _path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    surfaces = surface_specs(study)
+
+    assert len(surfaces) == 18
+    assert {surface["architecture"] for surface in surfaces} == {
+        "conv1",
+        "conv2",
+        "conv3",
+    }
+    assert {surface["scheme"] for surface in surfaces} == {
+        "baseline",
+        "ours",
+        "legacy",
+    }
+    assert {surface["optimizer"] for surface in surfaces} == {"SGD", "Adam"}
+    assert {surface["initializer"] for surface in surfaces} == {
+        "bounded_uniform"
+    }
+
+
+def test_zero_bias_study_resolves_surface_specific_cores_and_safety() -> None:
+    _path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    surfaces = surface_specs(study)
+    conv3_baseline = next(
+        surface
+        for surface in surfaces
+        if surface["architecture"] == "conv3"
+        and surface["scheme"] == "baseline"
+        and surface["optimizer"] == "SGD"
+    )
+    conv3_legacy = next(
+        surface
+        for surface in surfaces
+        if surface["architecture"] == "conv3"
+        and surface["scheme"] == "legacy"
+        and surface["optimizer"] == "SGD"
+    )
+    conv1_baseline = surfaces[0]
+
+    fixed_conv, fixed_dense = _rho_axes(study, conv3_baseline)
+    adaptive_conv, adaptive_dense = _rho_axes(study, conv3_legacy)
+    fixed_search = _surface_search(study, conv3_baseline)
+    conv1_search = _surface_search(study, conv1_baseline)
+
+    assert fixed_conv == pytest.approx([0.003, 0.009, 0.027, 0.081, 0.243])
+    assert fixed_dense == pytest.approx([0.01, 0.03, 0.09, 0.27, 0.81])
+    assert len(adaptive_conv) == len(adaptive_dense) == 10
+    assert fixed_search["core_mode"] == "fixed_grid"
+    assert fixed_search["safety"]["bound_occupancy_increase_maximum"] == 0.20
+    assert fixed_search["safety"]["projection_efficiency_minimum"] == 0.50
+    assert fixed_search["safety"]["boundary_persistence_steps"] == 16
+    assert "bound_occupancy_increase_maximum" not in conv1_search["safety"]
+
+
+def test_zero_bias_source_config_only_replaces_dataset_root(tmp_path) -> None:
+    _path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    checkpoint = tmp_path / "initial.pt"
+    dataset_root = tmp_path / "mnist"
+    config = build_source_config(
+        study,
+        initializer="bounded_uniform",
+        architecture="conv3",
+        scheme="legacy",
+        optimizer="Adam",
+        init_checkpoint_path=checkpoint,
+        dataset_root=dataset_root,
+    )
+
+    assert config["datasets"]["mnist"]["params"]["root"] == str(dataset_root)
+    assert config["model_base"]["weight_init_mode"] == "bounded_uniform"
+    assert config["model_base"]["weight_min"] == 1e-5
+    assert config["model_base"]["weight_max"] == 1e-4
+    assert config["model_base"]["voltage_amp"] == 4.0
+    assert config["model_base"]["current_amp"] == 0.25
+    assert config["lr"] == [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+    assert config["optimizer"]["learning_rate"] == config["lr"]
+    assert config["bias_contract"] == study["bias_contract"]
+
+
+def test_zero_bias_rho_args_record_actual_target_and_conv3_hard_gates(
+    tmp_path,
+) -> None:
+    _path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    surface = next(
+        surface
+        for surface in surface_specs(study)
+        if surface["architecture"] == "conv3"
+        and surface["scheme"] == "ours"
+        and surface["optimizer"] == "Adam"
+    )
+    conv, dense = _rho_axes(study, surface)
+
+    args = _rho_args(
+        study,
+        surface,
+        tmp_path / "source.json",
+        tmp_path / "rho",
+        conv,
+        dense,
+        device="cuda",
+        target="trex",
+        index=None,
+    )
+
+    assert args.target == "trex"
+    assert args.bias_policy == "zero"
+    assert args.safety_bound_occupancy_increase_maximum == 0.20
+    assert args.safety_projection_efficiency_minimum == 0.50
+    assert args.safety_boundary_persistence == 16
+
+
+def test_zero_bias_materialization_records_runtime_overrides(tmp_path) -> None:
+    study_path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    dataset_root = tmp_path / "mnist"
+
+    resolved = materialize(
+        study_path,
+        study,
+        tmp_path / "results",
+        target="akib",
+        dataset_root=dataset_root,
+        device="cuda:1",
+    )
+
+    assert resolved["target"] == "akib"
+    assert resolved["configured_target"] == "multi-target"
+    assert resolved["dataset_root"] == str(dataset_root)
+    assert resolved["configured_dataset_root"] == "~/datasets/mnist"
+    assert resolved["device"] == "cuda:1"
+    assert resolved["bias_contract"] == study["bias_contract"]
+
+
+def test_zero_bias_study_rejects_any_bias_contract_drift(tmp_path) -> None:
+    _path, study = load_study(CONV123_ZERO_BIAS_STUDY)
+    study["bias_contract"]["learning_rate"] = 1e-9
+    altered = tmp_path / "altered.json"
+    altered.write_text(json.dumps(study), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="bias_contract"):
+        load_study(altered)
 
 
 def test_source_config_freezes_bounded_perfect_diode_contract(tmp_path) -> None:
@@ -373,6 +525,25 @@ def test_selector_falls_back_to_best_safe_candidate_below_accuracy() -> None:
     assert selection["accuracy_gate_met"] is False
     assert selection["selection_basis"] == "best_safe_below_accuracy"
     assert selection["selected"]["cell_id"] == "low-loss"
+
+
+def test_generic_selector_has_no_below_accuracy_fallback() -> None:
+    candidate = {
+        "cell_id": "below-threshold",
+        "status": "complete",
+        "selection_eligible": False,
+        "final_validation_loss": 0.2,
+        "final_validation_accuracy": 0.89,
+        "median_projection_efficiency": 0.9,
+        "rho_conv": 0.003,
+        "rho_dense": 0.01,
+    }
+
+    selection = select_candidates([candidate], 0.02)
+
+    assert selection["selected"] is None
+    assert selection["selection_basis"] == "none"
+    assert selection["accuracy_gate_met"] is False
 
 
 def test_compatibility_reselector_detects_below_accuracy_boundary() -> None:
