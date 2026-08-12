@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import pytest
 import torch
@@ -21,6 +22,17 @@ STUDY_CONFIG = (
     REPOSITORY_ROOT
     / "configs/conv/perfectdiode_conv3_legacy_eqprop_adc_readout_precision_20260811_v1.json"
 )
+
+
+def test_helper_import_does_not_shadow_the_current_worktree() -> None:
+    import experiments.launch
+    import experiments.rho_search
+    import labs.mnist_train
+
+    expected_root = REPOSITORY_ROOT.resolve()
+    for module in (experiments.launch, experiments.rho_search, labs.mnist_train):
+        assert Path(module.__file__).resolve().is_relative_to(expected_root)
+    assert not any("signed-scaled-bias" in entry for entry in sys.path)
 
 
 def test_symmetric_midtread_quantizer_preserves_exact_zero() -> None:

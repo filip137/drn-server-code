@@ -23,6 +23,17 @@ def _load_module():
 noise = _load_module()
 
 
+def test_helper_import_does_not_shadow_the_current_worktree() -> None:
+    import experiments.launch
+    import experiments.rho_search
+    import labs.mnist_train
+
+    expected_root = ROOT.resolve()
+    for module in (experiments.launch, experiments.rho_search, labs.mnist_train):
+        assert Path(module.__file__).resolve().is_relative_to(expected_root)
+    assert not any("signed-scaled-bias" in entry for entry in sys.path)
+
+
 def test_noised_states_are_matched_across_cases_and_independent_across_phases():
     states = [torch.zeros((2, 3), dtype=torch.float64), torch.zeros((2, 2))]
     left, left_rows = noise._noised_states(

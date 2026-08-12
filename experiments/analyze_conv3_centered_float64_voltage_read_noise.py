@@ -52,6 +52,10 @@ LAYER_LABELS = {
 }
 
 
+_IMPORT_PATH_SNAPSHOT = tuple(sys.path)
+_IMPORT_MODULE_SNAPSHOT = dict(sys.modules)
+
+
 def _load_audit() -> Any:
     spec = importlib.util.spec_from_file_location(
         "_eqprop_float64_audit_for_voltage_read_noise", FLOAT64_AUDIT
@@ -70,6 +74,52 @@ base = audit.base
 np = base.np
 torch = base.torch
 plt = base.plt
+
+
+def _restore_helper_import_state() -> None:
+    """Contain the frozen-runtime bootstrap when this CLI is imported."""
+
+    sys.path[:] = _IMPORT_PATH_SNAPSHOT
+    runtime_root = Path(base.RUNTIME_SOURCE_ROOT).expanduser().resolve()
+    external_modules: dict[str, Any] = {}
+    for name, module in tuple(sys.modules.items()):
+        if module is None:
+            continue
+        origins: list[Path] = []
+        module_file = getattr(module, "__file__", None)
+        if module_file:
+            origins.append(Path(module_file).expanduser().resolve())
+        module_path = getattr(module, "__path__", None)
+        if isinstance(module_path, (list, tuple)) or type(module_path).__name__ == (
+            "_NamespacePath"
+        ):
+            for value in module_path:
+                origins.append(Path(value).expanduser().resolve())
+        if any(origin.is_relative_to(runtime_root) for origin in origins):
+            external_modules[name] = module
+
+    for name in external_modules:
+        if name in _IMPORT_MODULE_SNAPSHOT:
+            sys.modules[name] = _IMPORT_MODULE_SNAPSHOT[name]
+        else:
+            sys.modules.pop(name, None)
+
+    for name, external_module in external_modules.items():
+        parent_name, separator, child_name = name.rpartition(".")
+        if not separator:
+            continue
+        parent = sys.modules.get(parent_name)
+        if parent is None or getattr(parent, child_name, None) is not external_module:
+            continue
+        replacement = sys.modules.get(name)
+        if replacement is None:
+            delattr(parent, child_name)
+        else:
+            setattr(parent, child_name, replacement)
+
+
+if __name__ != "__main__":
+    _restore_helper_import_state()
 
 
 def _semantic_sha256(value: Any) -> str:
