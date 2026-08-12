@@ -20,8 +20,14 @@
   },
   "jean-zay": {
     "kind": "slurm",
+    "ssh": [
+      "ssh",
+      "-F",
+      "/home/filip/.ssh/config"
+    ],
     "host": "jean-zay",
     "workdir": "/lustre/fswork/projects/rech/umg/ucy17uy/server_code",
+    "require_local_canary": true,
     "sbatch": [
       "--account=fmu@v100",
       "--partition=gpu_p13",

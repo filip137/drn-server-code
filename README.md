@@ -28,6 +28,7 @@ conclusions are added manually to
 
 Scientific runners own their readable configs and outputs.
 `python -m experiments.launch` transports an existing command to a configured
-target. Complete configs with frozen learning-rate vectors run through
-`python -m experiments.exact_run`; `python -m experiments.rho_search` is a
-probe-and-grid building block for the larger rho protocols.
+target and can run a synchronous local canary before making a single remote
+production submission. Complete configs with frozen learning-rate vectors run
+through `python -m experiments.exact_run`; `python -m experiments.rho_search`
+is a probe-and-grid building block for the larger rho protocols.

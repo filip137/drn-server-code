@@ -57,8 +57,9 @@ Conv3. Start with:
 `docs/experiment_workflow.md` is the execution guide. Historical and archived
 documents are provenance, not authority for new runs.
 New runs follow `docs/experiment_reporting.md`; live state is generated in
-`docs/current_simulations.md`, and analyzed conclusions are curated manually
-in `docs/experimental_manifest.md`.
+`docs/current_simulations.md`, every agent-created top-level result directory
+is indexed persistently there, and analyzed conclusions are curated manually in
+`docs/experimental_manifest.md`.
 
 Ordinary MNIST is used for `T/K`, rho, learning-rate, and bounded-initializer
 selection. Deterministic medium-affine MNIST is used for paper runs. A
@@ -74,19 +75,35 @@ Follow `docs/experiment_workflow.md`.
 - When Filip supplies complete configs with exact learning-rate vectors, use
   `python -m experiments.exact_run`. Do not run a rho search, calibration, or
   broad test campaign first. Use its one-train-batch/one-validation-batch
-  `--smoke` mode on the target, then launch the unchanged configs.
+  `--smoke` mode locally, then launch the unchanged configs.
 - Prefer a direct runner. Extract shared code only when it serves more than
   one experiment.
 - Before a long or scheduled run, record and report the scientific cases,
   target, budget, expected duration, and result path, then proceed once the
   applicable smoke and scientific gates pass.
+- Before creating a top-level result directory, add or update its persistent
+  row in `docs/current_simulations.md`. Maintain its study-level state through
+  launch, remote collection, validation, review, and supersession; automatic
+  per-run status reporting does not replace this handoff row.
+- Before submitting any live Jean Zay job, including a production job, array,
+  restored remote canary, or retry, verify that its `planned` row already
+  exists in `docs/current_simulations.md`. Prefer a direct result-directory
+  link. If no directory can be linked yet, record the launch name, config or
+  wrapper, and expected remote output root or pattern; immediately after
+  `sbatch`, add the Slurm job ID and resolve the result link when possible.
 - Check the configured `main`, `akib`, `trex`, and `jean-zay` targets before
   allocating work. Never replace or interfere with an occupied lane or
   unrelated Slurm job.
-- Run a short end-to-end smoke through the same runner, environment, device,
-  and output path. Conv amplification runs also need the active scientific
-  `T/K` gate unless an unchanged accepted operating point applies. Exact-config
-  repeats cite the accepted operating point instead of rerunning it.
+- Run a short end-to-end smoke through the same scientific runner and config.
+  For Jean Zay, the default operational gate is a synchronous local smoke
+  followed immediately by one production submission; do not submit a separate
+  remote canary job. Record the local command and require its semantic output
+  before production. If a future production failure is attributable to a
+  Jean Zay-only environment, staging, device, filesystem, or Slurm issue,
+  restore a live Jean Zay canary for that affected execution contract.
+  Conv amplification runs also need the active scientific `T/K` gate unless
+  an unchanged accepted operating point applies. Exact-config repeats cite the
+  accepted operating point instead of rerunning it.
 - Use `python -m experiments.launch` for the common local, tmux, SSH/tmux, and
   Slurm cases. A direct command is fine when it is clearer.
 - Keep one scientific surface on one recorded target. Host selection is
@@ -106,6 +123,9 @@ Follow `docs/experiment_workflow.md`.
 - While actively monitoring, keep progress observable and use a deadline.
 - Copy remote results locally and validate the local copy before drawing final
   conclusions.
+- Do not mark a scientific study `ready-for-review` until expected coverage is
+  reconciled, the authoritative local copy exists, included run bundles
+  validate, and failures, exclusions, and replacement directories are named.
 - Interpret completed or clearly labeled partial results directly against the
   governing protocol. Distinguish measurements from inference and record
   uncertainty or protocol deviations instead of withholding a supported

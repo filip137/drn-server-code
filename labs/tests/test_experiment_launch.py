@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -10,8 +11,10 @@ from experiments.launch import (
     build_launch_command,
     build_status_command,
     launch,
+    launch_after_local_canary,
     load_targets,
     main,
+    run_local_canary,
     status,
 )
 
@@ -24,6 +27,44 @@ def test_load_targets(tmp_path: Path) -> None:
     )
 
     assert load_targets(path)["cpu"]["kind"] == "local"
+
+
+def test_load_targets_rejects_non_boolean_canary_requirement(tmp_path: Path) -> None:
+    path = tmp_path / "targets.json"
+    path.write_text(
+        json.dumps(
+            {
+                "cluster": {
+                    "kind": "slurm",
+                    "workdir": ".",
+                    "require_local_canary": "yes",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="require_local_canary"):
+        load_targets(path)
+
+
+def test_load_targets_rejects_invalid_ssh_command(tmp_path: Path) -> None:
+    path = tmp_path / "targets.json"
+    path.write_text(
+        json.dumps(
+            {
+                "cluster": {
+                    "kind": "slurm",
+                    "workdir": ".",
+                    "ssh": "ssh -F config",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ssh to be a non-empty string list"):
+        load_targets(path)
 
 
 def test_build_local_tmux_command() -> None:
@@ -86,6 +127,22 @@ def test_build_slurm_command() -> None:
     assert "'--wrap=python train.py'" in command[2]
 
 
+def test_build_slurm_command_uses_configured_ssh_command() -> None:
+    command = build_launch_command(
+        {
+            "kind": "slurm",
+            "host": "jean-zay",
+            "workdir": "/repo",
+            "ssh": ["ssh", "-F", "/home/user/.ssh/config"],
+        },
+        ["true"],
+        name="trial",
+        log=None,
+    )
+
+    assert command[:4] == ["ssh", "-F", "/home/user/.ssh/config", "jean-zay"]
+
+
 def test_slurm_args_are_rejected_for_non_slurm_target() -> None:
     with pytest.raises(ValueError, match="only for a Slurm target"):
         build_launch_command(
@@ -145,6 +202,124 @@ def test_dry_run_has_no_side_effect(tmp_path: Path) -> None:
 
     assert result["state"] == "planned"
     assert not marker.exists()
+
+
+def test_local_canary_passes_before_production(tmp_path: Path) -> None:
+    canary_marker = tmp_path / "canary.json"
+    production_marker = tmp_path / "production"
+
+    result = launch_after_local_canary(
+        "local",
+        {"kind": "local", "workdir": str(tmp_path)},
+        [
+            sys.executable,
+            "-c",
+            f"open({str(production_marker)!r}, 'w').write('production')",
+        ],
+        name="gated",
+        canary_argv=[
+            sys.executable,
+            "-c",
+            f"open({str(canary_marker)!r}, 'w').write('canary')",
+        ],
+        canary_workdir=str(tmp_path),
+        canary_required_files=[str(canary_marker)],
+    )
+
+    assert result["state"] == "finished"
+    assert result["local_canary"]["state"] == "passed"
+    assert result["local_canary"]["required_artifacts"][0]["bytes"] == 6
+    assert production_marker.read_text(encoding="utf-8") == "production"
+
+
+def test_failed_local_canary_blocks_production(tmp_path: Path) -> None:
+    production_marker = tmp_path / "production"
+
+    result = launch_after_local_canary(
+        "local",
+        {"kind": "local", "workdir": str(tmp_path)},
+        [
+            sys.executable,
+            "-c",
+            f"open({str(production_marker)!r}, 'w').close()",
+        ],
+        name="gated",
+        canary_argv=[sys.executable, "-c", "raise SystemExit(9)"],
+        canary_workdir=str(tmp_path),
+    )
+
+    assert result["state"] == "blocked"
+    assert result["stage"] == "local-canary"
+    assert result["returncode"] == 9
+    assert result["production"] is None
+    assert not production_marker.exists()
+
+
+def test_missing_local_canary_artifact_blocks_production(tmp_path: Path) -> None:
+    production_marker = tmp_path / "production"
+
+    result = launch_after_local_canary(
+        "local",
+        {"kind": "local", "workdir": str(tmp_path)},
+        [
+            sys.executable,
+            "-c",
+            f"open({str(production_marker)!r}, 'w').close()",
+        ],
+        name="gated",
+        canary_argv=[sys.executable, "-c", "print('canary passed')"],
+        canary_workdir=str(tmp_path),
+        canary_required_files=["missing.json"],
+    )
+
+    assert result["state"] == "blocked"
+    assert result["local_canary"]["state"] == "failed"
+    assert "missing or empty" in result["local_canary"]["error"]
+    assert not production_marker.exists()
+
+
+def test_local_canary_dry_run_plans_both_steps_without_executing(
+    tmp_path: Path,
+) -> None:
+    canary_marker = tmp_path / "canary"
+    production_marker = tmp_path / "production"
+
+    result = launch_after_local_canary(
+        "local",
+        {"kind": "local", "workdir": str(tmp_path)},
+        [
+            sys.executable,
+            "-c",
+            f"open({str(production_marker)!r}, 'w').close()",
+        ],
+        name="gated",
+        canary_argv=[
+            sys.executable,
+            "-c",
+            f"open({str(canary_marker)!r}, 'w').close()",
+        ],
+        canary_workdir=str(tmp_path),
+        dry_run=True,
+    )
+
+    assert result["state"] == "planned"
+    assert result["local_canary"]["state"] == "planned"
+    assert result["production"]["state"] == "planned"
+    assert not canary_marker.exists()
+    assert not production_marker.exists()
+
+
+def test_run_local_canary_writes_log(tmp_path: Path) -> None:
+    result = run_local_canary(
+        [sys.executable, "-c", "print('canary output')"],
+        workdir=str(tmp_path),
+        log="logs/canary.log",
+    )
+
+    assert result["state"] == "passed"
+    assert (tmp_path / "logs/canary.log").read_text(encoding="utf-8") == (
+        "canary output\n"
+    )
 
 
 def test_status_commands() -> None:
@@ -280,3 +455,80 @@ def test_cli_accepts_slurm_array_argument(
     ) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["slurm_args"] == ["--array=0-3"]
+
+
+def test_cli_required_local_canary_cannot_be_omitted(
+    tmp_path: Path,
+) -> None:
+    targets = tmp_path / "targets.json"
+    targets.write_text(
+        json.dumps(
+            {
+                "cluster": {
+                    "kind": "slurm",
+                    "host": "cluster",
+                    "workdir": "/repo",
+                    "require_local_canary": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requires --local-canary-command"):
+        main(
+            [
+                "--targets",
+                str(targets),
+                "run",
+                "cluster",
+                "--name",
+                "batch",
+                "--dry-run",
+                "--",
+                "true",
+            ]
+        )
+
+
+def test_cli_local_canary_runs_before_local_production(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    targets = tmp_path / "targets.json"
+    targets.write_text(
+        json.dumps({"local-test": {"kind": "local", "workdir": str(tmp_path)}}),
+        encoding="utf-8",
+    )
+    canary_marker = tmp_path / "canary"
+    production_marker = tmp_path / "production"
+    canary_command = (
+        f"{shlex.quote(sys.executable)} -c "
+        + shlex.quote(f"open({str(canary_marker)!r}, 'w').write('ok')")
+    )
+
+    assert main(
+        [
+            "--targets",
+            str(targets),
+            "run",
+            "local-test",
+            "--name",
+            "gated",
+            "--local-canary-command",
+            canary_command,
+            "--local-canary-workdir",
+            str(tmp_path),
+            "--local-canary-require",
+            str(canary_marker),
+            "--",
+            sys.executable,
+            "-c",
+            f"open({str(production_marker)!r}, 'w').write('ok')",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["local_canary"]["state"] == "passed"
+    assert payload["production"]["state"] == "finished"
+    assert production_marker.read_text(encoding="utf-8") == "ok"

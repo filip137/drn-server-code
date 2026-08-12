@@ -11,8 +11,10 @@ on an available configured target, monitor, retry understood operational
 failures, collect and validate outputs, and interpret the results.
 
 Before substantial compute starts, record and report the goal, cases, target,
-budget, expected duration, and result directory. This is an observability
-step, not a separate approval gate.
+budget, expected duration, and result directory. Add the top-level result
+directory to the persistent Recent Experiment Directories table in
+[`current_simulations.md`](current_simulations.md) with state `planned`. This
+is an observability step, not a separate approval gate.
 
 ## Scientific Paths
 
@@ -32,7 +34,8 @@ python -m experiments.exact_run \
   --output-root results/fixed-run --device cuda
 ```
 
-Use the same command with `--smoke` before a long or remote run:
+Use the same scientific command with `--smoke` locally before a long or remote
+run:
 
 ```bash
 python -m experiments.exact_run \
@@ -66,18 +69,27 @@ scientific surface on one target and record that target in its artifacts.
 ## Before A Long Run
 
 1. Record goal, cases/seeds, scientific config, budget, target, expected
-   duration, and result directory.
+   duration, and result directory; add the persistent result-directory row with
+   state `planned`.
 2. Verify the exact source/config identity on the target.
 3. Check the target GPU, tmux lane, or Slurm allocation.
-4. Run a same-runner, same-environment, same-device, same-output-path smoke.
+4. Run a synchronous local smoke through the same scientific runner and
+   config, and require its semantic completion artifact.
 5. Run the active `T/K`, rho-canary, or other scientific gate.
-6. Launch and record the tmux handle or Slurm job ID.
+6. Immediately launch production once, record the tmux handle or Slurm job ID,
+   and update the persistent row to `running`. Before any live Jean Zay
+   `sbatch`, verify that the `planned` row identifies the result link or,
+   temporarily, the launch name, config or wrapper, and expected remote output
+   location. Do not submit a separate remote canary unless a prior
+   target-specific failure has invalidated the local-only policy.
 7. Monitor to a declared deadline.
 
 ## Launch Examples
 
-`experiments.launch` treats the experiment command as opaque. Add `--dry-run`
-to any `run` command to inspect transport without launching.
+`experiments.launch` treats the experiment command as opaque. Its optional
+local-canary command runs synchronously; production is submitted only if the
+canary exits zero and every required artifact is non-empty. Add `--dry-run` to
+inspect both steps without executing either.
 
 Foreground local smoke:
 
@@ -127,15 +139,34 @@ python -m experiments.launch run jean-zay \
   --name conv3-fixed \
   --log /lustre/fsn1/projects/rech/fmu/$USER/server_code/results/conv3-fixed/logs/%A_%a.log \
   --slurm-arg=--array=0-5%6 \
-  --slurm-arg=--time=04:00:00 --dry-run -- \
+  --slurm-arg=--time=04:00:00 \
+  --local-canary-command \
+    "python -m experiments.exact_run CONFIG0.json CONFIG1.json CONFIG2.json CONFIG3.json CONFIG4.json CONFIG5.json --output-root results/conv3-fixed-local-canary --device cpu --dataset-root /home/filip/datasets/mnist --smoke --summary-json results/conv3-fixed-local-canary/summary.json" \
+  --local-canary-log results/conv3-fixed-local-canary/canary.log \
+  --local-canary-require results/conv3-fixed-local-canary/summary.json \
+  --dry-run -- \
   python -m experiments.exact_run \
     CONFIG0.json CONFIG1.json CONFIG2.json CONFIG3.json CONFIG4.json CONFIG5.json \
     --output-root /lustre/fsn1/projects/rech/fmu/$USER/server_code/results/conv3-fixed \
     --device cuda
 ```
 
+Remove `--dry-run` to run the local canary and, on success, make one Jean Zay
+submission. The returned JSON contains both the local artifact hashes and the
+production job ID. A local failure returns `state: blocked` and never contacts
+Jean Zay. Before removing `--dry-run`, verify that the production submission
+has a `planned` row in `current_simulations.md`. Immediately after submission,
+write its returned job ID into the short summary and update the row to
+`running`.
+
+`--dataset-root` is a recorded transport-only override for local canaries whose
+frozen configs point at a remote dataset path. It does not alter preprocessing,
+splits, affine seeds, minibatch order, or model and optimizer fields.
+
 The launcher does not stage source, choose scientific settings, retry,
-collect, or select results.
+collect, or select results. If a future production failure is caused by the
+Jean Zay module, CUDA/V100 environment, Lustre, staging, or Slurm contract,
+restore a live Jean Zay canary for that affected execution contract.
 
 ## Status
 
@@ -237,11 +268,22 @@ is bracketed.
   invalid, obsolete, or operationally broken.
 - Copy remote results locally and validate the local copy before using it as
   evidence.
+- Maintain the persistent Recent Experiment Directories row for every
+  top-level directory created during the task, including smoke, failed,
+  recovery, partial, and replacement directories. Link the exact local result
+  directory and mention a remote-only source in the short summary rather than
+  relying on chat history.
+- Use `collecting` while remote results are not yet fully present and validated
+  locally. Use `ready-for-review` only after expected coverage is reconciled,
+  included bundles validate, and all failures, exclusions, and superseded
+  directories are identified. Use `partial`, `complete`, `failed`, or
+  `superseded` when those more accurately describe the terminal handoff.
 - Analyze outputs against declared completion criteria. Label partial
   evidence, confounds, and deviations explicitly.
 - Keep live `running` state in the generated block of
-  [`current_simulations.md`](current_simulations.md). Add study conclusions to
-  [`experimental_manifest.md`](experimental_manifest.md) only after the
-  relevant arms and seeds have been analyzed.
+  [`current_simulations.md`](current_simulations.md); this does not replace the
+  persistent result-directory row. A reviewing agent changes the row to
+  `under-review` when work begins and to `reviewed` only after adding the study
+  conclusion to [`experimental_manifest.md`](experimental_manifest.md).
 - Update `docs/current_state.md` with terminal scientific status, not transient
   busy/idle node state.

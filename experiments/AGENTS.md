@@ -23,9 +23,12 @@ This guidance applies to runners, launchers, collectors, and monitors in
   and interpret the results without separate approval checkpoints.
 - Prefer one readable script over layered adapters. Add a shared abstraction
   only after a second real use.
-- Before a long run, execute a short same-path smoke that constructs the real
-  data and model, performs the principal computation (including an optimizer
-  step for training), and writes an artifact.
+- Before a long run, execute a short smoke that constructs the real data and
+  model, performs the principal computation (including an optimizer step for
+  training), and writes an artifact. Jean Zay launches use a synchronous local
+  smoke followed by one remote production submission by default. Reintroduce
+  a live remote canary only after a target-specific failure demonstrates that
+  the local gate is insufficient for the affected execution contract.
 - Give every run its own output directory. Record the config, command, commit,
   environment, host/job identity, logs, metrics, and checkpoints there.
 - New runners and maintained active runners use the lightweight bundle in
