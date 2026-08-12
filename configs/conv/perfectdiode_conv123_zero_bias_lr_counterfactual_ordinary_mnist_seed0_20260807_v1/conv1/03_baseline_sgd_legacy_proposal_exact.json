@@ -1,0 +1,237 @@
+{
+  "arm_id": "conv1_baseline_sgd_bias_zero_legacy_proposal_exact_seed0",
+  "batch_state_policy": "reset_each_batch",
+  "beta": 1.0,
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "params": {
+        "affine_config": null,
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "num_workers": 0,
+        "pin_memory": false,
+        "root": "/lustre/fsn1/projects/rech/umg/ucy17uy/datasets/mnist",
+        "shuffle_seed": 0,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "epoch_split": "validation",
+    "inclusion_rule": "Include this predeclared ordinary-MNIST LR-counterfactual arm only if it completes all 30 epochs with finite metrics, all 31 model and optimizer checkpoints and all 150 traced optimizer transitions are complete, every hidden-bias learning rate and checkpoint tensor is exactly zero, the result bundle validates, and the official test is not read.",
+    "official_test": {
+      "checkpoint": "best_validation",
+      "expected_examples": 10000,
+      "policy": "disabled"
+    }
+  },
+  "handoff": {
+    "diagnostic_bias_ablation": {
+      "all_weight_learning_rates_unchanged": false,
+      "bias_initialization": "zero",
+      "dataset_variant": "ordinary_mnist_train_validation",
+      "freeze_method": "exact zero learning rate with ordinary post-step nonnegative projection",
+      "frozen_parameters_csv": "Bias_0",
+      "scientific_question": "Can a 30-epoch, layer-specific baseline learning-rate counterfactual recover the zero-bias SGD trajectory of ours or legacy, and how does that intervention depend on convolutional depth?",
+      "source_config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/00_baseline_sgd_seed0.json"
+    },
+    "downstream_weight_contract_authorized_at": "2026-07-29",
+    "downstream_weight_contract_authorized_by": "Filip",
+    "entry_id": "conv1_baseline_sgd",
+    "id": "perfectdiode-conv12-unbounded-fixed-lr-20260729-v1",
+    "path": "configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json",
+    "sha256": "be353c88ec924206e2adf5b960e77ea914dc67800841e6e00534c859f709ac14",
+    "source_selection_weight_contract_exact_match": true,
+    "lr_counterfactual": {
+      "architecture": "conv1",
+      "parent_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+      "parent_config_sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 0.33510067276429417,
+          "DenseWeight_0": 0.9679245989592279
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.007318314292361338,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0024523720428708336,
+          "DenseWeight_0": 0.025126888285143402
+        },
+        "target_scheme": "legacy"
+      },
+      "proposal_measurement": {
+        "bptt_gradient_batches": 2,
+        "checkpoint_role": "initialization",
+        "cohort_sha256": "a9b8b890b187fb5023fa93ce6fe754229ad94b083d33670857d05df1f8d28074",
+        "cohort_examples": 128,
+        "gradient_summary": {
+          "path": "results/perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1/analysis/mechanism/gradient_summary.csv",
+          "sha256": "0519ea3125f4bee5c57b4429f5cfc2fff2b65b9278f61cdb63106133b51d5848"
+        },
+        "metric": "lr_times_gradient_over_parameter_rms_median",
+        "optimizer_label_in_replay": "SGD",
+        "performance_metrics_used_for_rate_derivation": false,
+        "replay_receipt": {
+          "path": "results/perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1/analysis/mechanism/mechanism_replay_receipt.json",
+          "sha256": "3bc1d09ec6101dfd05309f358796434a9a5b3535cdac440821d13072e1f12fb6"
+        },
+        "values_frozen_in_config": true
+      },
+      "rates_selected_post_hoc_from_this_study": false,
+      "role": "baseline_legacy_proposal_exact",
+      "weight_rates_match_parent": false
+    }
+  },
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 30,
+    "model_key": "mnist_bp_conv_amp"
+  },
+  "learning_rates_by_parameter": {
+    "ConvWeight_0": 0.047817525600773715,
+    "DenseWeight_0": 0.011638131792965963,
+    "Bias_0": 0.0
+  },
+  "log_interval": 500,
+  "lr": [
+    0.047817525600773715,
+    0.011638131792965963,
+    0.0
+  ],
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 40.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 4,
+    "num_iterations_training": 4,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 1.0,
+    "weight_init_mode": "kaiming_uniform",
+    "weight_max": 100.0,
+    "weight_min": 0.0
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "learning_rate": [
+      0.047817525600773715,
+      0.011638131792965963,
+      0.0
+    ],
+    "lr_decay": 1.0,
+    "momentum": 0.0,
+    "name": "SGD",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "DenseWeight_0",
+    "Bias_0"
+  ],
+  "reporting": {
+    "arm_id": "conv1_baseline_sgd_bias_zero_legacy_proposal_exact_seed0",
+    "evidence_class": "ordinary_mnist_lr_counterfactual",
+    "paper_facing": false,
+    "study_id": "perfectdiode-conv123-zero-bias-lr-counterfactual-ordinary-mnist-seed0-20260807-v1"
+  },
+  "schema_version": "mnist-conv-paper-exact-run/v1",
+  "seed": 0,
+  "study_id": "perfectdiode-conv123-zero-bias-lr-counterfactual-ordinary-mnist-seed0-20260807-v1",
+  "training_algorithm": "BP"
+}

@@ -1,0 +1,279 @@
+{
+  "axes": {
+    "architectures": [
+      "conv1",
+      "conv2",
+      "conv3"
+    ],
+    "optimizer": [
+      "SGD"
+    ],
+    "scheme": [
+      "baseline"
+    ],
+    "seed": [
+      0
+    ]
+  },
+  "bias_contract": {
+    "initialization": "zero",
+    "learning_rate": 0.0,
+    "required_checkpoint_value": 0.0
+  },
+  "configs": [
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_bias_zero_conv_lr_div3_long50_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_baseline_conv_lr_div3_long50_ordinary_mnist_seed0_20260808_v1/conv1/00_baseline_sgd_conv_lr_div3_long50.json",
+      "config_sha256": "4988eb7660c513400c25599c74ea2e87adc0b2bd274ea2cd8dc43d7faa6a11ca",
+      "epoch_budget": 50,
+      "global_index": 0,
+      "optimizer": "SGD",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0",
+        "Bias_0"
+      ],
+      "parent_config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/00_baseline_sgd_current.json",
+      "parent_config_sha256": "e1ae08602c013263cef3f9caca158bc464c9c746069bb23b6fedf39f22d9266e",
+      "parent_rates_by_parameter": {
+        "Bias_0": 0.0,
+        "ConvWeight_0": 0.142696,
+        "DenseWeight_0": 0.0120238
+      },
+      "rate_intervention": {
+        "bias_learning_rates": {
+          "Bias_0": 0.0
+        },
+        "conv_learning_rate_divisor": 3.0,
+        "dense_learning_rates_unchanged": true
+      },
+      "role": "baseline_conv_lr_div3_long50",
+      "scheme": "baseline",
+      "target_rates_by_parameter": {
+        "Bias_0": 0.0,
+        "ConvWeight_0": 0.04756533333333333,
+        "DenseWeight_0": 0.0120238
+      }
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_bias_zero_conv_lr_div3_long50_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_baseline_conv_lr_div3_long50_ordinary_mnist_seed0_20260808_v1/conv2/00_baseline_sgd_conv_lr_div3_long50.json",
+      "config_sha256": "a8c0e59348a8fba007b0da376fc6757c6ac9756c053ec3c026a34ed803717ba7",
+      "epoch_budget": 50,
+      "global_index": 1,
+      "optimizer": "SGD",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1"
+      ],
+      "parent_config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/00_baseline_sgd_current.json",
+      "parent_config_sha256": "f7077369be4501fa46a10cfcada617b53f0c02db6065086e1a9cf57f7d2b6c4d",
+      "parent_rates_by_parameter": {
+        "Bias_0": 0.0,
+        "Bias_1": 0.0,
+        "ConvWeight_0": 7.90864,
+        "ConvWeight_1": 3.81476,
+        "DenseWeight_0": 0.82063
+      },
+      "rate_intervention": {
+        "bias_learning_rates": {
+          "Bias_0": 0.0,
+          "Bias_1": 0.0
+        },
+        "conv_learning_rate_divisor": 3.0,
+        "dense_learning_rates_unchanged": true
+      },
+      "role": "baseline_conv_lr_div3_long50",
+      "scheme": "baseline",
+      "target_rates_by_parameter": {
+        "Bias_0": 0.0,
+        "Bias_1": 0.0,
+        "ConvWeight_0": 2.6362133333333335,
+        "ConvWeight_1": 1.2715866666666666,
+        "DenseWeight_0": 0.82063
+      }
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_bias_zero_conv_lr_div3_long50_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_baseline_conv_lr_div3_long50_ordinary_mnist_seed0_20260808_v1/conv3/00_baseline_sgd_conv_lr_div3_long50.json",
+      "config_sha256": "5dd4c211a82d6a967b85649b35bd8cd5e996348ce6e926f9301097df5a8273bd",
+      "epoch_budget": 50,
+      "global_index": 2,
+      "optimizer": "SGD",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0",
+        "Bias_0",
+        "Bias_1",
+        "Bias_2"
+      ],
+      "parent_config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/00_baseline_sgd_current.json",
+      "parent_config_sha256": "57d46c855e67fa70fae23082fa6f7a24ab0bfe66f0c4bcf29352ed4da32e0e5a",
+      "parent_rates_by_parameter": {
+        "Bias_0": 0.0,
+        "Bias_1": 0.0,
+        "Bias_2": 0.0,
+        "ConvWeight_0": 2.2203793618679493,
+        "ConvWeight_1": 6.284350813613316,
+        "ConvWeight_2": 4.669784642297713,
+        "DenseWeight_0": 1.1922264543625982
+      },
+      "rate_intervention": {
+        "bias_learning_rates": {
+          "Bias_0": 0.0,
+          "Bias_1": 0.0,
+          "Bias_2": 0.0
+        },
+        "conv_learning_rate_divisor": 3.0,
+        "dense_learning_rates_unchanged": true
+      },
+      "role": "baseline_conv_lr_div3_long50",
+      "scheme": "baseline",
+      "target_rates_by_parameter": {
+        "Bias_0": 0.0,
+        "Bias_1": 0.0,
+        "Bias_2": 0.0,
+        "ConvWeight_0": 0.7401264539559831,
+        "ConvWeight_1": 2.094783604537772,
+        "ConvWeight_2": 1.5565948807659042,
+        "DenseWeight_0": 1.1922264543625982
+      }
+    }
+  ],
+  "created_at": "2026-08-08",
+  "dataset": {
+    "affine_corruption": false,
+    "name": "MNIST",
+    "official_test_read": false,
+    "source_split": "train",
+    "train_validation_split": "deterministic_stratified_55000_5000",
+    "variant": "ordinary"
+  },
+  "diagnostics": {
+    "checkpoint_every_epoch": true,
+    "expected_checkpoint_epochs": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50
+    ],
+    "expected_gradient_trace_transitions": 250,
+    "gradient_trace_samples_per_epoch": 5
+  },
+  "epoch_budget": {
+    "conv1": 50,
+    "conv2": 50,
+    "conv3": 50
+  },
+  "evidence_class": "ordinary_mnist_lr_duration_counterfactual",
+  "launch_plan": {
+    "account": "fmu@v100",
+    "array": "0-2%3",
+    "constraint": "v100-16g",
+    "cpus_per_task": 10,
+    "expected_compute_wall_hours_at_concurrency_three": 7,
+    "expected_gpu_hours_by_architecture": {
+      "conv1": 2,
+      "conv2": 4,
+      "conv3": 7
+    },
+    "expected_gpu_hours_total": 13,
+    "gpus_per_task": 1,
+    "module": "pytorch-gpu/py3/2.5.0",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "remote_result_pattern": "/lustre/fsn1/projects/rech/fmu/$USER/server_code/results/perfectdiode-conv123-zero-bias-baseline-conv-lr-div3-long50-ordinary-mnist-seed0-20260808-v1",
+    "status": "prepared_not_submitted",
+    "target": "jean-zay",
+    "time_limit": "10:00:00",
+    "wrapper": "experiments/run_conv123_zero_bias_baseline_conv_lr_div3_long50_jeanzay.slurm"
+  },
+  "operating_points": {
+    "conv1": {
+      "K": 4,
+      "T": 4,
+      "input_gain": 40.0
+    },
+    "conv2": {
+      "K": 6,
+      "T": 6,
+      "input_gain": 100.0
+    },
+    "conv3": {
+      "K": 8,
+      "T": 8,
+      "input_gain": 360.0
+    }
+  },
+  "ordered_config_set_sha256": "0991a55cb82b20a432221ff5a868ffc58047375743ac541aeb5b6ff98f10bb5b",
+  "paper_facing": false,
+  "rate_intervention": {
+    "bias_learning_rates_unchanged_at_zero": true,
+    "conv_learning_rate_divisor": 3.0,
+    "dense_learning_rates_unchanged": true
+  },
+  "schema_version": "perfectdiode-conv123-zero-bias-baseline-conv-lr-div3-long50-study/v1",
+  "scientific_question": "Can zero-bias baseline SGD improve materially when convolutional learning rates are three times smaller and the optimization budget is extended to 50 epochs?",
+  "study_id": "perfectdiode-conv123-zero-bias-baseline-conv-lr-div3-long50-ordinary-mnist-seed0-20260808-v1",
+  "weight_contract": {
+    "projection": [
+      0.0,
+      100.0
+    ]
+  }
+}

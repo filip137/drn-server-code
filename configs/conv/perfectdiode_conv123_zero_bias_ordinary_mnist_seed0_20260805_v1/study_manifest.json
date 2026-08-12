@@ -1,0 +1,234 @@
+{
+  "axes": {
+    "architectures": [
+      "conv1",
+      "conv2",
+      "conv3"
+    ],
+    "optimizers": [
+      "SGD",
+      "Adam"
+    ],
+    "schemes": [
+      "baseline",
+      "ours",
+      "legacy"
+    ],
+    "seeds": [
+      0
+    ]
+  },
+  "bias_contract": {
+    "initialization": "zero",
+    "learning_rate": 0.0,
+    "projection": "historical nonnegative post-step projection, inactive because biases remain exactly zero"
+  },
+  "configs": [
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_bias_zero_seed0",
+      "epochs": 10,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+      "scheme": "baseline",
+      "sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_adam_bias_zero_seed0",
+      "epochs": 10,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/01_baseline_adam_bias_zero_seed0.json",
+      "scheme": "baseline",
+      "sha256": "405388114945645b2700858b485e67759cc343ecc975302e559fa4b938151b76"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_sgd_bias_zero_seed0",
+      "epochs": 10,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/02_ours_sgd_bias_zero_seed0.json",
+      "scheme": "ours",
+      "sha256": "9a4a43b95c7e9f4641ca60cfea5a939b1c48441465b626c409d95f857b4e63ff"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_adam_bias_zero_seed0",
+      "epochs": 10,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/03_ours_adam_bias_zero_seed0.json",
+      "scheme": "ours",
+      "sha256": "26fe23f01f185579b42dca22a4ee8b015981ddb37c427d46d25ad56008dc77e5"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_sgd_bias_zero_seed0",
+      "epochs": 10,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/04_legacy_sgd_bias_zero_seed0.json",
+      "scheme": "legacy",
+      "sha256": "27b665cebc33e5bd5a0d7ead5c84417fc04ac73a31c12d73a7f9b7a5bc3cb58b"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_adam_bias_zero_seed0",
+      "epochs": 10,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json",
+      "scheme": "legacy",
+      "sha256": "4469a635e679d213aa42949cfd46a32ddba3d61282c10e65992af85b9024c8f7"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/00_baseline_sgd_bias_zero_seed0.json",
+      "scheme": "baseline",
+      "sha256": "71f0cf64f30fad9599dd435548d900cc03067c84f80ab4f2fea13f14211e3b54"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_adam_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/01_baseline_adam_bias_zero_seed0.json",
+      "scheme": "baseline",
+      "sha256": "9aac6b7dbfcc48a8b31e2b900b873decd296034ab37d4f73e26ae837a4e05759"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_ours_sgd_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/02_ours_sgd_bias_zero_seed0.json",
+      "scheme": "ours",
+      "sha256": "ad36f8ea697fcc303d80570be011261a9d4375de36c7dfe3912192486e03b8ad"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_ours_adam_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/03_ours_adam_bias_zero_seed0.json",
+      "scheme": "ours",
+      "sha256": "e175c95944d2c5a23c54d68bb6f70343339725d612810031d7bd400aba7e7fb2"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_legacy_sgd_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/04_legacy_sgd_bias_zero_seed0.json",
+      "scheme": "legacy",
+      "sha256": "910ac8941acce850f20328308eac4af9d0a17f41eb6fb06c990044216891cb7f"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_legacy_adam_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json",
+      "scheme": "legacy",
+      "sha256": "6db2f139cfa023d9af6f83b4dea91dfa615b99ecf5a11bb959a063cef5180540"
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/00_baseline_sgd_bias_zero_seed0.json",
+      "scheme": "baseline",
+      "sha256": "c1ec06e658fafc7bce7653decfc7e37315745bd99fc5abd341782b847c6140cf"
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_adam_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/01_baseline_adam_bias_zero_seed0.json",
+      "scheme": "baseline",
+      "sha256": "0f0a216967c36350807c7c77345d9b8d08532df980945882f989799fdd38a10c"
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_ours_sgd_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/02_ours_sgd_bias_zero_seed0.json",
+      "scheme": "ours",
+      "sha256": "51b6a77a11f2b8ac06551a2f6054449a5ffccb34e8be01a54f7ce61c22bab5a8"
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_ours_adam_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/03_ours_adam_bias_zero_seed0.json",
+      "scheme": "ours",
+      "sha256": "4d28abeabe50f9ef595bafc94c0e676ca6676668149956588a7d82a0be74a831"
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_legacy_sgd_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "SGD",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/04_legacy_sgd_bias_zero_seed0.json",
+      "scheme": "legacy",
+      "sha256": "361effc3a289f8a5466021f9bef3e3c9fe33eb75808a96328bceecca8696e68d"
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_legacy_adam_bias_zero_seed0",
+      "epochs": 30,
+      "optimizer": "Adam",
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json",
+      "scheme": "legacy",
+      "sha256": "06f658e108463da0612ca9322c7c6e6bd92c18640ff0f12c37259a96b79e9784"
+    }
+  ],
+  "created_at": "2026-08-05",
+  "dataset": {
+    "affine_corruption": false,
+    "name": "MNIST",
+    "official_test_read": false,
+    "shuffle_seed": 0,
+    "source_split": "train",
+    "split_seed": 0,
+    "train_validation_split": "deterministic_stratified_55000_5000",
+    "variant": "ordinary"
+  },
+  "epoch_budget": {
+    "conv1": 10,
+    "conv2": 30,
+    "conv3": 30
+  },
+  "evidence_class": "ordinary_mnist_bias_ablation",
+  "explicit_user_waivers": {
+    "requested_at": "2026-08-05",
+    "rho_recalibration": true,
+    "tk_recheck": true
+  },
+  "launch": {
+    "account": "fmu@v100",
+    "array": "0-17%18",
+    "constraint": "v100-16g",
+    "node_family": "r3",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "target": "jean-zay",
+    "time_limit": "06:00:00"
+  },
+  "ordered_config_set_sha256": "0d29871f8393c6052244c8478a1317a6780800a434bf225904aa198a1b017483",
+  "paper_facing": false,
+  "schema_version": "perfectdiode-conv123-zero-bias-ordinary-mnist-study/v1",
+  "scientific_question": "Do baseline, ours, and legacy retain their performance ordering when every hidden bias is frozen at zero?",
+  "study_id": "perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1",
+  "weight_contract": {
+    "projection": [
+      0.0,
+      100.0
+    ],
+    "weight_learning_rates": "unchanged from the published 2026-07-29 per-surface handoffs"
+  }
+}

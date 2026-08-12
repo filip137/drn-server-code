@@ -1,0 +1,938 @@
+{
+  "axes": {
+    "architectures": [
+      "conv1",
+      "conv2",
+      "conv3"
+    ],
+    "optimizer": [
+      "SGD"
+    ],
+    "seed": [
+      0
+    ],
+    "schemes": [
+      "baseline",
+      "ours",
+      "legacy"
+    ]
+  },
+  "bias_contract": {
+    "initialization": "zero",
+    "learning_rate": 0.0,
+    "required_checkpoint_value": 0.0
+  },
+  "conditional_follow_up": {
+    "adam_mechanism_panel": {
+      "prerequisite": "new frozen-initialization fresh-state Adam proposal replay for Conv1/2/3; do not substitute raw-gradient ratios",
+      "status": "not_materialized_pending_sgd_review"
+    },
+    "medium_affine_confirmation": {
+      "affine_seed": 1729,
+      "arms_per_optimizer": 36,
+      "expected_gpu_hours_per_optimizer": 84,
+      "model_and_loader_seeds": [
+        0,
+        1,
+        2
+      ],
+      "official_test_policy": "evaluate once from the selected validation checkpoint; never retune on medium affine",
+      "roles_per_architecture": [
+        "baseline_current",
+        "baseline_selected_counterfactual",
+        "ours_current",
+        "legacy_current"
+      ],
+      "status": "after_ordinary_mnist_selection"
+    }
+  },
+  "configs": [
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/00_baseline_sgd_current.json",
+      "config_sha256": "e1ae08602c013263cef3f9caca158bc464c9c746069bb23b6fedf39f22d9266e",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.007318314292361338,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.007318314292361338,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_scheme": "baseline"
+      },
+      "role": "baseline_current",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.142696,
+        "DenseWeight_0": 0.0120238
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 0,
+      "index_within_architecture": 0
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_bias_zero_conv3x_stress_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/01_baseline_sgd_conv3x_stress.json",
+      "config_sha256": "2d20ca58f3d08517002899b901d6a3efd7f9c8204668a6e51d657c8d8ea7cf64",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i * declared_multiplier_i",
+        "kind": "conv_learning_rate_times_three_dense_unchanged_stress",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 3.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.007318314292361338,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.021954942877084015,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_scheme": null
+      },
+      "role": "baseline_conv3x_stress",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.42808799999999997,
+        "DenseWeight_0": 0.0120238
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 1,
+      "index_within_architecture": 1
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_bias_zero_ours_proposal_exact_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/02_baseline_sgd_ours_proposal_exact.json",
+      "config_sha256": "ebcd5dc88bef4ced32dd68f485a13818833fe9bddc386236a135527eade424da",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 0.9823977831888661,
+          "DenseWeight_0": 0.924315356281061
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.007318314292361338,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.007189495737495173,
+          "DenseWeight_0": 0.02399481191250834
+        },
+        "target_scheme": "ours"
+      },
+      "role": "baseline_ours_proposal_exact",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.14018423406991842,
+        "DenseWeight_0": 0.01111378298085222
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 2,
+      "index_within_architecture": 2
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_sgd_bias_zero_legacy_proposal_exact_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/03_baseline_sgd_legacy_proposal_exact.json",
+      "config_sha256": "320a83f5a6a1066dd1bfc8d70e272a4c1f5e02fb738833a29b29fdee7ad11aa5",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 0.33510067276429417,
+          "DenseWeight_0": 0.9679245989592279
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.007318314292361338,
+          "DenseWeight_0": 0.02595955130405961
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0024523720428708336,
+          "DenseWeight_0": 0.025126888285143402
+        },
+        "target_scheme": "legacy"
+      },
+      "role": "baseline_legacy_proposal_exact",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.047817525600773715,
+        "DenseWeight_0": 0.011638131792965963
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 3,
+      "index_within_architecture": 3
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/04_ours_sgd_current.json",
+      "config_sha256": "e76eb5f3fa0ab216308c762f6f227c850e64eedaa234f2ec7e937e6a8832c09e",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.007189495737495173,
+          "DenseWeight_0": 0.02399481191250834
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.007189495737495173,
+          "DenseWeight_0": 0.02399481191250834
+        },
+        "target_scheme": "ours"
+      },
+      "role": "ours_current",
+      "scheme": "ours",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/02_ours_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "9a4a43b95c7e9f4641ca60cfea5a939b1c48441465b626c409d95f857b4e63ff",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.0375994,
+        "DenseWeight_0": 0.00311655
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 4,
+      "index_within_architecture": 4
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv1/05_legacy_sgd_current.json",
+      "config_sha256": "6d45c9f4e141e91848c632e863ec811861caf1be3e06e169ebfaf481c1d185a4",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.0024523720428708336,
+          "DenseWeight_0": 0.025126888285143402
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0024523720428708336,
+          "DenseWeight_0": 0.025126888285143402
+        },
+        "target_scheme": "legacy"
+      },
+      "role": "legacy_current",
+      "scheme": "legacy",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/04_legacy_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "27b665cebc33e5bd5a0d7ead5c84417fc04ac73a31c12d73a7f9b7a5bc3cb58b",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.000205753,
+        "DenseWeight_0": 4.76259e-05
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 5,
+      "index_within_architecture": 5
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/00_baseline_sgd_current.json",
+      "config_sha256": "f7077369be4501fa46a10cfcada617b53f0c02db6065086e1a9cf57f7d2b6c4d",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "ConvWeight_1": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.01984737151245336,
+          "ConvWeight_1": 0.021937469890476118,
+          "DenseWeight_0": 0.08064787178479493
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.01984737151245336,
+          "ConvWeight_1": 0.021937469890476118,
+          "DenseWeight_0": 0.08064787178479493
+        },
+        "target_scheme": "baseline"
+      },
+      "role": "baseline_current",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "71f0cf64f30fad9599dd435548d900cc03067c84f80ab4f2fea13f14211e3b54",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 7.90864,
+        "ConvWeight_1": 3.81476,
+        "DenseWeight_0": 0.82063
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 6,
+      "index_within_architecture": 0
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_bias_zero_conv3x_stress_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/01_baseline_sgd_conv3x_stress.json",
+      "config_sha256": "18d36ca04f3db4cc77796c5b713761b62f560791e8a5d08d75bb1ad39f51949c",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i * declared_multiplier_i",
+        "kind": "conv_learning_rate_times_three_dense_unchanged_stress",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 3.0,
+          "ConvWeight_1": 3.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.01984737151245336,
+          "ConvWeight_1": 0.021937469890476118,
+          "DenseWeight_0": 0.08064787178479493
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.05954211453736008,
+          "ConvWeight_1": 0.06581240967142835,
+          "DenseWeight_0": 0.08064787178479493
+        },
+        "target_scheme": null
+      },
+      "role": "baseline_conv3x_stress",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "71f0cf64f30fad9599dd435548d900cc03067c84f80ab4f2fea13f14211e3b54",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 23.725920000000002,
+        "ConvWeight_1": 11.444280000000001,
+        "DenseWeight_0": 0.82063
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 7,
+      "index_within_architecture": 1
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_bias_zero_ours_proposal_exact_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/02_baseline_sgd_ours_proposal_exact.json",
+      "config_sha256": "4ab5ce438be74ee8003675d1d971103690d3dd97b02019636772f9dd40dbd32a",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 0.3105092036962939,
+          "ConvWeight_1": 0.33427765655390107,
+          "DenseWeight_0": 0.33306081864258874
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.01984737151245336,
+          "ConvWeight_1": 0.021937469890476118,
+          "DenseWeight_0": 0.08064787178479493
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.006162791523796401,
+          "ConvWeight_1": 0.007333206025710122,
+          "DenseWeight_0": 0.026860646198426333
+        },
+        "target_scheme": "ours"
+      },
+      "role": "baseline_ours_proposal_exact",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "71f0cf64f30fad9599dd435548d900cc03067c84f80ab4f2fea13f14211e3b54",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 2.455705508720658,
+        "ConvWeight_1": 1.2751890331155598,
+        "DenseWeight_0": 0.2733196996026676
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 8,
+      "index_within_architecture": 2
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_sgd_bias_zero_legacy_proposal_exact_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/03_baseline_sgd_legacy_proposal_exact.json",
+      "config_sha256": "43aaab2fb63dd036f20edb978e86d2f9eebca066abae2f1faea33b86a678e401",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 0.14494788925183616,
+          "ConvWeight_1": 0.12029951979247246,
+          "DenseWeight_0": 0.3398199105669641
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.01984737151245336,
+          "ConvWeight_1": 0.021937469890476118,
+          "DenseWeight_0": 0.08064787178479493
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0028768346079271374,
+          "ConvWeight_1": 0.0026390670932861003,
+          "DenseWeight_0": 0.027405752577325
+        },
+        "target_scheme": "legacy"
+      },
+      "role": "baseline_legacy_proposal_exact",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "71f0cf64f30fad9599dd435548d900cc03067c84f80ab4f2fea13f14211e3b54",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 1.1463406748526415,
+        "ConvWeight_1": 0.4589137961235322,
+        "DenseWeight_0": 0.27886641320856775
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 9,
+      "index_within_architecture": 3
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_ours_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/04_ours_sgd_current.json",
+      "config_sha256": "ddda764462f96bafa4471c7cd85a63effbc3a84eacb6296e9891490de5449fb4",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "ConvWeight_1": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.006162791523796401,
+          "ConvWeight_1": 0.007333206025710122,
+          "DenseWeight_0": 0.026860646198426333
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.006162791523796401,
+          "ConvWeight_1": 0.007333206025710122,
+          "DenseWeight_0": 0.026860646198426333
+        },
+        "target_scheme": "ours"
+      },
+      "role": "ours_current",
+      "scheme": "ours",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/02_ours_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "ad36f8ea697fcc303d80570be011261a9d4375de36c7dfe3912192486e03b8ad",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.523358,
+        "ConvWeight_1": 0.246043,
+        "DenseWeight_0": 0.0520201
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 10,
+      "index_within_architecture": 4
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_legacy_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv2/05_legacy_sgd_current.json",
+      "config_sha256": "26d06ae4b817089ea4995fb2553600c9184acb0ff681f01e9b027d8d31c0ee7c",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "ConvWeight_1": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.0028768346079271374,
+          "ConvWeight_1": 0.0026390670932861003,
+          "DenseWeight_0": 0.027405752577325
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0028768346079271374,
+          "ConvWeight_1": 0.0026390670932861003,
+          "DenseWeight_0": 0.027405752577325
+        },
+        "target_scheme": "legacy"
+      },
+      "role": "legacy_current",
+      "scheme": "legacy",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/04_legacy_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "910ac8941acce850f20328308eac4af9d0a17f41eb6fb06c990044216891cb7f",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.00496733,
+        "ConvWeight_1": 0.00367839,
+        "DenseWeight_0": 0.00236044
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 11,
+      "index_within_architecture": 5
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/00_baseline_sgd_current.json",
+      "config_sha256": "57d46c855e67fa70fae23082fa6f7a24ab0bfe66f0c4bcf29352ed4da32e0e5a",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "ConvWeight_1": 1.0,
+          "ConvWeight_2": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.0006556054641313252,
+          "ConvWeight_1": 0.0008241507398236009,
+          "ConvWeight_2": 0.0008950076048284659,
+          "DenseWeight_0": 0.027286645693103014
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0006556054641313252,
+          "ConvWeight_1": 0.0008241507398236009,
+          "ConvWeight_2": 0.0008950076048284659,
+          "DenseWeight_0": 0.027286645693103014
+        },
+        "target_scheme": "baseline"
+      },
+      "role": "baseline_current",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "c1ec06e658fafc7bce7653decfc7e37315745bd99fc5abd341782b847c6140cf",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 2.2203793618679493,
+        "ConvWeight_1": 6.284350813613316,
+        "ConvWeight_2": 4.669784642297713,
+        "DenseWeight_0": 1.1922264543625982
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 12,
+      "index_within_architecture": 0
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_bias_zero_conv3x_stress_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/01_baseline_sgd_conv3x_stress.json",
+      "config_sha256": "556773bb6a04e26f6bc7fa9bfe8cae10d89099942f6177827d4ceb0f7967eb6b",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i * declared_multiplier_i",
+        "kind": "conv_learning_rate_times_three_dense_unchanged_stress",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 3.0,
+          "ConvWeight_1": 3.0,
+          "ConvWeight_2": 3.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.0006556054641313252,
+          "ConvWeight_1": 0.0008241507398236009,
+          "ConvWeight_2": 0.0008950076048284659,
+          "DenseWeight_0": 0.027286645693103014
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.0019668163923939755,
+          "ConvWeight_1": 0.0024724522194708026,
+          "ConvWeight_2": 0.002685022814485398,
+          "DenseWeight_0": 0.027286645693103014
+        },
+        "target_scheme": null
+      },
+      "role": "baseline_conv3x_stress",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "c1ec06e658fafc7bce7653decfc7e37315745bd99fc5abd341782b847c6140cf",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 6.661138085603848,
+        "ConvWeight_1": 18.85305244083995,
+        "ConvWeight_2": 14.009353926893137,
+        "DenseWeight_0": 1.1922264543625982
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 13,
+      "index_within_architecture": 1
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_bias_zero_ours_proposal_exact_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/02_baseline_sgd_ours_proposal_exact.json",
+      "config_sha256": "57cf40c5386bfa902a038ad7b080afc854f83a918a9d96228b0c47cc89b5fc27",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 7.856513334899861,
+          "ConvWeight_1": 9.066467620838619,
+          "ConvWeight_2": 8.90116586610672,
+          "DenseWeight_0": 0.9993290515782757
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.0006556054641313252,
+          "ConvWeight_1": 0.0008241507398236009,
+          "ConvWeight_2": 0.0008950076048284659,
+          "DenseWeight_0": 0.027286645693103014
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.00515077307138097,
+          "ConvWeight_1": 0.00747213599730087,
+          "ConvWeight_2": 0.007966611142005073,
+          "DenseWeight_0": 0.027268337761241077
+        },
+        "target_scheme": "ours"
+      },
+      "role": "baseline_ours_proposal_exact",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "c1ec06e658fafc7bce7653decfc7e37315745bd99fc5abd341782b847c6140cf",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 17.44444006505199,
+        "ConvWeight_1": 56.97686316961596,
+        "ConvWeight_2": 41.566527660089776,
+        "DenseWeight_0": 1.1914265319047057
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 14,
+      "index_within_architecture": 2
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_baseline_sgd_bias_zero_legacy_proposal_exact_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/03_baseline_sgd_legacy_proposal_exact.json",
+      "config_sha256": "6f00fa2fee4f4ae5854a03af08ae348dc9b311bc01fe815035178d864f55af1c",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+        "kind": "exact_fixed_cohort_initial_relative_proposal_match",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 3.0963295561773947,
+          "ConvWeight_1": 3.0451519792342157,
+          "ConvWeight_2": 2.9972135856106297,
+          "DenseWeight_0": 0.3405354525729219
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.0006556054641313252,
+          "ConvWeight_1": 0.0008241507398236009,
+          "ConvWeight_2": 0.0008950076048284659,
+          "DenseWeight_0": 0.027286645693103014
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.002029970575781221,
+          "ConvWeight_1": 0.002509664256561181,
+          "ConvWeight_2": 0.002682528952416708,
+          "DenseWeight_0": 0.009292070240297805
+        },
+        "target_scheme": "legacy"
+      },
+      "role": "baseline_legacy_proposal_exact",
+      "scheme": "baseline",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/00_baseline_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "c1ec06e658fafc7bce7653decfc7e37315745bd99fc5abd341782b847c6140cf",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 6.875026244078034,
+        "ConvWeight_1": 19.136803318276744,
+        "ConvWeight_2": 13.99634197177058,
+        "DenseWeight_0": 0.4059953752057774
+      },
+      "weight_rates_match_parent": false,
+      "global_index": 15,
+      "index_within_architecture": 3
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_ours_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/04_ours_sgd_current.json",
+      "config_sha256": "cfb556a01dbbf494a32f4f0a18b6832ad4c5db1fb9598fbb04a86bcf78c4e19a",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "ConvWeight_1": 1.0,
+          "ConvWeight_2": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.00515077307138097,
+          "ConvWeight_1": 0.00747213599730087,
+          "ConvWeight_2": 0.007966611142005073,
+          "DenseWeight_0": 0.027268337761241077
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.00515077307138097,
+          "ConvWeight_1": 0.00747213599730087,
+          "ConvWeight_2": 0.007966611142005073,
+          "DenseWeight_0": 0.027268337761241077
+        },
+        "target_scheme": "ours"
+      },
+      "role": "ours_current",
+      "scheme": "ours",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/02_ours_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "51b6a77a11f2b8ac06551a2f6054449a5ffccb34e8be01a54f7ce61c22bab5a8",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 3.1300877318089113,
+        "ConvWeight_1": 8.482972347315009,
+        "ConvWeight_2": 6.24175381011778,
+        "DenseWeight_0": 0.17870849773668998
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 16,
+      "index_within_architecture": 4
+    },
+    {
+      "architecture": "conv3",
+      "arm_id": "conv3_legacy_sgd_bias_zero_lr_current_seed0",
+      "config": "configs/conv/perfectdiode_conv123_zero_bias_lr_counterfactual_ordinary_mnist_seed0_20260807_v1/conv3/05_legacy_sgd_current.json",
+      "config_sha256": "076c8c34d05ae638d3ed8c40a0e4c8652dec5031f5fd30c117f0a34e95cb3cba",
+      "epoch_budget": 30,
+      "optimizer": "SGD",
+      "proposal_derivation": {
+        "formula": "eta_i = eta_parent_i",
+        "kind": "published_current_rate_control",
+        "multipliers_by_parameter": {
+          "ConvWeight_0": 1.0,
+          "ConvWeight_1": 1.0,
+          "ConvWeight_2": 1.0,
+          "DenseWeight_0": 1.0
+        },
+        "source_proposals_by_parameter": {
+          "ConvWeight_0": 0.002029970575781221,
+          "ConvWeight_1": 0.002509664256561181,
+          "ConvWeight_2": 0.002682528952416708,
+          "DenseWeight_0": 0.009292070240297805
+        },
+        "target_proposals_by_parameter": {
+          "ConvWeight_0": 0.002029970575781221,
+          "ConvWeight_1": 0.002509664256561181,
+          "ConvWeight_2": 0.002682528952416708,
+          "DenseWeight_0": 0.009292070240297805
+        },
+        "target_scheme": "legacy"
+      },
+      "role": "legacy_current",
+      "scheme": "legacy",
+      "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/04_legacy_sgd_bias_zero_seed0.json",
+      "source_config_sha256": "361effc3a289f8a5466021f9bef3e3c9fe33eb75808a96328bceecca8696e68d",
+      "weight_rates_by_parameter": {
+        "ConvWeight_0": 0.08008038240763024,
+        "ConvWeight_1": 0.17028521248059242,
+        "ConvWeight_2": 0.12192769431164927,
+        "DenseWeight_0": 0.003557075376857609
+      },
+      "weight_rates_match_parent": true,
+      "global_index": 17,
+      "index_within_architecture": 5
+    }
+  ],
+  "created_at": "2026-08-07",
+  "dataset": {
+    "affine_corruption": false,
+    "name": "MNIST",
+    "official_test_read": false,
+    "source_split": "train",
+    "train_validation_split": "deterministic_stratified_55000_5000",
+    "variant": "ordinary"
+  },
+  "diagnostics": {
+    "checkpoint_every_epoch": true,
+    "expected_checkpoint_epochs": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30
+    ],
+    "gradient_trace_samples_per_epoch": 5,
+    "expected_gradient_trace_transitions": 150
+  },
+  "epoch_budget": {
+    "conv1": 30,
+    "conv2": 30,
+    "conv3": 30
+  },
+  "evidence_class": "ordinary_mnist_lr_counterfactual",
+  "launch_plan": {
+    "account": "fmu@v100",
+    "array": "0-17%6",
+    "constraint": "v100-16g",
+    "cpus_per_task": 10,
+    "expected_compute_wall_hours_at_concurrency_six": 7,
+    "expected_gpu_hours_by_architecture": {
+      "conv1": 6,
+      "conv2": 12,
+      "conv3": 24
+    },
+    "expected_gpu_hours_total": 42,
+    "gpus_per_task": 1,
+    "module": "pytorch-gpu/py3/2.5.0",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "remote_result_pattern": "/lustre/fsn1/projects/rech/fmu/$USER/server_code/results/perfectdiode-conv123-zero-bias-lr-counterfactual-ordinary-mnist-seed0-20260807-v1",
+    "status": "prepared_not_submitted",
+    "target": "jean-zay",
+    "time_limit": "06:00:00",
+    "wrapper": "experiments/run_conv123_zero_bias_lr_counterfactual_jeanzay.slurm"
+  },
+  "ordered_config_set_sha256": "fef39c6899821ab187839415947a4869dbe04f16fd59458b2d475fce510b1f01",
+  "paper_facing": false,
+  "proposal_measurement": {
+    "checkpoint_role": "initialization",
+    "bptt_gradient_batches": 2,
+    "cohort_sha256": "a9b8b890b187fb5023fa93ce6fe754229ad94b083d33670857d05df1f8d28074",
+    "cohort_examples": 128,
+    "formula": "eta_baseline_to_target_i = eta_baseline_i * proposal_target_i / proposal_baseline_i",
+    "gradient_summary": {
+      "path": "results/perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1/analysis/mechanism/gradient_summary.csv",
+      "sha256": "0519ea3125f4bee5c57b4429f5cfc2fff2b65b9278f61cdb63106133b51d5848"
+    },
+    "metric": "lr_times_gradient_over_parameter_rms_median",
+    "performance_metrics_used_for_rate_derivation": false,
+    "replay_receipt": {
+      "path": "results/perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1/analysis/mechanism/mechanism_replay_receipt.json",
+      "sha256": "3bc1d09ec6101dfd05309f358796434a9a5b3535cdac440821d13072e1f12fb6"
+    },
+    "values_frozen_in_generator": true
+  },
+  "proposal_match_limitations": [
+    "Matches only per-weight initialization RMS proposal magnitudes on the frozen cohort.",
+    "Does not match gradient direction or coordinate distributions.",
+    "Does not match output scaling or the later optimizer trajectory.",
+    "Does not establish global learning-rate optimality."
+  ],
+  "promotion_rules_by_architecture": {
+    "conv1": {
+      "baseline_candidates": [
+        "conv1_baseline_sgd_bias_zero_lr_current_seed0",
+        "conv1_baseline_sgd_bias_zero_conv3x_stress_seed0",
+        "conv1_baseline_sgd_bias_zero_ours_proposal_exact_seed0",
+        "conv1_baseline_sgd_bias_zero_legacy_proposal_exact_seed0"
+      ],
+      "eligibility": "exactly 30 completed epochs; finite metrics; complete 31-entry model/optimizer checkpoint series; complete 150-transition gradient trace; exact-zero configured and checkpoint biases; validated result bundle; official_test_read=false",
+      "primary_metric": "mean_validation_loss_epochs_26_through_30",
+      "relative_loss_plateau": 0.02,
+      "tie_breaks": [
+        "higher_mean_validation_accuracy_epochs_26_through_30",
+        "lower_maximum_target_conv_proposal",
+        "lower_sum_target_weight_proposals",
+        "lower_target_dense_proposal",
+        "arm_id"
+      ]
+    },
+    "conv2": {
+      "baseline_candidates": [
+        "conv2_baseline_sgd_bias_zero_lr_current_seed0",
+        "conv2_baseline_sgd_bias_zero_conv3x_stress_seed0",
+        "conv2_baseline_sgd_bias_zero_ours_proposal_exact_seed0",
+        "conv2_baseline_sgd_bias_zero_legacy_proposal_exact_seed0"
+      ],
+      "eligibility": "exactly 30 completed epochs; finite metrics; complete 31-entry model/optimizer checkpoint series; complete 150-transition gradient trace; exact-zero configured and checkpoint biases; validated result bundle; official_test_read=false",
+      "primary_metric": "mean_validation_loss_epochs_26_through_30",
+      "relative_loss_plateau": 0.02,
+      "tie_breaks": [
+        "higher_mean_validation_accuracy_epochs_26_through_30",
+        "lower_maximum_target_conv_proposal",
+        "lower_sum_target_weight_proposals",
+        "lower_target_dense_proposal",
+        "arm_id"
+      ]
+    },
+    "conv3": {
+      "baseline_candidates": [
+        "conv3_baseline_sgd_bias_zero_lr_current_seed0",
+        "conv3_baseline_sgd_bias_zero_conv3x_stress_seed0",
+        "conv3_baseline_sgd_bias_zero_ours_proposal_exact_seed0",
+        "conv3_baseline_sgd_bias_zero_legacy_proposal_exact_seed0"
+      ],
+      "eligibility": "exactly 30 completed epochs; finite metrics; complete 31-entry model/optimizer checkpoint series; complete 150-transition gradient trace; exact-zero configured and checkpoint biases; validated result bundle; official_test_read=false",
+      "primary_metric": "mean_validation_loss_epochs_26_through_30",
+      "relative_loss_plateau": 0.02,
+      "tie_breaks": [
+        "higher_mean_validation_accuracy_epochs_26_through_30",
+        "lower_maximum_target_conv_proposal",
+        "lower_sum_target_weight_proposals",
+        "lower_target_dense_proposal",
+        "arm_id"
+      ]
+    }
+  },
+  "promotion_use": "Freeze each architecture's selected baseline vector before a new deterministic medium-affine zero-bias confirmation; never report ordinary-MNIST accuracy as paper evidence.",
+  "schema_version": "perfectdiode-conv123-zero-bias-lr-counterfactual-study/v1",
+  "scientific_question": "Over a full 30-epoch budget, can baseline SGD match the zero-bias optimization of ours or legacy after exact per-weight proposal matching, and how does that intervention depend on Conv depth?",
+  "study_id": "perfectdiode-conv123-zero-bias-lr-counterfactual-ordinary-mnist-seed0-20260807-v1",
+  "weight_contract": {
+    "projection": [
+      0.0,
+      100.0
+    ]
+  }
+}
