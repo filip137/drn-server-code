@@ -1,0 +1,306 @@
+{
+  "arm_id": "conv1_wmax_1em3_ours_adam_seed0_ordinary_mnist",
+  "authorization": {
+    "authorized_at": "2026-08-06",
+    "authorized_by": "Filip",
+    "conv3_baseline_K": 8,
+    "conv3_baseline_T": 12,
+    "dataset": "ordinary_mnist_train_validation",
+    "fixed_learning_rates_unchanged": true,
+    "safety_rechecks_required": false,
+    "scope": "all_36_predeclared_ordinary_mnist_surfaces",
+    "selection_policy": "v3_current_selected_else_v2_current_handoff",
+    "source_authorization_token": "filip-current-rho-t12-20260806-v1",
+    "token": "filip-current-rho-t12-ordinary-mnist-20260806-v1",
+    "waived_gates": [
+      "new_rho_search",
+      "new_tk_search",
+      "all_36_post_selection_replay_allowlist"
+    ]
+  },
+  "batch_state_policy": "reset_each_batch",
+  "beta": 1.0,
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "params": {
+        "affine_config": null,
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "num_workers": 0,
+        "pin_memory": false,
+        "root": "/lustre/fsn1/projects/rech/umg/ucy17uy/datasets/mnist",
+        "shuffle_seed": 0,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "epoch_split": "validation",
+    "inclusion_rule": "Include every predeclared ordinary-MNIST diagnostic arm completing the exact epoch budget with finite metrics and verified artifacts; keep the official MNIST test split unread, retry only unchanged operational failures, and never exclude by outcome.",
+    "official_test": {
+      "policy": "disabled"
+    }
+  },
+  "handoff": {
+    "bias_amplification_scaling": "(current_amp/voltage_amp)^zero_based_layer_index",
+    "bias_constraint": "signed_unclamped",
+    "bias_rho_multiplier": 9.0,
+    "bias_rho_range_status": {
+      "classification": "bracketed",
+      "expansion_waves": 0,
+      "grid_expanded": false,
+      "lower_edge": false,
+      "plateau_edge_classification": "spans_both_edges",
+      "terminal_range_label_explicit": false,
+      "upper_edge": false
+    },
+    "fixed_weight_learning_rates": {
+      "ConvWeight_0": 6.054587142218743e-08,
+      "DenseWeight_0": 6.08565526037015e-07
+    },
+    "id": "perfectdiode-signed-scaled-bias-current-rho-t12-conv123-seed0-20260806-v1",
+    "official_test_read": false,
+    "operating_point": {
+      "K": 4,
+      "T": 4
+    },
+    "ordinary_mnist_long_run": {
+      "all_learning_rates_unchanged": true,
+      "bias_semantics": "signed_unclamped_with_(current_amp/voltage_amp)^zero_based_layer_index_scaling",
+      "dataset_variant": "ordinary_mnist_train_validation",
+      "official_test_read": false,
+      "operating_point_unchanged": true,
+      "source_config": "configs/conv/paper_medium_affine_signed_scaled_bias_current_rho_t12_seed0_20260806_v1/conv1/03_bounded_ours_adam_seed0.json",
+      "source_config_sha256": "86a20dd9cd1e550249509d22512f9af94a4e850b99a6b2626a3b8851f8c84b87",
+      "study_role": "long_optimization_diagnostic_not_paper_evidence",
+      "user_authorization": {
+        "authorized_at": "2026-08-06",
+        "authorized_by": "Filip",
+        "conv3_baseline_K": 8,
+        "conv3_baseline_T": 12,
+        "dataset": "ordinary_mnist_train_validation",
+        "fixed_learning_rates_unchanged": true,
+        "safety_rechecks_required": false,
+        "scope": "all_36_predeclared_ordinary_mnist_surfaces",
+        "selection_policy": "v3_current_selected_else_v2_current_handoff",
+        "source_authorization_token": "filip-current-rho-t12-20260806-v1",
+        "token": "filip-current-rho-t12-ordinary-mnist-20260806-v1",
+        "waived_gates": [
+          "new_rho_search",
+          "new_tk_search",
+          "all_36_post_selection_replay_allowlist"
+        ]
+      }
+    },
+    "rho_bias": 0.009000000000000001,
+    "selection_source": {
+      "artifact": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/perfectdiode-signed-scaled-bias-conv123-seed0-20260731-v3/surfaces/bounded__conv1__ours__adam/selection.json",
+      "artifact_sha256": "77ea3c81e835a0980fcb6ddf10e310bf0437a561133b205ddc05ee1db9c4d5bf",
+      "final_eligible_before_tk_gates": true,
+      "kind": "v3_current_selection",
+      "selected_candidate_sha256": "ea371fea5648216c21eea3496ac18aba3cca38df39d39e36a50251c664d42450",
+      "selection_status": "selected_accuracy_passing_bracketed",
+      "study_id": "perfectdiode-signed-scaled-bias-conv123-seed0-20260731-v3"
+    },
+    "source": "user_authorized_current_rho_selection",
+    "surface_id": "bounded__conv1__ours__adam",
+    "user_authorization": {
+      "authorized_at": "2026-08-06",
+      "authorized_by": "Filip",
+      "conv3_baseline_K": 8,
+      "conv3_baseline_T": 12,
+      "safety_rechecks_required": false,
+      "scope": "all_36_predeclared_surfaces",
+      "selection_policy": "v3_current_selected_else_v2_current_handoff",
+      "token": "filip-current-rho-t12-20260806-v1",
+      "waived_gates": [
+        "new_rho_search",
+        "new_tk_search",
+        "all_36_post_selection_replay_allowlist"
+      ]
+    }
+  },
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 10,
+    "model_key": "mnist_bp_conv_amp"
+  },
+  "learning_rates_by_parameter": {
+    "Bias_0": 6.013940871164626e-07,
+    "ConvWeight_0": 6.054587142218743e-08,
+    "DenseWeight_0": 6.08565526037015e-07
+  },
+  "log_interval": 500,
+  "lr": [
+    6.054587142218743e-08,
+    6.08565526037015e-07,
+    6.013940871164626e-07
+  ],
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 40.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 4,
+    "num_iterations_training": 4,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 4.0,
+    "weight_init_mode": "bounded_uniform",
+    "weight_max": 0.001,
+    "weight_min": 1e-05
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "amsgrad": false,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "capturable": false,
+    "differentiable": false,
+    "eps": 1e-08,
+    "foreach": false,
+    "fused": false,
+    "learning_rate": [
+      6.054587142218743e-08,
+      6.08565526037015e-07,
+      6.013940871164626e-07
+    ],
+    "lr_decay": 1.0,
+    "maximize": false,
+    "momentum": 0.0,
+    "name": "Adam",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "DenseWeight_0",
+    "Bias_0"
+  ],
+  "reporting": {
+    "arm_id": "conv1_wmax_1em3_ours_adam_seed0_ordinary_mnist",
+    "evidence_class": "ordinary_mnist_bounded_wmax_sensitivity",
+    "paper_facing": false,
+    "study_id": "perfectdiode-bounded-wmax-sweep-signed-scaled-bias-conv123-seed0-20260809-v1"
+  },
+  "schema_version": "mnist-conv-paper-exact-run/v1",
+  "seed": 0,
+  "study_id": "perfectdiode-bounded-wmax-sweep-signed-scaled-bias-conv123-seed0-20260809-v1",
+  "training_algorithm": "BP",
+  "wmax_sweep": {
+    "changed_scientific_fields": [
+      "model_base.weight_max"
+    ],
+    "fixed_learning_rates_unchanged": true,
+    "fixed_science_sha256": "9caa8f997ee5e10784ec77470d51cf8f2d1635748c44359d36d04dd01a89d0a7",
+    "initialization_policy": {
+      "checkpoint_reused": false,
+      "description": "Rebuild bounded_uniform with the unchanged seed and parameter construction order so matched RNG quantiles map into each tested [weight_min,weight_max] interval.",
+      "initializer": "bounded_uniform",
+      "matched_random_quantiles": true,
+      "seed": 0
+    },
+    "parent": {
+      "config_path": "configs/conv/ordinary_mnist_signed_scaled_bias_current_rho_t12_seed0_20260806_v1/conv1/03_bounded_ours_adam_seed0.json",
+      "config_sha256": "4e614d50139c44c9150ee1c74b19749d88d8b1514014b1a832c0041d1a419ede",
+      "source_commit": "08dd52e44818adf43b011542748e140dc0e01aeb"
+    },
+    "scientific_role": "whole_bounded_contract_sensitivity_not_new_learning_rate_selection",
+    "user_request_date": "2026-08-09",
+    "weight_max": 0.001,
+    "weight_min": 1e-05,
+    "weight_range_ratio": 100.0
+  }
+}
