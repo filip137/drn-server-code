@@ -376,6 +376,35 @@ def test_sustained_gradient_growth_rejects_after_warmup() -> None:
     }
 
 
+def test_diagnostics_only_monitor_never_applies_scientific_rejections() -> None:
+    parameter = FakeParameter(
+        "ConvWeight_0",
+        torch.full((4,), 5.5e-5),
+        min_cond=1e-5,
+        max_cond=1e-4,
+    )
+    monitor = TrainingSafetyMonitor(
+        bound_occupancy_increase_maximum=0.0,
+        projection_efficiency_minimum=1.0,
+        rejections_enabled=False,
+    )
+
+    for step in range(64):
+        monitor(
+            _safety_batch(
+                parameter,
+                gradient=1.0 if step < 32 else 1e6,
+                proposed=1.0,
+                applied=1e-4,
+            )
+        )
+
+    result = monitor.summary()
+    assert result["safety_failure"] is None
+    assert result["terminal_gates"]["scientific_rejections_enabled"] is False
+    assert result["report_only_diagnostics"]["used_for_rejection"] is False
+
+
 def test_derive_learning_rates_applies_bias_q90_cap() -> None:
     probe = {
         "status": "complete",
@@ -507,8 +536,16 @@ def test_cell_signature_changes_with_science_and_probe() -> None:
     probe = {"normalization_unit_by_weight": {"ConvWeight_0": 1.0}}
     signature = _cell_signature(resolved, probe, 0.001, 0.01)
 
+    assert signature["evidence_class"] == "ordinary_mnist_selection"
+    assert signature["restart_interrupted_cells"] is False
     changed = dict(resolved, optimizer="Adam")
     assert _cell_signature(changed, probe, 0.001, 0.01) != signature
+    assert _cell_signature(
+        dict(resolved, evidence_class="ordinary_mnist_exploratory"),
+        probe,
+        0.001,
+        0.01,
+    ) != signature
     assert _cell_signature(
         resolved,
         {"normalization_unit_by_weight": {"ConvWeight_0": 2.0}},
@@ -791,7 +828,8 @@ def test_post_candidate_gate_precedes_canonical_completion_and_is_indexed(
         target="main",
         probe_only=False,
         canary_only=False,
-        canary_steps=1,
+        canary_steps=0,
+        skip_canary=True,
         expected_candidate_steps=1,
         minimum_validation_accuracy=0.9,
         safety_warmup_steps=32,
@@ -803,6 +841,7 @@ def test_post_candidate_gate_precedes_canonical_completion_and_is_indexed(
         safety_projection_efficiency_minimum=None,
         safety_zero_proposal_epsilon=1e-30,
         safety_boundary_persistence=16,
+        disable_safety_rejections=True,
         index=None,
         collect_only=False,
         force=False,
@@ -830,8 +869,12 @@ def test_post_candidate_gate_precedes_canonical_completion_and_is_indexed(
     cell = json.loads((cell_dir / "cell.json").read_text(encoding="utf-8"))
     canonical = json.loads((cell_dir / "result.json").read_text(encoding="utf-8"))
     assert cell["status"] == expected_status
+    assert json.loads((cell_dir / "canary.json").read_text(encoding="utf-8"))[
+        "status"
+    ] == "skipped"
     assert cell["selection_eligible"] is expected_eligible
     assert canonical["completion"]["criteria_met"] is expected_eligible
+    assert canonical["evidence_class"] == "ordinary_mnist_selection"
     assert canonical["completion"]["post_training_tk_admissible"] is gate_passed
     assert canonical["completion"]["post_candidate_gate"] == cell[
         "post_candidate_gate"
@@ -850,6 +893,207 @@ def test_post_candidate_gate_precedes_canonical_completion_and_is_indexed(
     resumed = run(args)
     assert resumed["status"] == "complete"
     assert len(checkpoint_flags) == call_count
+
+
+def test_interrupted_cell_restart_preserves_attempt_and_completes_exploratory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "source.json"
+    config_path.write_text(json.dumps(_base_config()), encoding="utf-8")
+    output = tmp_path / "rho"
+    candidate_calls = 0
+
+    monkeypatch.setattr(
+        rho_module,
+        "_git_state",
+        lambda: {
+            "commit": "a" * 40,
+            "dirty": False,
+            "working_tree_sha256": "b" * 64,
+        },
+    )
+
+    def fake_trainer(
+        config,
+        output_dir,
+        *,
+        device,
+        gradient_callback=None,
+        optimizer_step_callback=None,
+        apply_optimizer_steps=True,
+        reporting_run_dir=None,
+        checkpoint_every_epoch=False,
+    ):
+        nonlocal candidate_calls
+        del config, device, apply_optimizer_steps, reporting_run_dir
+        del checkpoint_every_epoch
+        root = Path(output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        parameters = (
+            FakeParameter("ConvWeight_0", torch.ones(4), 1e-5, 1e-4),
+            FakeParameter("DenseWeight_0", torch.ones(4), 1e-5, 1e-4),
+            FakeParameter("Bias_0", torch.zeros(4), 1e-5, 1e-4),
+        )
+        gradients = (torch.ones(4), torch.ones(4), torch.ones(4))
+        if gradient_callback is not None:
+            for _ in range(2):
+                gradient_callback(
+                    {"parameters": parameters, "gradients": gradients}
+                )
+        if optimizer_step_callback is not None:
+            candidate_calls += 1
+            optimizer_step_callback(
+                {
+                    "loss": 1.0,
+                    "parameters": parameters,
+                    "gradients": gradients,
+                    "pre_optimizer_states": {
+                        parameter.name: parameter.state.clone()
+                        for parameter in parameters
+                    },
+                    "post_optimizer_states": {
+                        parameter.name: parameter.state.clone()
+                        for parameter in parameters
+                    },
+                    "post_projection_states": {
+                        parameter.name: parameter.state.clone()
+                        for parameter in parameters
+                    },
+                }
+            )
+            if candidate_calls == 1:
+                (root / "partial_marker.txt").write_text(
+                    "preserve this interrupted attempt\n", encoding="utf-8"
+                )
+                raise OSError("simulated worker interruption")
+        (root / "best_model.pt").write_bytes(b"best")
+        (root / "final_model.pt").write_bytes(b"final")
+        rho_module._write_json(
+            root / "metrics.json",
+            {
+                "dataset_provenance": {"split": "train_validation"},
+                "final_test_accuracy": 0.95,
+                "final_test_loss": 0.1,
+                "best_test_accuracy": 0.95,
+                "final_train_accuracy": 0.9,
+                "final_train_loss": 0.2,
+                "best_train_accuracy": 0.9,
+            },
+        )
+        return {}
+
+    monkeypatch.setattr(rho_module, "_run_trainer", fake_trainer)
+    args = Namespace(
+        config=str(config_path),
+        output_root=str(output),
+        rho_conv=[0.001],
+        rho_dense=[0.01],
+        optimizer="SGD",
+        evidence_class="ordinary_mnist_exploratory",
+        bias_policy="q90_cap",
+        probe_batches=[2],
+        stability_tolerance=0.1,
+        epochs=1,
+        checkpoint_every_epoch=False,
+        post_candidate_gate_name=None,
+        post_candidate_callback=None,
+        max_batches=1,
+        max_validation_batches=1,
+        validation_batch_size=64,
+        split_seed=0,
+        shuffle_seed=0,
+        device="cpu",
+        study_id="interrupted-restart-test",
+        target="main",
+        probe_only=False,
+        canary_only=False,
+        canary_steps=0,
+        skip_canary=True,
+        restart_interrupted_cells=True,
+        expected_candidate_steps=1,
+        minimum_validation_accuracy=0.0,
+        safety_warmup_steps=32,
+        safety_ema_decay=0.98,
+        safety_loss_factor=4.0,
+        safety_gradient_factor=100.0,
+        safety_persistence=8,
+        safety_bound_occupancy_increase_maximum=None,
+        safety_projection_efficiency_minimum=None,
+        safety_zero_proposal_epsilon=1e-30,
+        safety_boundary_persistence=16,
+        disable_safety_rejections=True,
+        index=None,
+        collect_only=False,
+        force=False,
+        dry_run=False,
+        reporting_command={"test": "interrupted_restart"},
+    )
+
+    with pytest.raises(OSError, match="simulated worker interruption"):
+        run(args)
+    cell_dir = next((output / "cells").iterdir())
+    cell_path = cell_dir / "cell.json"
+    failed_cell = json.loads(cell_path.read_text(encoding="utf-8"))
+    source_config_before = (cell_dir / "source_config.json").read_bytes()
+    entries_before = {path.name for path in cell_dir.iterdir()}
+    assert json.loads((cell_dir / "status.json").read_text(encoding="utf-8"))[
+        "state"
+    ] == "failed"
+
+    mismatched = dict(failed_cell)
+    mismatched["signature"] = dict(failed_cell["signature"], rho_conv=0.003)
+    rho_module._write_json(cell_path, mismatched)
+    with pytest.raises(RuntimeError, match="signature does not match"):
+        run(args)
+    assert not (cell_dir / "recovery_attempts").exists()
+    rho_module._write_json(cell_path, failed_cell)
+
+    completed = run(args)
+    assert completed["status"] == "complete"
+    attempt_dir = cell_dir / "recovery_attempts" / "attempt_001"
+    assert attempt_dir.is_dir()
+    assert entries_before <= {path.name for path in attempt_dir.iterdir()}
+    assert (attempt_dir / "partial_marker.txt").read_text(encoding="utf-8") == (
+        "preserve this interrupted attempt\n"
+    )
+    assert (attempt_dir / "source_config.json").read_bytes() == source_config_before
+    assert json.loads((attempt_dir / "cell.json").read_text(encoding="utf-8"))[
+        "status"
+    ] == "failed"
+    assert json.loads((attempt_dir / "status.json").read_text(encoding="utf-8"))[
+        "state"
+    ] == "failed"
+    receipt = json.loads((attempt_dir / "recovery.json").read_text(encoding="utf-8"))
+    assert receipt["restart_mode"] == "clean_from_exact_initializer"
+    assert receipt["archived_entries"] == sorted(entries_before)
+
+    resolved = json.loads((output / "resolved.json").read_text(encoding="utf-8"))
+    current_cell = json.loads(cell_path.read_text(encoding="utf-8"))
+    manifest = json.loads((cell_dir / "manifest.json").read_text(encoding="utf-8"))
+    result = json.loads((cell_dir / "result.json").read_text(encoding="utf-8"))
+    assert resolved["evidence_class"] == "ordinary_mnist_exploratory"
+    assert resolved["restart_interrupted_cells"] is True
+    assert current_cell["signature"]["evidence_class"] == (
+        "ordinary_mnist_exploratory"
+    )
+    assert current_cell["signature"]["restart_interrupted_cells"] is True
+    assert current_cell["recovery"]["path"] == "recovery_attempts/attempt_001"
+    assert manifest["evidence_class"] == "ordinary_mnist_exploratory"
+    assert result["evidence_class"] == "ordinary_mnist_exploratory"
+    assert any(
+        record["role"] == "interrupted_attempt_receipt"
+        for record in manifest["inputs"]
+    )
+    assert (cell_dir / "source_config.json").read_bytes() == source_config_before
+
+    calls_after_completion = candidate_calls
+    reused = run(args)
+    assert reused["status"] == "complete"
+    assert candidate_calls == calls_after_completion
+    assert sorted(path.name for path in (cell_dir / "recovery_attempts").iterdir()) == [
+        "attempt_001"
+    ]
 
 
 @pytest.mark.parametrize("value", [0.0, -1.0, float("nan")])

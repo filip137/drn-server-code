@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import subprocess
 from itertools import product
@@ -48,6 +49,10 @@ def _assert_common_contract(text: str) -> None:
         "PDBLR_RESULT_ROOT",
         "PDBLR_DATASET_ROOT",
         "PDBLR_ENVIRONMENT_ID",
+        "PDBLR_STUDY_ID",
+        "PDBLR_STUDY_CONFIG_RELATIVE",
+        "PDBLR_EXPECTED_SURFACE_COUNT",
+        "PDBLR_TRANSPORT_RECEIPT_SCHEMA",
         "PDBLR_STUDY_CONFIG_SHA256",
         "EXPERIMENT_SOURCE_COMMIT",
         "EXPERIMENT_SOURCE_ARCHIVE_SHA256",
@@ -84,6 +89,7 @@ def _assert_common_contract(text: str) -> None:
     assert 'Path(conv3_post_training_tk_validation["selected_run_dir"])' in text
     assert "PDBLR_SEMANTIC_PASS" in text
     assert "transport-receipt/v1" in text
+    assert '"schema_version": transport_receipt_schema' in text
     assert "official_test_read" in text
     assert "EXPECTED_SOURCE_COMMIT" not in text
     assert not re.search(r"\b[0-9a-f]{40}\b", text)
@@ -119,14 +125,16 @@ def test_local_transport_is_sequential_and_range_bounded() -> None:
     _assert_common_contract(text)
     assert "PDBLR_START_INDEX" in text
     assert "PDBLR_END_INDEX" in text
-    assert "END_INDEX >= 18" in text
+    assert 'PDBLR_EXPECTED_SURFACE_COUNT="${PDBLR_EXPECTED_SURFACE_COUNT:-18}"' in text
+    assert "END_INDEX >= EXPECTED_SURFACE_COUNT" in text
+    assert 'surface_count != expected_surface_count' in text
     assert "for (( index=START_INDEX; index<=END_INDEX; index++ ))" in text
     assert 'OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/${PDBLR_TARGET}"' in text
     assert '--target "${PDBLR_TARGET}"' in text
     assert "--smoke" not in text
 
 
-def test_jean_zay_transport_has_exact_resource_and_pair_contract() -> None:
+def test_jean_zay_transport_has_exact_resource_and_surface_mapping_contract() -> None:
     text = _read(JEAN_ZAY_WRAPPER)
     _assert_common_contract(text)
     expected_directives = {
@@ -140,12 +148,23 @@ def test_jean_zay_transport_has_exact_resource_and_pair_contract() -> None:
     }
     assert expected_directives <= set(text.splitlines())
     assert 'MODULE_ID="pytorch-gpu/py3/2.5.0"' in text
-    assert "PAIR_START=$((12 + 2 * SLURM_ARRAY_TASK_ID))" in text
-    assert "PAIR_END=$((PAIR_START + 1))" in text
-    assert "for (( index=PAIR_START; index<=PAIR_END; index++ ))" in text
+    assert 'PDBLR_EXPECTED_SURFACE_COUNT="${PDBLR_EXPECTED_SURFACE_COUNT:-18}"' in text
+    assert 'PDBLR_SURFACE_OFFSET="${PDBLR_SURFACE_OFFSET:-12}"' in text
+    assert 'PDBLR_SURFACES_PER_TASK="${PDBLR_SURFACES_PER_TASK:-2}"' in text
+    assert 'PDBLR_ISOLATE_TASK_SHARDS="${PDBLR_ISOLATE_TASK_SHARDS:-0}"' in text
+    assert "SURFACE_START=$((SURFACE_OFFSET + SURFACES_PER_TASK * SLURM_ARRAY_TASK_ID))" in text
+    assert "SURFACE_END=$((SURFACE_START + SURFACES_PER_TASK - 1))" in text
+    assert "for (( index=SURFACE_START; index<=SURFACE_END; index++ ))" in text
     assert (
         'OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay"'
     ) in text
+    assert (
+        'OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay-task_${SLURM_ARRAY_TASK_ID}"'
+    ) in text
+    assert (
+        'RECEIPT_ROOT="${PDBLR_RESULT_ROOT}/transport_receipts/jean-zay-task_${SLURM_ARRAY_TASK_ID}"'
+    ) in text
+    assert 'surface_count != expected_surface_count' in text
     assert '--target "${TARGET}"' in text
     assert 'TARGET="jean-zay"' in text
     assert '"V100" not in device_name.upper()' in text
@@ -170,3 +189,92 @@ def test_jean_zay_transport_has_exact_resource_and_pair_contract() -> None:
         [("conv3", "ours", "SGD"), ("conv3", "ours", "Adam")],
         [("conv3", "legacy", "SGD"), ("conv3", "legacy", "Adam")],
     ]
+
+
+def _mapping_trace(
+    tmp_path: Path,
+    *,
+    task_id: int,
+    surface_count: int | None = None,
+    surface_offset: int | None = None,
+    surfaces_per_task: int | None = None,
+    isolate: bool | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "PDBLR_SOURCE_ROOT": str(tmp_path / "missing-source"),
+            "PDBLR_SOURCE_ARCHIVE": str(tmp_path / "missing-source.tar.gz"),
+            "PDBLR_RESULT_ROOT": str(tmp_path / "results"),
+            "PDBLR_DATASET_ROOT": str(tmp_path / "mnist"),
+            "PDBLR_ENVIRONMENT_ID": "test-jz-v100-32g",
+            "PDBLR_STUDY_CONFIG_SHA256": "0" * 64,
+            "EXPERIMENT_SOURCE_COMMIT": "0" * 40,
+            "EXPERIMENT_SOURCE_ARCHIVE_SHA256": "0" * 64,
+            "SLURM_ARRAY_TASK_ID": str(task_id),
+        }
+    )
+    if surface_count is not None:
+        env["PDBLR_EXPECTED_SURFACE_COUNT"] = str(surface_count)
+    if surface_offset is not None:
+        env["PDBLR_SURFACE_OFFSET"] = str(surface_offset)
+    if surfaces_per_task is not None:
+        env["PDBLR_SURFACES_PER_TASK"] = str(surfaces_per_task)
+    if isolate is not None:
+        env["PDBLR_ISOLATE_TASK_SHARDS"] = "1" if isolate else "0"
+    task_count = (
+        (surface_count - surface_offset) // surfaces_per_task
+        if None not in (surface_count, surface_offset, surfaces_per_task)
+        else 3
+    )
+    env.update(
+        {
+            "SLURM_ARRAY_TASK_COUNT": str(task_count),
+            "SLURM_ARRAY_TASK_MIN": "0",
+            "SLURM_ARRAY_TASK_MAX": str(task_count - 1),
+        }
+    )
+    return subprocess.run(
+        ["bash", "-x", str(JEAN_ZAY_WRAPPER)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_jean_zay_default_mapping_is_backward_compatible(tmp_path: Path) -> None:
+    result = _mapping_trace(tmp_path, task_id=2)
+    assert result.returncode == 3
+    assert "+ SURFACE_START=16" in result.stderr
+    assert "+ SURFACE_END=17" in result.stderr
+    assert f"+ OUTPUT_ROOT={tmp_path}/results/shards/jean-zay" in result.stderr
+    assert (
+        f"+ RECEIPT_ROOT={tmp_path}/results/transport_receipts/jean-zay/task_2"
+        in result.stderr
+    )
+
+
+def test_jean_zay_conv3_only_mapping_uses_isolated_task_shards(
+    tmp_path: Path,
+) -> None:
+    for task_id, expected_surface in ((0, 4), (1, 5)):
+        result = _mapping_trace(
+            tmp_path,
+            task_id=task_id,
+            surface_count=6,
+            surface_offset=4,
+            surfaces_per_task=1,
+            isolate=True,
+        )
+        assert result.returncode == 3
+        assert f"+ SURFACE_START={expected_surface}" in result.stderr
+        assert f"+ SURFACE_END={expected_surface}" in result.stderr
+        assert (
+            f"+ OUTPUT_ROOT={tmp_path}/results/shards/jean-zay-task_{task_id}"
+            in result.stderr
+        )
+        assert (
+            f"+ RECEIPT_ROOT={tmp_path}/results/transport_receipts/jean-zay-task_{task_id}"
+            in result.stderr
+        )

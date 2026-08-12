@@ -18,6 +18,15 @@ STUDY_PATH = (
     / "conv"
     / "perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json"
 )
+CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH = (
+    REPO_ROOT
+    / "configs"
+    / "conv"
+    / "perfectdiode_bounded_uniform_zero_bias_lr_search_conv3_occupancy_report_only_seed0_20260811_v1.json"
+)
+EXPECTED_CONV3_INITIALIZER_SHA256 = (
+    "8ebe9dd916e1e9299c31053e2bb37b4f5121f8322f26af7746a92875e555438f"
+)
 
 
 def test_study_declares_exact_eighteen_zero_bias_surfaces() -> None:
@@ -44,6 +53,157 @@ def test_study_declares_exact_eighteen_zero_bias_surfaces() -> None:
     }
     assert study["rho_search"]["bias_policy"] == "zero"
     assert study["rho_search"]["select_best_safe_below_accuracy"] is False
+
+
+def test_conv3_occupancy_report_only_successor_has_exact_six_surface_order() -> None:
+    _path, study = runner.load_study(CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH)
+    surfaces = runner.surface_specs(study)
+
+    assert [row["surface_id"] for row in surfaces] == [
+        "bounded_uniform__conv3__baseline__sgd",
+        "bounded_uniform__conv3__baseline__adam",
+        "bounded_uniform__conv3__ours__sgd",
+        "bounded_uniform__conv3__ours__adam",
+        "bounded_uniform__conv3__legacy__sgd",
+        "bounded_uniform__conv3__legacy__adam",
+    ]
+    assert study["scope"]["excluded"] == ["conv1", "conv2"]
+    assert study["initialization_reference"] == {
+        "source_study_id": study["parent_study_id"],
+        "checkpoint_sha256_by_architecture": {
+            "conv3": EXPECTED_CONV3_INITIALIZER_SHA256,
+        },
+    }
+    assert runner._artifact_schema(study, "surface") == (
+        "perfectdiode-conv3-bounded-uniform-zero-bias-rho-surface/v1"
+    )
+
+
+def test_conv3_successor_changes_only_scope_and_occupancy_rejection() -> None:
+    _parent_path, parent = runner.load_study(STUDY_PATH)
+    _successor_path, successor = runner.load_study(
+        CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH
+    )
+
+    assert successor["dataset"] == parent["dataset"]
+    assert successor["model"] == parent["model"]
+    assert successor["bias_contract"] == parent["bias_contract"]
+    assert successor["fixed_tk_security"] == parent["fixed_tk_security"]
+
+    expected_search = json.loads(json.dumps(parent["rho_search"]))
+    expected_search["core_policy_by_surface"] = {
+        key: value
+        for key, value in expected_search["core_policy_by_surface"].items()
+        if key.startswith("conv3__")
+    }
+    del expected_search["safety_by_architecture"]["conv3"][
+        "bound_occupancy_increase_maximum"
+    ]
+    assert successor["rho_search"] == expected_search
+
+
+def test_conv3_successor_keeps_zero_bias_grids_and_nonoccupancy_gates(
+    tmp_path: Path,
+) -> None:
+    _path, study = runner.load_study(CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH)
+    surfaces = runner.surface_specs(study)
+    baseline = surfaces[0]
+    legacy = surfaces[4]
+
+    baseline_search = runner._surface_search(study, baseline)
+    legacy_search = runner._surface_search(study, legacy)
+    baseline_conv, baseline_dense = runner._rho_axes(study, baseline)
+    legacy_conv, legacy_dense = runner._rho_axes(study, legacy)
+    args = runner._rho_args(
+        study,
+        baseline,
+        tmp_path / "source.json",
+        tmp_path / "rho",
+        baseline_conv,
+        baseline_dense,
+        device="cuda",
+        target="main",
+        index=None,
+    )
+    source = runner.build_source_config(
+        study,
+        initializer="bounded_uniform",
+        architecture="conv3",
+        scheme="baseline",
+        optimizer="SGD",
+        init_checkpoint_path=tmp_path / "initial.pt",
+    )
+
+    assert baseline_search["core_mode"] == "fixed_grid"
+    assert baseline_search["fixed_core"] == {
+        "rho_conv": [0.009, 0.027, 0.081],
+        "rho_dense": [0.03, 0.09, 0.27],
+    }
+    assert baseline_conv == pytest.approx([0.003, 0.009, 0.027, 0.081, 0.243])
+    assert baseline_dense == pytest.approx([0.01, 0.03, 0.09, 0.27, 0.81])
+    assert legacy_search["core_mode"] == "adaptive_safe_center"
+    assert len(legacy_conv) == len(legacy_dense) == 10
+    assert baseline_search["safety"]["bound_occupancy"] == "report_only"
+    assert "bound_occupancy_increase_maximum" not in baseline_search["safety"]
+    assert baseline_search["safety"]["projection_efficiency"] == (
+        "reject_persistent_low_efficiency"
+    )
+    assert args.safety_bound_occupancy_increase_maximum is None
+    assert args.safety_projection_efficiency_minimum == 0.5
+    assert args.safety_zero_proposal_epsilon == 1e-12
+    assert args.safety_boundary_persistence == 16
+    assert args.checkpoint_every_epoch is True
+    assert args.post_candidate_gate_name == "conv3_epochwise_k64_viability"
+    assert source["lr"] == [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+    assert source["optimizer"]["learning_rate"] == source["lr"]
+
+
+def test_conv3_successor_initializer_hash_is_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _path, study = runner.load_study(CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH)
+
+    def fake_trainer(_config, output, **_kwargs) -> None:
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "final_model.pt").write_bytes(b"not-the-pinned-initializer")
+
+    monkeypatch.setattr(runner, "_run_trainer", fake_trainer)
+    with pytest.raises(RuntimeError, match="Pinned initializer SHA-256 mismatch"):
+        runner.ensure_asset(
+            study,
+            tmp_path / "shard",
+            initializer="bounded_uniform",
+            architecture="conv3",
+            device="cpu",
+            dataset_root=tmp_path / "mnist",
+        )
+
+
+def test_conv3_successor_rejects_initializer_reference_drift(tmp_path: Path) -> None:
+    study = json.loads(
+        CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH.read_text(encoding="utf-8")
+    )
+    study["initialization_reference"]["checkpoint_sha256_by_architecture"][
+        "conv3"
+    ] = "0" * 64
+    altered = tmp_path / "altered-study.json"
+    altered.write_text(json.dumps(study), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exact parent initializer reference"):
+        runner.load_study(altered)
+
+
+def test_conv3_successor_summary_remains_explicitly_partial_all_depth(
+    tmp_path: Path,
+) -> None:
+    _path, study = runner.load_study(CONV3_OCCUPANCY_REPORT_ONLY_STUDY_PATH)
+
+    summary = runner.collect(study, tmp_path)
+
+    assert summary["status"] == "partial"
+    assert summary["counts"] == {"pending": 6}
+    assert summary["scope_is_partial_all_depth_initializer_selector"] is True
+    assert summary["global_initializer_selection_allowed"] is False
 
 
 def test_surface_policies_keep_conv3_high_grid_and_hard_boundary_gates() -> None:

@@ -1,0 +1,93 @@
+{
+  "schema_version": "perfectdiode-conv3-exploratory-lr-ladder-study/v1",
+  "study_id": "perfectdiode-conv3-exploratory-lr-ladder-seed0-20260811-v1",
+  "parent": {
+    "study_config": "configs/conv/perfectdiode_bounded_uniform_zero_bias_lr_search_conv3_occupancy_report_only_seed0_20260811_v1.json",
+    "study_id": "perfectdiode-bounded-uniform-zero-bias-lr-search-conv3-occupancy-report-only-seed0-20260811-v1",
+    "study_config_sha256": "b845340aec78237dd0f6940a6dfcec76a4463bee0fe7164ae6ea51f5bc68d647",
+    "initializer_checkpoint_sha256": "8ebe9dd916e1e9299c31053e2bb37b4f5121f8322f26af7746a92875e555438f"
+  },
+  "scientific_change": "Exploratory low-to-high Conv3 baseline/ours LR ladder with no canary, no scientific safety rejection, and no post-candidate T/K gate; every Cartesian cell restarts from the exact pinned bounded-uniform initializer.",
+  "evidence_class": "ordinary_mnist_exploratory",
+  "scope": {
+    "architectures": [
+      "conv3"
+    ],
+    "schemes": [
+      "baseline",
+      "ours"
+    ],
+    "optimizers": [
+      "SGD",
+      "Adam"
+    ],
+    "initializers": [
+      "bounded_uniform"
+    ],
+    "excluded": [
+      "legacy",
+      "conv1",
+      "conv2"
+    ]
+  },
+  "split_seed": 0,
+  "shuffle_seed": 0,
+  "validation_batch_size": 64,
+  "rho_search": {
+    "rho_conv": [
+      4.11522633744856e-6,
+      1.2345679012345678e-5,
+      3.7037037037037037e-5,
+      0.00011111111111111112,
+      0.0003333333333333333,
+      0.001,
+      0.003,
+      0.009
+    ],
+    "rho_dense": [
+      1.3717421124828531e-5,
+      4.11522633744856e-5,
+      0.0001234567901234568,
+      0.00037037037037037035,
+      0.0011111111111111111,
+      0.0033333333333333335,
+      0.01,
+      0.03
+    ],
+    "cell_order": [
+      "max_axis_index",
+      "sum_axis_indices",
+      "conv_axis_index",
+      "dense_axis_index"
+    ],
+    "probe_batches": [
+      128
+    ],
+    "probe_stability_tolerance": 0.5,
+    "bias_policy": "zero",
+    "candidate_epochs": 3,
+    "expected_candidate_steps": 10314,
+    "minimum_validation_accuracy": 0.0,
+    "skip_canary": true,
+    "canary_steps": 0,
+    "disable_safety_rejections": true,
+    "post_candidate_tk": false,
+    "safety": {
+      "warmup_steps": 32,
+      "loss_ema_decay": 0.98,
+      "loss_ema_factor": 4.0,
+      "gradient_rms_factor": 100.0,
+      "persistence_steps": 8,
+      "bound_occupancy_increase_maximum": null,
+      "projection_efficiency_minimum": null,
+      "zero_proposal_epsilon": 1e-12,
+      "boundary_persistence_steps": 16
+    }
+  },
+  "execution": {
+    "target": "multi-target",
+    "device": "cuda",
+    "gpus_per_surface": 1,
+    "result_root": "results/perfectdiode-conv3-exploratory-lr-ladder-seed0-20260811-v1"
+  }
+}

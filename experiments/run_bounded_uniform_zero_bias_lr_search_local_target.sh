@@ -15,12 +15,31 @@ set -euo pipefail
 : "${EXPERIMENT_SOURCE_COMMIT:?Set the frozen source parent commit.}"
 : "${EXPERIMENT_SOURCE_ARCHIVE_SHA256:?Set the frozen source archive SHA-256.}"
 
-STUDY_ID="perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1"
-STUDY_CONFIG_RELATIVE="configs/conv/perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json"
+PDBLR_STUDY_ID="${PDBLR_STUDY_ID:-perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1}"
+PDBLR_STUDY_CONFIG_RELATIVE="${PDBLR_STUDY_CONFIG_RELATIVE:-configs/conv/perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json}"
+PDBLR_EXPECTED_SURFACE_COUNT="${PDBLR_EXPECTED_SURFACE_COUNT:-18}"
+PDBLR_TRANSPORT_RECEIPT_SCHEMA="${PDBLR_TRANSPORT_RECEIPT_SCHEMA:-perfectdiode-conv123-bounded-uniform-zero-bias-rho-transport-receipt/v1}"
+
+STUDY_ID="${PDBLR_STUDY_ID}"
+STUDY_CONFIG_RELATIVE="${PDBLR_STUDY_CONFIG_RELATIVE}"
 STUDY_CONFIG="${PDBLR_SOURCE_ROOT}/${STUDY_CONFIG_RELATIVE}"
 OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/${PDBLR_TARGET}"
 RECEIPT_ROOT="${PDBLR_RESULT_ROOT}/transport_receipts/${PDBLR_TARGET}"
 
+if [[ ! "${STUDY_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "PDBLR_STUDY_ID must be a path-safe study token." >&2
+  exit 3
+fi
+if [[ -z "${STUDY_CONFIG_RELATIVE}" \
+   || "${STUDY_CONFIG_RELATIVE}" == /* \
+   || "/${STUDY_CONFIG_RELATIVE}/" == *"/../"* ]]; then
+  echo "PDBLR_STUDY_CONFIG_RELATIVE must stay beneath the frozen source root." >&2
+  exit 3
+fi
+if [[ ! "${PDBLR_TRANSPORT_RECEIPT_SCHEMA}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+  echo "PDBLR_TRANSPORT_RECEIPT_SCHEMA must be a nonempty schema token." >&2
+  exit 3
+fi
 if [[ ! "${PDBLR_TARGET}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   echo "PDBLR_TARGET must be a path-safe target token." >&2
   exit 3
@@ -44,9 +63,14 @@ if [[ ! "${PDBLR_START_INDEX}" =~ ^[0-9]+$ || ! "${PDBLR_END_INDEX}" =~ ^[0-9]+$
   echo "Surface indices must be non-negative integers." >&2
   exit 3
 fi
+if [[ ! "${PDBLR_EXPECTED_SURFACE_COUNT}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "PDBLR_EXPECTED_SURFACE_COUNT must be a positive integer." >&2
+  exit 3
+fi
 START_INDEX=$((10#${PDBLR_START_INDEX}))
 END_INDEX=$((10#${PDBLR_END_INDEX}))
-if (( START_INDEX < 0 || END_INDEX >= 18 || START_INDEX > END_INDEX )); then
+EXPECTED_SURFACE_COUNT=$((10#${PDBLR_EXPECTED_SURFACE_COUNT}))
+if (( START_INDEX < 0 || END_INDEX >= EXPECTED_SURFACE_COUNT || START_INDEX > END_INDEX )); then
   echo "Invalid inclusive surface interval [${START_INDEX},${END_INDEX}]." >&2
   exit 3
 fi
@@ -121,7 +145,8 @@ cd "${PDBLR_SOURCE_ROOT}"
   "${STUDY_CONFIG}" \
   "${PDBLR_DATASET_ROOT}" \
   "${STUDY_ID}" \
-  "${PDBLR_ENVIRONMENT_ID}" <<'PY'
+  "${PDBLR_ENVIRONMENT_ID}" \
+  "${EXPECTED_SURFACE_COUNT}" <<'PY'
 import hashlib
 import json
 import sys
@@ -133,11 +158,24 @@ study_path = Path(sys.argv[1])
 dataset_root = Path(sys.argv[2])
 expected_study_id = sys.argv[3]
 environment_id = sys.argv[4]
+expected_surface_count = int(sys.argv[5])
 study = json.loads(study_path.read_text(encoding="utf-8"))
 if study.get("study_id") != expected_study_id:
     raise SystemExit(f"Unexpected study identity: {study.get('study_id')!r}")
 if study.get("dataset", {}).get("official_test_read") is not False:
     raise SystemExit("Study config does not keep the official test unread.")
+scope = study.get("scope", {})
+surface_count = 1
+for axis in ("initializers", "architectures", "schemes", "optimizers"):
+    values = scope.get(axis)
+    if not isinstance(values, list) or not values:
+        raise SystemExit(f"Study scope axis {axis!r} must be a nonempty list.")
+    surface_count *= len(values)
+if surface_count != expected_surface_count:
+    raise SystemExit(
+        "Study surface-count mismatch: "
+        f"expected {expected_surface_count}, resolved {surface_count}."
+    )
 
 sources = (
     (
@@ -190,7 +228,8 @@ for (( index=START_INDEX; index<=END_INDEX; index++ )); do
     "${PDBLR_ENVIRONMENT_ID}" \
     "${EXPERIMENT_SOURCE_COMMIT}" \
     "${EXPERIMENT_SOURCE_ARCHIVE_SHA256}" \
-    "${PDBLR_STUDY_CONFIG_SHA256}" <<'PY'
+    "${PDBLR_STUDY_CONFIG_SHA256}" \
+    "${PDBLR_TRANSPORT_RECEIPT_SCHEMA}" <<'PY'
 import hashlib
 import json
 import sys
@@ -211,6 +250,7 @@ from experiments.run_conv12_bounded_rho import (
     source_commit,
     source_archive_sha256,
     study_config_sha256,
+    transport_receipt_schema,
 ) = sys.argv[1:]
 study_path = Path(study_arg)
 output_root = Path(output_root_arg)
@@ -382,7 +422,7 @@ else:
     raise SystemExit(f"Surface selection is not terminal: {selection!r}")
 
 receipt = {
-    "schema_version": "perfectdiode-conv123-bounded-uniform-zero-bias-rho-transport-receipt/v1",
+    "schema_version": transport_receipt_schema,
     "study_id": study["study_id"],
     "surface_index": surface_index,
     "surface": surface,

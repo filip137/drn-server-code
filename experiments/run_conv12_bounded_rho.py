@@ -48,6 +48,15 @@ CONV3_STUDY_SCHEMA = "perfectdiode-conv3-bounded-rho-study/v1"
 CONV123_ZERO_BIAS_STUDY_SCHEMA = (
     "perfectdiode-conv123-bounded-uniform-zero-bias-rho-study/v1"
 )
+CONV3_ZERO_BIAS_STUDY_SCHEMA = (
+    "perfectdiode-conv3-bounded-uniform-zero-bias-rho-study/v1"
+)
+CONV3_ZERO_BIAS_INITIALIZER_SHA256 = (
+    "8ebe9dd916e1e9299c31053e2bb37b4f5121f8322f26af7746a92875e555438f"
+)
+CONV3_ZERO_BIAS_PARENT_STUDY_ID = (
+    "perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1"
+)
 
 
 def _study_variant(study: Mapping[str, Any]) -> str:
@@ -58,7 +67,13 @@ def _study_variant(study: Mapping[str, Any]) -> str:
         return "conv3"
     if schema == CONV123_ZERO_BIAS_STUDY_SCHEMA:
         return "conv123_zero_bias"
+    if schema == CONV3_ZERO_BIAS_STUDY_SCHEMA:
+        return "conv3_zero_bias"
     raise ValueError(f"Unexpected study schema: {schema!r}.")
+
+
+def _is_zero_bias_study(study: Mapping[str, Any]) -> bool:
+    return _study_variant(study) in {"conv123_zero_bias", "conv3_zero_bias"}
 
 
 def _artifact_schema(study: Mapping[str, Any], artifact: str) -> str:
@@ -66,6 +81,11 @@ def _artifact_schema(study: Mapping[str, Any], artifact: str) -> str:
     if variant == "conv123_zero_bias":
         return (
             "perfectdiode-conv123-bounded-uniform-zero-bias-rho-"
+            f"{artifact}/v1"
+        )
+    if variant == "conv3_zero_bias":
+        return (
+            "perfectdiode-conv3-bounded-uniform-zero-bias-rho-"
             f"{artifact}/v1"
         )
     if variant == "conv12":
@@ -131,6 +151,19 @@ def _sha256_json(value: Any) -> str:
     ).hexdigest()
 
 
+def _expected_initializer_sha256(
+    study: Mapping[str, Any], architecture: str
+) -> str | None:
+    reference = study.get("initialization_reference")
+    if not isinstance(reference, Mapping):
+        return None
+    by_architecture = reference.get("checkpoint_sha256_by_architecture")
+    if not isinstance(by_architecture, Mapping):
+        return None
+    value = by_architecture.get(architecture)
+    return str(value) if value is not None else None
+
+
 def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
     source = Path(path).expanduser().resolve()
     study = json.loads(source.read_text(encoding="utf-8"))
@@ -152,6 +185,14 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
             "initializers": ["bounded_uniform", "bounded_kaiming_uniform"],
         }
         expected_excluded = {"legacy", "conv1", "conv2"}
+    elif variant == "conv3_zero_bias":
+        expected = {
+            "architectures": ["conv3"],
+            "schemes": ["baseline", "ours", "legacy"],
+            "optimizers": ["SGD", "Adam"],
+            "initializers": ["bounded_uniform"],
+        }
+        expected_excluded = {"conv1", "conv2"}
     else:
         expected = {
             "architectures": ["conv1", "conv2", "conv3"],
@@ -202,7 +243,7 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
                 )
     search = study["rho_search"]
     safety = search["safety"]
-    if variant == "conv123_zero_bias":
+    if _is_zero_bias_study(study):
         expected_bias_contract = {
             "initialization": "default_zero",
             "learning_rate": 0.0,
@@ -256,7 +297,11 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
                     raise ValueError(f"Unexpected fixed high rho grid for {key}.")
         safety_by_architecture = search.get("safety_by_architecture")
         expected_conv3_safety = {
-            "bound_occupancy_increase_maximum": 0.20,
+            **(
+                {"bound_occupancy_increase_maximum": 0.20}
+                if variant == "conv123_zero_bias"
+                else {}
+            ),
             "projection_efficiency_minimum": 0.50,
             "zero_proposal_epsilon": 1e-12,
             "boundary_persistence_steps": 16,
@@ -266,6 +311,19 @@ def load_study(path: str | Path = DEFAULT_STUDY) -> tuple[Path, dict[str, Any]]:
                 "Expected only the active Conv3 persistent boundary gates: "
                 f"{expected_conv3_safety!r}."
             )
+        if variant == "conv3_zero_bias":
+            expected_initialization_reference = {
+                "source_study_id": CONV3_ZERO_BIAS_PARENT_STUDY_ID,
+                "checkpoint_sha256_by_architecture": {
+                    "conv3": CONV3_ZERO_BIAS_INITIALIZER_SHA256,
+                },
+            }
+            if study.get("initialization_reference") != expected_initialization_reference:
+                raise ValueError(
+                    "The Conv3 occupancy-report-only repeat requires the exact "
+                    "parent initializer reference "
+                    f"{expected_initialization_reference!r}."
+                )
     else:
         if search.get("select_best_safe_below_accuracy") is not True:
             raise ValueError(
@@ -364,7 +422,7 @@ def build_source_config(
     scheme_spec = model["schemes"][scheme]
     shapes, pipeline = _layer_shapes_and_pipeline(study, architecture)
     parameter_count = 2 * len(architecture_spec["channels"]) + 1
-    if _study_variant(study) == "conv123_zero_bias":
+    if _is_zero_bias_study(study):
         weight_count = len(architecture_spec["channels"]) + 1
         rates = [1.0] * weight_count + [0.0] * len(
             architecture_spec["channels"]
@@ -463,7 +521,7 @@ def build_source_config(
     }
     if init_checkpoint_path is not None:
         config["init_checkpoint_path"] = str(init_checkpoint_path.resolve())
-    if _study_variant(study) == "conv123_zero_bias":
+    if _is_zero_bias_study(study):
         config["bias_contract"] = copy.deepcopy(study["bias_contract"])
     return config
 
@@ -492,7 +550,7 @@ def materialize(
         "device": device or study["execution"]["device"],
         "official_test_read": False,
     }
-    if _study_variant(study) == "conv123_zero_bias":
+    if _is_zero_bias_study(study):
         resolved.update(
             {
                 "configured_target": study["execution"]["target"],
@@ -663,7 +721,10 @@ def ensure_asset(
     checkpoint = asset_dir / "final_model.pt"
     record_path = asset_dir / "asset.json"
     expected_bias_names = _expected_bias_names(study, architecture)
-    zero_bias_study = _study_variant(study) == "conv123_zero_bias"
+    zero_bias_study = _is_zero_bias_study(study)
+    expected_checkpoint_sha256 = _expected_initializer_sha256(
+        study, architecture
+    )
     resolved_dataset_root = str(
         Path(
             study["dataset"]["root"]
@@ -671,9 +732,27 @@ def ensure_asset(
             else dataset_root
         ).expanduser()
     )
+    if checkpoint.exists():
+        observed_checkpoint_sha256 = _sha256_file(checkpoint)
+        if (
+            expected_checkpoint_sha256 is not None
+            and observed_checkpoint_sha256 != expected_checkpoint_sha256
+        ):
+            raise RuntimeError(
+                "Pinned initializer SHA-256 mismatch for "
+                f"{initializer}/{architecture}: expected "
+                f"{expected_checkpoint_sha256}, observed "
+                f"{observed_checkpoint_sha256}."
+            )
     if checkpoint.exists() and record_path.exists():
         record = json.loads(record_path.read_text(encoding="utf-8"))
-        reusable = record.get("checkpoint_sha256") == _sha256_file(checkpoint)
+        reusable = record.get("checkpoint_sha256") == observed_checkpoint_sha256
+        if expected_checkpoint_sha256 is not None:
+            reusable = (
+                reusable
+                and record.get("expected_checkpoint_sha256")
+                == expected_checkpoint_sha256
+            )
         if zero_bias_study and reusable:
             verification = verify_zero_bias_checkpoint(
                 checkpoint, expected_bias_names
@@ -713,6 +792,16 @@ def ensure_asset(
         device=device,
         apply_optimizer_steps=False,
     )
+    checkpoint_sha256 = _sha256_file(checkpoint)
+    if (
+        expected_checkpoint_sha256 is not None
+        and checkpoint_sha256 != expected_checkpoint_sha256
+    ):
+        raise RuntimeError(
+            "Pinned initializer SHA-256 mismatch for "
+            f"{initializer}/{architecture}: expected "
+            f"{expected_checkpoint_sha256}, observed {checkpoint_sha256}."
+        )
     zero_bias_verification = (
         verify_zero_bias_checkpoint(checkpoint, expected_bias_names)
         if zero_bias_study
@@ -723,7 +812,7 @@ def ensure_asset(
         "initializer": initializer,
         "architecture": architecture,
         "checkpoint": str(checkpoint),
-        "checkpoint_sha256": _sha256_file(checkpoint),
+        "checkpoint_sha256": checkpoint_sha256,
         "source_config_sha256": _sha256_file(config_path),
         "official_test_read": False,
     }
@@ -734,6 +823,8 @@ def ensure_asset(
                 "zero_bias_checkpoint_verification": zero_bias_verification,
             }
         )
+    if expected_checkpoint_sha256 is not None:
+        record["expected_checkpoint_sha256"] = expected_checkpoint_sha256
     _write_json(record_path, record)
     return checkpoint, record
 
@@ -802,7 +893,7 @@ def run_fixed_tk_gate(
     if result_path.exists():
         existing = json.loads(result_path.read_text(encoding="utf-8"))
         if existing.get("signature") == signature:
-            if _study_variant(study) == "conv123_zero_bias":
+            if _is_zero_bias_study(study):
                 expected_bias_names = _expected_bias_names(
                     study, surface["architecture"]
                 )
@@ -843,7 +934,7 @@ def run_fixed_tk_gate(
     result["architecture"] = surface["architecture"]
     result["scheme"] = surface["scheme"]
     result["smoke"] = smoke
-    if _study_variant(study) == "conv123_zero_bias":
+    if _is_zero_bias_study(study):
         expected_bias_names = _expected_bias_names(
             study, surface["architecture"]
         )
@@ -874,7 +965,7 @@ def run_conv3_tk_operating_point_gate(
         run_conv3_operating_point_gate,
     )
 
-    if _study_variant(study) != "conv123_zero_bias":
+    if not _is_zero_bias_study(study):
         raise ValueError("The full Conv3 gate is bound to the new zero-bias study.")
     if surface["architecture"] != "conv3":
         raise ValueError("The full Conv3 gate requires a Conv3 surface.")
@@ -997,7 +1088,7 @@ def _rho_args(
     search = _surface_search(study, surface)
     safety = search["safety"]
     conv3_post_training_tk = bool(
-        _study_variant(study) == "conv123_zero_bias"
+        _is_zero_bias_study(study)
         and surface["architecture"] == "conv3"
     )
     return Namespace(
@@ -1093,7 +1184,7 @@ def _run_rho_cell(
     rho_conv = rho_conv_axis[conv_index]
     rho_dense = rho_dense_axis[dense_index]
     checkpoint_epochs = bool(
-        _study_variant(study) == "conv123_zero_bias"
+        _is_zero_bias_study(study)
         and surface["architecture"] == "conv3"
         and not canary_only
     )
@@ -1667,7 +1758,7 @@ def ensure_conv3_candidate_epochwise_viability(
     )
 
     if (
-        _study_variant(study) != "conv123_zero_bias"
+        not _is_zero_bias_study(study)
         or surface["architecture"] != "conv3"
     ):
         raise ValueError("Epochwise K64 viability is bound to the new Conv3 study.")
@@ -1989,7 +2080,7 @@ def run_conv3_selected_post_training_tk(
     )
 
     if (
-        _study_variant(study) != "conv123_zero_bias"
+        not _is_zero_bias_study(study)
         or surface["architecture"] != "conv3"
     ):
         raise ValueError("Selected post-training T/K replay is Conv3-only.")
@@ -2524,7 +2615,7 @@ def run_rho_surface(
     if selection_path.exists():
         existing = json.loads(selection_path.read_text(encoding="utf-8"))
         conv3_post_training_surface = bool(
-            _study_variant(study) == "conv123_zero_bias"
+            _is_zero_bias_study(study)
             and surface["architecture"] == "conv3"
         )
         post_record = existing.get("post_training_tk")
@@ -2852,7 +2943,7 @@ def run_rho_surface(
     pre_post_training_tk_selected = None
     if (
         selected is not None
-        and _study_variant(study) == "conv123_zero_bias"
+        and _is_zero_bias_study(study)
         and surface["architecture"] == "conv3"
     ):
         pre_post_training_tk_selected = copy.deepcopy(selected)
@@ -2984,7 +3075,7 @@ def run_surface(
         )
     _write_json(source_path, source_config)
     if (
-        _study_variant(study) == "conv123_zero_bias"
+        _is_zero_bias_study(study)
         and surface["architecture"] == "conv3"
     ):
         gate = run_conv3_tk_operating_point_gate(
@@ -3081,7 +3172,7 @@ def run_surface(
     gate_scientifically_complete = (
         gate.get("scientifically_complete") is True
         if (
-            _study_variant(study) == "conv123_zero_bias"
+            _is_zero_bias_study(study)
             and surface["architecture"] == "conv3"
         )
         else True
@@ -3182,7 +3273,7 @@ def collect(study: Mapping[str, Any], output_root: Path) -> dict[str, Any]:
     for record in records:
         counts[record["status"]] = counts.get(record["status"], 0) + 1
     successful_terminal_statuses = {"complete"}
-    if _study_variant(study) != "conv123_zero_bias":
+    if not _is_zero_bias_study(study):
         successful_terminal_statuses.update(
             {
                 "complete_below_accuracy_range_bounded",
@@ -3256,7 +3347,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"got {args.surface_index}."
         )
     if (
-        _study_variant(study) == "conv123_zero_bias"
+        _is_zero_bias_study(study)
         and args.command in {"smoke", "run-surface", "run-all"}
         and args.target is None
         and study["execution"]["target"] == "multi-target"

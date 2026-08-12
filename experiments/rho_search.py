@@ -35,6 +35,7 @@ except ModuleNotFoundError:  # Support direct execution from the repository root
 PARAMETER_RE = re.compile(r"^(ConvWeight|DenseWeight|Bias)_(\d+)$")
 DEFAULT_PROBE_COUNTS = (32, 64, 128)
 DEFAULT_CANARY_STEPS = 640
+DEFAULT_EVIDENCE_CLASS = "ordinary_mnist_selection"
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -482,7 +483,7 @@ class SafetyRejection(RuntimeError):
 
 
 class TrainingSafetyMonitor:
-    """Observe optimizer transitions without treating clipping as rejection.
+    """Observe optimizer transitions and optionally enforce rejection gates.
 
     Bound occupancy and projection efficiency are retained for diagnosis and
     selection tie-breaking only.  The terminal gates are sustained loss-EMA
@@ -503,6 +504,7 @@ class TrainingSafetyMonitor:
         bound_occupancy_increase_maximum: float | None = None,
         projection_efficiency_minimum: float | None = None,
         boundary_persistence: int = 16,
+        rejections_enabled: bool = True,
     ):
         self.warmup_steps = int(warmup_steps)
         self.ema_decay = float(ema_decay)
@@ -521,6 +523,7 @@ class TrainingSafetyMonitor:
             else float(projection_efficiency_minimum)
         )
         self.boundary_persistence = int(boundary_persistence)
+        self.rejections_enabled = bool(rejections_enabled)
         if self.warmup_steps <= 0 or self.persistence <= 0:
             raise ValueError("Safety warmup and persistence must be positive.")
         for value, label in (
@@ -698,7 +701,10 @@ class TrainingSafetyMonitor:
             self.maximum_occupancy_increase[name] = max(
                 self.maximum_occupancy_increase[name], occupancy_increase
             )
-            if self.bound_occupancy_increase_maximum is not None:
+            if (
+                self.rejections_enabled
+                and self.bound_occupancy_increase_maximum is not None
+            ):
                 if occupancy_increase > self.bound_occupancy_increase_maximum:
                     self.occupancy_increase_streak[name] += 1
                     self.maximum_occupancy_increase_streak[name] = max(
@@ -722,7 +728,10 @@ class TrainingSafetyMonitor:
                 efficiency = achieved_rms / proposal_rms
                 if math.isfinite(efficiency) and efficiency >= 0.0:
                     self.projection_efficiencies[name].append(efficiency)
-                    if self.projection_efficiency_minimum is not None:
+                    if (
+                        self.rejections_enabled
+                        and self.projection_efficiency_minimum is not None
+                    ):
                         if efficiency < self.projection_efficiency_minimum:
                             self.projection_efficiency_streak[name] += 1
                             self.maximum_projection_efficiency_streak[name] = max(
@@ -742,7 +751,10 @@ class TrainingSafetyMonitor:
                                 )
                         else:
                             self.projection_efficiency_streak[name] = 0
-            elif self.projection_efficiency_minimum is not None:
+            elif (
+                self.rejections_enabled
+                and self.projection_efficiency_minimum is not None
+            ):
                 self.projection_efficiency_streak[name] = 0
 
             if self.step <= self.warmup_steps:
@@ -751,7 +763,7 @@ class TrainingSafetyMonitor:
                     self.gradient_reference[name] = linear_quantile(
                         self.gradient_samples[name], 0.5
                     )
-            else:
+            elif self.rejections_enabled:
                 reference = self.gradient_reference[name]
                 if gradient_rms > self.gradient_factor * reference:
                     self.gradient_streak[name] += 1
@@ -770,7 +782,7 @@ class TrainingSafetyMonitor:
             self.prior_loss_ema_minimum = min(
                 self.prior_loss_ema_minimum, self.loss_ema
             )
-        else:
+        elif self.rejections_enabled:
             if self.loss_ema > self.loss_factor * self.prior_loss_ema_minimum:
                 self.loss_streak += 1
                 self.maximum_loss_streak = max(
@@ -813,6 +825,7 @@ class TrainingSafetyMonitor:
             "processed_steps": self.step,
             "terminal_gates": {
                 "nonfinite_values": True,
+                "scientific_rejections_enabled": self.rejections_enabled,
                 "warmup_steps": self.warmup_steps,
                 "loss_ema_decay": self.ema_decay,
                 "loss_ema_factor": self.loss_factor,
@@ -835,8 +848,11 @@ class TrainingSafetyMonitor:
                     self.projection_efficiency_minimum is None
                 ),
                 "used_for_rejection": bool(
-                    self.bound_occupancy_increase_maximum is not None
-                    or self.projection_efficiency_minimum is not None
+                    self.rejections_enabled
+                    and (
+                        self.bound_occupancy_increase_maximum is not None
+                        or self.projection_efficiency_minimum is not None
+                    )
                 ),
             },
             "loss_ema": self.loss_ema,
@@ -1201,6 +1217,9 @@ def _cell_signature(
         "source_config_sha256": resolved["source_config_sha256"],
         "code": resolved["code"],
         "optimizer": resolved["optimizer"],
+        "evidence_class": resolved.get(
+            "evidence_class", DEFAULT_EVIDENCE_CLASS
+        ),
         "bias_policy": resolved["bias_policy"],
         "probe_sha256": probe_digest,
         "rho_conv": rho_conv,
@@ -1211,6 +1230,10 @@ def _cell_signature(
         "split_seed": resolved["split_seed"],
         "shuffle_seed": resolved["shuffle_seed"],
         "canary_steps": resolved.get("canary_steps"),
+        "skip_canary": resolved.get("skip_canary", False),
+        "restart_interrupted_cells": resolved.get(
+            "restart_interrupted_cells", False
+        ),
         "expected_candidate_steps": resolved.get("expected_candidate_steps"),
         "minimum_validation_accuracy": resolved.get(
             "minimum_validation_accuracy"
@@ -1224,6 +1247,76 @@ def _cell_signature(
             "post_candidate_gate_name"
         ]
     return signature
+
+
+def _archive_interrupted_cell(
+    cell_dir: Path,
+    existing: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Preserve one interrupted attempt before a clean deterministic restart."""
+
+    result_path = cell_dir / "result.json"
+    if result_path.exists():
+        raise RuntimeError(
+            "Refusing to restart a cell with result.json; completed evidence is "
+            f"immutable. Path: {result_path}."
+        )
+
+    status_path = cell_dir / "status.json"
+    reporting_state = None
+    if status_path.exists():
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        reporting_state = status.get("state")
+        if reporting_state not in {"running", "failed"}:
+            raise RuntimeError(
+                "Only a running or failed reporting attempt can be restarted. "
+                f"Provided state: {reporting_state!r} at {status_path}."
+            )
+    elif existing.get("status") not in {
+        "running",
+        "failed",
+        "canary_clean",
+        "canary_failed",
+        "candidate_trained_pending_post_gate",
+    }:
+        raise RuntimeError(
+            "Refusing to restart a cell that is neither nonterminal nor failed: "
+            f"status={existing.get('status')!r}, path={cell_dir}."
+        )
+
+    attempts_root = cell_dir / "recovery_attempts"
+    attempts_root.mkdir(parents=True, exist_ok=True)
+    attempt_index = 1
+    while (attempts_root / f"attempt_{attempt_index:03d}").exists():
+        attempt_index += 1
+    attempt_dir = attempts_root / f"attempt_{attempt_index:03d}"
+    attempt_dir.mkdir()
+
+    archived_entries = sorted(
+        child.name
+        for child in cell_dir.iterdir()
+        if child.name != attempts_root.name
+    )
+    for name in archived_entries:
+        (cell_dir / name).rename(attempt_dir / name)
+
+    receipt = {
+        "schema_version": "conv-rho-interrupted-attempt/v1",
+        "attempt": attempt_index,
+        "previous_cell_status": existing.get("status"),
+        "previous_reporting_state": reporting_state,
+        "archived_entries": archived_entries,
+        "restart_mode": "clean_from_exact_initializer",
+    }
+    receipt_path = attempt_dir / "recovery.json"
+    _write_json(receipt_path, receipt)
+    return {
+        "attempt": attempt_index,
+        "path": str(attempt_dir.relative_to(cell_dir)),
+        "receipt": str(receipt_path.relative_to(cell_dir)),
+        "receipt_sha256": _file_sha256(receipt_path),
+        "restart_mode": receipt["restart_mode"],
+    }
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -1241,11 +1334,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     rhos_conv = [_positive(value, "rho_conv") for value in args.rho_conv]
     rhos_dense = [_positive(value, "rho_dense") for value in args.rho_dense]
     counts = tuple(args.probe_batches)
+    evidence_class = str(
+        getattr(args, "evidence_class", DEFAULT_EVIDENCE_CLASS)
+    ).strip()
+    if not evidence_class:
+        raise ValueError("Expected evidence_class to be a non-empty string.")
+    restart_interrupted_cells = bool(
+        getattr(args, "restart_interrupted_cells", False)
+    )
+    skip_canary = bool(getattr(args, "skip_canary", False))
     canary_steps = int(getattr(args, "canary_steps", DEFAULT_CANARY_STEPS))
-    if canary_steps <= 0:
+    if canary_steps <= 0 and not skip_canary:
         raise ValueError(
             f"Expected --canary-steps to be positive. Provided value: {canary_steps!r}."
         )
+    if getattr(args, "canary_only", False) and skip_canary:
+        raise ValueError("--canary-only and --skip-canary are mutually exclusive.")
     expected_candidate_steps = getattr(args, "expected_candidate_steps", None)
     if expected_candidate_steps is not None:
         expected_candidate_steps = int(expected_candidate_steps)
@@ -1293,6 +1397,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "boundary_persistence": int(
             getattr(args, "safety_boundary_persistence", 16)
         ),
+        "rejections_enabled": not bool(
+            getattr(args, "disable_safety_rejections", False)
+        ),
     }
     safety["bound_occupancy"] = (
         "report_only"
@@ -1319,6 +1426,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ],
         zero_proposal_epsilon=safety["zero_proposal_epsilon"],
         boundary_persistence=safety["boundary_persistence"],
+        rejections_enabled=safety["rejections_enabled"],
     )
     rate_count = _configured_rate_count(base)
     output_root = Path(args.output_root).expanduser().resolve()
@@ -1333,6 +1441,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "source_config_sha256": hashlib.sha256(base_path.read_bytes()).hexdigest(),
         "code": _git_state(),
         "optimizer": optimizer_name,
+        "evidence_class": evidence_class,
         "rho_conv": rhos_conv,
         "rho_dense": rhos_dense,
         "bias_policy": args.bias_policy,
@@ -1349,6 +1458,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "validation_batch_size": args.validation_batch_size,
         "device": args.device,
         "canary_steps": canary_steps,
+        "skip_canary": skip_canary,
+        "restart_interrupted_cells": restart_interrupted_cells,
         "expected_candidate_steps": expected_candidate_steps,
         "minimum_validation_accuracy": minimum_validation_accuracy,
         "safety": safety,
@@ -1516,14 +1627,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         cell_dir = output_root / "cells" / name
         cell_path = cell_dir / "cell.json"
         signature = _cell_signature(resolved, probe, rho_conv, rho_dense)
-        if cell_path.exists() and not args.force:
+        recovery = None
+        if cell_path.exists():
             existing = json.loads(cell_path.read_text(encoding="utf-8"))
+            if existing.get("signature") != signature:
+                raise RuntimeError(
+                    "Existing cell signature does not match this rho-search "
+                    f"command. Path: {cell_path}."
+                )
             reusable = (
-                existing.get("signature") == signature
+                not args.force
                 and (
                     (
                         existing.get("status") == "complete"
                         and (cell_dir / "metrics.json").exists()
+                        and (cell_dir / "result.json").exists()
                     )
                     or existing.get("status")
                     in {
@@ -1612,6 +1730,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     _write_json(cell_path, existing)
                 rows.append(_summary_row(index, rho_conv, rho_dense, cell_dir))
                 continue
+            if restart_interrupted_cells:
+                recovery = _archive_interrupted_cell(cell_dir, existing)
+            else:
+                raise RuntimeError(
+                    "Existing same-signature cell is not reusable. Pass "
+                    "--restart-interrupted-cells to preserve and cleanly restart "
+                    f"a nonterminal or failed attempt. Path: {cell_path}."
+                )
 
         rates_by_name = derive_learning_rates(
             probe,
@@ -1623,6 +1749,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         cell = {
             "index": index,
             "optimizer": optimizer_name,
+            "evidence_class": evidence_class,
             "rho_conv": rho_conv,
             "rho_dense": rho_dense,
             "bias_policy": args.bias_policy,
@@ -1631,6 +1758,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "signature": signature,
             "status": "running",
         }
+        if recovery is not None:
+            cell["recovery"] = recovery
         _write_json(cell_path, cell)
         candidate_config = prepare_training_config(
             base,
@@ -1651,7 +1780,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "study_id": study_id,
             "run_id": name,
             "arm_id": f"{optimizer_name.lower()}-rho-{rho_conv:g}-{rho_dense:g}",
-            "evidence_class": "ordinary_mnist_selection",
+            "evidence_class": evidence_class,
             "smoke": bool(getattr(args, "smoke", False)),
             "configuration": {
                 "path": str(config_path),
@@ -1663,6 +1792,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "rho_dense": rho_dense,
                 "epochs": epochs,
                 "canary_steps": canary_steps,
+                "skip_canary": skip_canary,
+                "restart_interrupted_cells": restart_interrupted_cells,
+                "recovery": recovery,
                 "safety": safety,
             },
             "dataset": {
@@ -1695,14 +1827,33 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 },
             ],
         }
+        if recovery is not None:
+            recovery_receipt = cell_dir / recovery["receipt"]
+            reporting_manifest["inputs"].append(
+                {
+                    "role": "interrupted_attempt_receipt",
+                    "path": str(recovery_receipt),
+                    "sha256": recovery["receipt_sha256"],
+                }
+            )
         canary_path = cell_dir / "canary.json"
         canary = None
+        if skip_canary:
+            canary = {
+                "schema_version": "conv-rho-canary/v1",
+                "signature": signature,
+                "requested_steps": 0,
+                "completed_steps": 0,
+                "status": "skipped",
+                "reason": "exploratory_protocol",
+            }
+            _write_json(canary_path, canary)
         if canary_path.exists() and not args.force:
             candidate_canary = json.loads(canary_path.read_text(encoding="utf-8"))
             if (
                 candidate_canary.get("signature") == signature
                 and candidate_canary.get("status")
-                in {"clean", "rejected_nonfinite", "rejected_safety"}
+                in {"clean", "skipped", "rejected_nonfinite", "rejected_safety"}
             ):
                 canary = candidate_canary
         if canary is None:
@@ -1734,6 +1885,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ],
                 zero_proposal_epsilon=safety["zero_proposal_epsilon"],
                 boundary_persistence=safety["boundary_persistence"],
+                rejections_enabled=safety["rejections_enabled"],
             )
             canary = {
                 "schema_version": "conv-rho-canary/v1",
@@ -1817,7 +1969,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             _write_json(canary_diagnostics_path, canary_diagnostics)
             _write_json(canary_path, canary)
 
-        if canary["status"] != "clean":
+        if canary["status"] not in {"clean", "skipped"}:
             cell["status"] = f"canary_{canary['status']}"
             cell["canary"] = canary
             _write_json(cell_path, cell)
@@ -1857,6 +2009,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ],
             zero_proposal_epsilon=safety["zero_proposal_epsilon"],
             boundary_persistence=safety["boundary_persistence"],
+            rejections_enabled=safety["rejections_enabled"],
         )
         candidate_zero_bias_verification = None
         candidate_completion = None
@@ -2076,6 +2229,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--device")
     parser.add_argument("--study-id")
     parser.add_argument("--target")
+    parser.add_argument(
+        "--evidence-class",
+        default=DEFAULT_EVIDENCE_CLASS,
+        help="Evidence classification recorded in each canonical cell bundle.",
+    )
     parser.add_argument("--probe-only", action="store_true")
     parser.add_argument(
         "--canary-only",
@@ -2083,6 +2241,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Run or resume the selected cell's restarted canary without promotion.",
     )
     parser.add_argument("--canary-steps", type=int, default=DEFAULT_CANARY_STEPS)
+    parser.add_argument(
+        "--skip-canary",
+        action="store_true",
+        help="Skip the restarted canary for an explicitly exploratory grid.",
+    )
+    parser.add_argument(
+        "--restart-interrupted-cells",
+        action="store_true",
+        help=(
+            "Preserve a same-signature nonterminal or failed cell under "
+            "recovery_attempts/ and restart it from the exact initializer."
+        ),
+    )
     parser.add_argument("--expected-candidate-steps", type=int)
     parser.add_argument("--minimum-validation-accuracy", type=float, default=0.90)
     parser.add_argument("--safety-warmup-steps", type=int, default=32)
@@ -2094,6 +2265,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--safety-projection-efficiency-minimum", type=float)
     parser.add_argument("--safety-zero-proposal-epsilon", type=float, default=1e-30)
     parser.add_argument("--safety-boundary-persistence", type=int, default=16)
+    parser.add_argument(
+        "--disable-safety-rejections",
+        action="store_true",
+        help=(
+            "Record transition diagnostics but disable loss, gradient, occupancy, "
+            "and projection-efficiency rejection gates. Non-finite values still fail."
+        ),
+    )
     parser.add_argument("--index", type=int, help="Run one Cartesian-grid cell by index")
     parser.add_argument(
         "--collect-only",

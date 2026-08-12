@@ -62,6 +62,30 @@ SELECTION_SCHEMA = (
 RECEIPT_SCHEMA = (
     "perfectdiode-conv123-bounded-uniform-zero-bias-rho-transport-receipt/v1"
 )
+CONV3_STUDY_SCHEMA = (
+    "perfectdiode-conv3-bounded-uniform-zero-bias-rho-study/v1"
+)
+CONV3_RESOLVED_SCHEMA = (
+    "perfectdiode-conv3-bounded-uniform-zero-bias-rho-resolved/v1"
+)
+CONV3_SELECTION_SCHEMA = (
+    "perfectdiode-conv3-bounded-uniform-zero-bias-rho-surface/v1"
+)
+CONV3_RECEIPT_SCHEMA = (
+    "perfectdiode-conv3-bounded-uniform-zero-bias-rho-transport-receipt/v1"
+)
+SCHEMA_FAMILIES = {
+    STUDY_SCHEMA: {
+        "resolved": RESOLVED_SCHEMA,
+        "selection": SELECTION_SCHEMA,
+        "transport_receipt": RECEIPT_SCHEMA,
+    },
+    CONV3_STUDY_SCHEMA: {
+        "resolved": CONV3_RESOLVED_SCHEMA,
+        "selection": CONV3_SELECTION_SCHEMA,
+        "transport_receipt": CONV3_RECEIPT_SCHEMA,
+    },
+}
 BOUNDED_WEIGHT_PREFIXES = ("ConvWeight_", "DenseWeight_")
 COMPLETED_CELL_STATUSES = {"complete", "candidate_rejected_post_training_tk"}
 TERMINAL_REJECTION_PREFIXES = ("canary_rejected_", "candidate_rejected_")
@@ -154,7 +178,11 @@ class StudyContract:
     sha256: str
     study_id: str
     evidence_class: str
+    architectures: tuple[str, ...]
     surfaces: tuple[dict[str, Any], ...]
+    resolved_schema: str
+    selection_schema: str
+    transport_receipt_schema: str
     weight_min: float
     weight_max: float
     accuracy_gate: float
@@ -201,7 +229,9 @@ def _stable_json(value: Any) -> str:
 def _study_contract(path: Path) -> StudyContract:
     path = Path(path).expanduser().resolve()
     study = _load_json(path)
-    if study.get("schema_version") != STUDY_SCHEMA:
+    schema_version = study.get("schema_version")
+    schema_family = SCHEMA_FAMILIES.get(schema_version)
+    if schema_family is None:
         raise ValueError(f"Unexpected LR-search study schema in {path}.")
     study_id = study.get("study_id")
     if not isinstance(study_id, str) or not study_id:
@@ -274,7 +304,11 @@ def _study_contract(path: Path) -> StudyContract:
         sha256=sha256_file(path),
         study_id=study_id,
         evidence_class=evidence_class,
+        architectures=tuple(axes["architectures"]),
         surfaces=tuple(surfaces),
+        resolved_schema=schema_family["resolved"],
+        selection_schema=schema_family["selection"],
+        transport_receipt_schema=schema_family["transport_receipt"],
         weight_min=weight_min,
         weight_max=weight_max,
         accuracy_gate=accuracy_gate,
@@ -314,7 +348,7 @@ def discover_shard_roots(
 
 def _load_shard(root: Path, contract: StudyContract) -> Shard:
     resolved = _load_json(root / "study.resolved.json")
-    if resolved.get("schema_version") != RESOLVED_SCHEMA:
+    if resolved.get("schema_version") != contract.resolved_schema:
         raise ValueError(f"Unexpected resolved-study schema in {root}.")
     if resolved.get("study_id") != contract.study_id:
         raise ValueError(f"Shard study_id does not match the configured study: {root}.")
@@ -370,7 +404,7 @@ def _receipt_inventory(
             except ValueError as error:
                 issues.append(str(error))
                 continue
-            if receipt.get("schema_version") != RECEIPT_SCHEMA:
+            if receipt.get("schema_version") != contract.transport_receipt_schema:
                 continue
             if receipt.get("study_id") != contract.study_id:
                 continue
@@ -391,7 +425,7 @@ def _path_has_suffix(value: Any, suffix: Sequence[str]) -> bool:
 
 
 def _validate_selection(
-    selection: Mapping[str, Any], spec: Mapping[str, Any]
+    selection: Mapping[str, Any], spec: Mapping[str, Any], contract: StudyContract
 ) -> list[str]:
     errors: list[str] = []
     expected = {
@@ -402,7 +436,7 @@ def _validate_selection(
         "optimizer": spec["optimizer"],
         "surface_id": spec["surface_id"],
     }
-    if selection.get("schema_version") != SELECTION_SCHEMA:
+    if selection.get("schema_version") != contract.selection_schema:
         errors.append("unexpected selection schema")
     for key, value in expected.items():
         if selection.get(key) != value:
@@ -436,7 +470,7 @@ def _validate_receipt(
     contract: StudyContract,
 ) -> list[str]:
     errors: list[str] = []
-    if receipt.get("schema_version") != RECEIPT_SCHEMA:
+    if receipt.get("schema_version") != contract.transport_receipt_schema:
         errors.append("unexpected receipt schema")
     if receipt.get("semantic_status") != "pass":
         errors.append("receipt semantic_status is not pass")
@@ -1254,7 +1288,7 @@ def _surface_source(
     if selection_path.is_file():
         try:
             selection = _load_json(selection_path)
-            selection_errors = _validate_selection(selection, spec)
+            selection_errors = _validate_selection(selection, spec, contract)
         except ValueError as error:
             selection_errors = [str(error)]
         errors.extend(f"{spec['surface_id']}: {error}" for error in selection_errors)
@@ -1578,15 +1612,26 @@ def _accuracy_occupancy_correlations(
     return correlations
 
 
-def _plot_accuracy(rows: Sequence[Mapping[str, Any]], path: Path, gate: float) -> None:
+def _plot_accuracy(
+    rows: Sequence[Mapping[str, Any]],
+    path: Path,
+    gate: float,
+    architectures: Sequence[str],
+) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
-    architectures = ("conv1", "conv2", "conv3")
-    fig, axes = plt.subplots(1, 3, figsize=(13.0, 4.2), sharey=True)
+    fig, axes_grid = plt.subplots(
+        1,
+        len(architectures),
+        figsize=(max(5.0, 4.35 * len(architectures)), 4.2),
+        sharey=True,
+        squeeze=False,
+    )
+    axes = axes_grid[0]
     candidate_rows = [
         row
         for row in rows
@@ -1648,15 +1693,25 @@ def _plot_accuracy(rows: Sequence[Mapping[str, Any]], path: Path, gate: float) -
     plt.close(fig)
 
 
-def _plot_occupancy(rows: Sequence[Mapping[str, Any]], path: Path) -> None:
+def _plot_occupancy(
+    rows: Sequence[Mapping[str, Any]],
+    path: Path,
+    architectures: Sequence[str],
+) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
-    architectures = ("conv1", "conv2", "conv3")
-    fig, axes = plt.subplots(1, 3, figsize=(13.0, 4.2), sharey=True)
+    fig, axes_grid = plt.subplots(
+        1,
+        len(architectures),
+        figsize=(max(5.0, 4.35 * len(architectures)), 4.2),
+        sharey=True,
+        squeeze=False,
+    )
+    axes = axes_grid[0]
     occupied = [
         row
         for row in rows
@@ -1721,13 +1776,13 @@ def _plot_accuracy_vs_occupancy(
     correlations: Sequence[Mapping[str, Any]],
     path: Path,
     gate: float,
+    architectures: Sequence[str],
 ) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    architectures = ("conv1", "conv2", "conv3")
     categories = [
         (scheme, optimizer)
         for scheme in ("baseline", "ours", "legacy")
@@ -1744,7 +1799,7 @@ def _plot_accuracy_vs_occupancy(
     fig, axes = plt.subplots(
         len(architectures),
         len(categories),
-        figsize=(18.0, 9.5),
+        figsize=(18.0, max(4.5, 3.15 * len(architectures))),
         sharex=True,
         sharey=True,
         squeeze=False,
@@ -2387,13 +2442,23 @@ def analyze(
             serialized[field] = _stable_json(surface[field])
         surface_csv_rows.append(serialized)
     _write_csv(output_dir / artifacts["surface_csv"], surface_csv_rows, surface_fields)
-    _plot_accuracy(rows, output_dir / artifacts["accuracy_plot"], contract.accuracy_gate)
-    _plot_occupancy(rows, output_dir / artifacts["occupancy_plot"])
+    _plot_accuracy(
+        rows,
+        output_dir / artifacts["accuracy_plot"],
+        contract.accuracy_gate,
+        contract.architectures,
+    )
+    _plot_occupancy(
+        rows,
+        output_dir / artifacts["occupancy_plot"],
+        contract.architectures,
+    )
     _plot_accuracy_vs_occupancy(
         rows,
         correlations,
         output_dir / artifacts["accuracy_occupancy_plot"],
         contract.accuracy_gate,
+        contract.architectures,
     )
     (output_dir / artifacts["report_markdown"]).write_text(
         _report_markdown(report), encoding="utf-8"

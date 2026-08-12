@@ -24,14 +24,36 @@ set -euo pipefail
 : "${PDBLR_STUDY_CONFIG_SHA256:?Set the frozen study-config SHA-256.}"
 : "${EXPERIMENT_SOURCE_COMMIT:?Set the frozen source parent commit.}"
 : "${EXPERIMENT_SOURCE_ARCHIVE_SHA256:?Set the frozen source archive SHA-256.}"
-: "${SLURM_ARRAY_TASK_ID:?Submit this wrapper as the declared three-task array.}"
+: "${SLURM_ARRAY_TASK_ID:?Submit this wrapper as the declared array.}"
 
-STUDY_ID="perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1"
-STUDY_CONFIG_RELATIVE="configs/conv/perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json"
+PDBLR_STUDY_ID="${PDBLR_STUDY_ID:-perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1}"
+PDBLR_STUDY_CONFIG_RELATIVE="${PDBLR_STUDY_CONFIG_RELATIVE:-configs/conv/perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json}"
+PDBLR_EXPECTED_SURFACE_COUNT="${PDBLR_EXPECTED_SURFACE_COUNT:-18}"
+PDBLR_SURFACE_OFFSET="${PDBLR_SURFACE_OFFSET:-12}"
+PDBLR_SURFACES_PER_TASK="${PDBLR_SURFACES_PER_TASK:-2}"
+PDBLR_ISOLATE_TASK_SHARDS="${PDBLR_ISOLATE_TASK_SHARDS:-0}"
+PDBLR_TRANSPORT_RECEIPT_SCHEMA="${PDBLR_TRANSPORT_RECEIPT_SCHEMA:-perfectdiode-conv123-bounded-uniform-zero-bias-rho-transport-receipt/v1}"
+
+STUDY_ID="${PDBLR_STUDY_ID}"
+STUDY_CONFIG_RELATIVE="${PDBLR_STUDY_CONFIG_RELATIVE}"
 STUDY_CONFIG="${PDBLR_SOURCE_ROOT}/${STUDY_CONFIG_RELATIVE}"
 TARGET="jean-zay"
 MODULE_ID="pytorch-gpu/py3/2.5.0"
 
+if [[ ! "${STUDY_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "PDBLR_STUDY_ID must be a path-safe study token." >&2
+  exit 3
+fi
+if [[ -z "${STUDY_CONFIG_RELATIVE}" \
+   || "${STUDY_CONFIG_RELATIVE}" == /* \
+   || "/${STUDY_CONFIG_RELATIVE}/" == *"/../"* ]]; then
+  echo "PDBLR_STUDY_CONFIG_RELATIVE must stay beneath the frozen source root." >&2
+  exit 3
+fi
+if [[ ! "${PDBLR_TRANSPORT_RECEIPT_SCHEMA}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+  echo "PDBLR_TRANSPORT_RECEIPT_SCHEMA must be a nonempty schema token." >&2
+  exit 3
+fi
 if [[ ! "${PDBLR_ENVIRONMENT_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._:@/+%-]*$ ]]; then
   echo "PDBLR_ENVIRONMENT_ID must be a nonempty, path-free identity token." >&2
   exit 3
@@ -51,15 +73,68 @@ if [[ ! "${SLURM_ARRAY_TASK_ID}" =~ ^[0-9]+$ ]]; then
   echo "SLURM_ARRAY_TASK_ID must be a non-negative integer." >&2
   exit 3
 fi
-SLURM_ARRAY_TASK_ID=$((10#${SLURM_ARRAY_TASK_ID}))
-if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID > 2 )); then
-  echo "Array task ${SLURM_ARRAY_TASK_ID} is outside [0,2]." >&2
+for integer_name in PDBLR_EXPECTED_SURFACE_COUNT PDBLR_SURFACES_PER_TASK; do
+  integer_value="${!integer_name}"
+  if [[ ! "${integer_value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "${integer_name} must be a positive integer." >&2
+    exit 3
+  fi
+done
+if [[ ! "${PDBLR_SURFACE_OFFSET}" =~ ^[0-9]+$ ]]; then
+  echo "PDBLR_SURFACE_OFFSET must be a non-negative integer." >&2
   exit 3
 fi
-PAIR_START=$((12 + 2 * SLURM_ARRAY_TASK_ID))
-PAIR_END=$((PAIR_START + 1))
-OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay"
-RECEIPT_ROOT="${PDBLR_RESULT_ROOT}/transport_receipts/jean-zay/task_${SLURM_ARRAY_TASK_ID}"
+if [[ "${PDBLR_ISOLATE_TASK_SHARDS}" != "0" && "${PDBLR_ISOLATE_TASK_SHARDS}" != "1" ]]; then
+  echo "PDBLR_ISOLATE_TASK_SHARDS must be 0 or 1." >&2
+  exit 3
+fi
+SLURM_ARRAY_TASK_ID=$((10#${SLURM_ARRAY_TASK_ID}))
+EXPECTED_SURFACE_COUNT=$((10#${PDBLR_EXPECTED_SURFACE_COUNT}))
+SURFACE_OFFSET=$((10#${PDBLR_SURFACE_OFFSET}))
+SURFACES_PER_TASK=$((10#${PDBLR_SURFACES_PER_TASK}))
+if (( SURFACE_OFFSET >= EXPECTED_SURFACE_COUNT )); then
+  echo "PDBLR_SURFACE_OFFSET must be smaller than PDBLR_EXPECTED_SURFACE_COUNT." >&2
+  exit 3
+fi
+REMAINING_SURFACES=$((EXPECTED_SURFACE_COUNT - SURFACE_OFFSET))
+if (( REMAINING_SURFACES % SURFACES_PER_TASK != 0 )); then
+  echo "The mapped surface suffix must divide evenly across array tasks." >&2
+  exit 3
+fi
+EXPECTED_ARRAY_TASK_COUNT=$((REMAINING_SURFACES / SURFACES_PER_TASK))
+EXPECTED_ARRAY_TASK_MAX=$((EXPECTED_ARRAY_TASK_COUNT - 1))
+if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID > EXPECTED_ARRAY_TASK_MAX )); then
+  echo "Array task ${SLURM_ARRAY_TASK_ID} is outside [0,${EXPECTED_ARRAY_TASK_MAX}]." >&2
+  exit 3
+fi
+for slurm_count_name in SLURM_ARRAY_TASK_COUNT; do
+  slurm_count_value="${!slurm_count_name:-}"
+  if [[ -n "${slurm_count_value}" \
+     && "${slurm_count_value}" != "${EXPECTED_ARRAY_TASK_COUNT}" ]]; then
+    echo "${slurm_count_name}=${slurm_count_value} disagrees with expected ${EXPECTED_ARRAY_TASK_COUNT}." >&2
+    exit 3
+  fi
+done
+for slurm_bound_name in SLURM_ARRAY_TASK_MIN SLURM_ARRAY_TASK_MAX; do
+  slurm_bound_value="${!slurm_bound_name:-}"
+  expected_bound=0
+  if [[ "${slurm_bound_name}" == "SLURM_ARRAY_TASK_MAX" ]]; then
+    expected_bound="${EXPECTED_ARRAY_TASK_MAX}"
+  fi
+  if [[ -n "${slurm_bound_value}" && "${slurm_bound_value}" != "${expected_bound}" ]]; then
+    echo "${slurm_bound_name}=${slurm_bound_value} disagrees with expected ${expected_bound}." >&2
+    exit 3
+  fi
+done
+SURFACE_START=$((SURFACE_OFFSET + SURFACES_PER_TASK * SLURM_ARRAY_TASK_ID))
+SURFACE_END=$((SURFACE_START + SURFACES_PER_TASK - 1))
+if [[ "${PDBLR_ISOLATE_TASK_SHARDS}" == "1" ]]; then
+  OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay-task_${SLURM_ARRAY_TASK_ID}"
+  RECEIPT_ROOT="${PDBLR_RESULT_ROOT}/transport_receipts/jean-zay-task_${SLURM_ARRAY_TASK_ID}"
+else
+  OUTPUT_ROOT="${PDBLR_RESULT_ROOT}/shards/jean-zay"
+  RECEIPT_ROOT="${PDBLR_RESULT_ROOT}/transport_receipts/jean-zay/task_${SLURM_ARRAY_TASK_ID}"
+fi
 
 if [[ ! -d "${PDBLR_SOURCE_ROOT}" ]]; then
   echo "Frozen source directory is missing: ${PDBLR_SOURCE_ROOT}." >&2
@@ -139,7 +214,8 @@ cd "${PDBLR_SOURCE_ROOT}"
   "${PDBLR_DATASET_ROOT}" \
   "${STUDY_ID}" \
   "${PDBLR_ENVIRONMENT_ID}" \
-  "${MODULE_ID}" <<'PY'
+  "${MODULE_ID}" \
+  "${EXPECTED_SURFACE_COUNT}" <<'PY'
 import hashlib
 import json
 import sys
@@ -152,11 +228,24 @@ dataset_root = Path(sys.argv[2])
 expected_study_id = sys.argv[3]
 environment_id = sys.argv[4]
 module_id = sys.argv[5]
+expected_surface_count = int(sys.argv[6])
 study = json.loads(study_path.read_text(encoding="utf-8"))
 if study.get("study_id") != expected_study_id:
     raise SystemExit(f"Unexpected study identity: {study.get('study_id')!r}")
 if study.get("dataset", {}).get("official_test_read") is not False:
     raise SystemExit("Study config does not keep the official test unread.")
+scope = study.get("scope", {})
+surface_count = 1
+for axis in ("initializers", "architectures", "schemes", "optimizers"):
+    values = scope.get(axis)
+    if not isinstance(values, list) or not values:
+        raise SystemExit(f"Study scope axis {axis!r} must be a nonempty list.")
+    surface_count *= len(values)
+if surface_count != expected_surface_count:
+    raise SystemExit(
+        "Study surface-count mismatch: "
+        f"expected {expected_surface_count}, resolved {surface_count}."
+    )
 
 sources = (
     (
@@ -194,9 +283,9 @@ print(
 )
 PY
 
-echo "PDBLR_SOURCE_PASS environment_id=${PDBLR_ENVIRONMENT_ID} module=${MODULE_ID} commit=${EXPERIMENT_SOURCE_COMMIT} commit_guard=${commit_guard} archive_sha256=${EXPERIMENT_SOURCE_ARCHIVE_SHA256} config_sha256=${PDBLR_STUDY_CONFIG_SHA256} task=${SLURM_ARRAY_TASK_ID} pair=${PAIR_START}-${PAIR_END}"
+echo "PDBLR_SOURCE_PASS environment_id=${PDBLR_ENVIRONMENT_ID} module=${MODULE_ID} commit=${EXPERIMENT_SOURCE_COMMIT} commit_guard=${commit_guard} archive_sha256=${EXPERIMENT_SOURCE_ARCHIVE_SHA256} config_sha256=${PDBLR_STUDY_CONFIG_SHA256} task=${SLURM_ARRAY_TASK_ID} surfaces=${SURFACE_START}-${SURFACE_END}"
 
-for (( index=PAIR_START; index<=PAIR_END; index++ )); do
+for (( index=SURFACE_START; index<=SURFACE_END; index++ )); do
   "${PYTHON_BIN}" -m experiments.run_conv12_bounded_rho run-surface \
     --study "${STUDY_CONFIG}" \
     --surface-index "${index}" \
@@ -215,7 +304,8 @@ for (( index=PAIR_START; index<=PAIR_END; index++ )); do
     "${PDBLR_ENVIRONMENT_ID}" \
     "${EXPERIMENT_SOURCE_COMMIT}" \
     "${EXPERIMENT_SOURCE_ARCHIVE_SHA256}" \
-    "${PDBLR_STUDY_CONFIG_SHA256}" <<'PY'
+    "${PDBLR_STUDY_CONFIG_SHA256}" \
+    "${PDBLR_TRANSPORT_RECEIPT_SCHEMA}" <<'PY'
 import hashlib
 import json
 import sys
@@ -236,6 +326,7 @@ from experiments.run_conv12_bounded_rho import (
     source_commit,
     source_archive_sha256,
     study_config_sha256,
+    transport_receipt_schema,
 ) = sys.argv[1:]
 study_path = Path(study_arg)
 output_root = Path(output_root_arg)
@@ -407,7 +498,7 @@ else:
     raise SystemExit(f"Surface selection is not terminal: {selection!r}")
 
 receipt = {
-    "schema_version": "perfectdiode-conv123-bounded-uniform-zero-bias-rho-transport-receipt/v1",
+    "schema_version": transport_receipt_schema,
     "study_id": study["study_id"],
     "surface_index": surface_index,
     "surface": surface,

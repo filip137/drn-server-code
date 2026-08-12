@@ -9,7 +9,12 @@ import pytest
 
 from experiments.analyze_bounded_uniform_zero_bias_lr_search import (
     ANALYSIS_SCHEMA,
+    CONV3_RECEIPT_SCHEMA,
+    CONV3_RESOLVED_SCHEMA,
+    CONV3_SELECTION_SCHEMA,
+    CONV3_STUDY_SCHEMA,
     IncompleteCoverageError,
+    _study_contract,
     analyze,
 )
 from experiments.reporting import MANIFEST_SCHEMA, RESULT_SCHEMA, STATUS_SCHEMA
@@ -85,6 +90,26 @@ def _study_config(tmp_path: Path, optimizers: list[str]) -> tuple[Path, list[dic
         },
     )
     return path, surfaces
+
+
+def test_conv3_successor_schema_resolves_dynamic_analysis_contract(
+    tmp_path: Path,
+) -> None:
+    config_path, _ = _study_config(tmp_path, ["SGD", "Adam"])
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["schema_version"] = CONV3_STUDY_SCHEMA
+    payload["scope"]["architectures"] = ["conv3"]
+    payload["scope"]["schemes"] = ["baseline", "ours", "legacy"]
+    payload["scope"]["excluded"] = ["conv1", "conv2"]
+    _write_json(config_path, payload)
+
+    contract = _study_contract(config_path)
+
+    assert contract.architectures == ("conv3",)
+    assert len(contract.surfaces) == 6
+    assert contract.resolved_schema == CONV3_RESOLVED_SCHEMA
+    assert contract.selection_schema == CONV3_SELECTION_SCHEMA
+    assert contract.transport_receipt_schema == CONV3_RECEIPT_SCHEMA
 
 
 def _shard(
