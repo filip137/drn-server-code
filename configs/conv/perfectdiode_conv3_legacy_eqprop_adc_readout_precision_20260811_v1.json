@@ -1,0 +1,127 @@
+{
+  "schema_version": "perfectdiode-eqprop-adc-readout-precision-study/v1",
+  "study_id": "perfectdiode-conv3-legacy-eqprop-adc-readout-precision-20260811-v1",
+  "scientific_question": "At a true-float64 positive one-sided EqProp operating point, how many nominal bits in an ideal ADC transfer function are required to preserve each minibatch weight-gradient update when the matched zero and positive endpoint states are read separately, and how much does an optimistic analog-differential front end reduce that requirement?",
+  "evidence_class": "ordinary_mnist_learning_algorithm_gradient_diagnostic",
+  "paper_facing": false,
+  "source": {
+    "beta_config": "configs/conv/perfectdiode_conv123_positive_onesided_small_beta_native_seed0_20260810_v1.json",
+    "beta_config_semantic_sha256": "90af00b78fd686ec2ecc5f40a1eb9b4c0af753fdc6f0bc139848fe73cfb3eccf",
+    "native_beta_run": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase",
+    "native_beta_result_sha256": "9f24538070cc9eeb85b6e11d155e36e228caaebbc133949f3230e9857ad5c80c",
+    "cohort_sha256": "cf5b4f4086832ac8b3116006992767c05f0c91a670b86bfca20465ad40cd2690",
+    "accepted_float64_reference_run": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-shadow-current-conv3legacy-3em10",
+    "accepted_float64_reference_result_sha256": "68704649292247ba0f08391f6f09456d0f29ae569d700814f06e241b321c701c",
+    "accepted_operating_point": "trained Conv3 legacy, native T=K=8, frozen-current positive one-sided EqProp; no T/K recalibration"
+  },
+  "case": {
+    "architecture": "conv3",
+    "scheme": "legacy",
+    "checkpoint_role": "best_validation",
+    "native_T": 8,
+    "native_K": 8,
+    "base_beta_hat_requested": [
+      3e-10,
+      1e-9,
+      3e-9
+    ],
+    "primary_base_beta_hat": 3e-10
+  },
+  "cohort": {
+    "source": "reuse the exact completed native-beta cohort",
+    "example_count": 64,
+    "batch_size": 16,
+    "batch_count": 4,
+    "evaluate_minibatch_updates_separately": true,
+    "official_test_read": false
+  },
+  "dynamics": {
+    "runtime_dtype": "float64",
+    "nudging_mode": "current",
+    "eqprop_variant": "positive_one_sided",
+    "zero_endpoint": "explicit beta=0 K-step endpoint restored from the common post-T state",
+    "positive_endpoint": "positive beta K-step endpoint independently restored from the identical common post-T state",
+    "gradient_formula": "(dtheta_E(s_plus)-dtheta_E(s_zero))/(beta_actual*output_row_current_scale)",
+    "biases_active_in_dynamics": true,
+    "bias_gradients_scored": false,
+    "optimizer_constructed": false,
+    "optimizer_steps_applied": false
+  },
+  "adc": {
+    "primary_model": "absolute_endpoint_shared_adc",
+    "models": [
+      "absolute_endpoint_shared_adc",
+      "analog_delta_ideal_common"
+    ],
+    "quantizer": "signed_symmetric_uniform_midtread_round_to_nearest",
+    "absolute_range_calibration": "per-layer maximum absolute matched-zero endpoint over all 64 examples, multiplied by headroom; one range and code grid frozen across both phases, all betas, and all minibatches",
+    "absolute_range_headroom": 1.05,
+    "absolute_coarse_bits": [
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44,
+      48,
+      52
+    ],
+    "differential_range_calibration": "optimistic per-layer and per-beta maximum absolute s_plus-s_zero over all 64 examples, multiplied by headroom; the ideal common state is retained exactly",
+    "differential_range_headroom": 1.05,
+    "differential_coarse_bits": [
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      20,
+      24
+    ],
+    "refine_transition_to_single_bit": true,
+    "threshold_selection": "report the first nominal bit depth that passes and remains passing at every higher tested integer bit; refine every integer from the last lower coarse point through the declared maximum, or from the two-bit quantizer model floor when the lowest coarse point already begins a sustained passing region; expose pass-to-fail reversals and open lower edges",
+    "endpoint_statistic_arithmetic": "recompute each local squared-voltage-drop statistic from quantized nodes in float64, subtract positive minus zero in float64, then divide by effective beta",
+    "input_layer_quantized": false,
+    "analog_noise_included": false,
+    "gain_offset_mismatch_included": false,
+    "interpretation": "optimistic same-cohort-calibrated ideal-quantizer diagnostic; nominal bits describe the simulated normalized-state transfer function and are not hardware ENOB. The implemented endpoint-statistic path subtracts in float64, so the primary result includes both ADC quantization and digital cancellation error"
+  },
+  "gradient_fidelity_gate": {
+    "reference": "unquantized true-float64 EqProp at the identical beta and endpoint dynamics",
+    "cosine_minimum": 0.99,
+    "symmetric_norm_delta_maximum": 0.1,
+    "require_every_scored_weight_layer": true,
+    "require_every_minibatch": true,
+    "separate_secondary_reference": "same-cohort true-float64 BPTT"
+  },
+  "reported_measurements": [
+    "quantized EqProp versus clean EqProp cosine, relative L2, norm ratio, symmetric norm delta, and exact-zero fraction",
+    "quantized EqProp versus BPTT and clean EqProp versus BPTT, kept separate from acquisition fidelity",
+    "per-layer ADC LSB, clipping fraction, endpoint code-change fraction, and displacement-to-LSB quantiles",
+    "cohort-mean and per-minibatch worst-layer gates",
+    "first sustained passing nominal ideal ADC-bit threshold by beta and acquisition model, with lower-open bounds and pass-to-fail reversals explicit"
+  ],
+  "dac_scope": {
+    "included": false,
+    "reason": "Weight programming requires a separately declared conductance range, learning-rate/optimizer proposal, programming transfer function, and update accumulation policy. It follows only after an ADC-viable operating point is identified."
+  },
+  "execution": {
+    "target": "local:RTX3090",
+    "output_root": "results/perfectdiode-conv3-legacy-eqprop-adc-readout-precision-20260811-v1",
+    "production_budget": "one local RTX 3090; one checkpoint; four batches; three betas; read-only endpoint replay plus offline quantization; no training",
+    "expected_duration": "approximately 5-20 minutes after a one-batch semantic smoke"
+  },
+  "completion": {
+    "all_declared_betas_and_batches_captured": true,
+    "absolute_and_differential_models_reported": true,
+    "all_scored_weight_layers_reported": true,
+    "source_and_parameter_hash_guards_pass": true,
+    "official_test_read": false,
+    "optimizer_steps_applied": false
+  }
+}

@@ -1,0 +1,300 @@
+{
+  "schema_version": "perfectdiode-fc-positive-eqprop-small-beta-replay/v1",
+  "study_id": "perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1",
+  "arm_id": "fc123_initialization_positive_one_sided_eqprop",
+  "evidence_class": "ordinary_mnist_learning_algorithm_gradient_diagnostic",
+  "paper_facing": false,
+  "scientific_question": "At matched reconstructed initializations, does positive one-sided EqProp agree with BPTT in dense perfect-diode networks, and how do depth, amplification, beta, and equilibration length affect that agreement?",
+  "execution": {
+    "runner": "experiments/analyze_fc_eqprop_bptt_small_beta.py",
+    "target": "local:RTX_3090",
+    "device": "cuda",
+    "dtype": "float32 dynamics with float64 diagnostic accumulation",
+    "output_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1",
+    "run_id": "fc-initialization-control",
+    "expected_duration": "10-35 minutes on one local RTX 3090 for the full 64-example replay",
+    "production_budget": "one local GPU; 18 architecture/scheme/TK contexts; 64 examples in four batches; no optimizer steps"
+  },
+  "source_contract": {
+    "runtime_source_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias",
+    "runtime_source_expected_head": "154d80e845cbec95ef9ba08981efd3079d765ddb",
+    "runtime_source_requires_clean_worktree": true,
+    "production_source_commit": "08dd52e44818adf43b011542748e140dc0e01aeb",
+    "production_source_archive_sha256": "e80f0510124c6c3669c7df45a501ad3f16f91dc0603826a5f491e9b79ecb45ce",
+    "mechanism_initialization_hash_artifact": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias/results/perfectdiode-signed-scaled-bias-legacy-mechanism-seed0-20260807-v1/artifacts/reconstructed_initialization_hashes.json",
+    "mechanism_initialization_hash_artifact_sha256": "28e2baae429d703e9b0e535397afc1eb722e8ccaacc68f62d3a2006940ca87f6",
+    "bias_contract": "signed_unclamped_with_(current_amp/voltage_amp)^zero_based_layer_index_scaling",
+    "reason_for_exact_runtime_source": "The control must use the same signed amplification-scaled bias implementation and minimizer as the matched Conv replay. Biases remain active in the dynamics even though their gradients are excluded."
+  },
+  "dataset": {
+    "name": "ordinary_mnist",
+    "source_split": "MNIST training split",
+    "replay_split": "deterministic 5000-example validation partition",
+    "dataset_root": "/home/filip/datasets/mnist",
+    "split_seed": 0,
+    "cohort_policy": "first 64 examples in stored validation order; exact first-four-batch prefix of the matched Conv replay cohort",
+    "cohort_examples": 64,
+    "batch_size": 16,
+    "batch_count": 4,
+    "train_indices_sha256": "c0940cfdde9fb2a87f846a4dd234a6ff634eed32a98b9f5d72dfed3e2119a809",
+    "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+    "first_epoch_batch_order_sha256": "f1ea1c770bff668646139efdd8dcf33bb4298aecc8d49e5abde4455961da91cc",
+    "expected_batch_guards": [
+      {
+        "batch_index": 0,
+        "source_indices_sha256": "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010",
+        "payload_sha256": "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11"
+      },
+      {
+        "batch_index": 1,
+        "source_indices_sha256": "62199f32b30361a5c645abcb3cb7b4854e0de382cb450c3896cf1580bbd6c8b1",
+        "payload_sha256": "0568e4501f7fe477bce026aeef8a516914e0d623b679bfc8d597928067f09b2b"
+      },
+      {
+        "batch_index": 2,
+        "source_indices_sha256": "97ff1acbaa2419d6218e55752bc9745d07cca8818a4378bd4c511973ed22bc02",
+        "payload_sha256": "5235bd2cfcf0f4a775c629b0f37a94517218ff4dab447c0ed617d32c8b0aafc6"
+      },
+      {
+        "batch_index": 3,
+        "source_indices_sha256": "12740560eb236b3c6c227fa9d8267a9f1d3dab382401fe4a9a2152191c0b3d38",
+        "payload_sha256": "e0b8fc20cecfd748d04b2bed794f72167bdb7663522823620f374b4b11b1d095"
+      }
+    ],
+    "official_test_read": false,
+    "source_config": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "normalize": true,
+      "normalize_mean": 0.1307,
+      "normalize_std": 0.3081,
+      "normalize_scale": 0.3,
+      "shuffle_seed": 0,
+      "split_seed": 0,
+      "num_workers": 0,
+      "pin_memory": false
+    }
+  },
+  "amplification_schemes": [
+    {
+      "scheme": "baseline",
+      "voltage_amplification": 1.0,
+      "current_amplification": 1.0
+    },
+    {
+      "scheme": "ours",
+      "voltage_amplification": 4.0,
+      "current_amplification": 1.0
+    },
+    {
+      "scheme": "legacy",
+      "voltage_amplification": 4.0,
+      "current_amplification": 0.25
+    }
+  ],
+  "architecture_controls": [
+    {
+      "architecture": "fc1",
+      "matched_conv_architecture": "conv1",
+      "hidden_layer_shapes": [[64]],
+      "nudging_scale_power": 1,
+      "input_gain": 40.0,
+      "native_tk_by_scheme": {
+        "baseline": [4, 4],
+        "ours": [4, 4],
+        "legacy": [4, 4]
+      },
+      "long_tk": [64, 64]
+    },
+    {
+      "architecture": "fc2",
+      "matched_conv_architecture": "conv2",
+      "hidden_layer_shapes": [[64], [128]],
+      "nudging_scale_power": 2,
+      "input_gain": 100.0,
+      "native_tk_by_scheme": {
+        "baseline": [6, 6],
+        "ours": [6, 6],
+        "legacy": [6, 6]
+      },
+      "long_tk": [64, 64]
+    },
+    {
+      "architecture": "fc3",
+      "matched_conv_architecture": "conv3",
+      "hidden_layer_shapes": [[64], [128], [256]],
+      "nudging_scale_power": 3,
+      "input_gain": 360.0,
+      "native_tk_by_scheme": {
+        "baseline": [12, 8],
+        "ours": [8, 8],
+        "legacy": [8, 8]
+      },
+      "long_tk": [64, 64]
+    }
+  ],
+  "expected_reconstructed_initialization_guards": {
+    "fc1": {
+      "tensor_sha256": "41e02bcfdfdf90b89e0588af60cae467fdb34a5bbbb9aa4a20d5b754be9e8131",
+      "b0_by_scheme": {
+        "baseline": 1.9357659816741943,
+        "ours": 0.4839414954185486,
+        "legacy": 0.007561585865914822
+      }
+    },
+    "fc2": {
+      "tensor_sha256": "b8755a331f6d84bc956247645f2cdab04475a5fc837bd95dfe0c236b17f8d4d9",
+      "b0_by_scheme": {
+        "baseline": 3.003009796142578,
+        "ours": 0.18768811225891113,
+        "legacy": 0.0007331566885113716
+      }
+    },
+    "fc3": {
+      "tensor_sha256": "8831074f9cbd1024a4507cec14816ed3028819094eb0345000c70ccca58c38da",
+      "b0_by_scheme": {
+        "baseline": 4.0308592319488525,
+        "ours": 0.06298217549920082,
+        "legacy": 0.0000615060307609383
+      }
+    },
+    "derivation": "Read-only construction on the exact runtime at seed 0; b0 uses torch.quantile(x,0.5) over the flattened float64 output coefficient tensor (the standard even-sample median), multiplied by two, matching the Conv analyzer."
+  },
+  "model_contract": {
+    "seed": 0,
+    "input_shape": [2, 28, 28],
+    "output_shape": [20],
+    "output_cost": "SquaredErrorPairedOutputs(num_classes=10)",
+    "conv_pipeline": [],
+    "weight_gains": "one per dense edge, all 1.0",
+    "weight_min": 0.0,
+    "weight_max": 100.0,
+    "weight_init_mode": "kaiming_uniform",
+    "input_mode": "train",
+    "non_linearity": "perfect_diode",
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_min": -1000000.0,
+      "v_max": 1000000.0
+    },
+    "hard_sigmoid_param": {
+      "g_on": 100.0,
+      "g_off": 0.0,
+      "v_min": -1.5,
+      "v_max": 1.5
+    },
+    "exponential_diode_param": {
+      "I_s": 1e-6,
+      "V_t": 0.025,
+      "V_off": 0.0
+    },
+    "trainable_amplification": false,
+    "amplification_min": 1e-6,
+    "amplification_max": null,
+    "energy_minimizer": {
+      "mode": "asynchronous",
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-5,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-5,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-5,
+        "use_polish": true,
+        "vn_tol": 1e-6,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "bias_initialization": 0.0,
+    "biases_active_in_dynamics": true,
+    "bias_gradients_excluded": true
+  },
+  "gradient_contract": {
+    "checkpoint_role": "reconstructed_initialization",
+    "free_phase": "Reset the state and run exactly T energy-only iterations.",
+    "bptt_phase": "Restore the common post-T state and differentiate through exactly K additional zero-nudge energy iterations.",
+    "eqprop_phase": "Restore the identical common post-T state, run beta=0 and positive beta phases for exactly K augmented-energy iterations, and form the forward difference.",
+    "eqprop_variant_primary": "positive_one_sided",
+    "eqprop_variants_reported": ["positive_one_sided"],
+    "eqprop_formula": "With current_scale=(voltage_amp/current_amp)^L, g_pos=(dtheta E(s_plus)-dtheta E(s_zero))/(beta*current_scale).",
+    "nudging_mode": "current",
+    "normalized_beta_parameterization": "common_base",
+    "adaptive_equilibrium": false,
+    "normalized_betas_requested": [
+      1e-10,
+      3e-10,
+      1e-9,
+      3e-9,
+      1e-8,
+      3e-8,
+      1e-7,
+      3e-7,
+      1e-6,
+      3e-6,
+      1e-5,
+      3e-5,
+      1e-4,
+      3e-4
+    ],
+    "normalization": "For each architecture, compute b0_baseline_init=2*median(a_out) from the baseline reconstructed-initialization physical-energy output coefficient. A common pre-scale beta_base=beta_hat_requested*b0_baseline_init is requested across schemes. With L=max(layer_index(output)-1,0), exactly matching the output bias-current row exponent and therefore L=1/2/3 for FC1/2/3, the current-mode runtime explicitly injects beta_effective=beta_base*(voltage_amp/current_amp)^L. Cap beta_effective at 0.01 and divide the contrast by beta_effective.",
+    "nudging_scaling": "(voltage_amp/current_amp)^L with L equal to the hidden-layer count, exactly matching the output bias-current row exponent",
+    "amplification_exponent_convention": "output_bias_current_row",
+    "diagnostic_curvature_scales": "Also compute b0_scheme_init=2*median(a_out) independently for every architecture/scheme and report beta/b0_scheme_init; these per-scheme scales do not set the primary beta grid.",
+    "actual_beta_cap": 0.01,
+    "actual_beta_cap_semantics": "maximum injected beta*(voltage_amp/current_amp)^L",
+    "capped_duplicate_policy": "deduplicate identical actual beta values and retain the lowest request index",
+    "parameter_inclusion": ["DenseWeight_*"],
+    "parameter_exclusion": ["Bias"],
+    "zero_epsilon": 1e-12,
+    "zero_endpoint_equivalence_relative_l2_tolerance": 1e-5,
+    "precision_gate": {
+      "definition": "||mean(g_plus)-mean(g_zero)||_2 / (eps_float32*(||mean(g_plus)||_2+||mean(g_zero)||_2))",
+      "minimum_snr": 100.0,
+      "requires_finite_positive_numerator": true,
+      "low_beta_sentinel_max_beta_hat_requested": 1e-5
+    },
+    "adjacent_beta_consistency_gate": {
+      "eqprop_cosine_minimum": 0.99,
+      "symmetric_norm_delta_maximum": 0.1,
+      "symmetric_norm_delta_definition": "2*abs(||g_hi||-||g_lo||)/(||g_hi||+||g_lo||)",
+      "selection_rule": "Among consecutive uncapped normalized-beta requests, select the larger beta of the lowest adjacent pair passing residual, precision, and consistency on every scored layer, independently of BPTT cosine. Capped rows remain diagnostic/oracle-only."
+    },
+    "oracle_rule": "Separately report the beta maximizing the worst scored-layer EqProp--BPTT cosine among finite, residual-passing, precision-passing candidates; this oracle is descriptive and not the selected beta.",
+    "optimizer_steps_applied": false
+  },
+  "equilibrium_residual_contract": {
+    "selected_residual": "per-sample maximum projected-KKT residual within each dynamic layer",
+    "cohort_gate": "strict p90 < 1e-2 for post-T, matched beta=0, and positive nudged endpoints",
+    "p90_threshold": 0.01,
+    "uniform_flag_threshold": 0.01,
+    "hard_failure_threshold": 0.1,
+    "hard_failure_comparison": "maximum >= threshold"
+  },
+  "state_displacement_contract": {
+    "references": ["post_T_free", "matched_zero_K"],
+    "nudged_endpoints": ["s_plus"],
+    "relative_l2_definition": "||s_plus-reference||_2/max(||reference||_2,1e-12)",
+    "report_aggregate_and_per_state_layer": true,
+    "zero_epsilon": 1e-12
+  },
+  "comparison_scope": {
+    "checkpoint_roles": ["reconstructed_initialization"],
+    "tk_coordinates": "scheme-matched native Conv operating point and 64/64 for each dense depth",
+    "matched_initialization_across_schemes": true,
+    "trained_fc_checkpoint_available": false,
+    "interpretation_limit": "This isolates convolution versus dense topology at initialization. It does not establish what happens after FC training."
+  }
+}

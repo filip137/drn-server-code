@@ -1,0 +1,155 @@
+{
+  "schema_version": "perfectdiode-conv-eqprop-bptt-beta-gradient-replay/v1",
+  "study_id": "perfectdiode-conv123-legacy-adam-eqprop-bptt-beta-cosine-seed0-20260810-v1",
+  "evidence_class": "ordinary_mnist_learning_algorithm_gradient_diagnostic",
+  "paper_facing": false,
+  "scientific_question": "At deterministic initialization and the maximum-validation checkpoint of the strongest coherent Conv1/Conv2/Conv3 legacy-Adam ordinary-MNIST runs, how closely do EqProp weight gradients align layer-by-layer with the BPTT gradients that trained the checkpoints as beta varies?",
+  "execution": {
+    "runner": "experiments/analyze_conv_eqprop_bptt_checkpoint_gradients.py",
+    "runner_sha256_recorded_in_manifest_at_runtime": true,
+    "working_directory": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow",
+    "target": "main",
+    "device": "cuda",
+    "dtype": "float32 dynamics with float64 diagnostic accumulation",
+    "output_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv123-legacy-adam-eqprop-bptt-beta-cosine-seed0-20260810-v1",
+    "smoke_contract": "Same runner and config, all six checkpoint cases and all seven beta values, one fixed minibatch, including the K=64 phase-length path.",
+    "production_budget": "one serial RTX 3090 lane with an 8 GPU-hour hard cap",
+    "expected_duration": "2-6 hours after smoke"
+  },
+  "source_contract": {
+    "runtime_source_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias",
+    "runtime_source_expected_head": "154d80e845cbec95ef9ba08981efd3079d765ddb",
+    "runtime_source_requires_clean_worktree": true,
+    "production_source_commit": "08dd52e44818adf43b011542748e140dc0e01aeb",
+    "production_source_archive_sha256": "e80f0510124c6c3669c7df45a501ad3f16f91dc0603826a5f491e9b79ecb45ce",
+    "source_study_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias/results/perfectdiode-ordinary-mnist-signed-scaled-bias-current-rho-t12-conv123-seed0-20260806-v1",
+    "mechanism_initialization_hash_artifact": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias/results/perfectdiode-signed-scaled-bias-legacy-mechanism-seed0-20260807-v1/artifacts/reconstructed_initialization_hashes.json",
+    "mechanism_initialization_hash_artifact_sha256": "28e2baae429d703e9b0e535397afc1eb722e8ccaacc68f62d3a2006940ca87f6",
+    "bias_contract": "signed_unclamped_with_(current_amp/voltage_amp)^zero_based_layer_index_scaling",
+    "reason_for_exact_runtime_source": "Learned biases participate in every free and nudged state even though bias gradients are excluded. The lean workflow worktree still reconstructs the historical unscaled bias interaction and is therefore not a valid runtime for these checkpoints."
+  },
+  "dataset": {
+    "name": "ordinary_mnist",
+    "source_split": "MNIST training split",
+    "replay_split": "deterministic 5000-example validation partition",
+    "dataset_root": "/home/filip/datasets/mnist",
+    "split_seed": 0,
+    "cohort_policy": "first examples in stored validation order",
+    "cohort_examples": 256,
+    "batch_size": 16,
+    "train_indices_sha256": "c0940cfdde9fb2a87f846a4dd234a6ff634eed32a98b9f5d72dfed3e2119a809",
+    "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+    "first_epoch_batch_order_sha256": "f1ea1c770bff668646139efdd8dcf33bb4298aecc8d49e5abde4455961da91cc",
+    "materialized_cohort_guards": "Hash the exact ordered source indices, image/label payload, labels, and 16 batch boundaries before replay.",
+    "official_test_read": false
+  },
+  "gradient_contract": {
+    "free_phase": "Run the source config's fixed T energy-only iterations once from reset and clone the resulting common state.",
+    "bptt_phase": "Restore the common free state and differentiate through the source config's fixed K additional zero-nudge energy iterations.",
+    "eqprop_phase": "Restore the identical common free state before each -beta and +beta phase and run the source config's fixed K augmented-energy iterations.",
+    "eqprop_variant_primary": "centered",
+    "eqprop_variants_reported": [
+      "centered",
+      "positive",
+      "negative"
+    ],
+    "eqprop_formula": {
+      "centered": "g_ctr=(dtheta E(s_plus)-dtheta E(s_minus))/(2*beta)",
+      "positive": "g_pos=(dtheta E(s_plus)-dtheta E(s_zero_K))/beta",
+      "negative": "g_neg=(dtheta E(s_zero_K)-dtheta E(s_minus))/beta",
+      "zero_endpoint": "s_zero_K is the zero-nudge K-step endpoint from the identical accepted-T common free state and must match BPTT's forward K endpoint within the declared relative-L2 equivalence tolerance.",
+      "reduction_and_sign": "Raw batch-mean loss gradients dC/dtheta, with the same sign as BPTT; never learning-rate-scaled or mapped into proposal coordinates."
+    },
+    "zero_endpoint_equivalence_relative_l2_tolerance": 1e-5,
+    "nudging_mode": "cost",
+    "adaptive_equilibrium": false,
+    "betas": [
+      0.003,
+      0.01,
+      0.03,
+      0.1,
+      0.25,
+      0.5,
+      1.0
+    ],
+    "eqprop_phase_length_sentinel": {
+      "enabled": true,
+      "gradient_iterations": 64,
+      "minibatches": 4,
+      "free_state_policy": "reuse the accepted-T common free state",
+      "cosine_minimum": 0.9,
+      "relative_l2_norm_delta_maximum": 0.1,
+      "absolute_zero_fraction_delta_maximum": 0.02
+    },
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "parameter_exclusion": [
+      "Bias"
+    ],
+    "zero_epsilon": 1e-12,
+    "primary_beta_rule": "For each architecture and checkpoint, maximize the worst layer's centered cohort-mean cosine; break exact ties toward smaller beta.",
+    "optimizer_steps_applied": false
+  },
+  "cases": [
+    {
+      "architecture": "conv1",
+      "surface_id": "wide__conv1__legacy__adam",
+      "run_id": "011_11_wide_legacy_adam_seed0_19eccd3a",
+      "best_epoch": 9,
+      "best_validation_accuracy": 0.9686,
+      "inference_iterations": 4,
+      "gradient_iterations": 4,
+      "config_used_sha256": "bb6ea46275b87886fadc72ae4f94a92ad2ab3d33a42a817129724ff81a7d5e0d",
+      "result_sha256": "1cbbde8e3ea2de490c4d1d94a009a35ce719f5fc25e2ce43da782bce93e30229",
+      "best_checkpoint_sha256": "4ee86c90e41feaf8d74de80b1b56d363b915ed5519d2d060e2a2bc462a949ec3",
+      "source_manifest_sha256": "da769aa08448aa586191a1db9d0acfc87557514a2d4717ad983fa640872fc11a",
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1"
+    },
+    {
+      "architecture": "conv2",
+      "surface_id": "wide__conv2__legacy__adam",
+      "run_id": "023_11_wide_legacy_adam_seed0_729447ba",
+      "best_epoch": 29,
+      "best_validation_accuracy": 0.9842,
+      "inference_iterations": 6,
+      "gradient_iterations": 6,
+      "config_used_sha256": "1b198fca3c70c8af2e3cea5d421313044c7f103dc9046c3822615207e18abb13",
+      "result_sha256": "484f53a76983da7689045e1640b638daf6be16405f1b1d6e29424ab068655ff3",
+      "best_checkpoint_sha256": "5664b434f3fe9177f258abb1425fb93f9d861ca0e144550349b8f29be7f923e1",
+      "source_manifest_sha256": "4650acac01de217072c5d3ba06bad55ec626dea83caec7a1efd70129190a126c",
+      "reconstructed_initialization_tensor_sha256": "459cb130180dab3e0effdc20218f7086bcb51ac3c16c9dd81f3dd97bb7da2750"
+    },
+    {
+      "architecture": "conv3",
+      "surface_id": "wide__conv3__legacy__adam",
+      "run_id": "035_11_wide_legacy_adam_seed0_07c37cd4",
+      "best_epoch": 22,
+      "best_validation_accuracy": 0.9904,
+      "inference_iterations": 8,
+      "gradient_iterations": 8,
+      "config_used_sha256": "6ad93e3ccdbb5cc0f868a96d96f93683abd304a4d23f8ca26cb1cf61b389bdbf",
+      "result_sha256": "933fdc744bd9ce0e6c5c9ef213427c2deb866829494a5200caa50dae741f892c",
+      "best_checkpoint_sha256": "11caecd95cd8c550c4ae35182d4b2cbeff129af1b0f3537d17880ba47a59e511",
+      "source_manifest_sha256": "de7c80ad37ce896eb6bba744f247a64e4f5d60d7a24193fe44333cce124f6091",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    }
+  ],
+  "checkpoint_roles": [
+    "reconstructed_initialization",
+    "best_validation"
+  ],
+  "completion": {
+    "expected_architectures": 3,
+    "expected_checkpoint_cases": 6,
+    "expected_beta_values": 7,
+    "require_all_declared_weight_layers": true,
+    "require_finite_bptt_gradients": true,
+    "require_structured_eqprop_phase_outcomes": true,
+    "require_common_free_state_hash_match": true,
+    "require_source_checkpoint_bytes_unchanged": true,
+    "require_parameter_tensors_unchanged": true,
+    "require_no_optimizer_steps": true
+  }
+}

@@ -1,0 +1,494 @@
+{
+  "schema_version": "perfectdiode-conv-eqprop-bptt-beta-tk-displacement-replay/v1",
+  "study_id": "perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1",
+  "evidence_class": "ordinary_mnist_learning_algorithm_gradient_diagnostic",
+  "paper_facing": false,
+  "scientific_question": "For the matched wide-Adam Conv1/Conv2/Conv3 baseline, ours, and legacy runs at reconstructed initialization and best validation epoch, does positive one-sided EqProp recover bias-excluded layerwise BPTT weight-gradient direction when the effective nudge is scaled by (voltage_amp/current_amp)^L and beta is made orders of magnitude smaller; and what residual, precision, displacement, and later T/K behavior accompanies it?",
+  "execution": {
+    "runner": "experiments/analyze_conv_eqprop_bptt_beta_tk_displacement.py",
+    "runner_sha256_recorded_in_manifest_at_runtime": true,
+    "working_directory": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow",
+    "target": "local:RTX3090",
+    "device": "cuda",
+    "dtype": "float32 dynamics with float64 diagnostic accumulation",
+    "output_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1",
+    "smoke_contract": {
+      "checkpoint_cases": "all 18 source-run x checkpoint-role cases",
+      "minibatches": 1,
+      "beta_values": "all declared beta values",
+      "tk_coordinates": "Source-native T/K only for every case; one fixed minibatch; all resolved amplification-scaled beta values.",
+      "semantic_requirements": [
+        "every declared scheme, architecture, checkpoint role, beta, phase, and weight layer is represented",
+        "aggregate and per-state-layer displacement rows are emitted",
+        "common-free-state and read-only guards pass",
+        "every selected weight layer has a finite-difference precision record",
+        "every free, zero, and positive endpoint has exact layerwise per-sample projected-KKT residual statistics"
+      ]
+    },
+    "production_budget": "One idle local RTX 3090; Stage A native-T/K beta sweep expected 30-50 minutes; full study including selected-beta T/K cross and float64 shadow has a 5 GPU-hour hard cap.",
+    "expected_duration": "Stage A approximately 30-50 minutes after an 8-12 minute semantic smoke."
+  },
+  "source_contract": {
+    "runtime_source_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias",
+    "runtime_source_expected_head": "154d80e845cbec95ef9ba08981efd3079d765ddb",
+    "runtime_source_requires_clean_worktree": true,
+    "production_source_commit": "08dd52e44818adf43b011542748e140dc0e01aeb",
+    "production_source_archive_sha256": "e80f0510124c6c3669c7df45a501ad3f16f91dc0603826a5f491e9b79ecb45ce",
+    "source_study_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias/results/perfectdiode-ordinary-mnist-signed-scaled-bias-current-rho-t12-conv123-seed0-20260806-v1",
+    "mechanism_initialization_hash_artifact": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias/results/perfectdiode-signed-scaled-bias-legacy-mechanism-seed0-20260807-v1/artifacts/reconstructed_initialization_hashes.json",
+    "mechanism_initialization_hash_artifact_sha256": "28e2baae429d703e9b0e535397afc1eb722e8ccaacc68f62d3a2006940ca87f6",
+    "bias_contract": "signed_unclamped_with_(current_amp/voltage_amp)^zero_based_layer_index_scaling",
+    "reason_for_exact_runtime_source": "Learned biases participate in every free and nudged state even though bias gradients are excluded. The lean workflow worktree still reconstructs the historical unscaled bias interaction and is therefore not a valid runtime for these checkpoints."
+  },
+  "dataset": {
+    "name": "ordinary_mnist",
+    "source_split": "MNIST training split",
+    "replay_split": "deterministic 5000-example validation partition",
+    "dataset_root": "/home/filip/datasets/mnist",
+    "split_seed": 0,
+    "cohort_policy": "first 64 examples in stored validation order; exact first-four-batch prefix of the prior accepted legacy replay cohort",
+    "cohort_examples": 64,
+    "batch_size": 16,
+    "batch_count": 4,
+    "train_indices_sha256": "c0940cfdde9fb2a87f846a4dd234a6ff634eed32a98b9f5d72dfed3e2119a809",
+    "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+    "first_epoch_batch_order_sha256": "f1ea1c770bff668646139efdd8dcf33bb4298aecc8d49e5abde4455961da91cc",
+    "prefix_reference": {
+      "artifact": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv123-legacy-adam-eqprop-bptt-beta-cosine-seed0-20260810-v1/analysis/cohort.json",
+      "artifact_sha256": "307db0ca083b0c067e79c3db3f98f9300d9700c4547daf0591e8f25509e9f5c2",
+      "full_256_example_cohort_sha256": "034c4791a734f2e43c9ddbe908add5df3a1487018bf278f47d8ca3a16fd37229"
+    },
+    "expected_batch_guards": [
+      {
+        "batch_index": 0,
+        "source_indices_sha256": "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010",
+        "payload_sha256": "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11"
+      },
+      {
+        "batch_index": 1,
+        "source_indices_sha256": "62199f32b30361a5c645abcb3cb7b4854e0de382cb450c3896cf1580bbd6c8b1",
+        "payload_sha256": "0568e4501f7fe477bce026aeef8a516914e0d623b679bfc8d597928067f09b2b"
+      },
+      {
+        "batch_index": 2,
+        "source_indices_sha256": "97ff1acbaa2419d6218e55752bc9745d07cca8818a4378bd4c511973ed22bc02",
+        "payload_sha256": "5235bd2cfcf0f4a775c629b0f37a94517218ff4dab447c0ed617d32c8b0aafc6"
+      },
+      {
+        "batch_index": 3,
+        "source_indices_sha256": "12740560eb236b3c6c227fa9d8267a9f1d3dab382401fe4a9a2152191c0b3d38",
+        "payload_sha256": "e0b8fc20cecfd748d04b2bed794f72167bdb7663522823620f374b4b11b1d095"
+      }
+    ],
+    "materialized_cohort_guards": "Hash the exact ordered source indices, image/label payload, labels, and four batch boundaries before replay and require the declared prefix guards.",
+    "official_test_read": false
+  },
+  "amplification_schemes": [
+    {
+      "scheme": "baseline",
+      "voltage_amplification": 1.0,
+      "current_amplification": 1.0
+    },
+    {
+      "scheme": "ours",
+      "voltage_amplification": 4.0,
+      "current_amplification": 1.0
+    },
+    {
+      "scheme": "legacy",
+      "voltage_amplification": 4.0,
+      "current_amplification": 0.25
+    }
+  ],
+  "gradient_contract": {
+    "free_phase": "At each source-native (T,K), reset the state, run exactly T energy-only iterations, and clone the common post-T state.",
+    "bptt_phase": "Restore the common post-T state and differentiate through exactly K additional zero-nudge energy iterations.",
+    "eqprop_phase": "Restore the identical common post-T state before beta=0 and +beta, then run exactly K augmented-energy iterations; no negative phase is executed.",
+    "eqprop_variant_primary": "positive_one_sided",
+    "eqprop_variants_reported": [
+      "positive_one_sided"
+    ],
+    "eqprop_formula": {
+      "positive_one_sided": "With current_scale=(voltage_amp/current_amp)^L, g_pos=(dtheta E(s_plus)-dtheta E(s_zero))/(beta_actual*current_scale).",
+      "zero_endpoint": "s_zero_K is the explicit zero-nudge K-step endpoint from the identical post-T common state and must match BPTT forward-K within the declared relative-L2 tolerance.",
+      "amplification_scaling": "A common pre-scale beta_actual=beta_hat_requested*b0_baseline_init is requested across schemes. The current-mode runtime explicitly injects beta_effective=beta_actual*(voltage_amp/current_amp)^L, where L=max(layer_index(output)-1,0), exactly matching the output bias-current row exponent; this is L=1/2/3 for Conv1/2/3. beta_effective is capped at 0.01 and the contrast is divided by beta_effective.",
+      "reduction_and_sign": "Raw batch-mean loss gradients dC/dtheta with the same sign as BPTT; never learning-rate-scaled or mapped into proposal coordinates."
+    },
+    "zero_endpoint_equivalence_relative_l2_tolerance": 0.00001,
+    "nudging_mode": "current",
+    "adaptive_equilibrium": false,
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "parameter_exclusion": [
+      "Bias"
+    ],
+    "zero_epsilon": 1E-12,
+    "primary_beta_rule": "Among uncapped consecutive normalized-beta pairs, require complete coverage, all-layer residual p90 gates, all-layer finite-difference SNR>=100, adjacent EqProp cosine>=0.99, and adjacent symmetric norm delta<=0.10; select the larger beta of the lowest passing pair independently of BPTT cosine.",
+    "optimizer_steps_applied": false,
+    "amplification_exponent_convention": "output_bias_current_row",
+    "normalized_beta_parameterization": "common_base",
+    "nudging_scale_power_by_architecture": {
+      "conv1": 1,
+      "conv2": 2,
+      "conv3": 3
+    },
+    "normalized_betas": [
+      1e-10,
+      3e-10,
+      1e-9,
+      3e-9,
+      1e-8,
+      3e-8,
+      1e-7,
+      3e-7,
+      1e-6,
+      3e-6,
+      1e-5,
+      3e-5,
+      1e-4,
+      3e-4
+    ],
+    "actual_beta_cap": 0.01,
+    "actual_beta_cap_semantics": "maximum injected beta_actual*(voltage_amp/current_amp)^L",
+    "baseline_init_output_curvature_scale_b0_by_architecture": {
+      "conv1": 28.0346766,
+      "conv2": 19.9494619,
+      "conv3": 28.0464210
+    },
+    "fd_roundoff_ratio_minimum": 100.0,
+    "adjacent_precision_cosine_minimum": 0.99,
+    "adjacent_precision_symmetric_norm_delta_maximum": 0.10,
+    "capped_beta_eligible_for_precision_pair": false,
+    "oracle_beta_rule": "Report separately the beta maximizing the worst-layer BPTT cosine among residual- and precision-valid rows; never use it as the scientific beta selection."
+  },
+  "state_displacement_contract": {
+    "reference_states": {
+      "post_T_free": "the common post-T state from which every zero and nudged K-step phase begins; this displacement includes residual K-step relaxation",
+      "matched_zero_K": "the explicit beta-zero K-step endpoint; this endpoint-matched displacement isolates nudging from ordinary K-step relaxation"
+    },
+    "nudged_endpoints": [
+      "s_plus"
+    ],
+    "relative_l2_definition": "For each declared reference r, ||s_nudged-r||_2/max(||r||_2,zero_epsilon)",
+    "aggregate_definition": "concatenate all dynamic state tensors before evaluating the relative-L2 definition",
+    "per_state_layer_definition": "evaluate the same relative-L2 definition independently for every dynamic state tensor",
+    "report_absolute_l2": true,
+    "report_relative_l2": true,
+    "report_positive_and_negative_separately": false,
+    "zero_epsilon": 1E-12,
+    "displacement_over_beta": true
+  },
+  "tk_factorial": {
+    "coordinate_policy": "Stage A uses only each source cases native T/K for the full normalized-beta sweep.",
+    "conv1": {
+      "inference_iterations": [
+        4,
+        8,
+        16,
+        64
+      ],
+      "gradient_iterations": [
+        4,
+        8,
+        16,
+        64
+      ]
+    },
+    "conv2": {
+      "inference_iterations": [
+        6,
+        12,
+        24,
+        64
+      ],
+      "gradient_iterations": [
+        6,
+        12,
+        24,
+        64
+      ]
+    },
+    "conv3": {
+      "inference_iterations": [
+        8,
+        12,
+        16,
+        32,
+        64
+      ],
+      "gradient_iterations": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "comparison_contract": "Stage A does not retune T/K. Stage B will freeze the precision-selected beta and cross K={K0,2K0,4K0,64} at T0 and T={T0,2T0,4T0,64} at K0, plus 64/64.",
+    "dependence_outputs": [
+      "Stage A layerwise positive one-sided cosine versus normalized and actual beta at native T/K",
+      "Stage A exact residual, precision, and displacement diagnostics",
+      "Stage B fixed-beta T/K cross in a separate run"
+    ]
+  },
+  "cases": [
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "surface_id": "wide__conv1__baseline__adam",
+      "run_id": "007_07_wide_baseline_adam_seed0_188182b6",
+      "best_epoch": 9,
+      "best_validation_accuracy": 0.9642,
+      "inference_iterations": 4,
+      "gradient_iterations": 4,
+      "native_inference_iterations": 4,
+      "native_gradient_iterations": 4,
+      "voltage_amplification": 1.0,
+      "current_amplification": 1.0,
+      "scientific_config_sha256": "188182b6b8cda1e394ef2fc8725106f7429434a3a068c33d97a89c6d07a580df",
+      "config_used_sha256": "0048d87a0999bba58da1f5ef6b7fe797e84607ae80bcd755bc9d9af88028c88f",
+      "result_sha256": "c33db4a5d24cb3fd11cfdf948445c53c6e96919c8b6c5568abab2a222e874777",
+      "best_checkpoint_sha256": "9b309391af0bdd316da8107aa129ba91bce6b44ce308bf3ec754cd39e40c3552",
+      "source_manifest_sha256": "9e754178a7a03032178a65300a4520d05763105ff7bde85c149f1ae227b21b33",
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "scored_interaction_count_L": 2,
+      "init_output_curvature_scale_b0": 28.0346766,
+      "best_output_curvature_scale_b0_reference": 50.6590844
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "surface_id": "wide__conv1__ours__adam",
+      "run_id": "009_09_wide_ours_adam_seed0_ec9307eb",
+      "best_epoch": 9,
+      "best_validation_accuracy": 0.9674,
+      "inference_iterations": 4,
+      "gradient_iterations": 4,
+      "native_inference_iterations": 4,
+      "native_gradient_iterations": 4,
+      "voltage_amplification": 4.0,
+      "current_amplification": 1.0,
+      "scientific_config_sha256": "ec9307eb3177766afb81317d137ddd805e08a3fa87e28f210828f6935e44f649",
+      "config_used_sha256": "d7e94072626affad3d9ff27b6eadb76f2dae1324a6f5cc177ede11ca0a9f5a12",
+      "result_sha256": "338bafd6d94ab8a7fae549074ae9b2fe858af039a1416c287a40266e1de45df9",
+      "best_checkpoint_sha256": "6b36fab077080236fb9db32745505b4b1da9a3de2482b138cfee153addfd344c",
+      "source_manifest_sha256": "09f34739a3e8158611a30b2f9ba7f811e8529828c324e665598a1d549f5e054f",
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "scored_interaction_count_L": 2,
+      "init_output_curvature_scale_b0": 7.00866914,
+      "best_output_curvature_scale_b0_reference": 18.0806170
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "surface_id": "wide__conv1__legacy__adam",
+      "run_id": "011_11_wide_legacy_adam_seed0_19eccd3a",
+      "best_epoch": 9,
+      "best_validation_accuracy": 0.9686,
+      "inference_iterations": 4,
+      "gradient_iterations": 4,
+      "native_inference_iterations": 4,
+      "native_gradient_iterations": 4,
+      "voltage_amplification": 4.0,
+      "current_amplification": 0.25,
+      "scientific_config_sha256": "19eccd3aa2d5a048efb04e2eda2dd722b5b7c23a630ff1d2181693213dbd1fd6",
+      "config_used_sha256": "bb6ea46275b87886fadc72ae4f94a92ad2ab3d33a42a817129724ff81a7d5e0d",
+      "result_sha256": "1cbbde8e3ea2de490c4d1d94a009a35ce719f5fc25e2ce43da782bce93e30229",
+      "best_checkpoint_sha256": "4ee86c90e41feaf8d74de80b1b56d363b915ed5519d2d060e2a2bc462a949ec3",
+      "source_manifest_sha256": "da769aa08448aa586191a1db9d0acfc87557514a2d4717ad983fa640872fc11a",
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "scored_interaction_count_L": 2,
+      "init_output_curvature_scale_b0": 0.109510455,
+      "best_output_curvature_scale_b0_reference": 0.362335340
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "surface_id": "wide__conv2__baseline__adam",
+      "run_id": "019_07_wide_baseline_adam_seed0_75d54878",
+      "best_epoch": 30,
+      "best_validation_accuracy": 0.9728,
+      "inference_iterations": 6,
+      "gradient_iterations": 6,
+      "native_inference_iterations": 6,
+      "native_gradient_iterations": 6,
+      "voltage_amplification": 1.0,
+      "current_amplification": 1.0,
+      "scientific_config_sha256": "75d54878235edc36b1c08d7b72c51d64719e0af65d49df22c85612bc3192a851",
+      "config_used_sha256": "0034464075df35a1a371754418c1d32aa7dfa8e77db29877765ac4caf8146b2d",
+      "result_sha256": "3d61b08d6f1282f66aa9f21ed908682c51551a98b3b1574363399123b824928e",
+      "best_checkpoint_sha256": "2a60d5a80b96ca91704174870701691e87ad7f9844036c80fb82d1091e89ec1f",
+      "source_manifest_sha256": "bc33056112d853daddfbd3fbeed57b90cbd66b100aebafa67f92fa2700dec007",
+      "reconstructed_initialization_tensor_sha256": "459cb130180dab3e0effdc20218f7086bcb51ac3c16c9dd81f3dd97bb7da2750",
+      "scored_interaction_count_L": 3,
+      "init_output_curvature_scale_b0": 19.9494619,
+      "best_output_curvature_scale_b0_reference": 113.135090
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "ours",
+      "surface_id": "wide__conv2__ours__adam",
+      "run_id": "021_09_wide_ours_adam_seed0_ee091696",
+      "best_epoch": 20,
+      "best_validation_accuracy": 0.9816,
+      "inference_iterations": 6,
+      "gradient_iterations": 6,
+      "native_inference_iterations": 6,
+      "native_gradient_iterations": 6,
+      "voltage_amplification": 4.0,
+      "current_amplification": 1.0,
+      "scientific_config_sha256": "ee091696bb76448eba02a036168d0aaef0eb55a0b7fe01271b09574ac1105c23",
+      "config_used_sha256": "0c2c11c674e6c268d994a9b1eb679d16011a5df64b1df6947ac1ebcb52024533",
+      "result_sha256": "6b95869401e594382fa899001fbddfdd8d621212d5b7de1c6320744fdd1936da",
+      "best_checkpoint_sha256": "fe456e80ba6bb3257dd524666968fd91514782f02ceabdd14c93652acf2b1f9c",
+      "source_manifest_sha256": "60db8b53e2a2759639f40f50afbf1bbb4a47cfafb4f753c525d7e9e6192c09a5",
+      "reconstructed_initialization_tensor_sha256": "459cb130180dab3e0effdc20218f7086bcb51ac3c16c9dd81f3dd97bb7da2750",
+      "scored_interaction_count_L": 3,
+      "init_output_curvature_scale_b0": 1.24684137,
+      "best_output_curvature_scale_b0_reference": 3.49988198
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "surface_id": "wide__conv2__legacy__adam",
+      "run_id": "023_11_wide_legacy_adam_seed0_729447ba",
+      "best_epoch": 29,
+      "best_validation_accuracy": 0.9842,
+      "inference_iterations": 6,
+      "gradient_iterations": 6,
+      "native_inference_iterations": 6,
+      "native_gradient_iterations": 6,
+      "voltage_amplification": 4.0,
+      "current_amplification": 0.25,
+      "scientific_config_sha256": "729447baffb88ca28309d5272448e8e40e4a9ab41bb471272d1a8d92b22213ac",
+      "config_used_sha256": "1b198fca3c70c8af2e3cea5d421313044c7f103dc9046c3822615207e18abb13",
+      "result_sha256": "484f53a76983da7689045e1640b638daf6be16405f1b1d6e29424ab068655ff3",
+      "best_checkpoint_sha256": "5664b434f3fe9177f258abb1425fb93f9d861ca0e144550349b8f29be7f923e1",
+      "source_manifest_sha256": "4650acac01de217072c5d3ba06bad55ec626dea83caec7a1efd70129190a126c",
+      "reconstructed_initialization_tensor_sha256": "459cb130180dab3e0effdc20218f7086bcb51ac3c16c9dd81f3dd97bb7da2750",
+      "scored_interaction_count_L": 3,
+      "init_output_curvature_scale_b0": 0.00487047410,
+      "best_output_curvature_scale_b0_reference": 0.00876902324
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "surface_id": "wide__conv3__baseline__adam",
+      "run_id": "031_07_wide_baseline_adam_seed0_f466f586",
+      "best_epoch": 30,
+      "best_validation_accuracy": 0.9776,
+      "inference_iterations": 12,
+      "gradient_iterations": 8,
+      "native_inference_iterations": 12,
+      "native_gradient_iterations": 8,
+      "voltage_amplification": 1.0,
+      "current_amplification": 1.0,
+      "scientific_config_sha256": "f466f5868553d907b6ef0e26296d9dc3028e69ff251a600ca14193b5ba188031",
+      "config_used_sha256": "9e13385c4038e5938fd1be36df046730f3468924a41a6e3ea7b89c7c291735d5",
+      "result_sha256": "c5613d7635c35b15ea906baf899468379be5e679871e14e1e02495865ab1f91d",
+      "best_checkpoint_sha256": "73f773cc7789687ec4e931f84696dbe47ea7d821d572f020e9a36e4ef9142660",
+      "source_manifest_sha256": "feb97c077c828d0193ba37f73e6c505ca1207efe61bd026cd1a9f4bd68ed9c45",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "scored_interaction_count_L": 4,
+      "init_output_curvature_scale_b0": 28.0464210,
+      "best_output_curvature_scale_b0_reference": 434.797318
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "surface_id": "wide__conv3__ours__adam",
+      "run_id": "033_09_wide_ours_adam_seed0_d1451ddf",
+      "best_epoch": 28,
+      "best_validation_accuracy": 0.9868,
+      "inference_iterations": 8,
+      "gradient_iterations": 8,
+      "native_inference_iterations": 8,
+      "native_gradient_iterations": 8,
+      "voltage_amplification": 4.0,
+      "current_amplification": 1.0,
+      "scientific_config_sha256": "d1451ddf9251d275e20e362d081eeaf9357c811096fc38b8cd3824329e28f2f3",
+      "config_used_sha256": "5b39940773d30f815393dfcca44522dc7e47a130218c766648cf9832deb4732d",
+      "result_sha256": "4f0f2311234dcb6d640ad250630edbb034662d4fc68cdea17f282a5ca64bc23f",
+      "best_checkpoint_sha256": "45cb68a73ae65f5034dabbe648dc849f5526664cd9e420ee79cce8f4445ead42",
+      "source_manifest_sha256": "bcc2f721cb290058c3307842e5363c609c11cdecdd116053b558d96579f78adf",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "scored_interaction_count_L": 4,
+      "init_output_curvature_scale_b0": 0.438225328,
+      "best_output_curvature_scale_b0_reference": 2.38014948
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "surface_id": "wide__conv3__legacy__adam",
+      "run_id": "035_11_wide_legacy_adam_seed0_07c37cd4",
+      "best_epoch": 22,
+      "best_validation_accuracy": 0.9904,
+      "inference_iterations": 8,
+      "gradient_iterations": 8,
+      "native_inference_iterations": 8,
+      "native_gradient_iterations": 8,
+      "voltage_amplification": 4.0,
+      "current_amplification": 0.25,
+      "scientific_config_sha256": "07c37cd4e537909917692b6f80d171273e703669389263737851355263a29783",
+      "config_used_sha256": "6ad93e3ccdbb5cc0f868a96d96f93683abd304a4d23f8ca26cb1cf61b389bdbf",
+      "result_sha256": "933fdc744bd9ce0e6c5c9ef213427c2deb866829494a5200caa50dae741f892c",
+      "best_checkpoint_sha256": "11caecd95cd8c550c4ae35182d4b2cbeff129af1b0f3537d17880ba47a59e511",
+      "source_manifest_sha256": "de7c80ad37ce896eb6bba744f247a64e4f5d60d7a24193fe44333cce124f6091",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "scored_interaction_count_L": 4,
+      "init_output_curvature_scale_b0": 0.000427954422,
+      "best_output_curvature_scale_b0_reference": 0.000489741476
+    }
+  ],
+  "checkpoint_roles": [
+    "reconstructed_initialization",
+    "best_validation"
+  ],
+  "completion": {
+    "expected_source_cases": 9,
+    "expected_checkpoint_cases": 18,
+    "expected_beta_values": "case-specific after literal current scaling and the 0.01 injected-current cap",
+    "expected_tk_coordinates_by_architecture": {
+      "conv1": 1,
+      "conv2": 1,
+      "conv3": 1
+    },
+    "require_all_declared_weight_layers": true,
+    "require_finite_bptt_gradients": true,
+    "require_structured_eqprop_phase_outcomes": true,
+    "require_aggregate_and_per_state_layer_displacement": true,
+    "require_common_free_state_hash_match": true,
+    "require_source_checkpoint_bytes_unchanged": true,
+    "require_parameter_tensors_unchanged": true,
+    "require_no_optimizer_steps": true,
+    "expected_beta_values_by_case": {
+      "baseline/conv1": 14,
+      "ours/conv1": 13,
+      "legacy/conv1": 12,
+      "baseline/conv2": 14,
+      "ours/conv2": 13,
+      "legacy/conv2": 10,
+      "baseline/conv3": 14,
+      "ours/conv3": 11,
+      "legacy/conv3": 7
+    },
+    "require_exact_layerwise_equilibrium_residuals": true,
+    "require_finite_difference_precision_diagnostics": true,
+    "require_amplification_scaled_beta_metadata": true
+  },
+  "equilibrium_residual_contract": {
+    "statistic": "For each sample and dynamic layer, take the maximum projected-KKT residual across units, then report mean, median, p90, p99, and maximum across the fixed cohort.",
+    "phases": [
+      "post_T_free",
+      "zero",
+      "positive"
+    ],
+    "per_layer_sample_max_p90_threshold": 0.01,
+    "uniform_endpoint_maximum_threshold": 0.01,
+    "hard_failure_maximum_threshold": 0.1,
+    "require_for_beta_selection": true,
+    "comparison": "strictly_less_than"
+  },
+  "tk_coordinate_mode": "native_only"
+}

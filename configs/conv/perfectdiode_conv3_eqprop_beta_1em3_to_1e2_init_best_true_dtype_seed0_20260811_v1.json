@@ -1,0 +1,97 @@
+{
+  "schema_version": "perfectdiode-conv3-current-eqprop-complete-beta-sweep/v1",
+  "study_id": "perfectdiode-conv3-eqprop-beta-1em3-to-1e2-init-best-true-dtype-seed0-20260811-v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "evidence_class": "ordinary_mnist_learning_algorithm_state_diagnostic",
+  "question": "Complete the missing Conv3 true-dtype current-nudge EqProp matrix across initialization and trained best checkpoints.",
+  "source": {
+    "config": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase/config.resolved.json",
+    "run": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase",
+    "runtime_source_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias",
+    "runtime_source_head": "154d80e845cbec95ef9ba08981efd3079d765ddb",
+    "architecture": "conv3",
+    "schemes": ["baseline", "ours", "legacy"],
+    "checkpoint_roles": ["reconstructed_initialization", "best_validation"],
+    "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+    "best_checkpoints": {
+      "baseline": {
+        "epoch": 30,
+        "sha256": "73f773cc7789687ec4e931f84696dbe47ea7d821d572f020e9a36e4ef9142660"
+      },
+      "ours": {
+        "epoch": 28,
+        "sha256": "45cb68a73ae65f5034dabbe648dc849f5526664cd9e420ee79cce8f4445ead42"
+      },
+      "legacy": {
+        "epoch": 22,
+        "sha256": "11caecd95cd8c550c4ae35182d4b2cbeff129af1b0f3537d17880ba47a59e511"
+      }
+    }
+  },
+  "explicit_perfect_diode_contract": {
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {
+      "I_s": 1e-6,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    }
+  },
+  "replay": {
+    "T": 64,
+    "K": 64,
+    "batch_indices": [0],
+    "batch_size": 16,
+    "batch_payload_sha256": "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11",
+    "batch_source_indices_sha256": "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010",
+    "precisions": ["float32", "float64"],
+    "eqprop_variants": ["positive_one_sided", "centered"],
+    "official_test_read": false,
+    "optimizer_steps_applied": false,
+    "biases_active_in_dynamics": true,
+    "bias_gradients_excluded": true,
+    "primary_displacement_reference": "matched_zero_K_endpoint"
+  },
+  "beta_contract": {
+    "reported_beta": "injected current magnitude B",
+    "formula": "B=beta_base*(voltage_amplification/current_amplification)^3",
+    "injected_betas": [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0],
+    "base_beta_divisor": {
+      "baseline": 1.0,
+      "ours": 64.0,
+      "legacy": 4096.0
+    },
+    "source_grid_cap_bypassed": true
+  },
+  "measurements": {
+    "gradient_layers": ["C0", "C1", "C2", "Dense"],
+    "state_layers": ["H0", "H1", "H2", "output"],
+    "gradient_metrics": ["eqprop_vs_bptt_cosine", "eqprop_l2", "bptt_l2", "exact_zero_fraction", "norm_ratio", "symmetric_norm_delta"],
+    "state_metrics": ["relative_displacement", "delta_rms", "displacement_l2", "reference_rms", "max_abs_delta", "active_set_transition_fraction"]
+  },
+  "completion": {
+    "expected_run_bundles": 22,
+    "expected_scheme_checkpoint_beta_variant_contexts": 132,
+    "expected_true_dtype_contexts": 264,
+    "require_all_declared_weight_layers": true,
+    "require_all_declared_state_layers": true,
+    "require_common_free_state_hash_match": true,
+    "require_exact_layerwise_equilibrium_residuals": true,
+    "require_native_dtype_finite_difference": true,
+    "require_source_checkpoint_bytes_unchanged": true,
+    "require_parameter_tensors_unchanged": true,
+    "require_no_optimizer_steps": true,
+    "require_official_test_unread": true
+  },
+  "execution": {
+    "target": "local:RTX3090",
+    "launcher": "tmux",
+    "worker_count": 1,
+    "expected_runtime_minutes": [25, 45],
+    "output_root": "results/perfectdiode-conv3-eqprop-beta-1em3-to-1e2-init-best-true-dtype-seed0-20260811-v1"
+  }
+}
