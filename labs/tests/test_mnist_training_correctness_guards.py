@@ -7,11 +7,84 @@ from labs.mnist_train import (
     NonFiniteTrainingError,
     _batch_reset_flag,
     _checkpoint_best_then_callback,
+    _optimizer_step_callback_requested,
     _require_finite_tensor,
     _resolve_batch_state_policy,
     _resolve_dataset_config,
+    _save_epoch_diagnostic_checkpoint,
     _write_json,
 )
+
+
+def test_optimizer_callback_selector_preserves_legacy_callback_behavior():
+    legacy_callback = lambda payload: False
+    assert _optimizer_step_callback_requested(
+        legacy_callback, epoch=2, batch=7, total_batches=10
+    )
+
+    class Selected:
+        def should_record(self, *, epoch, batch, total_batches):
+            return (epoch, batch, total_batches) == (2, 7, 10)
+
+    selected = Selected()
+    assert _optimizer_step_callback_requested(
+        selected, epoch=2, batch=7, total_batches=10
+    )
+    assert not _optimizer_step_callback_requested(
+        selected, epoch=2, batch=8, total_batches=10
+    )
+    assert not _optimizer_step_callback_requested(
+        None, epoch=2, batch=7, total_batches=10
+    )
+
+
+def test_epoch_diagnostic_checkpoint_binds_optimizer_groups_to_names(tmp_path):
+    first = SimpleNamespace(
+        name="ConvWeight_0", state=torch.nn.Parameter(torch.tensor([0.2]))
+    )
+    second = SimpleNamespace(
+        name="Bias_0", state=torch.nn.Parameter(torch.tensor([0.1]))
+    )
+
+    class Energy:
+        def save(self, path):
+            torch.save({"states": [first.state.detach(), second.state.detach()]}, path)
+
+    optimizer = torch.optim.Adam(
+        [
+            {"params": [first.state], "lr": 0.01},
+            {"params": [second.state], "lr": 0.02},
+        ],
+        foreach=False,
+        fused=False,
+    )
+    record = _save_epoch_diagnostic_checkpoint(
+        run_dir=tmp_path,
+        epoch=0,
+        energy_fn=Energy(),
+        optimizer=optimizer,
+        parameters=(first, second),
+    )
+
+    payload = torch.load(
+        tmp_path / record["optimizer_path"], map_location="cpu", weights_only=False
+    )
+    assert record["model_path"] == "checkpoints/epoch_000_model.pt"
+    assert record["optimizer_path"] == "checkpoints/epoch_000_optimizer.pt"
+    assert payload["parameter_names"] == ["ConvWeight_0", "Bias_0"]
+    assert payload["optimizer_parameter_groups"] == [
+        {
+            "group_index": 0,
+            "learning_rate": 0.01,
+            "parameter_names": ["ConvWeight_0"],
+        },
+        {
+            "group_index": 1,
+            "learning_rate": 0.02,
+            "parameter_names": ["Bias_0"],
+        },
+    ]
+    assert payload["epoch"] == 0
 
 
 def test_batch_state_policy_defaults_to_independent_batches_with_legacy_opt_in():

@@ -169,8 +169,13 @@ def build_train_command(
     output_dir: Path,
     *,
     device: str | None = None,
+    dataset_root: Path | None = None,
     smoke: bool = False,
     reporting_run_dir: Path | None = None,
+    epoch_override: int | None = None,
+    gradient_trace_samples_per_epoch: int = 0,
+    checkpoint_every_epoch: bool = False,
+    skip_terminal_official_test: bool = False,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -184,6 +189,19 @@ def build_train_command(
         command.extend(["--reporting-run-dir", str(reporting_run_dir)])
     if device:
         command.extend(["--device", device])
+    if dataset_root is not None:
+        command.extend(["--dataset-root", str(Path(dataset_root).expanduser().resolve())])
+    if epoch_override is not None and not smoke:
+        command.extend(["--epochs", str(int(epoch_override))])
+    if int(gradient_trace_samples_per_epoch) > 0:
+        command.extend(
+            [
+                "--gradient-trace-samples-per-epoch",
+                str(int(gradient_trace_samples_per_epoch)),
+            ]
+        )
+    if checkpoint_every_epoch:
+        command.append("--checkpoint-every-epoch")
     if smoke:
         command.extend(
             [
@@ -196,6 +214,8 @@ def build_train_command(
                 "--skip-terminal-official-test",
             ]
         )
+    elif skip_terminal_official_test:
+        command.append("--skip-terminal-official-test")
     return command
 
 
@@ -374,15 +394,43 @@ def run(
     study_id: str | None = None,
     evidence_class: str | None = None,
     target: str | None = None,
+    dataset_root: Path | None = None,
+    epoch_override: int | None = None,
+    gradient_trace_samples_per_epoch: int = 0,
+    checkpoint_every_epoch: bool = False,
+    skip_terminal_official_test: bool = False,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     chosen = selected_configs(configs, index, environ=environ)
     output_root = Path(output_root).expanduser().resolve()
     results = []
     git_state = _git_state()
+    if epoch_override is not None and int(epoch_override) <= 0:
+        raise ValueError(
+            f"Expected epoch_override to be positive. Provided value: {epoch_override!r}."
+        )
+    if int(gradient_trace_samples_per_epoch) < 0:
+        raise ValueError(
+            "Expected gradient_trace_samples_per_epoch to be non-negative. "
+            f"Provided value: {gradient_trace_samples_per_epoch!r}."
+        )
 
     for position, config_path in chosen:
         config = load_exact_config(config_path)
+        configured_epochs = int(config["lab"]["epochs"])
+        if epoch_override is not None and int(epoch_override) > configured_epochs:
+            raise ValueError(
+                "Expected a limited diagnostic epoch override no larger than the "
+                f"configured budget. Provided value for {config_path}: "
+                f"override={epoch_override}, configured={configured_epochs}."
+            )
+        resolved_epochs = (
+            1
+            if smoke
+            else int(epoch_override)
+            if epoch_override is not None
+            else configured_epochs
+        )
         config_sha256 = hashlib.sha256(config_path.read_bytes()).hexdigest()
         case_dir = output_root / ("smoke" if smoke else "") / (
             f"{position:03d}_{config_path.stem}_{config_sha256[:8]}"
@@ -391,8 +439,13 @@ def run(
             config_path,
             case_dir,
             device=device,
+            dataset_root=dataset_root,
             smoke=smoke,
             reporting_run_dir=case_dir,
+            epoch_override=epoch_override,
+            gradient_trace_samples_per_epoch=gradient_trace_samples_per_epoch,
+            checkpoint_every_epoch=checkpoint_every_epoch,
+            skip_terminal_official_test=skip_terminal_official_test,
         )
         reporting = config.get("reporting", {})
         arm_id = (
@@ -412,8 +465,23 @@ def run(
             "config_sha256": config_sha256,
             "learning_rates": config["lr"],
             "optimizer": config["optimizer"]["name"],
-            "epochs": 1 if smoke else config["lab"]["epochs"],
+            "configured_epochs": configured_epochs,
+            "epochs": resolved_epochs,
             "smoke": smoke,
+            "diagnostics": {
+                "gradient_trace_samples_per_epoch": int(
+                    gradient_trace_samples_per_epoch
+                ),
+                "checkpoint_every_epoch": bool(checkpoint_every_epoch),
+                "skip_terminal_official_test": bool(
+                    smoke or skip_terminal_official_test
+                ),
+            },
+            "dataset_root_override": (
+                str(Path(dataset_root).expanduser().resolve())
+                if dataset_root is not None
+                else None
+            ),
             "command": command,
             "output_dir": str(case_dir),
             "git": git_state,
@@ -434,6 +502,13 @@ def run(
                 f"Expected a new or empty output directory. Provided value: {case_dir}."
             )
 
+        dataset_contract = _dataset_contract(config)
+        if smoke or skip_terminal_official_test:
+            dataset_contract["configured_official_test_policy"] = dataset_contract[
+                "official_test_policy"
+            ]
+            dataset_contract["official_test_policy"] = "skipped_for_diagnostic"
+            dataset_contract["official_test_read"] = False
         manifest = {
             "study_id": resolved_study_id,
             "run_id": case_dir.name,
@@ -446,12 +521,17 @@ def run(
                 "resolved": config,
                 "learning_rates": config["lr"],
                 "optimizer": config["optimizer"]["name"],
+                "configured_epochs": configured_epochs,
                 "epochs": record["epochs"],
+                "diagnostic_overrides": record["diagnostics"],
             },
-            "dataset": _dataset_contract(config),
+            "dataset": dataset_contract,
             "command": command,
             "git": git_state,
             "runtime": runtime,
+            "transport_overrides": {
+                "dataset_root": record["dataset_root_override"],
+            },
             "inputs": [
                 {
                     "role": "scientific_config",
@@ -487,7 +567,11 @@ def run(
                 if metrics_path.exists()
                 else {}
             )
-            completion_errors = _completion_errors(config, metrics, smoke=smoke)
+            completion_errors = _completion_errors(
+                config,
+                metrics,
+                smoke=bool(smoke or skip_terminal_official_test),
+            )
             if completion_errors:
                 error = "; ".join(completion_errors)
                 record["status"] = "failed"
@@ -503,6 +587,7 @@ def run(
                     "criteria_met": True,
                     "returncode": completed.returncode,
                     "smoke": smoke,
+                    "diagnostic_overrides": record["diagnostics"],
                 },
             )
         results.append(record)
@@ -526,9 +611,38 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("configs", type=Path, nargs="+")
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--device")
+    parser.add_argument(
+        "--dataset-root",
+        type=Path,
+        help="Transport-only dataset root override, primarily for local canaries.",
+    )
     parser.add_argument("--index", type=int)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--epoch-override",
+        type=int,
+        help=(
+            "Diagnostic trajectory prefix. Must be positive and no larger than "
+            "the epoch budget frozen in every source config."
+        ),
+    )
+    parser.add_argument(
+        "--gradient-trace-samples-per-epoch",
+        type=int,
+        default=0,
+        help="Sample this many real optimizer transitions per training epoch.",
+    )
+    parser.add_argument(
+        "--checkpoint-every-epoch",
+        action="store_true",
+        help="Save model and optimizer state at initialization and after every epoch.",
+    )
+    parser.add_argument(
+        "--skip-terminal-official-test",
+        action="store_true",
+        help="Skip the terminal official test for a diagnostic-only run.",
+    )
     parser.add_argument("--study-id")
     parser.add_argument("--evidence-class")
     parser.add_argument("--target")
@@ -552,6 +666,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         study_id=args.study_id,
         evidence_class=args.evidence_class,
         target=args.target,
+        dataset_root=args.dataset_root,
+        epoch_override=args.epoch_override,
+        gradient_trace_samples_per_epoch=args.gradient_trace_samples_per_epoch,
+        checkpoint_every_epoch=args.checkpoint_every_epoch,
+        skip_terminal_official_test=args.skip_terminal_official_test,
     )
     if args.summary_json is not None:
         _write_json(args.summary_json.expanduser().resolve(), result["runs"])

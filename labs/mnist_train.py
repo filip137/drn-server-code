@@ -451,6 +451,29 @@ def _require_finite_variables(variables, label, *, epoch=None, batch=None):
         )
 
 
+def _optimizer_step_callback_requested(
+    callback,
+    *,
+    epoch,
+    batch,
+    total_batches,
+):
+    """Return whether an optional post-step callback needs this transition."""
+
+    if callback is None:
+        return False
+    selector = getattr(callback, "should_record", None)
+    if selector is None:
+        return True
+    return bool(
+        selector(
+            epoch=int(epoch),
+            batch=int(batch),
+            total_batches=int(total_batches),
+        )
+    )
+
+
 def _sha256_path(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -467,7 +490,7 @@ def _save_epoch_diagnostic_checkpoint(
     optimizer,
     parameters,
 ):
-    """Save an immutable model/optimizer checkpoint for one diagnostic epoch."""
+    """Save model and optimizer state for an immutable diagnostic epoch."""
 
     checkpoint_dir = Path(run_dir) / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -1113,6 +1136,8 @@ def _train_image_task(
     apply_optimizer_steps=True,
     reporting_run_dir=None,
     skip_terminal_official_test=False,
+    dataset_root_override=None,
+    gradient_trace_samples_per_epoch=0,
     checkpoint_every_epoch=False,
 ):
     config_path = Path(config_path).expanduser().resolve()
@@ -1121,6 +1146,23 @@ def _train_image_task(
     _set_seed(seed_value)
     _reset_name_counters()
     dataset_key = _normalize_dataset_key(dataset_key)
+    if dataset_root_override is not None:
+        datasets_cfg = config.get("datasets")
+        if not isinstance(datasets_cfg, dict) or dataset_key not in datasets_cfg:
+            raise KeyError(
+                f"Cannot override root for missing dataset config {dataset_key!r}."
+            )
+        dataset_cfg = datasets_cfg[dataset_key]
+        if not isinstance(dataset_cfg, dict):
+            raise TypeError(
+                f"Expected dataset config {dataset_key!r} to be an object."
+            )
+        params = dataset_cfg.get("params")
+        if not isinstance(params, dict):
+            raise TypeError(
+                f"Expected dataset config {dataset_key!r} params to be an object."
+            )
+        params["root"] = str(Path(dataset_root_override).expanduser().resolve())
     run_dir, host, timestamp = _resolve_run_dir(config_path, output_dir)
     config_snapshot_path = run_dir / "config.used.json"
     _write_json(config_snapshot_path, config)
@@ -1128,7 +1170,19 @@ def _train_image_task(
     epochs = int(epochs)
     if epochs <= 0:
         raise ValueError(f"Expected epochs to be a positive integer. Provided value: {epochs!r}.")
+    gradient_trace_samples_per_epoch = int(gradient_trace_samples_per_epoch)
+    if gradient_trace_samples_per_epoch < 0:
+        raise ValueError(
+            "Expected gradient_trace_samples_per_epoch to be non-negative. "
+            f"Provided value: {gradient_trace_samples_per_epoch!r}."
+        )
     checkpoint_every_epoch = bool(checkpoint_every_epoch)
+    if gradient_trace_samples_per_epoch and not apply_optimizer_steps:
+        raise ValueError("Gradient/update tracing requires optimizer steps to be enabled.")
+    if gradient_trace_samples_per_epoch and optimizer_step_callback is not None:
+        raise ValueError(
+            "Gradient/update tracing cannot replace an explicit optimizer_step_callback."
+        )
     training_algorithm = _normalize_training_algorithm(
         training_algorithm if training_algorithm is not None else config.get("training_algorithm")
     )
@@ -1378,6 +1432,9 @@ def _train_image_task(
             "train_indices_sha256": loader_result.train_indices_hash,
             "validation_indices_sha256": loader_result.validation_indices_hash,
             "first_epoch_batch_order_sha256": loader_result.first_epoch_batch_order_hash,
+            "train_batch_order_sha256": list(
+                loader_result.train_batch_order_hashes(num_epochs=epochs)
+            ),
         }
     elif isinstance(loader_result, tuple):
         train_loader, test_loader = loader_result
@@ -1450,6 +1507,33 @@ def _train_image_task(
         optimizer_details,
     )
 
+    gradient_trace_recorder = None
+    if gradient_trace_samples_per_epoch:
+        if not hasattr(loader_result, "train_batch_indices"):
+            raise ValueError(
+                "Gradient/update tracing requires deterministic source-index batch provenance."
+            )
+        effective_batches_per_epoch = (
+            min(len(train_loader), int(max_batches))
+            if max_batches is not None
+            else len(train_loader)
+        )
+        from experiments.gradient_trace import GradientTraceRecorder
+
+        gradient_trace_recorder = GradientTraceRecorder(
+            output_path=run_dir / "gradient_trace.jsonl",
+            metadata_path=run_dir / "gradient_trace_metadata.json",
+            parameters=params,
+            optimizer=optimizer,
+            batch_indices_by_epoch=loader_result.train_batch_indices(
+                num_epochs=epochs
+            ),
+            effective_batches_per_epoch=effective_batches_per_epoch,
+            samples_per_epoch=gradient_trace_samples_per_epoch,
+            dataset_provenance=dataset_provenance,
+        )
+        optimizer_step_callback = gradient_trace_recorder
+
     history = {
         "loss": [],
         "accuracy": [],
@@ -1509,7 +1593,18 @@ def _train_image_task(
             "beta": beta_value,
         },
         "diagnostics": {
+            "gradient_trace_samples_per_epoch": gradient_trace_samples_per_epoch,
             "checkpoint_every_epoch": checkpoint_every_epoch,
+            "gradient_trace_path": (
+                str(run_dir / "gradient_trace.jsonl")
+                if gradient_trace_recorder is not None
+                else None
+            ),
+            "gradient_trace_metadata_path": (
+                str(run_dir / "gradient_trace_metadata.json")
+                if gradient_trace_recorder is not None
+                else None
+            ),
             "epoch_checkpoint_index_path": (
                 str(run_dir / "epoch_checkpoint_index.jsonl")
                 if checkpoint_every_epoch
@@ -1653,15 +1748,30 @@ def _train_image_task(
                     )
                 )
             if apply_optimizer_steps:
+                record_optimizer_step = _optimizer_step_callback_requested(
+                    optimizer_step_callback,
+                    epoch=epoch + 1,
+                    batch=batch_idx + 1,
+                    total_batches=train_batches_this_epoch,
+                )
                 tracked_indices = (
-                    [
+                    list(range(len(params)))
+                    if record_optimizer_step
+                    and bool(
+                        getattr(
+                            optimizer_step_callback,
+                            "track_all_parameters",
+                            False,
+                        )
+                    )
+                    else [
                         index
                         for index, param in enumerate(params)
                         if str(getattr(param, "name", "")).strip().startswith(
                             ("ConvWeight_", "DenseWeight_")
                         )
                     ]
-                    if optimizer_step_callback is not None
+                    if record_optimizer_step
                     else []
                 )
                 pre_optimizer_states = {
@@ -1696,7 +1806,7 @@ def _train_image_task(
                     epoch=epoch + 1,
                     batch=batch_idx + 1,
                 )
-                if optimizer_step_callback is not None:
+                if record_optimizer_step:
                     stop_after_batch = bool(
                         optimizer_step_callback(
                             {
@@ -1705,6 +1815,8 @@ def _train_image_task(
                                 "loss": batch_loss,
                                 "parameters": tuple(params),
                                 "gradients": tuple(grads[:len(params)]),
+                                "optimizer": optimizer,
+                                "total_batches": train_batches_this_epoch,
                                 "pre_optimizer_states": pre_optimizer_states,
                                 "post_optimizer_states": post_optimizer_states,
                                 "post_projection_states": {
@@ -1815,6 +1927,10 @@ def _train_image_task(
 
     if stop_training:
         print("Epoch callback requested early stop; summarizing current history.")
+
+    gradient_trace_metadata = None
+    if gradient_trace_recorder is not None:
+        gradient_trace_metadata = gradient_trace_recorder.finalize()
 
     def _last(values):
         return values[-1] if values else float("nan")
@@ -1943,6 +2059,18 @@ def _train_image_task(
         "lr_decay": lr_decay_value,
         "optimizer": optimizer_details,
         "optimizer_steps_applied": bool(apply_optimizer_steps),
+        "gradient_trace_samples_per_epoch": gradient_trace_samples_per_epoch,
+        "gradient_trace_path": (
+            str(run_dir / "gradient_trace.jsonl")
+            if gradient_trace_recorder is not None
+            else None
+        ),
+        "gradient_trace_metadata_path": (
+            str(run_dir / "gradient_trace_metadata.json")
+            if gradient_trace_recorder is not None
+            else None
+        ),
+        "gradient_trace_metadata": gradient_trace_metadata,
         "checkpoint_every_epoch": checkpoint_every_epoch,
         "epoch_checkpoint_index_path": (
             str(run_dir / "epoch_checkpoint_index.jsonl")
@@ -1978,6 +2106,17 @@ def _train_image_task(
         "lr_decay": lr_decay_value,
         "optimizer": optimizer_details,
         "optimizer_steps_applied": bool(apply_optimizer_steps),
+        "gradient_trace_samples_per_epoch": gradient_trace_samples_per_epoch,
+        "gradient_trace_path": (
+            str(run_dir / "gradient_trace.jsonl")
+            if gradient_trace_recorder is not None
+            else None
+        ),
+        "gradient_trace_metadata_path": (
+            str(run_dir / "gradient_trace_metadata.json")
+            if gradient_trace_recorder is not None
+            else None
+        ),
         "checkpoint_every_epoch": checkpoint_every_epoch,
         "epoch_checkpoint_index_path": (
             str(run_dir / "epoch_checkpoint_index.jsonl")
@@ -2012,6 +2151,16 @@ def _train_image_task(
     summary["best_model_path"] = str(best_model_path)
     summary["weights_final_path"] = str(weights_final_path)
     summary["weights_best_path"] = str(weights_best_path)
+    summary["gradient_trace_path"] = (
+        str(run_dir / "gradient_trace.jsonl")
+        if gradient_trace_recorder is not None
+        else None
+    )
+    summary["gradient_trace_metadata_path"] = (
+        str(run_dir / "gradient_trace_metadata.json")
+        if gradient_trace_recorder is not None
+        else None
+    )
     summary["epoch_checkpoint_index_path"] = (
         str(run_dir / "epoch_checkpoint_index.jsonl")
         if checkpoint_every_epoch
@@ -2053,6 +2202,8 @@ def train_mnist_conv(
     apply_optimizer_steps=True,
     reporting_run_dir=None,
     skip_terminal_official_test=False,
+    dataset_root_override=None,
+    gradient_trace_samples_per_epoch=0,
     checkpoint_every_epoch=False,
 ):
     return _train_image_task(
@@ -2083,6 +2234,8 @@ def train_mnist_conv(
         apply_optimizer_steps=apply_optimizer_steps,
         reporting_run_dir=reporting_run_dir,
         skip_terminal_official_test=skip_terminal_official_test,
+        dataset_root_override=dataset_root_override,
+        gradient_trace_samples_per_epoch=gradient_trace_samples_per_epoch,
         checkpoint_every_epoch=checkpoint_every_epoch,
     )
 
@@ -2213,6 +2366,12 @@ def main(argv=None):
         help="Dataset override for MNIST-style image runs. Use 'mnist' or 'fmnist'.",
     )
     parser.add_argument(
+        "--dataset-root",
+        type=str,
+        default=None,
+        help="Transport-only root override for the selected dataset.",
+    )
+    parser.add_argument(
         "--training-algorithm",
         choices=("EP", "BP", "ep", "bp"),
         default=None,
@@ -2228,6 +2387,20 @@ def main(argv=None):
         "--skip-terminal-official-test",
         action="store_true",
         help="Skip a configured terminal official-test evaluation (smoke runs only).",
+    )
+    parser.add_argument(
+        "--gradient-trace-samples-per-epoch",
+        type=int,
+        default=0,
+        help=(
+            "Record raw-gradient and realized-update statistics at this many "
+            "evenly spaced training batches per epoch."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-every-epoch",
+        action="store_true",
+        help="Save model and optimizer diagnostic checkpoints at epoch 0 and every epoch.",
     )
 
     args = parser.parse_args(argv)
@@ -2323,6 +2496,11 @@ def main(argv=None):
     if model_key != "tiny3x3":
         train_kwargs["dataset_key"] = dataset_key
         train_kwargs["model_key"] = model_key
+        train_kwargs["dataset_root_override"] = args.dataset_root
+        train_kwargs["gradient_trace_samples_per_epoch"] = (
+            args.gradient_trace_samples_per_epoch
+        )
+        train_kwargs["checkpoint_every_epoch"] = args.checkpoint_every_epoch
 
     history = train_fn(**train_kwargs)
     print("Training history:", history)

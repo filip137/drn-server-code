@@ -125,6 +125,38 @@ def test_smoke_command_caps_training_and_validation(tmp_path: Path) -> None:
     ]
 
 
+def test_train_command_records_transport_dataset_root(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "mnist"
+    command = build_train_command(
+        tmp_path / "config.json",
+        tmp_path / "output",
+        device="cpu",
+        dataset_root=dataset_root,
+        smoke=True,
+    )
+
+    assert command[command.index("--dataset-root") + 1] == str(
+        dataset_root.resolve()
+    )
+
+
+def test_train_command_records_limited_gradient_diagnostics(tmp_path: Path) -> None:
+    command = build_train_command(
+        tmp_path / "config.json",
+        tmp_path / "output",
+        device="cuda",
+        epoch_override=10,
+        gradient_trace_samples_per_epoch=5,
+        checkpoint_every_epoch=True,
+        skip_terminal_official_test=True,
+    )
+
+    assert command[command.index("--epochs") + 1] == "10"
+    assert command[command.index("--gradient-trace-samples-per-epoch") + 1] == "5"
+    assert "--checkpoint-every-epoch" in command
+    assert "--skip-terminal-official-test" in command
+
+
 def test_paper_completion_requires_one_full_official_test() -> None:
     config = {
         "evaluation": {
@@ -221,6 +253,45 @@ def test_dry_run_is_indexed_and_has_no_output_side_effect(
     assert [item["index"] for item in result["runs"]] == [1]
     assert result["runs"][0]["learning_rates"] == [0.1, 0.02]
     assert not output_root.exists()
+
+
+def test_dry_run_records_diagnostic_prefix_without_mutating_source_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _write_config(tmp_path / "sgd.json")
+    source_bytes = config.read_bytes()
+    monkeypatch.setattr(
+        "experiments.exact_run._git_state",
+        lambda: {"commit": "abc", "dirty": False},
+    )
+
+    result = run(
+        [config],
+        output_root=tmp_path / "results",
+        dry_run=True,
+        epoch_override=2,
+        gradient_trace_samples_per_epoch=5,
+        checkpoint_every_epoch=True,
+        skip_terminal_official_test=True,
+    )
+
+    record = result["runs"][0]
+    assert record["configured_epochs"] == 3
+    assert record["epochs"] == 2
+    assert record["diagnostics"] == {
+        "gradient_trace_samples_per_epoch": 5,
+        "checkpoint_every_epoch": True,
+        "skip_terminal_official_test": True,
+    }
+    assert config.read_bytes() == source_bytes
+    assert not (tmp_path / "results").exists()
+
+
+def test_diagnostic_prefix_cannot_exceed_frozen_config_budget(tmp_path: Path) -> None:
+    config = _write_config(tmp_path / "sgd.json")
+    with pytest.raises(ValueError, match="no larger than the configured budget"):
+        run([config], output_root=tmp_path / "results", dry_run=True, epoch_override=4)
 
 
 def test_run_writes_per_case_record_and_propagates_failure(
@@ -332,6 +403,12 @@ def test_training_cli_forwards_bounded_validation_and_optimizer_rates(
     del config["lr"]
     config.update(
         {
+            "datasets": {
+                "mnist": {
+                    "factory": "labs.datasets.MnistTrainValidationDataset",
+                    "params": {"root": "/remote/mnist"},
+                }
+            },
             "lab": {
                 "epochs": 3,
                 "model_key": "mnist_bp_conv_amp",
@@ -361,6 +438,8 @@ def test_training_cli_forwards_bounded_validation_and_optimizer_rates(
             "1",
             "--max-validation-batches",
             "1",
+            "--dataset-root",
+            str(tmp_path / "mnist"),
         ]
     ) == 0
 
@@ -368,3 +447,4 @@ def test_training_cli_forwards_bounded_validation_and_optimizer_rates(
     assert captured["lr"] == [0.1, 0.02]
     assert captured["max_batches"] == 1
     assert captured["max_test_batches"] == 1
+    assert captured["dataset_root_override"] == str(tmp_path / "mnist")
