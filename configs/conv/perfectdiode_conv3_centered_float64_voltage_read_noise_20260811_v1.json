@@ -1,0 +1,142 @@
+{
+  "schema_version": "perfectdiode-conv3-centered-float64-voltage-read-noise-study/v1",
+  "study_id": "perfectdiode-conv3-centered-float64-voltage-read-noise-20260811-v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "evidence_class": "ordinary_mnist_learning_algorithm_read_noise_diagnostic",
+  "question": "How much independent endpoint-voltage read noise can each amplification scheme tolerate at its largest clean all-layer centered-EqProp operating beta?",
+  "source": {
+    "beta_config": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase/config.resolved.json",
+    "beta_config_sha256": "fccdfb03aab8bf56b16adb4bec7769083c2616715ee47a4a47637a2fc3101296",
+    "beta_config_semantic_sha256": "90af00b78fd686ec2ecc5f40a1eb9b4c0af753fdc6f0bc139848fe73cfb3eccf",
+    "native_beta_run": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase",
+    "native_beta_result_sha256": "9f24538070cc9eeb85b6e11d155e36e228caaebbc133949f3230e9857ad5c80c",
+    "cohort_file_sha256": "cf5b4f4086832ac8b3116006992767c05f0c91a670b86bfca20465ad40cd2690",
+    "accepted_sweep_root": "results/perfectdiode-conv3-eqprop-beta-1em3-to-1e2-init-best-true-dtype-seed0-20260811-v1"
+  },
+  "explicit_perfect_diode_contract": {
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    }
+  },
+  "replay": {
+    "architecture": "conv3",
+    "T": 64,
+    "K": 64,
+    "batch_index": 0,
+    "batch_size": 16,
+    "batch_payload_sha256": "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11",
+    "batch_source_indices_sha256": "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010",
+    "runtime_dtype": "float64",
+    "eqprop_variant": "centered",
+    "nudging_mode": "current",
+    "input_read_noise": false,
+    "biases_active_in_dynamics": true,
+    "bias_gradients_excluded": true,
+    "optimizer_steps_applied": false,
+    "official_test_read": false
+  },
+  "cases": [
+    {
+      "scheme": "baseline",
+      "checkpoint_role": "reconstructed_initialization",
+      "injected_beta_B": 100.0,
+      "actual_beta": 100.0,
+      "base_beta_divisor": 1.0,
+      "clean_beta_selection_status": "largest_tested_clean_open_upper_grid_edge",
+      "accepted_reference_run": "centered-B100-tk64",
+      "accepted_reference_result_sha256": "e02f77bc6f3c55758f18aa068c4492c36c33643cd72dd59e63b462553a53e60d",
+      "accepted_reference_archive_sha256": "b2fcd6a0410eff6f1321cbf273b420575e230c0175f6ba72777330e165b8695c"
+    },
+    {
+      "scheme": "baseline",
+      "checkpoint_role": "best_validation",
+      "injected_beta_B": 100.0,
+      "actual_beta": 100.0,
+      "base_beta_divisor": 1.0,
+      "clean_beta_selection_status": "largest_tested_clean_open_upper_grid_edge",
+      "accepted_reference_run": "centered-B100-tk64",
+      "accepted_reference_result_sha256": "e02f77bc6f3c55758f18aa068c4492c36c33643cd72dd59e63b462553a53e60d",
+      "accepted_reference_archive_sha256": "2e4c57e56ea040a4600778fa7d9891c4115b559f290d046f1006faf13ebb38d6"
+    },
+    {
+      "scheme": "ours",
+      "checkpoint_role": "reconstructed_initialization",
+      "injected_beta_B": 10.0,
+      "actual_beta": 0.15625,
+      "base_beta_divisor": 64.0,
+      "clean_beta_selection_status": "largest_tested_clean_bracketed_by_next_beta",
+      "accepted_reference_run": "centered-B10-tk64",
+      "accepted_reference_result_sha256": "a98ddd58f37ae8634f706609aa16f8aab24661bb4441bfefe4297737d0ae7e99",
+      "accepted_reference_archive_sha256": "03b9bbc280ad2042906b9b0cfb4b2a556be9f7591a74dc48e40e1ff3d41e6f92"
+    },
+    {
+      "scheme": "ours",
+      "checkpoint_role": "best_validation",
+      "injected_beta_B": 30.0,
+      "actual_beta": 0.46875,
+      "base_beta_divisor": 64.0,
+      "clean_beta_selection_status": "largest_tested_clean_bracketed_by_next_beta",
+      "accepted_reference_run": "centered-B30-tk64",
+      "accepted_reference_result_sha256": "16ac52edf8bf8e62b18711de96ec502543e7d7d5e1a3e7b4e88bc94b0f9e9f6c",
+      "accepted_reference_archive_sha256": "d5fecd3baf894972fda7a4cb46451e27b4d33c64028882224ccc44fc8d2b23bd"
+    },
+    {
+      "scheme": "legacy",
+      "checkpoint_role": "reconstructed_initialization",
+      "injected_beta_B": 0.03,
+      "actual_beta": 7.32421875e-06,
+      "base_beta_divisor": 4096.0,
+      "clean_beta_selection_status": "largest_tested_clean_bracketed_by_next_beta",
+      "accepted_reference_run": "centered-B3em2-tk64",
+      "accepted_reference_result_sha256": "6b43a5aafae4a3e424f36038ef32c6ebded659a8990def6591e0f7138df61e24",
+      "accepted_reference_archive_sha256": "664177cb76b15d7868bcb21104930eb452a58105ca41acf5c0714d8ed88ea190"
+    },
+    {
+      "scheme": "legacy",
+      "checkpoint_role": "best_validation",
+      "injected_beta_B": 0.01,
+      "actual_beta": 2.44140625e-06,
+      "base_beta_divisor": 4096.0,
+      "clean_beta_selection_status": "largest_tested_clean_bracketed_by_next_beta",
+      "accepted_reference_run": "centered-B1em2-tk64",
+      "accepted_reference_result_sha256": "afd1c11c86f7417ad807b6b44c96456f9546838efc3515d6f87f999ddb4785a8",
+      "accepted_reference_archive_sha256": "35e05543d67cab05c9486301a2548906a7183c444e88256d90c7a0361fe18501"
+    }
+  ],
+  "noise": {
+    "model": "independent_additive_zero_mean_gaussian_on_negative_and_positive_free_layer_endpoint_states",
+    "units": "normalized_model_voltage",
+    "sigma_values": [0.0, 1e-12, 3e-12, 1e-11, 3e-11, 1e-10, 3e-10, 1e-09, 3e-09, 1e-08, 3e-08, 1e-07, 3e-07, 1e-06, 3e-06, 1e-05],
+    "trial_count": 32,
+    "base_seed": 2026081100,
+    "trial_interpretation": "coarse_fixed_seed_empirical_tail_sample_not_formal_tail_evidence",
+    "matched_standard_normal_draws_across_cases": true,
+    "phase_correlation": "independent",
+    "layer_correlation": "independent",
+    "noise_applied_after_equilibrium_before_local_squared_drop_evaluation": true
+  },
+  "gradient_fidelity_gate": {
+    "acquisition_reference": "clean_centered_eqprop_same_finite_beta",
+    "task_reference": "bptt_same_post_T_state_K64",
+    "cosine_minimum": 0.99,
+    "symmetric_norm_delta_maximum": 0.1,
+    "trial_aggregation": "per_layer_p05_cosine_and_p95_symmetric_norm_delta",
+    "all_layer_requirement": true,
+    "acquisition_only_threshold": "largest_sigma_in_contiguous_zero_anchored_prefix_passing_noisy_vs_clean",
+    "usable_threshold": "largest_sigma_in_contiguous_zero_anchored_prefix_passing_both_noisy_vs_clean_and_noisy_vs_bptt"
+  },
+  "execution": {
+    "target": "local:RTX3090",
+    "worker_count": 1,
+    "expected_runtime_minutes": [10, 20],
+    "output_root": "results/perfectdiode-conv3-centered-float64-voltage-read-noise-20260811-v1"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schema_version": "perfectdiode-conv3-centered-float64-voltage-read-noise-tk-study/v1",
+  "study_id": "perfectdiode-conv3-centered-float64-voltage-read-noise-tk8-tk12-20260812-v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "evidence_class": "ordinary_mnist_learning_algorithm_read_noise_tk_diagnostic",
+  "question": "Does the centered-float64 endpoint-voltage read-noise separation between amplification schemes persist when T=K is reduced from 64 to 8 or 12?",
+  "parent_study": {
+    "config": "configs/conv/perfectdiode_conv3_centered_float64_voltage_read_noise_20260811_v1.json",
+    "config_sha256": "56089d863f1460389f374e9377568027e321bb4c1c6915706db965a46cbd55ad",
+    "production_run": "results/perfectdiode-conv3-centered-float64-voltage-read-noise-20260811-v1/production",
+    "production_result_sha256": "bac3bfda8014d06483134b6cf7ae77f957e124b63ad4f948bc555363922039ff"
+  },
+  "replay": {
+    "architecture": "conv3",
+    "tested_equal_T_K": [8, 12],
+    "reference_equal_T_K": 64,
+    "batch_index": 0,
+    "batch_size": 16,
+    "runtime_dtype": "float64",
+    "eqprop_variant": "centered",
+    "nudging_mode": "current",
+    "beta_policy": "hold_parent_tk64_selected_injected_B_and_base_beta_fixed",
+    "same_tk_bptt_reference": true,
+    "compare_clean_eqprop_and_bptt_to_tk64": true,
+    "input_read_noise": false,
+    "biases_active_in_dynamics": true,
+    "bias_gradients_excluded": true,
+    "optimizer_steps_applied": false,
+    "official_test_read": false
+  },
+  "scientific_outcomes": {
+    "clean_eqprop_gate": "all four weight layers cosine>=0.99 and symmetric norm delta<=0.1 versus same-TK BPTT at sigma=0",
+    "acquisition_gate": "all four layers p05 cosine>=0.99 and p95 symmetric norm delta<=0.1 versus clean same-TK EqProp",
+    "usable_gate": "acquisition gate and the same quantile gates versus same-TK BPTT",
+    "threshold_rule": "largest sigma in a contiguous zero-anchored passing prefix; null when sigma=0 fails",
+    "equilibrium_interpretation": "a residual-failing context remains a valid under-relaxed diagnostic but is not equilibrium-valid noise evidence",
+    "tk12_status": "exploratory_interpolation_not_a_frozen_conv3_selector_grid_point"
+  },
+  "execution": {
+    "target": "local:RTX3090",
+    "worker_count": 1,
+    "expected_runtime_minutes": [5, 15],
+    "output_root": "results/perfectdiode-conv3-centered-float64-voltage-read-noise-tk8-tk12-20260812-v1"
+  }
+}

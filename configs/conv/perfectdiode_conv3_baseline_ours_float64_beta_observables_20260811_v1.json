@@ -1,0 +1,90 @@
+{
+  "schema_version": "perfectdiode-conv3-float64-beta-observables/v1",
+  "study_id": "perfectdiode-conv3-baseline-ours-float64-beta-observables-20260811-v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "evidence_class": "ordinary_mnist_learning_algorithm_state_diagnostic",
+  "source": {
+    "config": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase/config.resolved.json",
+    "run": "results/perfectdiode-conv123-fc123-positive-eqprop-small-beta-seed0-20260810-v1/conv-current-commonbase",
+    "runtime_source_root": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/signed-scaled-bias",
+    "runtime_source_head": "154d80e845cbec95ef9ba08981efd3079d765ddb",
+    "checkpoint_role": "best_validation",
+    "cases": [
+      {
+        "scheme": "baseline",
+        "checkpoint_epoch": 30,
+        "checkpoint_sha256": "73f773cc7789687ec4e931f84696dbe47ea7d821d572f020e9a36e4ef9142660",
+        "voltage_amplification": 1.0,
+        "current_amplification": 1.0
+      },
+      {
+        "scheme": "ours",
+        "checkpoint_epoch": 28,
+        "checkpoint_sha256": "45cb68a73ae65f5034dabbe648dc849f5526664cd9e420ee79cce8f4445ead42",
+        "voltage_amplification": 4.0,
+        "current_amplification": 1.0
+      }
+    ]
+  },
+  "explicit_perfect_diode_contract": {
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {
+      "I_s": 1e-6,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    }
+  },
+  "replay": {
+    "dtype": "float64",
+    "T": 64,
+    "K": 64,
+    "batch_indices": [0],
+    "batch_size": 16,
+    "official_test_read": false,
+    "optimizer_steps_applied": false,
+    "biases_active_in_dynamics": true,
+    "bias_gradients_excluded": true,
+    "phase_contract": "restore identical post-T state, run matched beta=0 and positive beta phases for K steps",
+    "primary_displacement_reference": "matched_zero_K_endpoint"
+  },
+  "beta_contract": {
+    "reported_common_beta": "effective/injected beta B",
+    "formula": "B=beta_base*(voltage_amplification/current_amplification)^3",
+    "baseline_beta_base": "B",
+    "ours_beta_base": "B/64",
+    "beta_hat_formula": "B/28.046421",
+    "common_effective_betas": [
+      2.8046421e-9,
+      8.4139263e-9,
+      2.8046421e-8,
+      8.4139263e-8,
+      2.8046421e-7,
+      8.4139263e-7,
+      2.8046421e-6,
+      8.4139263e-6,
+      2.8046421e-5,
+      8.4139263e-5,
+      2.8046421e-4,
+      8.4139263e-4,
+      2.8046421e-3,
+      8.4139263e-3,
+      1e-2,
+      3e-2,
+      1e-1,
+      3e-1,
+      1.0
+    ]
+  },
+  "observable_contract": {
+    "state_displacement": "s_plus-s_zero at matched K-step endpoints; report RMS, relative L2, and max absolute displacement",
+    "local_endpoint_statistic": "q(s)=dE/dw: exact code-path half squared-voltage-drop statistic, including amplification prefactor, minibatch mean, and Conv spatial sum",
+    "eqprop_learning_rule": "g=(q_plus-q_zero)/B",
+    "aggregation": "RMS over state elements or weight-statistic tensor entries"
+  },
+  "output_root": "results/perfectdiode-conv3-baseline-ours-float64-beta-observables-20260811-v1"
+}
