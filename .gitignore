@@ -84,6 +84,10 @@ runs/
 *.log
 events.out.tfevents*
 
+# Canonical local raw LoRA/HWA results. Keep only the root guide visible.
+/results/*
+!/results/README.md
+
 # Generated experiment payloads inside tracked figure trees
 labs/figures_for_paper_digits/**/runs/
 labs/figures_for_paper_digits/**/error_npz*/

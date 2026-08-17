@@ -190,11 +190,29 @@ class RunStore:
         run_dir: Path,
         manifest: Mapping[str, Any],
         started_monotonic: float,
+        repo_root: Path,
     ) -> None:
         self.run_dir = run_dir
         self.manifest = dict(manifest)
         self._started_monotonic = started_monotonic
+        self._repo_root = repo_root
         self._finished = False
+
+    def _refresh_current_simulations(self) -> None:
+        """Refresh the optional live ledger without affecting the run."""
+
+        try:
+            from experiments.current_simulations import (
+                refresh_current_simulations_for_run,
+            )
+
+            refresh_current_simulations_for_run(
+                repo_root=self._repo_root,
+                run_dir=self.run_dir,
+            )
+        except Exception:
+            # The index is a convenience view, never part of run correctness.
+            pass
 
     @classmethod
     def create(
@@ -289,11 +307,14 @@ class RunStore:
                 "error": None,
             },
         )
-        return cls(
+        store = cls(
             run_dir=run_dir,
             manifest=manifest,
             started_monotonic=time.monotonic(),
+            repo_root=repo_path,
         )
+        store._refresh_current_simulations()
+        return store
 
     def append_metric(self, record: Mapping[str, Any]) -> None:
         """Append one canonical JSON record and make it visible immediately."""
@@ -379,6 +400,7 @@ class RunStore:
             },
         )
         self._finished = True
+        self._refresh_current_simulations()
         return result_path
 
     def fail(self, error: BaseException | Mapping[str, Any]) -> Path:
@@ -408,4 +430,5 @@ class RunStore:
         path = self.run_dir / "status.json"
         atomic_write_json(path, status)
         self._finished = True
+        self._refresh_current_simulations()
         return path

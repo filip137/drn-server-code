@@ -18,6 +18,8 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - `plotting_functions/`: analysis/plotting helpers
 - `playbooks/`: SOPs for repeatable tasks
 - `docs/`: lightweight state and notes
+- `results/`: ignored raw LoRA/HWA study output; only its root guide is
+  intended for Git
 
 ## Experiment Architecture
 
@@ -114,7 +116,15 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - Prefer reusable plotting scripts under `labs/tools/` for plot generation commands.
 
 ## Data and Artifacts
-Generated outputs live under folders like `simulation_results*`, `papers/`, and `labs/cases/` and are ignored by git.
+New raw LoRA/HWA outputs live under `results/<study-id>/` and are ignored by
+Git. Existing generated outputs remain under legacy folders such as
+`simulation_results*`, `papers/`, and `labs/cases/`; do not move them solely
+to adopt the new index.
+
+The `Active` block in `docs/current_simulations.md` is generated from running
+native statuses below `results/`. Do not edit inside its automatic markers.
+The refresh is informational and must never block or fail a numerical run.
+Paused, analyzing, and queued sections remain human-maintained.
 
 ## Error Messages
 - When validating inputs, state the expected format first, then echo the provided value on failure.
