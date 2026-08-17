@@ -354,6 +354,7 @@ def _protocol_payload(
         and definitions[0].experiment_id
         in {
             "mnist_relu_drn_reset.v1",
+            "mnist_relu_drn_reset_differential.v1",
             "mnist_relu_drn_reset_bias.v1",
             "mnist_relu_drn_reset_bias_legacy.v1",
             "mnist_relu_drn_reset_factorial.v1",
@@ -603,6 +604,7 @@ def _default_train_handler(request: TrainRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.runtime import run_train
     elif request.definition.experiment_id in {
         "mnist_relu_drn_reset.v1",
+        "mnist_relu_drn_reset_differential.v1",
         "mnist_relu_drn_reset_bias.v1",
         "mnist_relu_drn_reset_bias_legacy.v1",
         "mnist_relu_drn_reset_factorial.v1",
@@ -637,6 +639,7 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.runtime import run_validate
     elif request.definition.experiment_id in {
         "mnist_relu_drn_reset.v1",
+        "mnist_relu_drn_reset_differential.v1",
         "mnist_relu_drn_reset_bias.v1",
         "mnist_relu_drn_reset_bias_legacy.v1",
         "mnist_relu_drn_reset_factorial.v1",

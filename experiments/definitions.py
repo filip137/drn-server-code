@@ -44,12 +44,14 @@ from experiments.mnist_relu_drn.config import (
 )
 from experiments.mnist_relu_drn_reset.config import (
     BIAS_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_BIAS_EXPERIMENT_ID,
+    DIFFERENTIAL_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_DIFFERENTIAL_EXPERIMENT_ID,
     EXPERIMENT_ID as MNIST_RELU_DRN_RESET_EXPERIMENT_ID,
     FACTORIAL_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_FACTORIAL_EXPERIMENT_ID,
     LEGACY_BIAS_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_LEGACY_BIAS_EXPERIMENT_ID,
     SCHEMA_VERSION as MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
     ResetTrainSpec,
     parse_reset_bias_student_config,
+    parse_reset_differential_student_config,
     parse_reset_factorial_student_config,
     parse_reset_legacy_bias_student_config,
     parse_reset_student_config,
@@ -386,6 +388,59 @@ MNIST_RELU_DRN_RESET_V1 = ExperimentDefinition(
 )
 
 
+_MNIST_RELU_DRN_RESET_DIFFERENTIAL_COMBINATIONS: Tuple[
+    ValidatedCombination, ...
+] = (
+    ValidatedCombination(
+        ExtensionSelection(
+            "differential_logical",
+            "none",
+            "measured_cohort_a",
+            "paired_squared_error",
+        ),
+        "experimental",
+        "Bias-free model-local G+/G- pairs trained from measured cohort-A "
+        "RESET using paired-output squared error.",
+    ),
+)
+
+
+def _resolve_mnist_relu_drn_reset_differential(document, mode: RunMode):
+    spec = resolve_reset_student_spec(document, mode)
+    if isinstance(spec, ResetTrainSpec):
+        selection = ExtensionSelection(
+            "differential_logical",
+            "none",
+            spec.settings.update_backend.type,
+            spec.settings.objective,
+        )
+        if not any(
+            item.selection == selection
+            for item in _MNIST_RELU_DRN_RESET_DIFFERENTIAL_COMBINATIONS
+        ):
+            raise config_error(
+                "the train extension combination",
+                "to be listed explicitly by the "
+                "'mnist_relu_drn_reset_differential.v1' definition",
+                to_plain_data(selection),
+            )
+    return spec
+
+
+MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_DRN_RESET_DIFFERENTIAL_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
+    description=(
+        "Differential-pair dual-rail MNIST DRN trained from measured "
+        "cohort-A RESET with model-local weighted equilibria."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_reset_differential_student_config,
+    resolver=_resolve_mnist_relu_drn_reset_differential,
+    combinations=_MNIST_RELU_DRN_RESET_DIFFERENTIAL_COMBINATIONS,
+)
+
+
 _MNIST_RELU_DRN_RESET_BIAS_COMBINATIONS: Tuple[
     ValidatedCombination, ...
 ] = tuple(
@@ -587,6 +642,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,
     MNIST_RELU_DRN_KD_V1.experiment_id: MNIST_RELU_DRN_KD_V1,
     MNIST_RELU_DRN_RESET_V1.experiment_id: MNIST_RELU_DRN_RESET_V1,
+    MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1,
     MNIST_RELU_DRN_RESET_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_BIAS_V1,
     MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1,
     MNIST_RELU_DRN_RESET_FACTORIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_FACTORIAL_V1,

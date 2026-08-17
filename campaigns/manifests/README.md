@@ -9,7 +9,8 @@ Before launching them:
 - place the measured trace dataset at
   `data/march_slope_x3_5k.hdf5` (expected SHA-256
   `207b143fc1a63710c944db74bc573f16b616ce50e22c6605c12068bf6a3f230d`);
-- for `mnist_relu_drn_reset_factorial.json`, also place the frozen teacher at
+- for `mnist_relu_drn_reset_factorial.json` and
+  `mnist_relu_drn_reset_differential_10ep.json`, also place the frozen teacher at
   `data/mnist_relu_teacher_seed42_weights.pt` (expected SHA-256
   `42b0526c4a433057b0ad0f09a7b36ede64afd7d47a3a8985724cac0e46358d54`).
 

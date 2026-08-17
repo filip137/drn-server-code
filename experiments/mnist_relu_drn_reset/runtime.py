@@ -23,13 +23,14 @@ from experiments.mnist_relu_drn_reset.components import (
     build_reset_student_stack,
 )
 from experiments.mnist_relu_drn_reset.config import (
+    DIFFERENTIAL_EXPERIMENT_ID,
     FACTORIAL_EXPERIMENT_ID,
     ResetTrainSpec,
     ResetValidateSpec,
 )
 from experiments.mnist_shared import build_mnist_loaders, limited
 from experiments.schema import to_plain_data
-from model.resistive.interaction import DenseResistive
+from model.resistive.interaction import DenseResistive, SignedDenseResistive
 from training.checkpoint import (
     encode_named_weights,
     load_epoch_boundary_checkpoint,
@@ -50,7 +51,8 @@ def _requires_production_restart(spec: ResetTrainSpec) -> bool:
     """Return whether LR selection and production must use fresh stacks."""
 
     return (
-        spec.experiment_id == FACTORIAL_EXPERIMENT_ID
+        spec.experiment_id
+        in {DIFFERENTIAL_EXPERIMENT_ID, FACTORIAL_EXPERIMENT_ID}
         or spec.model.include_biases
     )
 
@@ -68,17 +70,50 @@ def _seed_runtime(seed: int) -> None:
 def _amplification_index_report(stack: Any) -> list[dict[str, Any]]:
     report = []
     for interaction in stack.bundle.energy._interactions:
-        if not isinstance(interaction, DenseResistive):
+        if not isinstance(
+            interaction, (DenseResistive, SignedDenseResistive)
+        ):
             continue
-        report.append(
-            {
-                "pre_layer": interaction._layer_pre.name,
-                "post_layer": interaction._layer_post.name,
-                "resolved_pre_index": interaction._logical_pre_index,
-                "resolved_post_index": interaction._logical_post_index,
-            }
-        )
+        item = {
+            "pre_layer": interaction._layer_pre.name,
+            "post_layer": interaction._layer_post.name,
+            "resolved_pre_index": interaction._logical_pre_index,
+            "resolved_post_index": interaction._logical_post_index,
+        }
+        if isinstance(interaction, SignedDenseResistive):
+            item.update(
+                {
+                    "interaction": "differential_pair",
+                    "voltage_amp": interaction._voltage_amp,
+                    "current_amp": interaction._current_amp,
+                    "forward_gain": interaction._forward_gain(),
+                    "post_layer_metric": interaction._post_metric(),
+                }
+            )
+        report.append(item)
     return report
+
+
+def _differential_topology_signature(
+    report: Any,
+) -> tuple[tuple[int, int, float, float], ...] | None:
+    """Project provenance onto model-local numerical differential semantics."""
+
+    if not isinstance(report, (list, tuple)):
+        return None
+    try:
+        return tuple(
+            (
+                int(item["resolved_pre_index"]),
+                int(item["resolved_post_index"]),
+                float(item["forward_gain"]),
+                float(item["post_layer_metric"]),
+            )
+            for item in report
+            if item.get("interaction") == "differential_pair"
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _input(role: str, path: Path) -> dict[str, Any]:
@@ -412,9 +447,10 @@ def _selected_payload(
         stack.bundle.catalog,
         metadata={
             "experiment_id": spec.experiment_id,
-            "encoding": "single",
+            "encoding": spec.model.encoding,
             "include_biases": spec.model.include_biases,
             "amplification_indexing": spec.model.amplification_indexing,
+            "amplification_indices": _amplification_index_report(stack),
             "objective": spec.settings.objective,
             "initialization": "measured_reset",
             "fixed_logit_gain": 1.0,
@@ -444,12 +480,13 @@ def _validate_checkpoint_metadata(
     objective: str,
     teacher_sha256: str,
     experiment_id: str = "mnist_relu_drn_reset.v1",
+    encoding: str = "single",
     include_biases: bool = False,
     amplification_indexing: str = "logical",
 ) -> None:
     expected = {
         "experiment_id": experiment_id,
-        "encoding": "single",
+        "encoding": encoding,
         "objective": objective,
         "initialization": "measured_reset",
         "fixed_logit_gain": 1.0,
@@ -464,11 +501,28 @@ def _validate_checkpoint_metadata(
         expected["include_biases"] = include_biases
         expected["amplification_indexing"] = amplification_indexing
         expected["reset_input_between_batches"] = True
+    if experiment_id == DIFFERENTIAL_EXPERIMENT_ID:
+        expected["include_biases"] = False
+        expected["amplification_indexing"] = "logical"
+        expected["reset_input_between_batches"] = True
     mismatches = {
         name: {"expected": value, "provided": metadata.get(name)}
         for name, value in expected.items()
         if metadata.get(name) != value
     }
+    if experiment_id == DIFFERENTIAL_EXPERIMENT_ID:
+        expected_signature = (
+            (0, 1, 1.0, 1.0),
+            (1, 2, 4.0, 0.0625),
+        )
+        provided_signature = _differential_topology_signature(
+            metadata.get("amplification_indices")
+        )
+        if provided_signature != expected_signature:
+            mismatches["amplification_indices"] = {
+                "expected": expected_signature,
+                "provided": provided_signature,
+            }
     if mismatches:
         raise ValueError(
             "Expected RESET checkpoint metadata to match the requested "
@@ -558,6 +612,7 @@ def run_train(request: "TrainRequest") -> int:
                 objective=spec.settings.objective,
                 teacher_sha256=teacher_sha,
                 experiment_id=spec.experiment_id,
+                encoding=spec.model.encoding,
                 include_biases=spec.model.include_biases,
                 amplification_indexing=spec.model.amplification_indexing,
             )
@@ -610,12 +665,10 @@ def run_train(request: "TrainRequest") -> int:
                 evaluate=evaluate,
             )
             if _requires_production_restart(spec):
-                # The historical ~95% small_drn.v1 run did not reuse the
-                # selector object graph. It destroyed it, reseeded the
-                # process, rebuilt the model/data/optimizer, and only carried
-                # the selected LR vector into production. Layer/parameter
-                # process counters therefore advance once before production;
-                # preserving that lifecycle is numerically significant.
+                # Rebuild from an exact reseed so selection and production
+                # exercise the repeated-construction lifecycle. Historical
+                # controls retain their archived process-global semantics;
+                # intended circuits retain model-local topology indices.
                 selected_rates = tuple(
                     float(value)
                     for value in selection_report["selection"][
@@ -674,7 +727,12 @@ def run_train(request: "TrainRequest") -> int:
                         "semantics": (
                             "controlled_exact_reseed_and_rebuild"
                             if spec.experiment_id == FACTORIAL_EXPERIMENT_ID
-                            else "historical_exact_reseed_and_rebuild"
+                            else (
+                                "differential_model_local_reseed_and_rebuild"
+                                if spec.experiment_id
+                                == DIFFERENTIAL_EXPERIMENT_ID
+                                else "historical_exact_reseed_and_rebuild"
+                            )
                         ),
                         "selected_learning_rates": list(selected_rates),
                         "assignment_sha256_by_parameter": (
@@ -694,7 +752,7 @@ def run_train(request: "TrainRequest") -> int:
             )
             initial_conductances = conductance_statistics(
                 stack.bundle.catalog,
-                encoding="single",
+                encoding=spec.model.encoding,
             )
             store.append_metric(
                 {
@@ -711,7 +769,7 @@ def run_train(request: "TrainRequest") -> int:
         learning_rates = tuple(
             float(value) for value in stack.optimizer.learning_rates()
         )
-        expected_rate_count = 3 if spec.model.include_biases else 2
+        expected_rate_count = len(stack.optimizer.param_groups)
         if (
             len(learning_rates) != expected_rate_count
             or any(value <= 0.0 for value in learning_rates)
@@ -795,7 +853,7 @@ def run_train(request: "TrainRequest") -> int:
             }
             checkpoint_metadata = {
                 "experiment_id": spec.experiment_id,
-                "encoding": "single",
+                "encoding": spec.model.encoding,
                 "include_biases": spec.model.include_biases,
                 "amplification_indexing": spec.model.amplification_indexing,
                 "amplification_indices": _amplification_index_report(stack),
@@ -845,7 +903,7 @@ def run_train(request: "TrainRequest") -> int:
                         "learning_rates": list(learning_rates),
                         "conductances": conductance_statistics(
                             stack.bundle.catalog,
-                            encoding="single",
+                            encoding=spec.model.encoding,
                         ),
                         "measured_projection": stack.optimizer.programming_report,
                     }
@@ -874,9 +932,12 @@ def run_train(request: "TrainRequest") -> int:
                 dataloader_generators={"train": data.train_generator},
                 metadata={
                     "experiment_id": spec.experiment_id,
-                    "encoding": "single",
+                    "encoding": spec.model.encoding,
                     "include_biases": spec.model.include_biases,
                     "amplification_indexing": spec.model.amplification_indexing,
+                    "amplification_indices": _amplification_index_report(
+                        stack
+                    ),
                     "objective": spec.settings.objective,
                     "initialization": "measured_reset",
                     "fixed_logit_gain": 1.0,
@@ -895,18 +956,18 @@ def run_train(request: "TrainRequest") -> int:
             )
 
         final_conductances = conductance_statistics(
-            stack.bundle.catalog, encoding="single"
+            stack.bundle.catalog, encoding=spec.model.encoding
         )
         final_programming = stack.optimizer.programming_report
         load_named_weights(weights_path, stack.bundle.catalog)
         posthoc = _posthoc_calibration(stack, teacher, data.validation)
         selected_conductances = conductance_statistics(
-            stack.bundle.catalog, encoding="single"
+            stack.bundle.catalog, encoding=spec.model.encoding
         )
         store.complete(
             metrics={
                 "teacher": {"sha256": teacher_sha, "metadata": teacher_metadata},
-                "encoding": "single",
+                "encoding": spec.model.encoding,
                 "include_biases": spec.model.include_biases,
                 "amplification_indexing": spec.model.amplification_indexing,
                 "amplification_indices": _amplification_index_report(stack),
@@ -991,6 +1052,7 @@ def run_validate(request: "ValidateRequest") -> int:
             objective=spec.settings.objective,
             teacher_sha256=teacher_sha,
             experiment_id=spec.experiment_id,
+            encoding=spec.model.encoding,
             include_biases=spec.model.include_biases,
             amplification_indexing=spec.model.amplification_indexing,
         )
@@ -1010,7 +1072,7 @@ def run_validate(request: "ValidateRequest") -> int:
             metrics={
                 "split": spec.settings.split,
                 **metrics,
-                "encoding": "single",
+                "encoding": spec.model.encoding,
                 "include_biases": spec.model.include_biases,
                 "amplification_indexing": spec.model.amplification_indexing,
                 "amplification_indices": _amplification_index_report(stack),
@@ -1021,7 +1083,7 @@ def run_validate(request: "ValidateRequest") -> int:
                 "teacher": {"sha256": teacher_sha, "metadata": teacher_metadata},
                 "checkpoint_metadata": dict(loaded.metadata),
                 "conductances": conductance_statistics(
-                    stack.bundle.catalog, encoding="single"
+                    stack.bundle.catalog, encoding=spec.model.encoding
                 ),
             }
         )

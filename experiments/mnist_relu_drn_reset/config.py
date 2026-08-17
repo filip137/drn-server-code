@@ -1,4 +1,4 @@
-"""Pure, strict schemas for RESET-trained single-device MNIST DRNs."""
+"""Pure, strict schemas for RESET-trained measured-device MNIST DRNs."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ EXPERIMENT_ID = "mnist_relu_drn_reset.v1"
 BIAS_EXPERIMENT_ID = "mnist_relu_drn_reset_bias.v1"
 LEGACY_BIAS_EXPERIMENT_ID = "mnist_relu_drn_reset_bias_legacy.v1"
 FACTORIAL_EXPERIMENT_ID = "mnist_relu_drn_reset_factorial.v1"
+DIFFERENTIAL_EXPERIMENT_ID = "mnist_relu_drn_reset_differential.v1"
 SCHEMA_VERSION = 1
 
 _RESET_MEASURED_KEYS = {
@@ -130,6 +131,7 @@ def _parse_model(
     *,
     include_biases: bool,
     amplification_indexing: str,
+    encoding: str = "single",
     explicit_amplification_indexing: bool = False,
 ) -> StudentModelSettings:
     raw = _object(value, "config.model")
@@ -170,10 +172,15 @@ def _parse_model(
         include_biases=include_biases,
         amplification_indexing=amplification_indexing,
     )
-    if model.encoding != "single":
+    if model.encoding != encoding:
+        encoding_description = (
+            "one device per physical edge"
+            if encoding == "single"
+            else "one G+/G- pair per physical edge"
+        )
         raise config_error(
             "config.model.encoding",
-            "to equal 'single' for one device per physical edge",
+            f"to equal {encoding!r} for {encoding_description}",
             model.encoding,
         )
     return model
@@ -374,6 +381,7 @@ def _parse_reset_student_config(
     include_biases: bool,
     amplification_indexing: str,
     allowed_objectives: frozenset[str],
+    encoding: str = "single",
     required_reset_input: bool | None = None,
     explicit_amplification_indexing: bool = False,
 ) -> ResetStudentConfig:
@@ -435,6 +443,7 @@ def _parse_reset_student_config(
             raw["model"],
             include_biases=include_biases,
             amplification_indexing=amplification_indexing,
+            encoding=encoding,
             explicit_amplification_indexing=explicit_amplification_indexing,
         ),
         solver=_parse_student_solver(raw["solver"]),
@@ -450,6 +459,36 @@ def parse_reset_student_config(payload: Mapping[str, Any]) -> ResetStudentConfig
         amplification_indexing="logical",
         allowed_objectives=frozenset({"teacher_kl", "cross_entropy"}),
     )
+
+
+def parse_reset_differential_student_config(
+    payload: Mapping[str, Any],
+) -> ResetStudentConfig:
+    """Parse the model-local differential RESET training experiment."""
+
+    document = _parse_reset_student_config(
+        payload,
+        experiment_id=DIFFERENTIAL_EXPERIMENT_ID,
+        include_biases=False,
+        amplification_indexing="logical",
+        encoding="differential",
+        allowed_objectives=frozenset({"paired_squared_error"}),
+        required_reset_input=True,
+        explicit_amplification_indexing=True,
+    )
+    if document.model.voltage_amp != 4.0:
+        raise config_error(
+            "config.model.voltage_amp",
+            "to equal 4.0 for the differential RESET comparison",
+            document.model.voltage_amp,
+        )
+    if document.model.current_amp != 0.25:
+        raise config_error(
+            "config.model.current_amp",
+            "to equal 0.25 for the differential RESET comparison",
+            document.model.current_amp,
+        )
+    return document
 
 
 def parse_reset_bias_student_config(
@@ -560,6 +599,7 @@ def resolve_reset_student_spec(document: ResetStudentConfig, mode: RunMode) -> A
 
 __all__ = [
     "BIAS_EXPERIMENT_ID",
+    "DIFFERENTIAL_EXPERIMENT_ID",
     "FACTORIAL_EXPERIMENT_ID",
     "LEGACY_BIAS_EXPERIMENT_ID",
     "EXPERIMENT_ID",
@@ -568,6 +608,7 @@ __all__ = [
     "ResetTrainSpec",
     "ResetValidateSpec",
     "parse_reset_student_config",
+    "parse_reset_differential_student_config",
     "parse_reset_bias_student_config",
     "parse_reset_legacy_bias_student_config",
     "parse_reset_factorial_student_config",

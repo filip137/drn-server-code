@@ -31,6 +31,28 @@ def _rms(value: torch.Tensor) -> float:
     )
 
 
+def _combined_rms(values: tuple[torch.Tensor, ...]) -> float:
+    """Return an element-count-weighted RMS over one optimizer group."""
+
+    if not values:
+        raise ValueError(
+            "Expected at least one tensor when computing a grouped RMS. "
+            "Provided value: empty."
+        )
+    squared_sum = 0.0
+    element_count = 0
+    for value in values:
+        resolved = value.detach().to(torch.float64)
+        squared_sum += float(resolved.square().sum().item())
+        element_count += resolved.numel()
+    if element_count <= 0:
+        raise ValueError(
+            "Expected grouped RMS tensors to contain elements. "
+            f"Provided value: element_count={element_count}."
+        )
+    return math.sqrt(squared_sum / element_count)
+
+
 def _quantile(values: list[float], quantile: float) -> float:
     return float(np.quantile(np.asarray(values, dtype=np.float64), quantile))
 
@@ -257,19 +279,42 @@ def _parameter_topology(
     bindings = tuple(stack.bundle.catalog.trainable)
     parameters = tuple(stack.bundle.energy.params())
     names = tuple(binding.key for binding in bindings)
-    if (
-        len(bindings) != len(parameters)
-        or len(parameters) != len(stack.optimizer.param_groups)
-        or any(
-            binding.parameter is not parameter
-            for binding, parameter in zip(bindings, parameters)
-        )
+    if len(bindings) != len(parameters) or any(
+        binding.parameter is not parameter
+        for binding, parameter in zip(bindings, parameters)
     ):
         raise RuntimeError(
-            "Expected stable catalog, energy-parameter, and optimizer-group "
-            "alignment during RESET LR selection. Provided value: "
-            f"bindings={len(bindings)}, parameters={len(parameters)}, "
-            f"groups={len(stack.optimizer.param_groups)}."
+            "Expected stable catalog and energy-parameter alignment during "
+            "RESET LR selection. Provided value: "
+            f"bindings={len(bindings)}, parameters={len(parameters)}."
+        )
+    binding_by_state_id = {id(binding.state): binding for binding in bindings}
+    group_members: list[tuple[str, ...]] = []
+    covered: list[str] = []
+    for group_index, group in enumerate(stack.optimizer.param_groups):
+        states = tuple(group.get("params", ()))
+        members: list[str] = []
+        for state in states:
+            binding = binding_by_state_id.get(id(state))
+            if binding is None:
+                raise RuntimeError(
+                    "Expected every RESET optimizer state to have a stable "
+                    "catalog binding. Provided value: "
+                    f"group={group_index}, state_id={id(state)}."
+                )
+            members.append(binding.key)
+        if not members:
+            raise RuntimeError(
+                "Expected every RESET optimizer group to contain parameters. "
+                f"Provided value: group={group_index}."
+            )
+        group_members.append(tuple(members))
+        covered.extend(members)
+    if len(covered) != len(set(covered)) or set(covered) != set(names):
+        raise RuntimeError(
+            "Expected RESET optimizer groups to cover every catalog binding "
+            "exactly once. Provided value: "
+            f"groups={group_members!r}, bindings={names!r}."
         )
     weight_names = tuple(
         name
@@ -281,25 +326,61 @@ def _parameter_topology(
         for name, parameter in zip(names, parameters)
         if isinstance(parameter, Bias)
     )
+    by_name = dict(zip(names, parameters))
+    binding_by_name = {binding.key: binding for binding in bindings}
     if (
-        len(weight_names) != 2
-        or len(bias_names) not in {0, 1}
-        or len(names) != len(weight_names) + len(bias_names)
+        len(weight_names) == 2
+        and len(bias_names) in {0, 1}
+        and len(names) == len(weight_names) + len(bias_names)
+        and all(len(members) == 1 for members in group_members)
     ):
-        raise ValueError(
-            "Expected the RESET single-device topology to expose exactly "
-            "two dense weights and zero or one hidden bias. Provided value: "
-            f"weights={weight_names!r}, biases={bias_names!r}."
+        encoding = "single"
+        rate_group_names = tuple(members[0] for members in group_members)
+        weight_group_names = weight_names
+        bias_group_names = bias_names
+        bias_to_weight = (
+            {} if not bias_names else {bias_names[0]: weight_names[0]}
         )
+    elif (
+        len(weight_names) == 4
+        and not bias_names
+        and len(names) == len(weight_names)
+        and len(group_members) == 2
+        and all(len(members) == 2 for members in group_members)
+        and all(
+            tuple(binding_by_name[name].role for name in members)
+            == ("conductance_plus", "conductance_minus")
+            for members in group_members
+        )
+    ):
+        encoding = "differential"
+        rate_group_names = tuple(
+            f"base.differential_pair.{index}"
+            for index in range(len(group_members))
+        )
+        weight_group_names = rate_group_names
+        bias_group_names = ()
+        bias_to_weight = {}
+    else:
+        raise ValueError(
+            "Expected the RESET topology to expose either two independently "
+            "optimized dense weights with zero or one hidden bias, or two "
+            "logical differential groups containing ordered G+/G- branches. "
+            "Provided value: "
+            f"weights={weight_names!r}, biases={bias_names!r}, "
+            f"groups={group_members!r}."
+        )
+    group_members_by_name = dict(zip(rate_group_names, group_members))
     return {
+        "encoding": encoding,
         "names": names,
         "parameters": parameters,
-        "by_name": dict(zip(names, parameters)),
-        "weight_names": weight_names,
-        "bias_names": bias_names,
-        "bias_to_weight": (
-            {} if not bias_names else {bias_names[0]: weight_names[0]}
-        ),
+        "by_name": by_name,
+        "rate_group_names": rate_group_names,
+        "group_members": group_members_by_name,
+        "weight_names": weight_group_names,
+        "bias_names": bias_group_names,
+        "bias_to_weight": bias_to_weight,
         # Existing experiment versions infer the historical behavior from
         # topology. Controlled experiments pass this protocol choice
         # explicitly so it cannot be coupled to the bias factor.
@@ -364,7 +445,12 @@ def _run_probe(
     )
     names = topology["names"]
     initial_weight_rms = {
-        name: _rms(topology["by_name"][name].state)
+        name: _combined_rms(
+            tuple(
+                topology["by_name"][member].state
+                for member in topology["group_members"][name]
+            )
+        )
         for name in topology["weight_names"]
     }
     invalid = {
@@ -377,7 +463,7 @@ def _run_probe(
             "Expected every RESET conductance RMS to be positive and finite. "
             f"Provided value: {invalid!r}."
         )
-    samples = {name: [] for name in names}
+    samples = {name: [] for name in topology["rate_group_names"]}
     checkpoints = tuple(int(value) for value in settings["probe_batches"])
     stable = False
     used = 0
@@ -392,10 +478,15 @@ def _run_probe(
             labels,
             training_reset_input=training_reset_input,
         )
-        for name, gradient in zip(names, gradients):
+        gradient_by_name = dict(zip(names, gradients))
+        for name in topology["rate_group_names"]:
             attached = topology["bias_to_weight"].get(name, name)
+            grouped_gradient = tuple(
+                gradient_by_name[member]
+                for member in topology["group_members"][name]
+            )
             samples[name].append(
-                _rms(gradient) / initial_weight_rms[attached]
+                _combined_rms(grouped_gradient) / initial_weight_rms[attached]
             )
         used += 1
         if used not in checkpoints:
@@ -450,6 +541,11 @@ def _run_probe(
         "nominal_learning_rate": 1.0,
         "optimizer_steps_applied": False,
         "parameter_names": list(names),
+        "rate_group_names": list(topology["rate_group_names"]),
+        "rate_group_members": {
+            name: list(members)
+            for name, members in topology["group_members"].items()
+        },
         "weight_names": list(topology["weight_names"]),
         "bias_to_weight": dict(topology["bias_to_weight"]),
         "used_batches": used,
@@ -462,6 +558,9 @@ def _run_probe(
         "proposal_unit_samples_by_parameter": {
             name: values[:used] for name, values in samples.items()
         },
+        "proposal_unit_samples_by_rate_group": {
+            name: values[:used] for name, values in samples.items()
+        },
         "official_test_read": False,
     }
 
@@ -469,7 +568,7 @@ def _run_probe(
 def _derive_rates(
     probe: Mapping[str, Any], relative_targets: tuple[float, float]
 ) -> tuple[dict[str, float], tuple[float, ...]]:
-    names = tuple(probe["parameter_names"])
+    names = tuple(probe.get("rate_group_names", probe["parameter_names"]))
     weight_names = tuple(probe["weight_names"])
     if len(weight_names) != 2 or len(relative_targets) != 2:
         raise ValueError(
