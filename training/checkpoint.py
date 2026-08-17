@@ -353,15 +353,29 @@ def _stage_tensor(
         )
     lower = _explicit_bound(binding.parameter, "min_cond")
     upper = _explicit_bound(binding.parameter, "max_cond")
+    # Parameter clamps operate in the tensor dtype.  Compare against the same
+    # representable endpoints so a value produced by ``clamp_(max=0.00011)``
+    # is not rejected merely because float32 stores that decimal slightly
+    # above the Python float.
+    represented_lower = (
+        None
+        if lower is None
+        else float(torch.as_tensor(lower, dtype=target.dtype).item())
+    )
+    represented_upper = (
+        None
+        if upper is None
+        else float(torch.as_tensor(upper, dtype=target.dtype).item())
+    )
     if staged.numel():
         minimum = float(staged.min().item())
         maximum = float(staged.max().item())
-        if lower is not None and minimum < lower:
+        if represented_lower is not None and minimum < represented_lower:
             raise CheckpointError(
                 f"Expected {source} for {binding.key!r} to be >= {lower}. "
                 f"Provided value: minimum={minimum!r}."
             )
-        if upper is not None and maximum > upper:
+        if represented_upper is not None and maximum > represented_upper:
             raise CheckpointError(
                 f"Expected {source} for {binding.key!r} to be <= {upper}. "
                 f"Provided value: maximum={maximum!r}."

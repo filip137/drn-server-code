@@ -302,6 +302,30 @@ def test_named_weights_reject_nonfinite_bounds_and_dtype(
     torch.testing.assert_close(adapter.state, before)
 
 
+def test_encoded_weights_accept_float32_representable_bound_endpoint(
+    tmp_path,
+):
+    parameter = _parameter([[0.00011]], lower=1e-7, upper=0.00011)
+    parameter.state.clamp_(max=0.00011)
+    catalog = ParameterCatalog(
+        [
+            ParameterBinding(
+                "base.conductance.0",
+                parameter,
+                group="base",
+                role="conductance",
+            )
+        ]
+    )
+    payload = encode_named_weights(catalog)
+
+    save_encoded_named_weights(
+        tmp_path / "weights.pt",
+        payload,
+        catalog=catalog,
+    )
+
+
 def test_legacy_profiles_are_explicit_and_base_only_leaves_adapter_unchanged(
     tmp_path,
 ):
