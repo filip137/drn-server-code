@@ -64,6 +64,25 @@ def _amplification_index_report(stack: StudentStack) -> list[dict[str, Any]]:
                     "post_layer_metric": interaction._post_metric(),
                 }
             )
+        else:
+            logical_pre_index = interaction._logical_pre_index
+            item.update(
+                {
+                    "interaction": "single_conductance",
+                    "voltage_amp": interaction._voltage_amp,
+                    "current_amp": interaction._current_amp,
+                    "forward_gain": (
+                        1.0
+                        if logical_pre_index == 0
+                        else float(interaction._voltage_amp)
+                    ),
+                    "post_layer_metric": (
+                        float(interaction._current_amp)
+                        / float(interaction._voltage_amp)
+                    )
+                    ** logical_pre_index,
+                }
+            )
         report.append(item)
     return report
 
@@ -87,6 +106,48 @@ def _differential_topology_signature(
             if item.get("interaction") == "differential_pair"
         )
     except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _single_topology_signature(
+    report: Any,
+    *,
+    voltage_amp: float,
+    current_amp: float,
+) -> tuple[tuple[int, int, float, float], ...] | None:
+    """Project a one-conductance stack onto model-local stage semantics.
+
+    Older named checkpoints recorded only the explicit logical indices. The
+    single-conductance schema fixes the amplifier magnitudes, so missing stage
+    scales can be reconstructed without consulting generated layer names.
+    New checkpoints record the resolved scales directly and are checked
+    exactly.
+    """
+
+    if not isinstance(report, (list, tuple)):
+        return None
+    try:
+        signature = []
+        for item in report:
+            interaction = item.get("interaction")
+            if interaction not in {None, "single_conductance"}:
+                return None
+            pre_index = int(item["resolved_pre_index"])
+            post_index = int(item["resolved_post_index"])
+            forward_gain = float(
+                item.get("forward_gain", 1.0 if pre_index == 0 else voltage_amp)
+            )
+            post_metric = float(
+                item.get(
+                    "post_layer_metric",
+                    (current_amp / voltage_amp) ** pre_index,
+                )
+            )
+            signature.append(
+                (pre_index, post_index, forward_gain, post_metric)
+            )
+        return tuple(signature)
+    except (AttributeError, KeyError, TypeError, ValueError):
         return None
 
 
@@ -158,6 +219,22 @@ def _validate_checkpoint_metadata(
         )
         provided_signature = _differential_topology_signature(
             provided.get("amplification_indices")
+        )
+        if provided_signature != expected_signature:
+            mismatches["amplification_indices"] = {
+                "expected": expected_signature,
+                "provided": provided_signature,
+            }
+    else:
+        expected_signature = _single_topology_signature(
+            expected_amplification_indices,
+            voltage_amp=spec.model.voltage_amp,
+            current_amp=spec.model.current_amp,
+        )
+        provided_signature = _single_topology_signature(
+            provided.get("amplification_indices"),
+            voltage_amp=spec.model.voltage_amp,
+            current_amp=spec.model.current_amp,
         )
         if provided_signature != expected_signature:
             mismatches["amplification_indices"] = {
