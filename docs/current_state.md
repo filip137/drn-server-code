@@ -168,7 +168,12 @@ and fine-tuning updates must remain separately measurable.
   remains exploratory and single-seed. The common floor cancels only from
   signed transfer; it remains in `G+ + G-` loading, and the modeled
   opposite-polarity branch still requires a complementary-routing or
-  subtractive-readout circuit interpretation.
+  subtractive-readout circuit interpretation. A clean ten-epoch replay matched
+  the first ten epochs exactly, selected epoch 9, and reached `97.48%` test
+  accuracy, `98.76%` agreement, and `0.0140905` KL. The additional ten-epoch
+  budget improved KL and agreement but not accuracy on this single seed; this
+  is consistent with checkpoint selection by validation KL and does not
+  establish that the shorter budget generalizes better.
 
 ### RESET-trained single-device teacher-matching result
 

@@ -499,6 +499,41 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [differential RESET report](mnist_relu_drn_reset_differential_10ep.md)
 
+### mnist-differential-reram-initialized-finetune-10ep
+
+**Teacher-initialized differential ReRAM MNIST fine-tuning**
+
+- **Finished:** 2026-08-17
+- **Outcome:** completed; ten epochs retained strong accuracy while the longer
+  budget improved KL and teacher agreement
+- **Question:** How well does the implemented measured `G+ - G-` student
+  perform after common-window teacher initialization and exactly ten epochs of
+  fine-tuning?
+- **Setup:** The frozen bias-free ReLU teacher was mapped into independently
+  assigned cohort-A device pairs using their shared affine reachable windows.
+  The bias-free `[1568, 100, 20]` student then used pure teacher KL, seed 42,
+  batch size 16, learning rates `[4.2e-10, 1.14e-12]`, model-local
+  `voltage_amp = 4`, `current_amp = 0.25`, and exactly ten epochs.
+- **Headline result:** Mapping began at `89.12%` validation accuracy and
+  `0.231839` KL. Epoch 9 was selected at `97.42%` and `0.0138965` validation
+  KL. Fresh-process held-out evaluation reached `97.48%` accuracy, `98.76%`
+  teacher agreement, and `0.0140905` KL.
+- **Integrity:** Training and validation exited zero from clean commit
+  `00bc68760f7cd0018e8bf62c1c7c98ad57bd7553`, with exactly ten epoch records,
+  an exact epoch-10 resume state, no non-finite metrics, and matching recorded
+  topology, teacher, measured-device source, and four stable assignment keys.
+- **Epoch-budget comparison:** Its first ten epochs exactly match the earlier
+  20-epoch initialized-differential run. Ten epochs had `0.18` percentage
+  points higher test accuracy, while 20 epochs improved test KL from
+  `0.0140905` to `0.0101188` and agreement from `98.76%` to `98.98%`.
+- **Limitation:** This is a deterministic single-seed epoch-budget screen. It
+  is not a clean initialization ablation against the literal-RESET run because
+  their objectives and readout-gain protocols differ.
+- **Raw artifacts:**
+  `results/mnist-differential-reram-initialized-finetune-10ep-20260817-v1/`
+- **Tracked detail:**
+  [initialized differential report](mnist_relu_drn_initialized_differential_10ep.md)
+
 ## Shared validity notes
 
 - These studies are exploratory rather than final paper-facing evidence.

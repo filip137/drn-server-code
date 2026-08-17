@@ -81,6 +81,15 @@ destroy the dual-rail signal, while the common-window differential mapping
 cancels each pair's baseline before fine-tuning. The result is specific to this
 single seed and deterministic virtual-device assignment.
 
+A clean ten-epoch follow-up exactly reproduced the first ten epochs of the
+20-epoch measured differential arm. It selected epoch 9 and reached `97.48%`
+held-out accuracy, `98.76%` teacher agreement, and test KL `0.0140905`. The
+20-epoch budget reduced test KL to `0.0101188` and raised agreement to `98.98%`,
+although its test accuracy was `0.18` percentage points lower. Selection was by
+validation KL, so this single-seed result supports ten epochs as a useful
+screening budget, not as a more accurate final budget. See the
+[ten-epoch initialized-differential report](mnist_relu_drn_initialized_differential_10ep.md).
+
 Machine-readable metrics and the matplotlib learning curves are in
 `results/mnist-relu-drn-kd-exploratory-20260816/analysis/summary.json` and
 `validation_comparison.png`.
