@@ -21,6 +21,19 @@ from experiments.schema import (
 from model.resistive.low_rank_config import (
     parse_passive_low_rank_adapter,
 )
+from model.resistive.digital_low_rank_config import (
+    parse_digital_low_rank_adapter,
+)
+from model.resistive.device_config import (
+    AIHWKIT_RERAM_CMO,
+    IBM_AFM2025_PCM,
+    device_programming_to_mapping,
+    parse_device_programming_config,
+)
+from model.resistive.passive_layerwise_low_rank_config import (
+    parse_passive_layerwise_low_rank_adapter,
+    passive_layerwise_low_rank_to_mapping,
+)
 
 
 EXPERIMENT_ID = "small_drn.v1"
@@ -161,6 +174,7 @@ class TrainSettings:
     max_validation_batches: Optional[int]
     weight_modifier: ComponentSettings
     update_backend: ComponentSettings
+    learning_rate_selection: ComponentSettings
 
 
 @dataclass(frozen=True)
@@ -439,11 +453,7 @@ def _weight_modifier(value: Any, path: str) -> ComponentSettings:
     """Parse the focused hardware-aware weight modifier."""
 
     parsed = _object(value, path)
-    _check_keys(
-        parsed,
-        path,
-        required=("type", "parameters"),
-    )
+    _check_keys(parsed, path, required=("type", "parameters"))
     modifier_type = _string(
         parsed["type"],
         f"{path}.type",
@@ -500,6 +510,299 @@ def _weight_modifier(value: Any, path: str) -> ComponentSettings:
     return ComponentSettings(
         type="add_normal",
         parameters=freeze_json(normalized, path=parameters_path),
+    )
+
+
+def _update_backend(value: Any, path: str) -> ComponentSettings:
+    """Parse the explicitly supported gradient-application backends."""
+
+    parsed = _object(value, path)
+    _check_keys(parsed, path, required=("type", "parameters"))
+    backend_type = _string(
+        parsed["type"],
+        f"{path}.type",
+        choices=(
+            "direct",
+            "tiki_taka",
+            "program_verify",
+            "measured_cohort_a",
+            "measured_cohort_b",
+            "measured_cohort_b_lora",
+        ),
+    )
+    parameters_path = f"{path}.parameters"
+    parameters = _object(parsed["parameters"], parameters_path)
+    if backend_type in {
+        "measured_cohort_a",
+        "measured_cohort_b",
+        "measured_cohort_b_lora",
+    }:
+        _check_keys(
+            parameters,
+            parameters_path,
+            required=(
+                "curve_preprocessing",
+                "split_seed",
+                "assignment_seed",
+                "formed_resistance_max_ohm",
+                "cohort_fraction",
+                "cohort",
+                "source_traces_per_cell",
+                "initial_pulse_index",
+                "projection",
+                "expected_trace_length",
+            ),
+            optional=(
+                "programming_deadband_mode",
+                "programming_deadband_relative",
+                "probabilistic_write_mode",
+                "probabilistic_write_probability",
+                "probabilistic_write_scale_relative",
+                "probabilistic_write_seed",
+            ),
+        )
+        normalized = {
+            "curve_preprocessing": _string(
+                parameters["curve_preprocessing"],
+                f"{parameters_path}.curve_preprocessing",
+                choices=("raw", "isotonic_nonincreasing"),
+            ),
+            "split_seed": _integer(
+                parameters["split_seed"],
+                f"{parameters_path}.split_seed",
+                minimum=0,
+            ),
+            "assignment_seed": _integer(
+                parameters["assignment_seed"],
+                f"{parameters_path}.assignment_seed",
+                minimum=0,
+            ),
+            "formed_resistance_max_ohm": _number(
+                parameters["formed_resistance_max_ohm"],
+                f"{parameters_path}.formed_resistance_max_ohm",
+                strictly_positive=True,
+            ),
+            "cohort_fraction": _number(
+                parameters["cohort_fraction"],
+                f"{parameters_path}.cohort_fraction",
+                strictly_positive=True,
+            ),
+            "cohort": _string(
+                parameters["cohort"],
+                f"{parameters_path}.cohort",
+                choices=("A", "B"),
+            ),
+            "source_traces_per_cell": _integer(
+                parameters["source_traces_per_cell"],
+                f"{parameters_path}.source_traces_per_cell",
+                minimum=1,
+            ),
+            "initial_pulse_index": _integer(
+                parameters["initial_pulse_index"],
+                f"{parameters_path}.initial_pulse_index",
+                minimum=0,
+            ),
+            "projection": _string(
+                parameters["projection"],
+                f"{parameters_path}.projection",
+                choices=("global_nearest",),
+            ),
+            "expected_trace_length": _integer(
+                parameters["expected_trace_length"],
+                f"{parameters_path}.expected_trace_length",
+                minimum=2,
+            ),
+            "programming_deadband_mode": _string(
+                parameters.get("programming_deadband_mode", "none"),
+                f"{parameters_path}.programming_deadband_mode",
+                choices=(
+                    "none",
+                    "accumulated_shadow_relative_rms",
+                ),
+            ),
+            "programming_deadband_relative": _number(
+                parameters.get("programming_deadband_relative", 0.0),
+                f"{parameters_path}.programming_deadband_relative",
+                minimum=0.0,
+            ),
+            "probabilistic_write_mode": _string(
+                parameters.get("probabilistic_write_mode", "none"),
+                f"{parameters_path}.probabilistic_write_mode",
+                choices=(
+                    "none",
+                    "uniform_bernoulli",
+                    "displacement_proportional",
+                ),
+            ),
+            "probabilistic_write_probability": _number(
+                parameters.get("probabilistic_write_probability", 1.0),
+                f"{parameters_path}.probabilistic_write_probability",
+                minimum=0.0,
+            ),
+            "probabilistic_write_scale_relative": _number(
+                parameters.get("probabilistic_write_scale_relative", 0.0),
+                f"{parameters_path}.probabilistic_write_scale_relative",
+                minimum=0.0,
+            ),
+            "probabilistic_write_seed": _integer(
+                parameters.get("probabilistic_write_seed", 0),
+                f"{parameters_path}.probabilistic_write_seed",
+                minimum=0,
+            ),
+        }
+        exact = {
+            "cohort_fraction": 0.5,
+            "source_traces_per_cell": 2,
+            "initial_pulse_index": (
+                normalized["expected_trace_length"] - 1
+                if backend_type == "measured_cohort_b_lora"
+                else 0
+            ),
+            "cohort": "A" if backend_type == "measured_cohort_a" else "B",
+        }
+        for name, expected in exact.items():
+            if normalized[name] != expected:
+                raise config_error(
+                    f"{parameters_path}.{name}",
+                    f"to equal {expected!r} for the {backend_type} protocol",
+                    normalized[name],
+                )
+        deadband_mode = normalized["programming_deadband_mode"]
+        deadband_relative = normalized["programming_deadband_relative"]
+        if deadband_mode == "none" and deadband_relative != 0.0:
+            raise config_error(
+                f"{parameters_path}.programming_deadband_relative",
+                "to equal 0.0 when programming_deadband_mode is 'none'",
+                deadband_relative,
+            )
+        if deadband_mode == "accumulated_shadow_relative_rms" and (
+            backend_type
+            not in {"measured_cohort_b", "measured_cohort_b_lora"}
+            or deadband_relative <= 0.0
+        ):
+            raise config_error(
+                f"{parameters_path}.programming_deadband_mode and "
+                f"{parameters_path}.programming_deadband_relative",
+                "to select measured_cohort_b or measured_cohort_b_lora and "
+                "a positive relative "
+                "threshold for accumulated_shadow_relative_rms",
+                {
+                    "backend_type": backend_type,
+                    "programming_deadband_mode": deadband_mode,
+                    "programming_deadband_relative": deadband_relative,
+                },
+            )
+        probability_mode = normalized["probabilistic_write_mode"]
+        probability = normalized["probabilistic_write_probability"]
+        probability_scale = normalized[
+            "probabilistic_write_scale_relative"
+        ]
+        probability_seed = normalized["probabilistic_write_seed"]
+        if probability > 1.0:
+            raise config_error(
+                f"{parameters_path}.probabilistic_write_probability",
+                "to be no greater than 1.0",
+                probability,
+            )
+        if probability_seed >= 2**63:
+            raise config_error(
+                f"{parameters_path}.probabilistic_write_seed",
+                "to be an integer in [0, 2**63)",
+                probability_seed,
+            )
+        if probability_mode == "none" and (
+            probability != 1.0
+            or probability_scale != 0.0
+            or probability_seed != 0
+        ):
+            raise config_error(
+                f"{parameters_path}.probabilistic_write_probability, "
+                f"{parameters_path}.probabilistic_write_scale_relative, and "
+                f"{parameters_path}.probabilistic_write_seed",
+                "to equal 1.0, 0.0, and 0 when probabilistic_write_mode is "
+                "'none'",
+                {
+                    "probability": probability,
+                    "scale_relative": probability_scale,
+                    "seed": probability_seed,
+                },
+            )
+        if probability_mode != "none" and (
+            backend_type
+            not in {"measured_cohort_b", "measured_cohort_b_lora"}
+            or deadband_mode != "none"
+        ):
+            raise config_error(
+                f"{parameters_path}.probabilistic_write_mode",
+                "to select measured_cohort_b or measured_cohort_b_lora "
+                "without a deterministic "
+                "programming deadband",
+                {
+                    "backend_type": backend_type,
+                    "programming_deadband_mode": deadband_mode,
+                    "probabilistic_write_mode": probability_mode,
+                },
+            )
+        if probability_mode == "uniform_bernoulli" and (
+            not 0.0 < probability < 1.0 or probability_scale != 0.0
+        ):
+            raise config_error(
+                f"{parameters_path}.probabilistic_write_probability and "
+                f"{parameters_path}.probabilistic_write_scale_relative",
+                "to use a probability in (0, 1) and scale 0.0 for "
+                "uniform_bernoulli",
+                {
+                    "probability": probability,
+                    "scale_relative": probability_scale,
+                },
+            )
+        if probability_mode == "displacement_proportional" and (
+            probability != 1.0 or probability_scale <= 0.0
+        ):
+            raise config_error(
+                f"{parameters_path}.probabilistic_write_probability and "
+                f"{parameters_path}.probabilistic_write_scale_relative",
+                "to use probability 1.0 and a positive scale for "
+                "displacement_proportional",
+                {
+                    "probability": probability,
+                    "scale_relative": probability_scale,
+                },
+            )
+        return ComponentSettings(
+            type=backend_type,
+            parameters=freeze_json(normalized, path=parameters_path),
+        )
+    if backend_type != "program_verify":
+        return ComponentSettings(
+            type=backend_type,
+            parameters=freeze_json(parameters, path=parameters_path),
+        )
+    _check_keys(
+        parameters,
+        parameters_path,
+        required=("device",),
+    )
+    try:
+        device = parse_device_programming_config(
+            parameters["device"],
+            path=f"{parameters_path}.device",
+        )
+    except ValueError as error:
+        raise ConfigError(str(error)) from error
+    if device.type not in (IBM_AFM2025_PCM, AIHWKIT_RERAM_CMO):
+        raise config_error(
+            f"{parameters_path}.device.type",
+            "to select an endpoint model with a repeated-write "
+            "implementation",
+            device.type,
+        )
+    return ComponentSettings(
+        type="program_verify",
+        parameters=freeze_json(
+            {"device": device_programming_to_mapping(device)},
+            path=parameters_path,
+        ),
     )
 
 
@@ -701,7 +1004,12 @@ def _parse_adapter(value: Any) -> ComponentSettings:
     adapter_type = _string(
         parsed["type"],
         f"{path}.type",
-        choices=("none", "passive_low_rank"),
+        choices=(
+            "none",
+            "passive_low_rank",
+            "digital_low_rank",
+            "passive_layerwise_low_rank",
+        ),
     )
     parameters = _object(parsed["parameters"], f"{path}.parameters")
     if adapter_type == "none":
@@ -712,7 +1020,7 @@ def _parse_adapter(value: Any) -> ComponentSettings:
                 dict(parameters),
             )
         normalized_parameters: Mapping[str, Any] = {}
-    else:
+    elif adapter_type == "passive_low_rank":
         try:
             normalized = parse_passive_low_rank_adapter(
                 parameters,
@@ -723,6 +1031,34 @@ def _parse_adapter(value: Any) -> ComponentSettings:
         if normalized is None:  # pragma: no cover - non-null mapping above
             raise AssertionError("passive_low_rank normalization returned null")
         normalized_parameters = asdict(normalized)
+    elif adapter_type == "digital_low_rank":
+        try:
+            normalized = parse_digital_low_rank_adapter(
+                parameters,
+                path=f"{path}.parameters",
+            )
+        except ValueError as error:
+            raise ConfigError(str(error)) from error
+        if normalized is None:  # pragma: no cover - non-null mapping above
+            raise AssertionError("digital_low_rank normalization returned null")
+        normalized_parameters = asdict(normalized)
+    else:
+        try:
+            normalized_layerwise = (
+                parse_passive_layerwise_low_rank_adapter(
+                    parameters,
+                    path=f"{path}.parameters",
+                )
+            )
+        except ValueError as error:
+            raise ConfigError(str(error)) from error
+        if normalized_layerwise is None:  # pragma: no cover - non-null above
+            raise AssertionError(
+                "passive_layerwise_low_rank normalization returned null"
+            )
+        normalized_parameters = passive_layerwise_low_rank_to_mapping(
+            normalized_layerwise
+        )
     return ComponentSettings(
         type=adapter_type,
         parameters=freeze_json(
@@ -922,6 +1258,46 @@ def _parse_model(value: Any) -> ModelSettings:
                     "current_amp": current_amp,
                 },
             )
+    elif adapter.type == "digital_low_rank":
+        if len(dims) != 2:
+            raise config_error(
+                f"{path}.dims",
+                "to contain exactly [input_width, output_width] when "
+                "model.adapter.type is 'digital_low_rank'",
+                list(dims),
+            )
+        device_noise = adapter.parameters["device_noise"]
+        reference = device_noise.get("drn_conductance_at_g_max")
+        if reference is not None and reference > weight_max:
+            raise config_error(
+                f"{path}.adapter.parameters.device_noise."
+                "drn_conductance_at_g_max",
+                "to be no greater than config.model.weight_max",
+                reference,
+            )
+    elif adapter.type == "passive_layerwise_low_rank":
+        if len(dims) != 3:
+            raise config_error(
+                f"{path}.dims",
+                "to contain exactly [input_width, hidden_width, "
+                "output_width] when model.adapter.type is "
+                "'passive_layerwise_low_rank'",
+                list(dims),
+            )
+        for parameter_key, layer in adapter.parameters["layers"].items():
+            device_noise = layer["device_noise"]
+            reference = (
+                None
+                if device_noise is None
+                else device_noise.get("drn_conductance_at_g_max")
+            )
+            if reference is not None and reference > weight_max:
+                raise config_error(
+                    f"{path}.adapter.parameters.layers.{parameter_key}."
+                    "device_noise.drn_conductance_at_g_max",
+                    "to be no greater than config.model.weight_max",
+                    reference,
+                )
 
     return ModelSettings(
         dims=dims,
@@ -1261,6 +1637,7 @@ def _parse_train(
             "weight_modifier",
             "update_backend",
         ),
+        optional=("learning_rate_selection",),
     )
     learning_rates = _number_tuple(
         parsed["learning_rates"],
@@ -1290,7 +1667,7 @@ def _parse_train(
     algorithm = _string(
         parsed["algorithm"],
         f"{path}.algorithm",
-        choices=("ep", "backprop"),
+        choices=("ep", "backprop", "digital"),
     )
     nudging = _number(parsed["nudging"], f"{path}.nudging")
     if algorithm == "ep" and nudging == 0.0:
@@ -1298,6 +1675,64 @@ def _parse_train(
             f"{path}.nudging",
             "to be non-zero for equilibrium propagation",
             nudging,
+        )
+    if algorithm == "digital" and nudging != 0.0:
+        raise config_error(
+            f"{path}.nudging",
+            "to equal 0.0 for direct digital-readout training",
+            nudging,
+        )
+    update_backend = _update_backend(
+        parsed["update_backend"],
+        f"{path}.update_backend",
+    )
+    learning_rate_selection = _learning_rate_selection(
+        parsed.get(
+            "learning_rate_selection",
+            {"type": "none", "parameters": {}},
+        ),
+        f"{path}.learning_rate_selection",
+        weight_count=weight_count,
+    )
+    if learning_rate_selection.type != "none" and any(
+        value != 0.0 for value in learning_rates + bias_learning_rates
+    ):
+        raise config_error(
+            f"{path}.learning_rates and {path}.bias_learning_rates",
+            "to contain only 0.0 placeholders when automatic selection is enabled",
+            {
+                "learning_rates": list(learning_rates),
+                "bias_learning_rates": list(bias_learning_rates),
+            },
+        )
+    if (
+        update_backend.type == "measured_cohort_a"
+        and learning_rate_selection.type != "bounded_relative_update_grid"
+    ):
+        raise config_error(
+            f"{path}.learning_rate_selection.type",
+            "to equal 'bounded_relative_update_grid' for measured_cohort_a",
+            learning_rate_selection.type,
+        )
+    if (
+        update_backend.type == "measured_cohort_b_lora"
+        and learning_rate_selection.type != "none"
+    ):
+        raise config_error(
+            f"{path}.learning_rate_selection.type",
+            "to equal 'none' for the exploratory four-factor measured LoRA "
+            "protocol",
+            learning_rate_selection.type,
+        )
+    if (
+        learning_rate_selection.type == "bounded_relative_update_grid"
+        and update_backend.type
+        not in {"measured_cohort_a", "measured_cohort_b"}
+    ):
+        raise config_error(
+            f"{path}.update_backend.type",
+            "to select a measured-cohort backend when bounded relative-update selection is enabled",
+            update_backend.type,
         )
     return TrainSettings(
         num_epochs=_integer(
@@ -1328,11 +1763,8 @@ def _parse_train(
             parsed["weight_modifier"],
             f"{path}.weight_modifier",
         ),
-        update_backend=_component(
-            parsed["update_backend"],
-            f"{path}.update_backend",
-            allowed_types=("direct", "tiki_taka"),
-        ),
+        update_backend=update_backend,
+        learning_rate_selection=learning_rate_selection,
     )
 
 
@@ -1470,6 +1902,16 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             f"dataset {data.dataset!r}",
             model.dims[-1],
         )
+    if (
+        model.adapter.type == "digital_low_rank"
+        and model.dims[-1] != 2 * class_count
+    ):
+        raise config_error(
+            "config.model.dims[-1]",
+            f"to equal {2 * class_count} for differential outputs when "
+            "model.adapter.type is 'digital_low_rank'",
+            model.dims[-1],
+        )
     if data.dataset in {"moons", "yinyang"} and data.num_points is None:
         raise config_error(
             "config.data.num_points",
@@ -1517,25 +1959,106 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             "to contain only 'train' and/or 'validate' for dataset 'mnist'",
             sorted(modes),
         )
-    if model.adapter.type == "passive_low_rank":
+    if model.adapter.type in {"passive_low_rank", "digital_low_rank"}:
         weight_count = 2
+        bias_count = 0
+    elif model.adapter.type == "passive_layerwise_low_rank":
+        weight_count = 4
         bias_count = 0
     else:
         weight_count = len(model.dims) - 1
         bias_count = max(0, weight_count - 1)
+    train_settings = (
+        _parse_train(
+            modes["train"],
+            weight_count=weight_count,
+            bias_count=bias_count,
+        )
+        if "train" in modes
+        else None
+    )
+    if train_settings is not None and (
+        train_settings.update_backend.type
+        in {
+            "measured_cohort_a",
+            "measured_cohort_b",
+            "measured_cohort_b_lora",
+        }
+    ):
+        expected_adapter = (
+            "passive_layerwise_low_rank"
+            if train_settings.update_backend.type
+            == "measured_cohort_b_lora"
+            else "none"
+        )
+        constraints = {
+            "config.data.dataset": (data.dataset, "mnist"),
+            "config.model.adapter.type": (
+                model.adapter.type,
+                expected_adapter,
+            ),
+            "config.modes.train.algorithm": (
+                train_settings.algorithm,
+                "backprop",
+            ),
+            "config.modes.train.weight_modifier.type": (
+                train_settings.weight_modifier.type,
+                "none",
+            ),
+        }
+        for constraint_path, (provided, expected) in constraints.items():
+            if provided != expected:
+                raise config_error(
+                    constraint_path,
+                    "to equal "
+                    f"{expected!r} for {train_settings.update_backend.type}",
+                    provided,
+                )
+        if data.validation_points is None:
+            raise config_error(
+                "config.data.validation_points",
+                "to define a held-out MNIST validation split for measured-cohort training",
+                data.validation_points,
+            )
+        if model.weight_min != 0.0:
+            raise config_error(
+                "config.model.weight_min",
+                "to equal 0.0 for measured non-negative conductances",
+                model.weight_min,
+            )
+    if model.adapter.type == "passive_layerwise_low_rank":
+        layers = model.adapter.parameters["layers"]
+        noise_by_parameter = {
+            key: layer["device_noise"] for key, layer in layers.items()
+        }
+        measured_lora = (
+            train_settings is not None
+            and train_settings.update_backend.type
+            == "measured_cohort_b_lora"
+        )
+        invalid = {
+            key: value
+            for key, value in noise_by_parameter.items()
+            if (value is not None) == measured_lora
+        }
+        if invalid:
+            expected = (
+                "to be null because --device-data supplies the measured "
+                "cohort-B base and LoRA curves"
+                if measured_lora
+                else "to define a device-programming object outside the "
+                "measured_cohort_b_lora protocol"
+            )
+            raise config_error(
+                "config.model.adapter.parameters.layers.*.device_noise",
+                expected,
+                invalid,
+            )
     return SmallDrnConfig(
         schema_version=schema_version,
         experiment_id=experiment_id,
         common=common,
-        train=(
-            _parse_train(
-                modes["train"],
-                weight_count=weight_count,
-                bias_count=bias_count,
-            )
-            if "train" in modes
-            else None
-        ),
+        train=train_settings,
         linspace=(
             _parse_linspace(modes["linspace"])
             if "linspace" in modes

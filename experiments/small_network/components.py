@@ -24,22 +24,23 @@ from labs.custom_minimizer import (
     CustomQuadraticMinimizer,
     MinimizerSettings,
 )
-from labs.datasets import (
-    DigitsDataset,
-    MnistDataset,
-    MoonsDataset,
-    YinYangDataset,
-)
+from labs.datasets import DigitsDataset, MnistDataset, MoonsDataset, YinYangDataset
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs
 from model.function.network import Network
 from model.resistive.builders import ModelBundle, build_deep_resistive_energy
+from model.resistive.digital_low_rank import DigitalLowRankReadout
+from model.resistive.device_config import parse_device_programming_config
 from model.variable.parameter import Bias
-from training.add_normal import (
-    AddNormalConfig,
-    build_add_normal_modifier,
-)
+from training.add_normal import AddNormalConfig, build_add_normal_modifier
+from training.direct_readout import DirectReadoutGradient
 from training.engine import EvaluationComponents, ExperimentComponents
+from training.measured_trace import (
+    MeasuredCohortAOptimizer,
+    MeasuredCohortBOptimizer,
+    MeasuredCohortBLoRAOptimizer,
+)
 from training.modifier import ParameterModifier
+from training.program_verify import ProgramVerifyOptimizer
 from training.sgd import AugmentedFunction, Backprop, EquilibriumProp
 from training.tiki_taka import build_optimizer, parse_update_pipeline
 
@@ -230,8 +231,6 @@ class TrainRuntime:
 
     @property
     def modifier_resolved_seed(self) -> int | None:
-        """Return the live seed, including one restored from a checkpoint."""
-
         seed = getattr(self.modifier, "resolved_seed", None)
         return None if seed is None else int(seed)
 
@@ -292,6 +291,16 @@ def build_model_stack(common: CommonSettings) -> ModelStack:
             if adapter.type == "passive_low_rank"
             else None
         ),
+        digital_low_rank_adapter=(
+            dict(adapter.parameters)
+            if adapter.type == "digital_low_rank"
+            else None
+        ),
+        passive_layerwise_low_rank_adapter=(
+            dict(adapter.parameters)
+            if adapter.type == "passive_layerwise_low_rank"
+            else None
+        ),
     )
     energy = bundle.energy
     energy.set_device(device)
@@ -307,7 +316,19 @@ def build_model_stack(common: CommonSettings) -> ModelStack:
     network = TypedNetwork(Network(energy), dtype)
     output_layer = energy.layers()[-1]
     num_classes = _CLASS_COUNTS[common.data.dataset]
-    if dims[-1] == num_classes:
+    if adapter.type == "digital_low_rank":
+        input_factor, output_factor = energy.adapter_params()
+        cost_fn = DigitalLowRankReadout(
+            energy.layers()[0],
+            output_layer,
+            input_factor=input_factor,
+            output_factor=output_factor,
+            logical_input_dim=logical_input_dim,
+            num_classes=num_classes,
+            input_gain=common.model.input_gain,
+            alpha=float(adapter.parameters["alpha"]),
+        )
+    elif dims[-1] == num_classes:
         cost_fn = SquaredError(output_layer)
     else:
         cost_fn = SquaredErrorPairedOutputs(output_layer, num_classes)
@@ -513,6 +534,8 @@ def _stratified_split_indices(
         shuffled = generator.permutation(indices)
         validation.extend(int(value) for value in shuffled[:take])
         train.extend(int(value) for value in shuffled[take:])
+    # Sort the fixed subsets; only the explicit training DataLoader controls
+    # epoch order, so split membership and shuffle order stay independent.
     return sorted(train), sorted(validation)
 
 
@@ -544,7 +567,11 @@ def build_validation_runtime(common: CommonSettings) -> ValidationRuntime:
     )
 
 
-def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
+def build_train_runtime(
+    spec: TrainSpec,
+    *,
+    device_data_path: Path | None = None,
+) -> TrainRuntime:
     """Compose the authoritative engine with legacy numerical primitives."""
 
     stack = build_model_stack(spec.common)
@@ -570,6 +597,12 @@ def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
         )
         noisy_evaluation = (
             modifier is not None and modifier_config.noisy_evaluation
+        )
+    elif modifier_settings.type != "none":
+        raise NotImplementedError(
+            "Expected the hardware-aware branch to use weight modifier "
+            "'none' or 'add_normal'. Provided value: "
+            f"{modifier_settings.type!r}."
         )
 
     inference_minimizer = _build_minimizer(
@@ -608,10 +641,25 @@ def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
             cost_fn,
             training_minimizer,
         )
+    elif spec.settings.algorithm == "digital":
+        if spec.common.model.adapter.type != "digital_low_rank":
+            raise ValueError(
+                "Expected algorithm='digital' only with "
+                "model.adapter.type='digital_low_rank'. Provided value: "
+                f"adapter={spec.common.model.adapter.type!r}."
+            )
+        training_minimizer = _build_minimizer(
+            spec.common,
+            stack,
+            function=energy,
+            iterations=spec.common.solver.training_iterations,
+        )
+        differentiator = DirectReadoutGradient(cost_fn)
     else:  # pragma: no cover - rejected by the pure schema
         raise ValueError(
-            "Expected config.modes.train.algorithm to be 'ep' or "
-            f"'backprop'. Provided value: {spec.settings.algorithm!r}."
+            "Expected config.modes.train.algorithm to be 'ep', 'backprop', "
+            "or 'digital'. Provided value: "
+            f"{spec.settings.algorithm!r}."
         )
 
     parameters = tuple(energy.params()) + tuple(cost_fn.params())
@@ -624,15 +672,37 @@ def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
         "type": spec.settings.update_backend.type,
         **dict(spec.settings.update_backend.parameters),
     }
-    parsed_pipeline = parse_update_pipeline(update_pipeline)
+    program_verify_config = None
+    measured_parameters = None
+    if spec.settings.update_backend.type == "program_verify":
+        program_verify_config = parse_device_programming_config(
+            spec.settings.update_backend.parameters["device"],
+            path="config.modes.train.update_backend.parameters.device",
+        )
+        parsed_pipeline = None
+    elif spec.settings.update_backend.type in {
+        "measured_cohort_a",
+        "measured_cohort_b",
+        "measured_cohort_b_lora",
+    }:
+        if device_data_path is None:
+            raise ValueError(
+                "Expected --device-data for update backend "
+                f"{spec.settings.update_backend.type!r}. Provided value: None."
+            )
+        measured_parameters = spec.settings.update_backend.parameters
+        parsed_pipeline = None
+    else:
+        parsed_pipeline = parse_update_pipeline(update_pipeline)
     if (
-        spec.common.model.adapter.type == "passive_low_rank"
+        spec.common.model.adapter.type
+        in {"passive_low_rank", "passive_layerwise_low_rank"}
         and parsed_pipeline is not None
         and parsed_pipeline.aihwkit_preset is not None
     ):
         raise ValueError(
-            "Expected passive_low_rank training to use direct updates or the "
-            "ideal-tensor Tiki-Taka backend. Provided value: "
+            "Expected low-rank energy-adapter training to use direct updates "
+            "or the ideal-tensor Tiki-Taka backend. Provided value: "
             f"aihwkit_preset={parsed_pipeline.aihwkit_preset!r}."
         )
     optimizer = build_optimizer(
@@ -643,6 +713,24 @@ def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
         momentum=0.0,
         weight_decay=0.0,
     )
+    if program_verify_config is not None:
+        optimizer = ProgramVerifyOptimizer(
+            optimizer,
+            stack.bundle.catalog,
+            program_verify_config,
+        )
+    elif measured_parameters is not None:
+        measured_optimizer = {
+            "measured_cohort_a": MeasuredCohortAOptimizer,
+            "measured_cohort_b": MeasuredCohortBOptimizer,
+            "measured_cohort_b_lora": MeasuredCohortBLoRAOptimizer,
+        }[spec.settings.update_backend.type]
+        optimizer = measured_optimizer(
+            optimizer,
+            stack.bundle.catalog,
+            measured_parameters,
+            device_data_path,
+        )
     resume_capability = (
         "stateful_nondeterministic"
         if parsed_pipeline is not None
@@ -809,6 +897,8 @@ def _validate_dataset_shape(
         valid_input = logical_input_dim == 2
     elif dataset == "digits":
         valid_input = logical_input_dim == 64
+    elif dataset == "mnist":
+        valid_input = logical_input_dim == 784
     else:
         valid_input = False
     if not valid_input:
@@ -817,7 +907,11 @@ def _validate_dataset_shape(
             + (
                 "be 2 or an even expanded moons width >= 2"
                 if dataset == "moons"
-                else ("be 2" if dataset == "yinyang" else "be 64")
+                else (
+                    "be 2"
+                    if dataset == "yinyang"
+                    else ("be 64" if dataset == "digits" else "be 784")
+                )
             )
             + f". Provided value: {logical_input_dim!r}."
         )

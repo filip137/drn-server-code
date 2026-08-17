@@ -9,6 +9,7 @@ and checkpoint contracts.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gc
 from itertools import islice
 import math
 import os
@@ -23,6 +24,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from experiments.artifacts import (
     ArtifactRecord,
     RunStore,
+    atomic_write_json,
     content_hash,
     sha256_file,
 )
@@ -46,6 +48,13 @@ from experiments.small_network.config import (
 )
 from labs.datasets import MoonsDataset
 from model.resistive.builders import ParameterCatalog
+from model.resistive.digital_low_rank_config import (
+    parse_digital_low_rank_adapter,
+)
+from model.resistive.device_config import Wan2022ProgrammingConfig
+from model.resistive.passive_layerwise_low_rank_config import (
+    parse_passive_layerwise_low_rank_adapter,
+)
 from training.checkpoint import (
     LEGACY_BASE_ONLY,
     LEGACY_FULL,
@@ -63,12 +72,24 @@ from training.engine import (
     evaluate,
     train_epoch,
 )
+from training.device_programming import (
+    program_device_base_conductances,
+    program_wan2022_base_conductance,
+    program_wan2022_base_conductances,
+)
 from training.probes import (
     MeanCostProbe,
     MeanErrorProbe,
     ResidualInfinityNormProbe,
     SettledLayerStatesProbe,
     SolverIterationCountsProbe,
+)
+from training.program_verify import ProgramVerifyOptimizer
+from training.measured_trace import (
+    MeasuredCohortAOptimizer,
+    MeasuredCohortBOptimizer,
+    MeasuredCohortBLoRAOptimizer,
+    MeasuredTraceOptimizer,
 )
 
 if TYPE_CHECKING:
@@ -176,9 +197,60 @@ def execute_train(
             "checkpoint_resume": "checkpoints/resume.pt",
         },
     )
+    selection_report: Mapping[str, Any] | None = None
+    selection_path: Path | None = None
     try:
         seed_runtime(spec.common.runtime.seed)
-        runtime = build_train_runtime(spec)
+        if (
+            request.resume is None
+            and spec.settings.learning_rate_selection.type
+            == "bounded_relative_update_grid"
+        ):
+            from experiments.small_network.learning_rate_selection import (
+                select_measured_learning_rates,
+            )
+
+            selection_runtime = build_train_runtime(
+                spec,
+                device_data_path=request.device_data,
+            )
+            selection_report = select_measured_learning_rates(
+                spec,
+                selection_runtime,
+                store=store,
+                initial_weights_path=request.weights,
+            )
+            selection_path = store.run_dir / "artifacts" / "lr_selection.json"
+            atomic_write_json(selection_path, selection_report)
+            selected_rates = tuple(
+                float(value)
+                for value in selection_report["selection"][
+                    "selected_learning_rate_vector"
+                ]
+            )
+            del selection_runtime
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            # Production is an exact restart, including model initialization,
+            # data-shuffle state, and virtual-device assignment.
+            seed_runtime(spec.common.runtime.seed)
+            runtime = build_train_runtime(
+                spec,
+                device_data_path=request.device_data,
+            )
+            if not isinstance(runtime.optimizer, MeasuredTraceOptimizer):
+                raise RuntimeError(
+                    "Expected the selected measured production runtime to "
+                    "expose MeasuredTraceOptimizer. Provided value: "
+                    f"{type(runtime.optimizer).__name__}."
+                )
+            runtime.optimizer.set_learning_rates(selected_rates)
+        else:
+            runtime = build_train_runtime(
+                spec,
+                device_data_path=request.device_data,
+            )
         if runtime.resume_capability != resume_capability:
             raise RuntimeError(
                 "Expected preflight and numerical resume capabilities to "
@@ -193,6 +265,19 @@ def execute_train(
             store,
             observers=active_observers,
         )
+        if selection_report is not None and selection_path is not None:
+            selection_summary = dict(selection_report["selection"])
+            metrics = {
+                **metrics,
+                "learning_rate_selection": selection_summary,
+            }
+            artifacts = (
+                *artifacts,
+                store.artifact_record(
+                    selection_path,
+                    kind="learning_rate_selection",
+                ),
+            )
         result_path = store.complete(metrics=metrics, artifacts=artifacts)
     except Exception as exc:
         store.fail(exc)
@@ -353,6 +438,9 @@ def _execute_training(
     selected_accuracy: float | None = None
     selected_weights: Mapping[str, Any] | None = None
     last_epoch_report: TrainingEpochReport | None = None
+    device_programming: Mapping[str, Any] | None = None
+    pre_deployment_validation: Mapping[str, Any] | None = None
+    initial_validation: Mapping[str, Any] | None = None
 
     if request.resume is not None:
         resumed = load_epoch_boundary_checkpoint(
@@ -415,6 +503,222 @@ def _execute_training(
         load_named_weights(
             request.base_weights,
             _base_checkpoint_catalog(catalog),
+        )
+        if spec.common.model.adapter.type == "digital_low_rank":
+            adapter_config = parse_digital_low_rank_adapter(
+                dict(spec.common.model.adapter.parameters),
+                path="config.model.adapter.parameters",
+            )
+            if adapter_config is None:  # pragma: no cover - schema guarantees it
+                raise AssertionError("digital_low_rank config resolved to null")
+            if isinstance(
+                adapter_config.device_noise,
+                Wan2022ProgrammingConfig,
+            ):
+                device_programming = program_wan2022_base_conductance(
+                    catalog,
+                    adapter_config.device_noise,
+                )
+            else:
+                dense_base_keys = tuple(
+                    binding.key
+                    for binding in catalog.for_group(
+                        "base",
+                        checkpointed_only=True,
+                    )
+                    if binding.role == "dense_weight"
+                )
+                if len(dense_base_keys) != 1:
+                    raise ValueError(
+                        "Expected digital_low_rank to contain exactly one "
+                        "base dense weight. Provided value: "
+                        f"{dense_base_keys!r}."
+                    )
+                device_programming = program_device_base_conductances(
+                    catalog,
+                    {dense_base_keys[0]: adapter_config.device_noise},
+                )
+        elif (
+            spec.common.model.adapter.type
+            == "passive_layerwise_low_rank"
+        ):
+            if isinstance(
+                runtime.optimizer,
+                MeasuredCohortBLoRAOptimizer,
+            ):
+                # The measured LoRA optimizer owns the one-time cohort-B base
+                # deployment as well as RESET-endpoint adapter initialization.
+                adapter_config = None
+            else:
+                adapter_config = parse_passive_layerwise_low_rank_adapter(
+                    dict(spec.common.model.adapter.parameters),
+                    path="config.model.adapter.parameters",
+                )
+            if (
+                adapter_config is None
+                and not isinstance(
+                    runtime.optimizer,
+                    MeasuredCohortBLoRAOptimizer,
+                )
+            ):  # pragma: no cover - schema guarantees it
+                raise AssertionError(
+                    "passive_layerwise_low_rank config resolved to null"
+                )
+            if adapter_config is not None:
+                layer_configs = {
+                    layer.parameter_key: layer.device_noise
+                    for layer in adapter_config.layers
+                }
+                if all(
+                    isinstance(value, Wan2022ProgrammingConfig)
+                    for value in layer_configs.values()
+                ):
+                    device_programming = program_wan2022_base_conductances(
+                        catalog,
+                        layer_configs,  # type: ignore[arg-type]
+                    )
+                else:
+                    device_programming = program_device_base_conductances(
+                        catalog,
+                        layer_configs,  # type: ignore[arg-type]
+                    )
+
+    if (
+        isinstance(runtime.optimizer, ProgramVerifyOptimizer)
+        and request.resume is None
+    ):
+        trainable_programming = (
+            runtime.optimizer.initialize_from_loaded_targets()
+        )
+        device_programming = {
+            "base": (
+                None
+                if device_programming is None
+                else dict(device_programming)
+            ),
+            "trainable_initial_write": trainable_programming,
+            "semantics": (
+                "digital shadow target with a noisy program-and-verify "
+                "write after every optimizer step"
+            ),
+            "pulse_model": False,
+        }
+
+    if isinstance(runtime.optimizer, MeasuredCohortBOptimizer) and request.resume is None:
+        layer_snapshot = runtime.runtime_state.state_dict()
+        source_result = evaluate(
+            runtime.evaluation_components,
+            _limit_batches(
+                runtime.data.held_out_loader,
+                spec.settings.max_validation_batches,
+            ),
+            modifier=None,
+            probes=(MeanCostProbe(), MeanErrorProbe()),
+            epoch=-1,
+            split="pre_deployment_validation",
+            reset_input=True,
+        )
+        pre_deployment_validation = _classification_metrics(source_result)
+        runtime.runtime_state.load_state_dict(layer_snapshot)
+        store.append_metric(
+            {
+                "mode": "pre_deployment",
+                "source_weights": {
+                    "path": str(Path(request.weights).expanduser().resolve()),
+                    "sha256": sha256_file(request.weights),
+                },
+                "validation": dict(pre_deployment_validation),
+            }
+        )
+
+    if isinstance(runtime.optimizer, MeasuredTraceOptimizer) and request.resume is None:
+        if isinstance(runtime.optimizer, MeasuredCohortBLoRAOptimizer):
+            measured_initialization = (
+                runtime.optimizer.initialize_from_base_and_reset_adapters()
+            )
+            semantics = (
+                "loaded cohort-A base frozen after one cohort-B projection; "
+                "four physical low-rank factor arrays start at the fully "
+                "reset trace endpoint and alone receive measured writes"
+            )
+        elif isinstance(runtime.optimizer, MeasuredCohortAOptimizer):
+            measured_initialization = (
+                runtime.optimizer.initialize_at_pulse_zero()
+            )
+            semantics = (
+                "digital shadow with global-nearest projection onto a "
+                "deterministic interpolated cohort-A measured curve"
+            )
+        else:
+            measured_initialization = (
+                runtime.optimizer.initialize_from_loaded_targets()
+            )
+            semantics = (
+                "loaded cohort-A targets retained as digital shadows and "
+                "globally projected onto deterministic interpolated "
+                "cohort-B measured curves before fine-tuning"
+            )
+        device_programming = {
+            "semantics": semantics,
+            "pulse_model": False,
+            "cohort_a_used": runtime.optimizer.cohort == "A",
+            "cohort_b_used": runtime.optimizer.cohort == "B",
+            "source_checkpoint": (
+                None
+                if request.weights is None and request.base_weights is None
+                else {
+                    "path": str(
+                        Path(
+                            request.weights
+                            if request.weights is not None
+                            else request.base_weights
+                        )
+                        .expanduser()
+                        .resolve()
+                    ),
+                    "sha256": sha256_file(
+                        request.weights
+                        if request.weights is not None
+                        else request.base_weights
+                    ),
+                }
+            ),
+            "initialization": measured_initialization,
+        }
+
+    if (
+        spec.common.model.adapter.type
+        in {"digital_low_rank", "passive_layerwise_low_rank"}
+        or isinstance(
+            runtime.optimizer,
+            (ProgramVerifyOptimizer, MeasuredTraceOptimizer),
+        )
+    ) and request.resume is None:
+        layer_snapshot = runtime.runtime_state.state_dict()
+        initial_result = evaluate(
+            runtime.evaluation_components,
+            _limit_batches(
+                runtime.data.held_out_loader,
+                spec.settings.max_validation_batches,
+            ),
+            modifier=None,
+            probes=(MeanCostProbe(), MeanErrorProbe()),
+            epoch=-1,
+            split="initial_validation",
+            reset_input=True,
+        )
+        initial_validation = _classification_metrics(initial_result)
+        runtime.runtime_state.load_state_dict(layer_snapshot)
+        store.append_metric(
+            {
+                "mode": "initialization",
+                "device_programming": (
+                    None
+                    if device_programming is None
+                    else dict(device_programming)
+                ),
+                "validation": dict(initial_validation),
+            }
         )
 
     last_validation: dict[str, Any] | None = None
@@ -543,20 +847,23 @@ def _execute_training(
             selected_accuracy=selected_accuracy,
         )
         if should_log:
-            store.append_metric(
-                {
-                    "mode": "train",
-                    "epoch": epoch,
-                    "completed_epochs": completed_epoch,
-                    "global_step": global_step,
-                    "train": train_values,
-                    "validation": last_validation,
-                    "validation_noisy": last_noisy_validation,
-                    "selected": improved,
-                    "selected_epoch": selected_epoch,
-                    "selected_cost": selected_cost,
-                }
-            )
+            epoch_metric = {
+                "mode": "train",
+                "epoch": epoch,
+                "completed_epochs": completed_epoch,
+                "global_step": global_step,
+                "train": train_values,
+                "validation": last_validation,
+                "validation_noisy": last_noisy_validation,
+                "selected": improved,
+                "selected_epoch": selected_epoch,
+                "selected_cost": selected_cost,
+            }
+            if isinstance(runtime.optimizer, MeasuredTraceOptimizer):
+                epoch_metric["measured_projection"] = (
+                    runtime.optimizer.programming_report
+                )
+            store.append_metric(epoch_metric)
         for observer in observers:
             observer(last_epoch_report)
 
@@ -615,6 +922,25 @@ def _execute_training(
             "parameter_modifier": _modifier_provenance(spec, runtime),
         },
         "resume_capability": runtime.resume_capability,
+        "device_programming": (
+            None if device_programming is None else dict(device_programming)
+        ),
+        "update_programming": (
+            runtime.optimizer.programming_report
+            if isinstance(
+                runtime.optimizer,
+                (ProgramVerifyOptimizer, MeasuredTraceOptimizer),
+            )
+            else None
+        ),
+        "initial_validation": (
+            None if initial_validation is None else dict(initial_validation)
+        ),
+        "pre_deployment_validation": (
+            None
+            if pre_deployment_validation is None
+            else dict(pre_deployment_validation)
+        ),
     }
     artifacts = (
         store.artifact_record(weights_path, kind="weights"),
@@ -911,6 +1237,23 @@ class _BatchCapture:
         return values
 
 
+def _modifier_provenance(
+    spec: TrainSpec,
+    runtime: TrainRuntime,
+) -> dict[str, Any]:
+    parameters = dict(spec.settings.weight_modifier.parameters)
+    return {
+        "type": spec.settings.weight_modifier.type,
+        "parameters": parameters,
+        "active_during_training": runtime.modifier is not None,
+        "resolved_seed": runtime.modifier_resolved_seed,
+        "noisy_evaluation_requested": bool(
+            parameters.get("noisy_evaluation", False)
+        ),
+        "noisy_evaluation_executed": runtime.noisy_evaluation,
+    }
+
+
 def _selection_from_progress(
     progress: Mapping[str, Any],
 ) -> tuple[float, int, float | None, float | None]:
@@ -940,23 +1283,6 @@ def _selection_from_progress(
         name="resume progress selected_accuracy",
     )
     return float(value), epoch, error_fraction, accuracy
-
-
-def _modifier_provenance(
-    spec: TrainSpec,
-    runtime: TrainRuntime,
-) -> dict[str, Any]:
-    parameters = dict(spec.settings.weight_modifier.parameters)
-    return {
-        "type": spec.settings.weight_modifier.type,
-        "parameters": parameters,
-        "active_during_training": runtime.modifier is not None,
-        "resolved_seed": runtime.modifier_resolved_seed,
-        "noisy_evaluation_requested": bool(
-            parameters.get("noisy_evaluation", False)
-        ),
-        "noisy_evaluation_executed": runtime.noisy_evaluation,
-    }
 
 
 def _selection_progress(
@@ -1214,6 +1540,9 @@ def _training_input_artifacts(request: Any) -> tuple[Mapping[str, Any], ...]:
         path = getattr(request, role)
         if path is not None:
             records.append(_input_artifact(role, path))
+    device_data = getattr(request, "device_data", None)
+    if device_data is not None:
+        records.append(_input_artifact("device_data", device_data))
     return tuple(records)
 
 
@@ -1231,19 +1560,81 @@ def _validate_training_initialization(
             "Expected at most one of --weights, --base-weights, or --resume. "
             f"Provided value: {sources!r}."
         )
-    has_adapter = spec.common.model.adapter.type == "passive_low_rank"
+    if (
+        spec.settings.update_backend.type == "measured_cohort_b_lora"
+        and not sources
+    ):
+        raise ValueError(
+            "Expected measured_cohort_b_lora to initialize every new run "
+            "from an explicit named cohort-A base checkpoint via "
+            "--base-weights, or to use --resume. Provided value: neither."
+        )
+    has_adapter = spec.common.model.adapter.type in {
+        "passive_low_rank",
+        "digital_low_rank",
+        "passive_layerwise_low_rank",
+    }
     if has_adapter and len(sources) != 1:
         raise ValueError(
-            "Expected passive_low_rank training to initialize from exactly "
+            "Expected low-rank adapter training to initialize from exactly "
             "one of --weights, --base-weights, or --resume. "
             f"Provided value: {sources!r}."
         )
     if not has_adapter and request.base_weights is not None:
         raise ValueError(
             "Expected --base-weights only when model.adapter.type is "
-            "'passive_low_rank'. Provided value: "
+            "'passive_low_rank', 'digital_low_rank', or "
+            "'passive_layerwise_low_rank'. Provided value: "
             f"{str(request.base_weights)!r}."
         )
+    measured_backend = spec.settings.update_backend.type
+    measured = measured_backend in {
+        "measured_cohort_a",
+        "measured_cohort_b",
+        "measured_cohort_b_lora",
+    }
+    device_data = getattr(request, "device_data", None)
+    if measured and device_data is None:
+        raise ValueError(
+            "Expected --device-data when modes.train.update_backend.type is "
+            f"{measured_backend!r}. Provided value: None."
+        )
+    if not measured and device_data is not None:
+        raise ValueError(
+            "Expected --device-data only when modes.train.update_backend.type "
+            "is a measured-cohort backend. Provided value: "
+            f"{str(device_data)!r}."
+        )
+    if measured_backend == "measured_cohort_a" and (
+        request.weights is not None or request.base_weights is not None
+    ):
+        raise ValueError(
+            "Expected measured_cohort_a to start every new run at pulse index "
+            "0, or to use --resume. Provided value: --weights/--base-weights."
+        )
+    if (
+        measured_backend == "measured_cohort_b"
+        and request.resume is None
+        and request.weights is None
+    ):
+        raise ValueError(
+            "Expected measured_cohort_b to initialize every new run from an "
+            "explicit named cohort-A checkpoint via --weights, or to use "
+            "--resume. Provided value: neither."
+        )
+    if measured_backend == "measured_cohort_b_lora":
+        if request.weights is not None:
+            raise ValueError(
+                "Expected measured_cohort_b_lora new deployment to use "
+                "--base-weights (or --resume), not a full --weights "
+                f"checkpoint. Provided value: {str(request.weights)!r}."
+            )
+        if request.resume is None and request.base_weights is None:
+            raise ValueError(
+                "Expected measured_cohort_b_lora to initialize every new run "
+                "from an explicit named cohort-A base checkpoint via "
+                "--base-weights, or to use --resume. Provided value: neither."
+            )
 
 
 def _base_checkpoint_catalog(

@@ -108,6 +108,60 @@ def _adapter_document(*, backend: str = "direct"):
     return parse_small_drn_config(payload)
 
 
+def _digital_adapter_document():
+    payload = json.loads(
+        (
+            _REPO_ROOT
+            / "examples"
+            / "small_drn"
+            / "digital_lora_reram_wan2022_digits.json"
+        ).read_text(encoding="utf-8")
+    )
+    payload["data"].update(
+        {"num_points": 20, "batch_size": 4, "shuffle": False}
+    )
+    payload["solver"].update(
+        {"inference_iterations": 2, "training_iterations": 2}
+    )
+    payload["modes"]["train"].update(
+        {
+            "num_epochs": 1,
+            "max_batches": 1,
+            "max_validation_batches": 1,
+        }
+    )
+    payload["modes"]["validate"]["sample_limit"] = 4
+    return parse_small_drn_config(payload)
+
+
+def _passive_layerwise_adapter_document(*, algorithm: str = "ep"):
+    payload = json.loads(
+        (
+            _REPO_ROOT
+            / "examples"
+            / "small_drn"
+            / "passive_layerwise_lora_reram_wan2022_digits.json"
+        ).read_text(encoding="utf-8")
+    )
+    payload["data"].update(
+        {"num_points": 20, "batch_size": 4, "shuffle": False}
+    )
+    payload["solver"].update(
+        {"inference_iterations": 2, "training_iterations": 2}
+    )
+    payload["modes"]["train"].update(
+        {
+            "num_epochs": 1,
+            "algorithm": algorithm,
+            "nudging": 0.05 if algorithm == "ep" else 0.0,
+            "max_batches": 1,
+            "max_validation_batches": 1,
+        }
+    )
+    payload["modes"]["validate"]["sample_limit"] = 4
+    return parse_small_drn_config(payload)
+
+
 def _write_adapter_base_weights(document, path: Path) -> dict[str, torch.Tensor]:
     stack = build_model_stack(document.common)
     base_catalog = ParameterCatalog(
@@ -495,6 +549,196 @@ def test_passive_low_rank_tiny_training_freezes_base_and_writes_full_catalog(
         )
 
 
+def test_digital_low_rank_programs_base_once_and_trains_only_readout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    document = _digital_adapter_document()
+    spec = definition.resolve(document, RunMode.TRAIN)
+    base_path = tmp_path / "clean-base.pt"
+    expected_clean = _write_adapter_base_weights(document, base_path)
+    calls = []
+
+    def fake_program(catalog, config):
+        binding = catalog.by_key["base.dense_weight.0"]
+        with torch.no_grad():
+            binding.state.add_(0.001)
+        calls.append(config.programming_seed)
+        return {
+            "model": config.type,
+            "programming_seed": config.programming_seed,
+            "error_rmse": 0.001,
+        }
+
+    monkeypatch.setattr(
+        "experiments.small_network.runtime."
+        "program_wan2022_base_conductance",
+        fake_program,
+    )
+    output_root = tmp_path / "digital"
+    run_train(
+        TrainRequest(
+            definition=definition,
+            spec=spec,
+            config_path=tmp_path / "digital.json",
+            output_dir=output_root,
+            weights=None,
+            base_weights=base_path,
+            resume=None,
+            command=("ebl", "train", "--base-weights"),
+        )
+    )
+
+    run_dir = _runs(output_root)[0]
+    payload = _torch_load(run_dir / "checkpoints" / "weights.pt")
+    assert list(payload["weights"]) == [
+        "base.dense_weight.0",
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+    ]
+    torch.testing.assert_close(
+        payload["weights"]["base.dense_weight.0"],
+        expected_clean["base.dense_weight.0"] + 0.001,
+        rtol=0.0,
+        atol=0.0,
+    )
+    assert torch.count_nonzero(
+        payload["weights"]["adapter.output_factor.0"]
+    )
+    result = _read_json(run_dir / "result.json")
+    assert result["metrics"]["device_programming"] == {
+        "model": "aihwkit_reram_wan2022",
+        "programming_seed": 17,
+        "error_rmse": 0.001,
+    }
+    assert calls == [17]
+
+    run_train(
+        TrainRequest(
+            definition=definition,
+            spec=spec,
+            config_path=tmp_path / "digital.json",
+            output_dir=tmp_path / "resumed",
+            weights=None,
+            base_weights=None,
+            resume=run_dir / "checkpoints" / "resume.pt",
+            command=("ebl", "train", "--resume"),
+        )
+    )
+    assert calls == [17]
+
+
+@pytest.mark.parametrize("algorithm", ("ep", "backprop"))
+def test_passive_layerwise_low_rank_programs_both_edges_once_and_freezes_base(
+    tmp_path: Path,
+    monkeypatch,
+    algorithm: str,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    document = _passive_layerwise_adapter_document(algorithm=algorithm)
+    spec = definition.resolve(document, RunMode.TRAIN)
+    base_path = tmp_path / "clean-two-edge-base.pt"
+    expected_clean = _write_adapter_base_weights(document, base_path)
+    calls = []
+
+    def fake_program(catalog, configs):
+        keys = tuple(configs)
+        for key in keys:
+            with torch.no_grad():
+                catalog.by_key[key].state.add_(0.001)
+        calls.append(
+            tuple((key, configs[key].programming_seed) for key in keys)
+        )
+        return {
+            "model": "aihwkit_reram_wan2022",
+            "parameter_keys": list(keys),
+            "error_rmse": 0.001,
+        }
+
+    monkeypatch.setattr(
+        "experiments.small_network.runtime."
+        "program_wan2022_base_conductances",
+        fake_program,
+    )
+    output_root = tmp_path / "passive-layerwise"
+    assert (
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=spec,
+                config_path=tmp_path / "passive-layerwise.json",
+                output_dir=output_root,
+                weights=None,
+                base_weights=base_path,
+                resume=None,
+                command=("ebl", "train", "--base-weights"),
+            )
+        )
+        == 0
+    )
+
+    run_dir = _runs(output_root)[0]
+    payload = _torch_load(run_dir / "checkpoints" / "weights.pt")
+    assert list(payload["weights"]) == [
+        "base.dense_weight.0",
+        "base.dense_weight.1",
+        "base.bias.0",
+        "adapter.input_factor.0",
+        "adapter.output_factor.0",
+        "adapter.input_factor.1",
+        "adapter.output_factor.1",
+    ]
+    for key in ("base.dense_weight.0", "base.dense_weight.1"):
+        torch.testing.assert_close(
+            payload["weights"][key],
+            expected_clean[key] + 0.001,
+            rtol=0.0,
+            atol=0.0,
+        )
+    torch.testing.assert_close(
+        payload["weights"]["base.bias.0"],
+        expected_clean["base.bias.0"],
+        rtol=0.0,
+        atol=0.0,
+    )
+    assert torch.count_nonzero(
+        payload["weights"]["adapter.output_factor.0"]
+    )
+    assert torch.count_nonzero(
+        payload["weights"]["adapter.output_factor.1"]
+    )
+    result = _read_json(run_dir / "result.json")
+    assert result["metrics"]["device_programming"] == {
+        "model": "aihwkit_reram_wan2022",
+        "parameter_keys": [
+            "base.dense_weight.0",
+            "base.dense_weight.1",
+        ],
+        "error_rmse": 0.001,
+    }
+    assert calls == [
+        (
+            ("base.dense_weight.0", 17),
+            ("base.dense_weight.1", 29),
+        )
+    ]
+
+    run_train(
+        TrainRequest(
+            definition=definition,
+            spec=spec,
+            config_path=tmp_path / "passive-layerwise.json",
+            output_dir=tmp_path / "passive-layerwise-resumed",
+            weights=None,
+            base_weights=None,
+            resume=run_dir / "checkpoints" / "resume.pt",
+            command=("ebl", "train", "--resume"),
+        )
+    )
+    assert len(calls) == 1
+
+
 def test_passive_low_rank_legacy_base_import_is_explicit_and_scoped(
     tmp_path: Path,
 ) -> None:
@@ -819,6 +1063,38 @@ def test_hardware_aware_training_runs_and_records_noise_provenance(
     assert modifier["resolved_seed"] == 17
     assert modifier["noisy_evaluation_executed"] is True
     assert metrics["last_noisy_validation"] is not None
+
+
+def test_unimplemented_extension_fails_before_model_construction(
+    tmp_path: Path,
+) -> None:
+    definition = get_definition("small_drn.v1")
+    spec = definition.resolve(_document(), RunMode.TRAIN)
+    unsupported = replace(
+        spec,
+        settings=replace(
+            spec.settings,
+            weight_modifier=ComponentSettings(
+                type="future_modifier",
+                parameters={},
+            ),
+        ),
+    )
+    with pytest.raises(NotImplementedError, match="hardware-aware branch"):
+        run_train(
+            TrainRequest(
+                definition=definition,
+                spec=unsupported,
+                config_path=tmp_path / "config.json",
+                output_dir=tmp_path / "runs",
+                weights=None,
+                base_weights=None,
+                resume=None,
+                command=("ebl", "train"),
+            )
+        )
+    failed_run = _runs(tmp_path / "runs")[0]
+    assert _read_json(failed_run / "status.json")["status"] == "failed"
 
 
 def test_float64_stack_keeps_configured_dtype_across_network_reset() -> None:

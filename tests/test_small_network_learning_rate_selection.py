@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -8,6 +9,7 @@ import pytest
 import torch
 
 from experiments.small_network import learning_rate_selection as selection
+from experiments.small_network import runtime as small_runtime
 from model.variable.parameter import DenseWeight
 from training.engine import FreePhaseEvent, GradientsReadyEvent
 
@@ -363,3 +365,165 @@ def test_canary_reports_persistent_gradient_safety_rejection(
     }
     assert result["safety"]["processed_batches"] == 3
     assert result["safety"]["maximum_gradient_streak"] == {"weight.0": 2}
+
+
+def test_execute_train_reseeds_and_rebuilds_before_production(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class ProductionOptimizer:
+        def __init__(self, initial_token: str) -> None:
+            self.initial_token = initial_token
+            self.rates: tuple[float, ...] | None = None
+
+        def set_learning_rates(self, rates: tuple[float, ...]) -> None:
+            self.rates = tuple(float(rate) for rate in rates)
+
+    class Store:
+        def __init__(self) -> None:
+            self.run_dir = tmp_path / "run"
+            self.completed_metrics: dict[str, Any] | None = None
+
+        def artifact_record(self, path: Path, *, kind: str) -> dict[str, Any]:
+            return {"path": str(path), "kind": kind}
+
+        def complete(self, *, metrics: Any, artifacts: Any) -> Path:
+            del artifacts
+            self.completed_metrics = dict(metrics)
+            return self.run_dir / "result.json"
+
+        def fail(self, error: Exception) -> None:
+            raise AssertionError(f"unexpected run failure: {error!r}")
+
+    spec = SimpleNamespace(
+        common=SimpleNamespace(
+            runtime=SimpleNamespace(seed=41),
+            data=SimpleNamespace(validation_points=5000),
+        ),
+        settings=SimpleNamespace(
+            learning_rate_selection=SimpleNamespace(
+                type="bounded_relative_update_grid"
+            ),
+            weight_modifier=SimpleNamespace(type="none", parameters={}),
+        ),
+    )
+    request = SimpleNamespace(
+        spec=object(),
+        resume=None,
+        weights=None,
+        base_weights=None,
+        device_data=None,
+    )
+    store = Store()
+    seed_calls: list[int] = []
+    built: list[Any] = []
+    written: list[tuple[Path, Any]] = []
+    executed: list[Any] = []
+
+    def seed_runtime(seed: int) -> None:
+        seed_calls.append(seed)
+
+    def build_runtime(_spec: Any, *, device_data_path: Any) -> Any:
+        assert device_data_path is None
+        candidate = SimpleNamespace(
+            optimizer=ProductionOptimizer(f"seed-{seed_calls[-1]}"),
+            resume_capability="exact",
+        )
+        built.append(candidate)
+        return candidate
+
+    report = {
+        "selection": {
+            "selected_learning_rate_vector": [0.25, 0.5, 0.125],
+            "selected_cell_id": "cell_00",
+        }
+    }
+
+    def select_rates(
+        _spec: Any,
+        candidate: Any,
+        *,
+        store: Any,
+        initial_weights_path: Any,
+    ) -> dict[str, Any]:
+        del store, initial_weights_path
+        assert candidate is built[0]
+        candidate.optimizer.initial_token = "mutated-by-selection"
+        return report
+
+    def execute(
+        _request: Any,
+        _spec: Any,
+        production: Any,
+        _store: Any,
+        *,
+        observers: Any,
+    ) -> tuple[dict[str, Any], tuple[Any, ...], None]:
+        assert tuple(observers) == ()
+        executed.append(production)
+        return (
+            {
+                "completed_epochs": 1,
+                "global_step": 2,
+                "resume_capability": "exact",
+                "selected": {
+                    "epoch": 0,
+                    "value": 0.4,
+                    "error_fraction": 0.2,
+                    "accuracy": 0.8,
+                },
+            },
+            (),
+            None,
+        )
+
+    monkeypatch.setattr(small_runtime, "_expect_spec", lambda *_a, **_k: spec)
+    monkeypatch.setattr(
+        small_runtime,
+        "_validate_training_initialization",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        small_runtime,
+        "configured_resume_capability",
+        lambda _spec: "exact",
+    )
+    monkeypatch.setattr(
+        small_runtime,
+        "_create_run_store",
+        lambda *_a, **_k: store,
+    )
+    monkeypatch.setattr(small_runtime, "seed_runtime", seed_runtime)
+    monkeypatch.setattr(small_runtime, "build_train_runtime", build_runtime)
+    monkeypatch.setattr(selection, "select_measured_learning_rates", select_rates)
+    monkeypatch.setattr(small_runtime, "_execute_training", execute)
+    monkeypatch.setattr(
+        small_runtime,
+        "atomic_write_json",
+        lambda path, payload: written.append((path, payload)),
+    )
+    monkeypatch.setattr(
+        small_runtime,
+        "MeasuredTraceOptimizer",
+        ProductionOptimizer,
+    )
+    monkeypatch.setattr(small_runtime.torch.cuda, "is_available", lambda: False)
+
+    outcome = small_runtime.execute_train(request)
+
+    assert seed_calls == [41, 41]
+    assert len(built) == 2
+    assert built[0] is not built[1]
+    assert built[0].optimizer.initial_token == "mutated-by-selection"
+    assert built[1].optimizer.initial_token == "seed-41"
+    assert built[0].optimizer.rates is None
+    assert built[1].optimizer.rates == (0.25, 0.5, 0.125)
+    assert executed == [built[1]]
+    assert written == [
+        (tmp_path / "run/artifacts/lr_selection.json", report)
+    ]
+    assert store.completed_metrics is not None
+    assert store.completed_metrics["learning_rate_selection"] == report[
+        "selection"
+    ]
+    assert outcome.run_dir == tmp_path / "run"

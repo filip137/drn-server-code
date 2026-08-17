@@ -79,6 +79,39 @@ _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
         "Tiki-taka backend with backpropagation.",
     ),
     ValidatedCombination(
+        ExtensionSelection("none", "add_normal", "direct", "backprop"),
+        "experimental",
+        "Additive Gaussian weight noise with backpropagation.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection("none", "none", "program_verify", "backprop"),
+        "experimental",
+        "BPTT with each dense-weight update reprogrammed through a measured "
+        "endpoint noise model.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "none",
+            "none",
+            "measured_cohort_a",
+            "backprop",
+        ),
+        "experimental",
+        "BPTT with digital shadows projected onto interpolated measured "
+        "cohort-A ReRAM conductance traces.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "none",
+            "none",
+            "measured_cohort_b",
+            "backprop",
+        ),
+        "experimental",
+        "BPTT after projecting a named cohort-A checkpoint onto independently "
+        "held-out interpolated cohort-B ReRAM conductance traces.",
+    ),
+    ValidatedCombination(
         ExtensionSelection(
             "passive_low_rank",
             "none",
@@ -99,9 +132,57 @@ _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
         "Passive low-rank factors trained by ideal-tensor Tiki-Taka.",
     ),
     ValidatedCombination(
-        ExtensionSelection("none", "add_normal", "direct", "backprop"),
+        ExtensionSelection(
+            "digital_low_rank",
+            "none",
+            "direct",
+            "digital",
+        ),
         "experimental",
-        "Additive Gaussian weight noise with backpropagation.",
+        "Ideal FP32 logit residual recovering a frozen programmed DRN.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "passive_layerwise_low_rank",
+            "none",
+            "direct",
+            "ep",
+        ),
+        "experimental",
+        "Two ideal passive conductance branches across frozen DRN edges.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "passive_layerwise_low_rank",
+            "none",
+            "direct",
+            "backprop",
+        ),
+        "experimental",
+        "Two ideal passive conductance branches trained through unrolled "
+        "DRN minimization.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "passive_layerwise_low_rank",
+            "none",
+            "program_verify",
+            "backprop",
+        ),
+        "experimental",
+        "Frozen programmed base edges with BPTT LoRA factors reprogrammed "
+        "noisily after every update.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "passive_layerwise_low_rank",
+            "none",
+            "measured_cohort_b_lora",
+            "backprop",
+        ),
+        "experimental",
+        "Frozen cohort-B deployed base edges with four fully reset measured "
+        "ReRAM low-rank factor arrays trained for accuracy recovery.",
     ),
 )
 

@@ -169,6 +169,78 @@ def _enable_passive_low_rank(payload: dict) -> dict:
     return payload
 
 
+def _enable_digital_low_rank(payload: dict) -> dict:
+    payload["model"].update(
+        {
+            "dims": [4, 4],
+            "weight_gains": [1.0],
+            "adapter": {
+                "type": "digital_low_rank",
+                "parameters": {
+                    "rank": 2,
+                    "alpha": 2.0,
+                    "input_factor_gain": 0.1,
+                    "device_noise": {
+                        "type": "aihwkit_reram_wan2022",
+                        "programming_seed": 19,
+                        "g_max_us": 40.0,
+                        "drn_conductance_at_g_max": 0.1,
+                        "noise_scale": 1.0,
+                        "t_inference_seconds": 1.0,
+                    },
+                },
+            },
+        }
+    )
+    payload["modes"]["train"].update(
+        {
+            "algorithm": "digital",
+            "learning_rates": [0.01, 0.02],
+            "bias_learning_rates": [],
+            "nudging": 0.0,
+        }
+    )
+    return payload
+
+
+def _enable_passive_layerwise_low_rank(payload: dict) -> dict:
+    def layer(seed: int) -> dict:
+        return {
+            "rank": 2,
+            "input_factor_gain": 0.1,
+            "input_factor_min": 1e-7,
+            "conductance_max": 1.0,
+            "output_factor_init": "zero",
+            "device_noise": {
+                "type": "aihwkit_reram_wan2022",
+                "programming_seed": seed,
+                "g_max_us": 40.0,
+                "drn_conductance_at_g_max": 0.1,
+                "noise_scale": 1.0,
+                "t_inference_seconds": 1.0,
+            },
+        }
+
+    payload["model"]["adapter"] = {
+        "type": "passive_layerwise_low_rank",
+        "parameters": {
+            "layers": {
+                "base.dense_weight.0": layer(19),
+                "base.dense_weight.1": layer(23),
+            }
+        },
+    }
+    payload["modes"]["train"].update(
+        {
+            "algorithm": "ep",
+            "learning_rates": [0.01, 0.02, 0.03, 0.04],
+            "bias_learning_rates": [],
+            "nudging": 0.05,
+        }
+    )
+    return payload
+
+
 def _write_config(tmp_path: Path, payload: dict) -> Path:
     path = tmp_path / "experiment.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -179,6 +251,153 @@ def test_registry_has_stable_config_selected_id() -> None:
     assert "small_drn.v1" in EXPERIMENT_REGISTRY
     document = parse_small_drn_config(_config())
     assert document.experiment_id == "small_drn.v1"
+
+
+def test_digital_low_rank_config_is_strict_normalized_and_registered() -> None:
+    payload = _enable_digital_low_rank(_config())
+    document = parse_small_drn_config(payload)
+    adapter = document.common.model.adapter
+    assert adapter.type == "digital_low_rank"
+    assert adapter.parameters["rank"] == 2
+    assert adapter.parameters["device_noise"]["g_max_us"] == 40.0
+
+    definition = EXPERIMENT_REGISTRY["small_drn.v1"]
+    spec = definition.resolve(document, RunMode.TRAIN)
+    assert spec.extensions.model_adapter == "digital_low_rank"
+    assert spec.extensions.algorithm == "digital"
+    assert spec.extensions.update_backend == "direct"
+
+
+@pytest.mark.parametrize(
+    "mutation,match",
+    [
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"].update(
+                {"unknown": 1}
+            ),
+            "exactly the keys",
+        ),
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"][
+                "device_noise"
+            ].update({"t_inference_seconds": 2.0}),
+            "one of",
+        ),
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"][
+                "device_noise"
+            ].update({"drn_conductance_at_g_max": 2.0}),
+            "no greater than",
+        ),
+        (
+            lambda payload: payload["modes"]["train"].update(
+                {"nudging": 0.1}
+            ),
+            "equal 0.0",
+        ),
+    ],
+)
+def test_digital_low_rank_rejects_invalid_nested_settings(
+    mutation,
+    match,
+) -> None:
+    payload = _enable_digital_low_rank(_config())
+    mutation(payload)
+    with pytest.raises(ConfigError, match=match):
+        parse_small_drn_config(payload)
+
+
+def test_digital_low_rank_combination_fails_closed() -> None:
+    payload = _enable_digital_low_rank(_config())
+    payload["modes"]["train"]["algorithm"] = "ep"
+    payload["modes"]["train"]["nudging"] = 0.05
+    document = parse_small_drn_config(payload)
+    definition = EXPERIMENT_REGISTRY["small_drn.v1"]
+    with pytest.raises(ConfigError, match="listed explicitly"):
+        definition.resolve(document, RunMode.TRAIN)
+
+
+def test_passive_layerwise_low_rank_is_strict_normalized_and_registered() -> None:
+    payload = _enable_passive_layerwise_low_rank(_config())
+    document = parse_small_drn_config(payload)
+    adapter = document.common.model.adapter
+
+    assert adapter.type == "passive_layerwise_low_rank"
+    assert tuple(adapter.parameters["layers"]) == (
+        "base.dense_weight.0",
+        "base.dense_weight.1",
+    )
+    assert (
+        adapter.parameters["layers"]["base.dense_weight.1"]["device_noise"][
+            "programming_seed"
+        ]
+        == 23
+    )
+    assert (
+        adapter.parameters["layers"]["base.dense_weight.0"][
+            "input_factor_min"
+        ]
+        == 1e-7
+    )
+    definition = EXPERIMENT_REGISTRY["small_drn.v1"]
+    spec = definition.resolve(document, RunMode.TRAIN)
+    assert spec.extensions.model_adapter == "passive_layerwise_low_rank"
+    assert spec.extensions.algorithm == "ep"
+    assert spec.settings.learning_rates == (0.01, 0.02, 0.03, 0.04)
+    assert spec.settings.bias_learning_rates == ()
+
+
+@pytest.mark.parametrize(
+    "mutation,match",
+    [
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"][
+                "layers"
+            ].pop("base.dense_weight.1"),
+            "exactly the keys",
+        ),
+        (
+            lambda payload: payload["model"]["adapter"]["parameters"][
+                "layers"
+            ]["base.dense_weight.0"].update({"unknown": 1}),
+            "keys to be drawn",
+        ),
+        (
+            lambda payload: payload["model"].update(
+                {"dims": [4, 6, 8, 2], "weight_gains": [1.0, 1.0, 1.0]}
+            ),
+            "exactly",
+        ),
+        (
+            lambda payload: payload["modes"]["train"].update(
+                {"learning_rates": [0.1, 0.1]}
+            ),
+            "exactly 4 values",
+        ),
+    ],
+)
+def test_passive_layerwise_low_rank_rejects_invalid_settings(
+    mutation,
+    match,
+) -> None:
+    payload = _enable_passive_layerwise_low_rank(_config())
+    mutation(payload)
+    with pytest.raises(ConfigError, match=match) as raised:
+        parse_small_drn_config(payload)
+
+    assert "Expected" in str(raised.value)
+    assert "Provided value:" in str(raised.value)
+
+
+def test_passive_layerwise_low_rank_combination_fails_closed() -> None:
+    payload = _enable_passive_layerwise_low_rank(_config())
+    payload["modes"]["train"].update(
+        {"algorithm": "digital", "nudging": 0.0}
+    )
+    document = parse_small_drn_config(payload)
+    definition = EXPERIMENT_REGISTRY["small_drn.v1"]
+    with pytest.raises(ConfigError, match="listed explicitly"):
+        definition.resolve(document, RunMode.TRAIN)
 
 
 def test_resolves_immutable_mode_specific_specs(tmp_path: Path) -> None:
@@ -319,21 +538,6 @@ def test_add_normal_rejects_invalid_parameters(parameters: dict) -> None:
     assert "Provided value:" in str(exc_info.value)
 
 
-def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
-    payload = _enable_passive_low_rank(_config())
-    payload["modes"]["train"]["weight_modifier"] = {
-        "type": "add_normal",
-        "parameters": {"std_dev": 0.01},
-    }
-    path = _write_config(tmp_path, payload)
-
-    with pytest.raises(
-        ConfigError,
-        match="listed explicitly by the 'small_drn.v1' definition",
-    ):
-        resolve_experiment_config(path, RunMode.TRAIN)
-
-
 def test_hardware_aware_backprop_direct_combination_is_advertised(
     tmp_path: Path,
 ) -> None:
@@ -352,9 +556,11 @@ def test_hardware_aware_backprop_direct_combination_is_advertised(
         "type": "direct",
         "parameters": {},
     }
-    path = _write_config(tmp_path, payload)
 
-    definition, spec = resolve_experiment_config(path, RunMode.TRAIN)
+    definition, spec = resolve_experiment_config(
+        _write_config(tmp_path, payload),
+        RunMode.TRAIN,
+    )
 
     assert spec.extensions.weight_modifier == "add_normal"
     assert spec.extensions.update_backend == "direct"
@@ -392,6 +598,38 @@ def test_unadvertised_hardware_aware_combinations_fail_closed(
         )
 
 
+def test_unlisted_extension_combination_fails_closed(tmp_path: Path) -> None:
+    payload = _enable_passive_low_rank(_config())
+    payload["modes"]["train"]["weight_modifier"] = {
+        "type": "add_normal",
+        "parameters": {"std_dev": 0.01},
+    }
+    path = _write_config(tmp_path, payload)
+
+    with pytest.raises(
+        ConfigError,
+        match="listed explicitly by the 'small_drn.v1' definition",
+    ):
+        resolve_experiment_config(path, RunMode.TRAIN)
+
+
+def test_feature_combination_unavailable_in_this_worktree_fails_closed(
+    tmp_path: Path,
+) -> None:
+    payload = _enable_digital_low_rank(_config())
+    payload["modes"]["train"]["weight_modifier"] = {
+        "type": "add_normal",
+        "parameters": {"std_dev": 0.01},
+    }
+    path = _write_config(tmp_path, payload)
+
+    with pytest.raises(
+        ConfigError,
+        match="listed explicitly by the 'small_drn.v1' definition",
+    ):
+        resolve_experiment_config(path, RunMode.TRAIN)
+
+
 def test_lora_hardware_aware_tiki_triple_is_rejected(
     tmp_path: Path,
 ) -> None:
@@ -402,7 +640,7 @@ def test_lora_hardware_aware_tiki_triple_is_rejected(
     }
     payload["modes"]["train"]["update_backend"] = {
         "type": "tiki_taka",
-        "parameters": {},
+        "parameters": {"implementation": "ideal"},
     }
     path = _write_config(tmp_path, payload)
 
@@ -549,4 +787,64 @@ def test_removed_algorithm_and_backend_names_are_rejected() -> None:
     payload = _config()
     payload["modes"]["train"]["update_backend"]["type"] = "direct_reram"
     with pytest.raises(ConfigError, match="'direct', 'tiki_taka'"):
+        parse_small_drn_config(payload)
+
+
+def test_accumulated_programming_deadband_is_cohort_b_only() -> None:
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "examples"
+        / "small_drn"
+        / "measured_cohort_b_threshold_mnist.json"
+    )
+    payload = json.loads(example.read_text(encoding="utf-8"))
+    parse_small_drn_config(payload)
+
+    payload["modes"]["train"]["update_backend"]["type"] = (
+        "measured_cohort_a"
+    )
+    payload["modes"]["train"]["update_backend"]["parameters"]["cohort"] = "A"
+    with pytest.raises(ConfigError, match="select measured_cohort_b"):
+        parse_small_drn_config(payload)
+
+
+def test_none_programming_deadband_requires_zero_relative_threshold() -> None:
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "examples"
+        / "small_drn"
+        / "measured_cohort_b_threshold_mnist.json"
+    )
+    payload = json.loads(example.read_text(encoding="utf-8"))
+    parameters = payload["modes"]["train"]["update_backend"]["parameters"]
+    parameters["programming_deadband_mode"] = "none"
+    with pytest.raises(ConfigError, match="equal 0.0"):
+        parse_small_drn_config(payload)
+
+
+def test_probabilistic_write_policies_are_strict_and_mutually_exclusive() -> None:
+    example = (
+        Path(__file__).resolve().parents[1]
+        / "examples"
+        / "small_drn"
+        / "measured_cohort_b_probabilistic_mnist.json"
+    )
+    payload = json.loads(example.read_text(encoding="utf-8"))
+    parse_small_drn_config(payload)
+
+    parameters = payload["modes"]["train"]["update_backend"]["parameters"]
+    parameters["probabilistic_write_mode"] = "displacement_proportional"
+    parameters["probabilistic_write_probability"] = 1.0
+    parameters["probabilistic_write_scale_relative"] = 0.0005
+    parsed = parse_small_drn_config(payload)
+    assert (
+        parsed.train.update_backend.parameters["probabilistic_write_mode"]
+        == "displacement_proportional"
+    )
+
+    parameters["programming_deadband_mode"] = (
+        "accumulated_shadow_relative_rms"
+    )
+    parameters["programming_deadband_relative"] = 0.001
+    with pytest.raises(ConfigError, match="without a deterministic"):
         parse_small_drn_config(payload)
