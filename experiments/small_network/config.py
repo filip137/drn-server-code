@@ -41,6 +41,7 @@ class DataSettings:
     dataset: str
     batch_size: int
     num_points: Optional[int]
+    validation_points: Optional[int]
     shuffle: bool
 
 
@@ -569,12 +570,13 @@ def _parse_data(value: Any) -> DataSettings:
         parsed,
         path,
         required=("dataset", "batch_size", "num_points", "shuffle"),
+        optional=("validation_points",),
     )
     return DataSettings(
         dataset=_string(
             parsed["dataset"],
             f"{path}.dataset",
-            choices=("moons", "yinyang", "digits"),
+            choices=("moons", "yinyang", "digits", "mnist"),
         ),
         batch_size=_integer(
             parsed["batch_size"],
@@ -584,6 +586,11 @@ def _parse_data(value: Any) -> DataSettings:
         num_points=_optional_integer(
             parsed["num_points"],
             f"{path}.num_points",
+            minimum=1,
+        ),
+        validation_points=_optional_integer(
+            parsed.get("validation_points"),
+            f"{path}.validation_points",
             minimum=1,
         ),
         shuffle=_boolean(parsed["shuffle"], f"{path}.shuffle"),
@@ -1246,7 +1253,7 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             model.dims[0],
         )
     logical_input = model.dims[0] // 2
-    expected_inputs = {"yinyang": 2, "digits": 64}
+    expected_inputs = {"yinyang": 2, "digits": 64, "mnist": 784}
     if data.dataset in expected_inputs and logical_input != expected_inputs[
         data.dataset
     ]:
@@ -1256,7 +1263,12 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             f"dataset {data.dataset!r}",
             model.dims[0],
         )
-    class_count = {"moons": 2, "yinyang": 3, "digits": 10}[data.dataset]
+    class_count = {
+        "moons": 2,
+        "yinyang": 3,
+        "digits": 10,
+        "mnist": 10,
+    }[data.dataset]
     if model.dims[-1] not in (class_count, 2 * class_count):
         raise config_error(
             "config.model.dims[-1]",
@@ -1270,6 +1282,21 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             "config.data.num_points",
             f"to be an integer for dataset {data.dataset!r}",
             data.num_points,
+        )
+    if data.validation_points is not None and data.dataset != "mnist":
+        raise config_error(
+            "config.data.validation_points",
+            "to be null unless config.data.dataset is 'mnist'",
+            data.validation_points,
+        )
+    if data.dataset == "mnist" and (
+        data.validation_points is not None
+        and data.validation_points >= 60000
+    ):
+        raise config_error(
+            "config.data.validation_points",
+            "to be smaller than the 60000-sample MNIST training set",
+            data.validation_points,
         )
     common = CommonSettings(
         runtime=runtime,
@@ -1290,6 +1317,12 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             "config.modes",
             "to define at least one of 'train', 'linspace', or 'validate'",
             dict(modes),
+        )
+    if data.dataset == "mnist" and "linspace" in modes:
+        raise config_error(
+            "config.modes",
+            "to contain only 'train' and/or 'validate' for dataset 'mnist'",
+            sorted(modes),
         )
     if model.adapter.type == "passive_low_rank":
         weight_count = 2

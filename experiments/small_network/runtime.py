@@ -160,7 +160,11 @@ def execute_train(
         runtime_protocol={
             "selection_evaluation": "clean",
             "validation_requested": "validation",
-            "validation_effective": "held_out_test",
+            "validation_effective": (
+                "held_out_validation"
+                if spec.common.data.validation_points is not None
+                else "held_out_test"
+            ),
             "parameter_modifier": {
                 "type": spec.settings.weight_modifier.type,
                 "parameters": dict(
@@ -246,11 +250,15 @@ def run_validate(request: "ValidateRequest") -> int:
     """Evaluate explicit named weights on one configured dataset split."""
 
     spec = _expect_spec(request.spec, ValidateSpec, mode="validate")
-    effective_split = (
-        "held_out_test"
-        if spec.settings.split in {"validation", "test"}
-        else "train"
-    )
+    if spec.settings.split == "train":
+        effective_split = "train"
+    elif (
+        spec.settings.split == "validation"
+        and spec.common.data.validation_points is not None
+    ):
+        effective_split = "held_out_validation"
+    else:
+        effective_split = "held_out_test"
     store = _create_run_store(
         request,
         spec,
@@ -597,7 +605,11 @@ def _execute_training(
         "last_noisy_validation": last_noisy_validation,
         "evaluation_protocol": {
             "validation_requested": "validation",
-            "validation_effective": "held_out_test",
+            "validation_effective": (
+                "held_out_validation"
+                if spec.common.data.validation_points is not None
+                else "held_out_test"
+            ),
             "selection_evaluation": "clean",
             "noisy_evaluation_order": "before_clean",
             "parameter_modifier": _modifier_provenance(spec, runtime),
@@ -720,8 +732,14 @@ def _execute_validation(
     if spec.settings.split == "train":
         loader = runtime.data.train_loader
         effective_split = "train"
-    else:
+    elif (
+        spec.settings.split == "validation"
+        and spec.common.data.validation_points is not None
+    ):
         loader = runtime.data.held_out_loader
+        effective_split = "held_out_validation"
+    else:
+        loader = runtime.data.test_loader
         effective_split = "held_out_test"
     limited = _limit_examples(loader, spec.settings.sample_limit)
     capture = _BatchCapture()

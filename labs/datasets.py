@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from sklearn.datasets import make_moons, load_digits
 from torchvision import datasets, transforms
 import torch
 from torch.utils.data import random_split, DataLoader, TensorDataset
@@ -67,6 +66,8 @@ class MoonsDataset(Datasets):
         x2 = x[:, [1]].repeat(1, half)
         return torch.cat([x1, x2], dim=1)
     def build(self):
+        from sklearn.datasets import make_moons
+
         x, y = make_moons(n_samples=self.num_samples, noise=self.noise, random_state=42)
         # Keep features in float32 to match model weights; labels stay int for targets.
         x = torch.tensor(x, dtype=torch.float32, device=self.device)
@@ -210,6 +211,8 @@ class DigitsDataset(Datasets):
         self.seed = int(seed)
 
     def build(self):
+        from sklearn.datasets import load_digits
+
         digits = load_digits()
         x = digits.data  # (N, 64), values in [0, 16]
         y = digits.target
