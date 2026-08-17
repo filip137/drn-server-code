@@ -18,6 +18,7 @@ from model.resistive.minimizer import (
     HardSigmoidUpdater,
 )
 from model.resistive.layer import NonlinearResistiveLayer
+from model.variable.layer import LinearLayer
 
 DEFAULT_IV_CURVE_PATH = None
 
@@ -225,13 +226,80 @@ class CustomMinimizer(Minimizer):
                 return energy.reshape(-1)
             return energy.reshape(energy.shape[0], -1).sum(dim=1)
 
+    def _layer_energy_scale(self, layer):
+        """Return the positive scalar relating energy gradients to currents."""
+        scale_fn = getattr(self._energy_fn, "layer_energy_scale", None)
+        if not callable(scale_fn):
+            return 1.0
+
+        scale = float(scale_fn(layer))
+        if not math.isfinite(scale) or scale <= 0.0:
+            raise ValueError(
+                "Expected layer energy scale to be a positive finite scalar. "
+                f"Provided value for {layer.name!r}: {scale!r}."
+            )
+        return scale
+
+    def _projected_current_residual(self, updater, current, scale):
+        """Return h * (v - projection(v - i / h)) when supported."""
+        layer = updater._layer
+        if isinstance(layer, LinearLayer):
+            return current
+        if not isinstance(layer, NonlinearResistiveLayer):
+            return current
+        non_linearity = getattr(layer, "non_linearity", None)
+        if non_linearity == "linear":
+            return current
+        if non_linearity != "perfect_diode":
+            return current
+
+        a_fn = getattr(updater, "_a", None)
+        if not callable(a_fn):
+            return current
+
+        local_hessian = torch.as_tensor(
+            2.0 * a_fn(),
+            dtype=current.dtype,
+            device=current.device,
+        ).detach() / scale
+        try:
+            expanded_hessian = local_hessian + torch.zeros_like(current)
+        except RuntimeError:
+            return current
+        if not torch.isfinite(expanded_hessian).all() or not (
+            expanded_hessian > 0.0
+        ).all():
+            return current
+
+        state = layer.state.detach()
+        boundary_current = expanded_hessian * state
+        dimension = layer._shape[0] // 2
+        excitatory = torch.where(
+            current[:, :dimension] <= boundary_current[:, :dimension],
+            current[:, :dimension],
+            boundary_current[:, :dimension],
+        )
+        inhibitory = torch.where(
+            current[:, dimension:] >= boundary_current[:, dimension:],
+            current[:, dimension:],
+            boundary_current[:, dimension:],
+        )
+        return torch.cat((excitatory, inhibitory), dim=1)
+
     def residual_currents_inf(self):
-        """Compute per-layer residual currents as ||dE/dz||_inf for current states."""
+        """Compute physical projected-current residuals for managed layers."""
         fn = self._fn
         residuals = {}
-        for layer in self._layers:
-            grad = fn.grad_layer_fn(layer)()
-            residuals[layer.name] = float(grad.abs().max().item())
+        for updater in self._updaters:
+            layer = updater._layer
+            scale = self._layer_energy_scale(layer)
+            current = fn.grad_layer_fn(layer)().detach() / scale
+            residual = self._projected_current_residual(
+                updater,
+                current,
+                scale,
+            )
+            residuals[layer.name] = float(residual.abs().max().item())
         self._residual_currents_last = residuals
         return residuals
 

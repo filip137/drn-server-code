@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from itertools import accumulate
+import math
 import torch
 
 from model.function.interaction import Function, SumSeparableFunction
@@ -8,6 +9,20 @@ from model.variable.layer import layer_index
 
 
 def _amplified_layer_row_scale(energy_fn, layer):
+    if getattr(energy_fn, "_differential_dense_edges", ()):
+        scale_fn = getattr(energy_fn, "layer_energy_scale", None)
+        if not callable(scale_fn):
+            raise ValueError(
+                "Expected a differential energy to expose a positive finite "
+                f"layer metric. Provided value: {energy_fn!r}."
+            )
+        scale = float(scale_fn(layer))
+        if not math.isfinite(scale) or scale <= 0.0:
+            raise ValueError(
+                "Expected a differential energy to expose a positive finite "
+                f"layer metric. Provided value: {scale!r}."
+            )
+        return scale
     voltage_amp = getattr(energy_fn, "_voltage_amp", getattr(energy_fn, "voltage_amp", None))
     current_amp = getattr(energy_fn, "_current_amp", getattr(energy_fn, "current_amp", None))
     if voltage_amp in (None, 0.0) or current_amp is None:

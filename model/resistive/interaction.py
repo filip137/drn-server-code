@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+import math
+from numbers import Integral, Real
 import torch
 import torch.nn.functional as F
 
@@ -31,7 +33,6 @@ class DenseResistive(QFunction):
         self._weight = dense_weight
         self._voltage_amp = voltage_amp
         self._current_amp = current_amp
-
         QFunction.__init__(self, [layer_pre, layer_post], [dense_weight])
 
     def eval(self):
@@ -155,6 +156,331 @@ class DenseResistive(QFunction):
         grad_weight = 0.5 * ((layer_pre - self._current_amp*layer_post)**2).mean(dim=0) * amp
         #grad_weight = 0.5 * ((layer_pre - layer_post)**2).mean(dim=0)
         return grad_weight
+
+
+class SignedDenseResistive(QFunction):
+    """Dense resistive edge implemented by a differential device pair.
+
+    The input edge has unit forward gain, while every interior edge has
+    forward gain ``voltage_amp``.  Multiplying the two branch energies by the
+    post-layer metric ``(current_amp / voltage_amp) ** logical_pre_index``
+    produces a scalar energy whose layer gradients are the symmetrized port
+    currents.  Consequently, signal transfer is controlled by ``G+ - G-``
+    and loading/curvature by ``G+ + G-``.  Both tensors remain non-negative
+    physical conductances.
+    """
+
+    def __init__(
+        self,
+        layer_pre,
+        layer_post,
+        conductance_plus,
+        conductance_minus,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_pre_index=None,
+        logical_post_index=None,
+    ):
+        self._layer_pre = layer_pre
+        self._layer_post = layer_post
+        self._conductance_plus = conductance_plus
+        self._conductance_minus = conductance_minus
+        for name, conductance in (
+            ("conductance_plus", conductance_plus),
+            ("conductance_minus", conductance_minus),
+        ):
+            state = getattr(conductance, "state", None)
+            clamp_min = getattr(conductance, "min_cond", None)
+            clamp_max = getattr(conductance, "max_cond", None)
+            effective_clamp_min = 0.0 if clamp_min is None else clamp_min
+            if (
+                not isinstance(state, torch.Tensor)
+                or getattr(conductance, "_non_negative", False) is not True
+                or (
+                    clamp_min is not None
+                    and (
+                        isinstance(clamp_min, bool)
+                        or not isinstance(clamp_min, Real)
+                        or not math.isfinite(float(clamp_min))
+                        or float(clamp_min) < 0.0
+                    )
+                )
+                or (
+                    clamp_max is not None
+                    and (
+                        isinstance(clamp_max, bool)
+                        or not isinstance(clamp_max, Real)
+                        or not math.isfinite(float(clamp_max))
+                        or float(clamp_max) < float(effective_clamp_min)
+                    )
+                )
+                or not torch.isfinite(state).all().item()
+                or (state < 0.0).any().item()
+            ):
+                raise ValueError(
+                    f"Expected {name} to be a finite, non-negative-clamped "
+                    "physical conductance tensor. Provided value: "
+                    f"parameter={conductance!r}, clamp_min={clamp_min!r}, "
+                    f"clamp_max={clamp_max!r}."
+                )
+        if (
+            isinstance(voltage_amp, bool)
+            or not isinstance(voltage_amp, Real)
+            or isinstance(current_amp, bool)
+            or not isinstance(current_amp, Real)
+        ):
+            raise ValueError(
+                "Expected voltage_amp and current_amp to be finite positive "
+                "numbers. Provided value: "
+                f"voltage_amp={voltage_amp!r}, current_amp={current_amp!r}."
+            )
+        resolved_voltage_amp = float(voltage_amp)
+        resolved_current_amp = float(current_amp)
+        if (
+            not math.isfinite(resolved_voltage_amp)
+            or resolved_voltage_amp <= 0.0
+            or not math.isfinite(resolved_current_amp)
+            or resolved_current_amp <= 0.0
+        ):
+            raise ValueError(
+                "Expected voltage_amp and current_amp to be finite positive "
+                "numbers. Provided value: "
+                f"voltage_amp={voltage_amp!r}, current_amp={current_amp!r}."
+            )
+        self._voltage_amp = resolved_voltage_amp
+        self._current_amp = resolved_current_amp
+        try:
+            if logical_pre_index is None or logical_post_index is None:
+                raise TypeError
+            if (
+                isinstance(logical_pre_index, bool)
+                or not isinstance(logical_pre_index, Integral)
+            ):
+                raise TypeError
+            if (
+                isinstance(logical_post_index, bool)
+                or not isinstance(logical_post_index, Integral)
+            ):
+                raise TypeError
+            self._logical_pre_index = int(logical_pre_index)
+            self._logical_post_index = int(logical_post_index)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "Expected explicit logical layer indices to be adjacent "
+                "non-negative integers with logical_post_index = "
+                "logical_pre_index + 1. "
+                "Provided value: "
+                f"logical_pre_index={logical_pre_index!r}, "
+                f"logical_post_index={logical_post_index!r}."
+            ) from error
+        if (
+            self._logical_pre_index < 0
+            or self._logical_post_index != self._logical_pre_index + 1
+        ):
+            raise ValueError(
+                "Expected explicit logical layer indices to be adjacent "
+                "non-negative integers with logical_post_index = "
+                "logical_pre_index + 1. "
+                "Provided value: "
+                f"logical_pre_index={logical_pre_index!r}, "
+                f"logical_post_index={logical_post_index!r}, "
+                f"resolved=({self._logical_pre_index!r}, "
+                f"{self._logical_post_index!r})."
+            )
+        try:
+            post_metric = (
+                1.0
+                if self._logical_pre_index == 0
+                else math.pow(
+                    self._current_amp / self._voltage_amp,
+                    self._logical_pre_index,
+                )
+            )
+        except (OverflowError, ZeroDivisionError, ValueError) as error:
+            raise ValueError(
+                "Expected amplifier magnitudes and logical depth to yield a "
+                "finite positive post-layer energy metric. Provided value: "
+                f"voltage_amp={voltage_amp!r}, current_amp={current_amp!r}, "
+                f"logical_pre_index={self._logical_pre_index!r}."
+            ) from error
+        represented_metric = torch.as_tensor(
+            post_metric,
+            dtype=self._layer_post.state.dtype,
+            device=self._layer_post.state.device,
+        )
+        if (
+            not math.isfinite(post_metric)
+            or post_metric <= 0.0
+            or not torch.isfinite(represented_metric).item()
+            or represented_metric.item() <= 0.0
+        ):
+            raise ValueError(
+                "Expected amplifier magnitudes and logical depth to yield a "
+                "finite positive post-layer energy metric. Provided value: "
+                f"voltage_amp={voltage_amp!r}, current_amp={current_amp!r}, "
+                f"logical_pre_index={self._logical_pre_index!r}, "
+                f"dtype={self._layer_post.state.dtype!s}."
+            )
+        self._post_metric_value = post_metric
+        forward_gain = (
+            1.0
+            if self._logical_pre_index == 0
+            else self._voltage_amp
+        )
+        try:
+            coefficient_scales = (
+                forward_gain,
+                post_metric * forward_gain,
+                post_metric * forward_gain * forward_gain,
+            )
+        except OverflowError as error:
+            raise ValueError(
+                "Expected amplifier magnitudes and logical depth to yield "
+                "finite positive energy coefficient scales. Provided value: "
+                f"voltage_amp={voltage_amp!r}, current_amp={current_amp!r}, "
+                f"logical_pre_index={self._logical_pre_index!r}."
+            ) from error
+        represented_scales = torch.as_tensor(
+            coefficient_scales,
+            dtype=self._layer_post.state.dtype,
+            device=self._layer_post.state.device,
+        )
+        if (
+            not all(
+                math.isfinite(scale) and scale > 0.0
+                for scale in coefficient_scales
+            )
+            or not torch.isfinite(represented_scales).all().item()
+            or not (represented_scales > 0.0).all().item()
+        ):
+            raise ValueError(
+                "Expected amplifier magnitudes and logical depth to yield "
+                "finite positive energy coefficient scales. Provided value: "
+                f"voltage_amp={voltage_amp!r}, current_amp={current_amp!r}, "
+                f"logical_pre_index={self._logical_pre_index!r}, "
+                f"dtype={self._layer_post.state.dtype!s}."
+            )
+        QFunction.__init__(
+            self,
+            [layer_pre, layer_post],
+            [conductance_plus, conductance_minus],
+        )
+
+    def _sum(self):
+        return self._conductance_plus.get() + self._conductance_minus.get()
+
+    def _difference(self):
+        return self._conductance_plus.get() - self._conductance_minus.get()
+
+    def _forward_gain(self):
+        return 1.0 if self._logical_pre_index == 0 else self._voltage_amp
+
+    def _post_metric(self):
+        return self._post_metric_value
+
+    def _broadcast_states(self):
+        layer_pre = self._layer_pre.state
+        layer_post = self._layer_post.state
+        dims_pre = len(self._layer_pre.shape)
+        dims_post = len(self._layer_post.shape)
+        for _ in range(dims_post):
+            layer_pre = layer_pre.unsqueeze(-1)
+        for _ in range(dims_pre):
+            layer_post = layer_post.unsqueeze(1)
+        return layer_pre, layer_post
+
+    def eval(self):
+        layer_pre, layer_post = self._broadcast_states()
+        plus = self._conductance_plus.get().unsqueeze(0)
+        minus = self._conductance_minus.get().unsqueeze(0)
+        pre = self._forward_gain() * layer_pre
+        energy = (pre - layer_post).square().mul(plus)
+        energy = energy + (pre + layer_post).square().mul(minus)
+        return (
+            0.5
+            * self._post_metric()
+            * energy.flatten(start_dim=1).sum(dim=1)
+        )
+
+    def grad_layer_fn(self, layer):
+        a_coef = self.a_coef_fn(layer)
+        b_coef = self.b_coef_fn(layer)
+        return lambda: 2.0 * a_coef() * layer.state + b_coef()
+
+    def a_coef_fn(self, layer):
+        return {
+            self._layer_pre: self._a_coef_layer_pre,
+            self._layer_post: self._a_coef_layer_post,
+        }[layer]
+
+    def b_coef_fn(self, layer):
+        return {
+            self._layer_pre: self._b_coef_layer_pre,
+            self._layer_post: self._b_coef_layer_post,
+        }[layer]
+
+    def grad_param_fn(self, param):
+        return {
+            self._conductance_plus: self._grad_plus,
+            self._conductance_minus: self._grad_minus,
+        }[param]
+
+    def _a_coef_layer_pre(self):
+        dims_pre = len(self._layer_pre.shape)
+        result = 0.5 * self._sum().flatten(
+            start_dim=dims_pre
+        ).sum(dim=-1).unsqueeze(0)
+        return (
+            result
+            * self._post_metric()
+            * self._forward_gain() ** 2
+        )
+
+    def _b_coef_layer_pre(self):
+        layer_post = self._layer_post.state
+        dims_pre = len(self._layer_pre.shape)
+        dims_post = len(self._layer_post.shape)
+        difference = self._difference()
+        dim_weight = len(difference.shape)
+        permutation = tuple(range(dims_pre, dim_weight)) + tuple(
+            range(dims_pre)
+        )
+        result = -torch.tensordot(
+            layer_post,
+            difference.permute(permutation),
+            dims=dims_post,
+        )
+        return result * self._post_metric() * self._forward_gain()
+
+    def _a_coef_layer_post(self):
+        dims = len(self._layer_pre.shape) - 1
+        result = 0.5 * self._sum().flatten(
+            end_dim=dims
+        ).sum(dim=0).unsqueeze(0)
+        return result * self._post_metric()
+
+    def _b_coef_layer_post(self):
+        layer_pre = self._layer_pre.state
+        dims_pre = len(self._layer_pre.shape)
+        result = -torch.tensordot(
+            layer_pre,
+            self._difference(),
+            dims=dims_pre,
+        )
+        return result * self._post_metric() * self._forward_gain()
+
+    def _grad_conductance(self, sign):
+        layer_pre, layer_post = self._broadcast_states()
+        return 0.5 * (
+            self._forward_gain() * layer_pre + sign * layer_post
+        ).square().mean(dim=0) * self._post_metric()
+
+    def _grad_plus(self):
+        return self._grad_conductance(-1.0)
+
+    def _grad_minus(self):
+        return self._grad_conductance(1.0)
 
 
 class ConvResistive(QFunction):

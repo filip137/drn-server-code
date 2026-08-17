@@ -175,7 +175,7 @@ class SettledLayerStatesProbe:
 
 
 class ResidualInfinityNormProbe:
-    """Collect one ``||dE/dz||_inf`` value per layer and minibatch."""
+    """Collect per-layer residual norms, preferring minimizer diagnostics."""
 
     def __init__(self, name: str = "residual_inf_norm") -> None:
         _validate_name(name)
