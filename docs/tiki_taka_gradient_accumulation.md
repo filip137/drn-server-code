@@ -6,6 +6,11 @@ through an auxiliary ("fast") tensor before changing the DRN's visible
 tensor per minibatch. Tiki-Taka changes only how that tensor is accumulated
 and applied.
 
+Hardware-aware additive forward-path noise is configured independently through
+`modes.train.weight_modifier`. See
+[Hardware-aware additive weight noise](hardware_aware_training.md) for its
+strict schema, clean-selection contract, and exact modifier RNG continuation.
+
 The implementation is in `training/tiki_taka.py`. It has two backends:
 
 - the default ideal tensor emulator of the two-crossbar schedule; and

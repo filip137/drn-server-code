@@ -71,6 +71,11 @@ _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
         "experimental",
         "Passive low-rank factors trained by ideal-tensor Tiki-Taka.",
     ),
+    ValidatedCombination(
+        ExtensionSelection("none", "add_normal", "direct", "backprop"),
+        "experimental",
+        "Additive Gaussian weight noise with backpropagation.",
+    ),
 )
 
 

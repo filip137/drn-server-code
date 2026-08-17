@@ -62,6 +62,26 @@ def _document():
     return parse_small_drn_config(payload)
 
 
+def _hardware_aware_document():
+    document = _document()
+    return replace(
+        document,
+        train=replace(
+            document.train,
+            algorithm="backprop",
+            weight_modifier=ComponentSettings(
+                type="add_normal",
+                parameters={
+                    "std_dev": 0.2,
+                    "seed": 17,
+                    "noisy_evaluation": True,
+                    "scale_mode": "output_channel_abs_max",
+                },
+            ),
+        ),
+    )
+
+
 def _adapter_document(*, backend: str = "direct"):
     payload = json.loads(
         (_REPO_ROOT / "examples" / "small_drn" / "lora.json").read_text(
@@ -772,36 +792,33 @@ def test_resume_rejects_numerical_config_changes_and_shorter_horizon(
         )
 
 
-def test_unimplemented_extension_fails_before_model_construction(
+def test_hardware_aware_training_runs_and_records_noise_provenance(
     tmp_path: Path,
 ) -> None:
     definition = get_definition("small_drn.v1")
-    spec = definition.resolve(_document(), RunMode.TRAIN)
-    unsupported = replace(
-        spec,
-        settings=replace(
-            spec.settings,
-            weight_modifier=ComponentSettings(
-                type="add_normal",
-                parameters={},
-            ),
-        ),
-    )
-    with pytest.raises(NotImplementedError, match="hardware-aware branch"):
-        run_train(
-            TrainRequest(
-                definition=definition,
-                spec=unsupported,
-                config_path=tmp_path / "config.json",
-                output_dir=tmp_path / "runs",
-                weights=None,
-                base_weights=None,
-                resume=None,
-                command=("ebl", "train"),
-            )
+    spec = definition.resolve(_hardware_aware_document(), RunMode.TRAIN)
+
+    assert run_train(
+        TrainRequest(
+            definition=definition,
+            spec=spec,
+            config_path=tmp_path / "config.json",
+            output_dir=tmp_path / "runs",
+            weights=None,
+            base_weights=None,
+            resume=None,
+            command=("ebl", "train"),
         )
-    failed_run = _runs(tmp_path / "runs")[0]
-    assert _read_json(failed_run / "status.json")["status"] == "failed"
+    ) == 0
+
+    run_dir = _runs(tmp_path / "runs")[0]
+    assert _read_json(run_dir / "status.json")["status"] == "complete"
+    metrics = _read_json(run_dir / "result.json")["metrics"]
+    modifier = metrics["evaluation_protocol"]["parameter_modifier"]
+    assert modifier["type"] == "add_normal"
+    assert modifier["resolved_seed"] == 17
+    assert modifier["noisy_evaluation_executed"] is True
+    assert metrics["last_noisy_validation"] is not None
 
 
 def test_float64_stack_keeps_configured_dtype_across_network_reset() -> None:

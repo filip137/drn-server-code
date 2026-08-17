@@ -27,7 +27,12 @@ from model.function.cost import SquaredError, SquaredErrorPairedOutputs
 from model.function.network import Network
 from model.resistive.builders import ModelBundle, build_deep_resistive_energy
 from model.variable.parameter import Bias
+from training.add_normal import (
+    AddNormalConfig,
+    build_add_normal_modifier,
+)
 from training.engine import EvaluationComponents, ExperimentComponents
+from training.modifier import ParameterModifier
 from training.sgd import AugmentedFunction, Backprop, EquilibriumProp
 from training.tiki_taka import build_optimizer, parse_update_pipeline
 
@@ -196,8 +201,17 @@ class TrainRuntime:
     training_components: ExperimentComponents
     evaluation_components: EvaluationComponents
     optimizer: Any
+    modifier: ParameterModifier | None
+    noisy_evaluation: bool
     runtime_state: LayerStateCheckpoint
     resume_capability: str
+
+    @property
+    def modifier_resolved_seed(self) -> int | None:
+        """Return the live seed, including one restored from a checkpoint."""
+
+        seed = getattr(self.modifier, "resolved_seed", None)
+        return None if seed is None else int(seed)
 
 
 def seed_runtime(seed: int | None) -> None:
@@ -386,17 +400,30 @@ def build_validation_runtime(common: CommonSettings) -> ValidationRuntime:
 def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
     """Compose the authoritative engine with legacy numerical primitives."""
 
-    if spec.settings.weight_modifier.type != "none":
-        raise NotImplementedError(
-            "Expected small_drn.v1 runtime weight_modifier.type to be 'none' "
-            "until the hardware-aware branch supplies add_normal. "
-            f"Provided value: {spec.settings.weight_modifier.type!r}."
-        )
-
     stack = build_model_stack(spec.common)
     data = build_data(spec.common)
     energy = stack.bundle.energy
     cost_fn = stack.cost_fn
+    modifier: ParameterModifier | None = None
+    noisy_evaluation = False
+    modifier_settings = spec.settings.weight_modifier
+    if modifier_settings.type == "add_normal":
+        modifier_config = AddNormalConfig(
+            std_dev=float(modifier_settings.parameters["std_dev"]),
+            seed=modifier_settings.parameters["seed"],
+            noisy_evaluation=bool(
+                modifier_settings.parameters["noisy_evaluation"]
+            ),
+            scale_mode=str(modifier_settings.parameters["scale_mode"]),
+        )
+        modifier = build_add_normal_modifier(
+            stack.bundle.catalog.trainable_parameters,
+            modifier_config,
+            run_seed=spec.common.runtime.seed,
+        )
+        noisy_evaluation = (
+            modifier is not None and modifier_config.noisy_evaluation
+        )
 
     inference_minimizer = _build_minimizer(
         spec.common,
@@ -495,6 +522,8 @@ def build_train_runtime(spec: TrainSpec) -> TrainRuntime:
         ),
         evaluation_components=evaluation_components,
         optimizer=optimizer,
+        modifier=modifier,
+        noisy_evaluation=noisy_evaluation,
         runtime_state=LayerStateCheckpoint(stack.network.layers()),
         resume_capability=resume_capability,
     )

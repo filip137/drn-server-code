@@ -15,6 +15,27 @@ def test_base_example_resolves_every_documented_mode() -> None:
         assert spec.experiment_id == "small_drn.v1"
 
 
+def test_hardware_aware_example_is_nested_and_resolves_every_mode() -> None:
+    path = ROOT / "examples" / "small_drn" / "hardware_aware.json"
+
+    resolved = {}
+    for mode in (RunMode.TRAIN, RunMode.LINSPACE, RunMode.VALIDATE):
+        definition, spec = resolve_experiment_config(path, mode)
+        assert definition.experiment_id == "small_drn.v1"
+        resolved[mode] = spec
+
+    train = resolved[RunMode.TRAIN]
+    assert train.extensions.weight_modifier == "add_normal"
+    assert train.extensions.update_backend == "direct"
+    assert train.extensions.algorithm == "backprop"
+    assert dict(train.settings.weight_modifier.parameters) == {
+        "std_dev": 0.06,
+        "seed": 7,
+        "noisy_evaluation": True,
+        "scale_mode": "tensor_abs_max",
+    }
+
+
 def test_passive_low_rank_example_is_nested_and_resolves_every_mode() -> None:
     path = ROOT / "examples" / "small_drn" / "lora.json"
 
