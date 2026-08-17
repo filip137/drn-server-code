@@ -18,6 +18,7 @@ from experiments.schema import (
     RunMode,
     ValidatedCombination,
     config_error,
+    to_plain_data,
 )
 from experiments.small_network.config import (
     EXPERIMENT_ID,
@@ -27,6 +28,19 @@ from experiments.small_network.config import (
     TrainSpec,
     parse_small_drn_config,
     resolve_small_drn_spec,
+)
+from experiments.mnist_relu.config import (
+    EXPERIMENT_ID as MNIST_RELU_EXPERIMENT_ID,
+    SCHEMA_VERSION as MNIST_RELU_SCHEMA_VERSION,
+    parse_teacher_config,
+    resolve_teacher_spec,
+)
+from experiments.mnist_relu_drn.config import (
+    EXPERIMENT_ID as MNIST_RELU_DRN_EXPERIMENT_ID,
+    SCHEMA_VERSION as MNIST_RELU_DRN_SCHEMA_VERSION,
+    StudentTrainSpec,
+    parse_student_config,
+    resolve_student_spec,
 )
 
 
@@ -143,9 +157,91 @@ SMALL_DRN_V1 = ExperimentDefinition(
 )
 
 
+MNIST_RELU_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_SCHEMA_VERSION,
+    description=(
+        "Bias-free 784-50-10 ReLU MNIST teacher training and validation."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_teacher_config,
+    resolver=resolve_teacher_spec,
+    combinations=(
+        ValidatedCombination(
+            ExtensionSelection(
+                "relu_teacher",
+                "none",
+                "adam",
+                "cross_entropy",
+            ),
+            "validated",
+            "Bias-free digital teacher selected by validation cross-entropy.",
+        ),
+    ),
+)
+
+
+_MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
+    ValidatedCombination(
+        ExtensionSelection(encoding, "none", backend, "teacher_kl"),
+        "experimental",
+        (
+            "Teacher-mapped DRN with pure KL distillation and "
+            + (
+                "one device per physical edge."
+                if encoding == "single"
+                else (
+                    "a differential G+/G- pair per physical edge with "
+                    "finite positive voltage/current amplifier magnitudes."
+                )
+            )
+        ),
+    )
+    for encoding in ("single", "differential")
+    for backend in ("ideal", "measured_cohort_a")
+)
+
+
+def _resolve_mnist_relu_drn(document, mode: RunMode):
+    spec = resolve_student_spec(document, mode)
+    if isinstance(spec, StudentTrainSpec):
+        selection = ExtensionSelection(
+            spec.model.encoding,
+            "none",
+            spec.settings.update_backend.type,
+            "teacher_kl",
+        )
+        if not any(
+            item.selection == selection
+            for item in _MNIST_RELU_DRN_COMBINATIONS
+        ):
+            raise config_error(
+                "the train extension combination",
+                "to be listed explicitly by the "
+                "'mnist_relu_drn_kd.v1' definition",
+                to_plain_data(selection),
+            )
+    return spec
+
+
+MNIST_RELU_DRN_KD_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_DRN_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_DRN_SCHEMA_VERSION,
+    description=(
+        "Teacher-initialized MNIST DRN trained with pure teacher-to-student KL."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_student_config,
+    resolver=_resolve_mnist_relu_drn,
+    combinations=_MNIST_RELU_DRN_COMBINATIONS,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
+    MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,
+    MNIST_RELU_DRN_KD_V1.experiment_id: MNIST_RELU_DRN_KD_V1,
 }
 
 
