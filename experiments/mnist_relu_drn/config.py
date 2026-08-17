@@ -261,7 +261,12 @@ def _parse_mapping(value: Any) -> MappingSettings:
     )
 
 
-def _parse_measured(value: Any, path: str) -> Mapping[str, Any]:
+def _parse_measured(
+    value: Any,
+    path: str,
+    *,
+    backend_type: str,
+) -> Mapping[str, Any]:
     raw = _object(value, path)
     _keys(raw, path, _MEASURED_KEYS)
     if raw["curve_preprocessing"] not in {"raw", "isotonic_nonincreasing"}:
@@ -277,8 +282,21 @@ def _parse_measured(value: Any, path: str) -> Mapping[str, Any]:
             "'paired_affine_common_window'",
             raw["initial_target_mapping"],
         )
+    expected_cohort = {
+        "measured_cohort_a": "A",
+        "measured_cohort_b": "B",
+    }[backend_type]
+    if (
+        expected_cohort == "B"
+        and raw["initial_target_mapping"] == "per_device_affine"
+    ):
+        raise config_error(
+            f"{path}.initial_target_mapping",
+            "to be 'literal' or 'paired_affine_common_window' for cohort B",
+            raw["initial_target_mapping"],
+        )
     exact = {
-        "cohort": "A",
+        "cohort": expected_cohort,
         "cohort_fraction": 0.5,
         "source_traces_per_cell": 2,
         "initial_pulse_index": 0,
@@ -316,12 +334,24 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         raise config_error(f"{path}.minimum_relative_kl_improvement", "to be in [0, 1]", relative)
     backend = _object(raw["update_backend"], f"{path}.update_backend")
     _keys(backend, f"{path}.update_backend", {"type", "parameters"})
-    if backend["type"] not in {"ideal", "measured_cohort_a"}:
-        raise config_error(f"{path}.update_backend.type", "to be 'ideal' or 'measured_cohort_a'", backend["type"])
+    if backend["type"] not in {
+        "ideal",
+        "measured_cohort_a",
+        "measured_cohort_b",
+    }:
+        raise config_error(
+            f"{path}.update_backend.type",
+            "to be 'ideal', 'measured_cohort_a', or 'measured_cohort_b'",
+            backend["type"],
+        )
     if backend["type"] == "ideal":
         parameters = _empty_object(backend["parameters"], f"{path}.update_backend.parameters")
     else:
-        parameters = _parse_measured(backend["parameters"], f"{path}.update_backend.parameters")
+        parameters = _parse_measured(
+            backend["parameters"],
+            f"{path}.update_backend.parameters",
+            backend_type=backend["type"],
+        )
     return StudentTrainSettings(
         num_epochs=_integer(raw["num_epochs"], f"{path}.num_epochs", minimum=1),
         learning_rates=(parsed_rates[0], parsed_rates[1]),
@@ -362,7 +392,8 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
     train = modes.get("train")
     if (
         isinstance(train, StudentTrainSettings)
-        and train.update_backend.type == "measured_cohort_a"
+        and train.update_backend.type
+        in {"measured_cohort_a", "measured_cohort_b"}
         and train.update_backend.parameters["initial_target_mapping"]
         == "paired_affine_common_window"
         and model.encoding != "differential"

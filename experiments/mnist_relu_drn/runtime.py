@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterable, TYPE_CHECKING
@@ -30,7 +31,11 @@ from training.checkpoint import (
     save_encoded_named_weights,
     save_epoch_boundary_checkpoint,
 )
-from training.measured_trace import MeasuredCohortAOptimizer, MeasuredTraceOptimizer
+from training.measured_trace import (
+    MeasuredCohortAOptimizer,
+    MeasuredCohortBOptimizer,
+    MeasuredTraceOptimizer,
+)
 
 if TYPE_CHECKING:
     from ebl.cli import TrainRequest, ValidateRequest
@@ -157,6 +162,7 @@ def _model_checkpoint_metadata(
     spec: StudentTrainSpec,
     teacher_sha256: str,
     mapping: dict[str, Any] | None,
+    deployment_source: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "experiment_id": spec.experiment_id,
@@ -171,6 +177,7 @@ def _model_checkpoint_metadata(
         "teacher_sha256": teacher_sha256,
         "mapping": mapping,
         "update_backend": spec.settings.update_backend.type,
+        "deployment_source": deployment_source,
     }
     if isinstance(stack.optimizer, MeasuredTraceOptimizer):
         data_report = stack.optimizer.data_report
@@ -248,6 +255,64 @@ def _validate_checkpoint_metadata(
         )
 
 
+def _validate_cohort_b_source_metadata(
+    metadata: Any,
+    *,
+    device_data_sha256: str,
+) -> None:
+    """Require cohort-B deployment to originate from the matched A protocol."""
+
+    provided = metadata if isinstance(metadata, dict) else {}
+    expected = {
+        "encoding": "differential",
+        "initialization": "teacher_mapped",
+        "update_backend": "measured_cohort_a",
+        "initial_target_mapping": "paired_affine_common_window",
+        "device_data_sha256": device_data_sha256,
+    }
+    mismatches = {
+        name: {"expected": value, "provided": provided.get(name)}
+        for name, value in expected.items()
+        if provided.get(name) != value
+    }
+    if mismatches:
+        raise ValueError(
+            "Expected cohort-B deployment weights to come from the matched "
+            "differential cohort-A common-window protocol. Provided value: "
+            f"{mismatches!r}."
+        )
+
+
+def _validate_resume_backend_metadata(
+    metadata: Any,
+    *,
+    spec: StudentTrainSpec,
+    device_data_sha256: str | None,
+) -> None:
+    provided = metadata if isinstance(metadata, dict) else {}
+    backend = spec.settings.update_backend.type
+    expected = {"update_backend": backend}
+    if backend in {"measured_cohort_a", "measured_cohort_b"}:
+        expected.update(
+            {
+                "initial_target_mapping": spec.settings.update_backend.parameters[
+                    "initial_target_mapping"
+                ],
+                "device_data_sha256": device_data_sha256,
+            }
+        )
+    mismatches = {
+        name: {"expected": value, "provided": provided.get(name)}
+        for name, value in expected.items()
+        if provided.get(name) != value
+    }
+    if mismatches:
+        raise ValueError(
+            "Expected resume checkpoint backend provenance to match the "
+            f"requested training protocol. Provided value: {mismatches!r}."
+        )
+
+
 def _input(role: str, path: Path) -> dict[str, Any]:
     resolved = path.expanduser().resolve()
     if not resolved.is_file():
@@ -274,12 +339,23 @@ def _validate_train_request(request: Any, spec: StudentTrainSpec) -> None:
         raise ValueError(
             "Expected at most one of --weights or --resume. Provided value: both."
         )
-    measured = spec.settings.update_backend.type == "measured_cohort_a"
+    backend = spec.settings.update_backend.type
+    measured = backend in {"measured_cohort_a", "measured_cohort_b"}
     if measured != (request.device_data is not None):
         expected = "an explicit --device-data" if measured else "no --device-data"
         raise ValueError(
             f"Expected update backend {spec.settings.update_backend.type!r} to use {expected}. "
             f"Provided value: {request.device_data!r}."
+        )
+    if (
+        backend == "measured_cohort_b"
+        and request.weights is None
+        and request.resume is None
+    ):
+        raise ValueError(
+            "Expected measured_cohort_b training to receive cohort-A "
+            "--weights or an exact --resume checkpoint. Provided value: "
+            "weights=None, resume=None."
         )
 
 
@@ -438,6 +514,7 @@ def _selected_payload(
     teacher_path: Path,
     teacher_sha256: str,
     mapping: dict[str, Any] | None,
+    deployment_source: dict[str, Any] | None,
     epoch: int,
     validation: dict[str, Any],
 ) -> dict[str, Any]:
@@ -446,6 +523,7 @@ def _selected_payload(
         spec=spec,
         teacher_sha256=teacher_sha256,
         mapping=mapping,
+        deployment_source=deployment_source,
     )
     metadata.update(
         {
@@ -461,6 +539,40 @@ def _selected_payload(
         stack.bundle.catalog,
         metadata=metadata,
     )
+
+
+def _adaptation_summary(
+    baseline: dict[str, Any],
+    selected: dict[str, Any],
+    last: dict[str, Any],
+    *,
+    selected_epoch: int,
+) -> dict[str, Any]:
+    baseline_kl = float(baseline["kl_teacher_student"])
+
+    def comparison(candidate: dict[str, Any]) -> dict[str, Any]:
+        kl_reduction = baseline_kl - float(candidate["kl_teacher_student"])
+        return {
+            "student_accuracy_change": (
+                float(candidate["student_accuracy"])
+                - float(baseline["student_accuracy"])
+            ),
+            "teacher_agreement_change": (
+                float(candidate["teacher_agreement"])
+                - float(baseline["teacher_agreement"])
+            ),
+            "kl_reduction": kl_reduction,
+            "relative_kl_reduction": (
+                kl_reduction / baseline_kl if baseline_kl > 0.0 else 0.0
+            ),
+        }
+
+    return {
+        "baseline": "post_deployment_calibrated_validation",
+        "selected_epoch": selected_epoch,
+        "selected": comparison(selected),
+        "after_ten_epochs": comparison(last),
+    }
 
 
 def run_train(request: "TrainRequest") -> int:
@@ -495,9 +607,19 @@ def run_train(request: "TrainRequest") -> int:
             calibration_examples=spec.mapping.calibration_examples,
             calibration_batch_size=spec.mapping.calibration_batch_size,
         )
-        teacher, teacher_metadata = _load_teacher(request.teacher_weights, device=device)
+        teacher, teacher_metadata = _load_teacher(
+            request.teacher_weights,
+            device=device,
+        )
         teacher_sha = sha256_file(request.teacher_weights)
-        measured = spec.settings.update_backend.type == "measured_cohort_a"
+        backend = spec.settings.update_backend.type
+        measured = backend in {"measured_cohort_a", "measured_cohort_b"}
+        cohort_b = backend == "measured_cohort_b"
+        device_data_sha = (
+            sha256_file(request.device_data)
+            if request.device_data is not None
+            else None
+        )
         stack = build_student_stack(
             spec,
             device_data_path=request.device_data,
@@ -512,6 +634,13 @@ def run_train(request: "TrainRequest") -> int:
         selected_weights = None
         selected_epoch = -1
         selected_validation = None
+        deployment_source: dict[str, Any] | None = None
+        deployment_metrics: dict[str, Any] | None = None
+        initial: dict[str, Any] | None = None
+        initial_conductances: dict[str, Any] | None = None
+        resumed_last_train: dict[str, Any] | None = None
+        resumed_last_validation: dict[str, Any] | None = None
+        resumed_run = request.resume is not None
 
         if request.resume is not None:
             resumed = load_epoch_boundary_checkpoint(
@@ -528,12 +657,33 @@ def run_train(request: "TrainRequest") -> int:
                     _amplification_index_report(stack)
                 ),
             )
+            _validate_resume_backend_metadata(
+                resumed.metadata,
+                spec=spec,
+                device_data_sha256=device_data_sha,
+            )
             start_epoch = resumed.epoch
             global_step = resumed.global_step
             stack.cost.gain = float(resumed.progress_state["fixed_logit_gain"])
             selected_epoch = int(resumed.progress_state["selected_epoch"])
             selected_validation = dict(resumed.progress_state["selected_validation"])
-            mapping_report = resumed.progress_state.get("mapping")
+            mapping_report = deepcopy(resumed.progress_state.get("mapping"))
+            deployment_source = deepcopy(
+                resumed.progress_state.get("deployment_source")
+            )
+            deployment_metrics = deepcopy(
+                resumed.progress_state.get("deployment")
+            )
+            initial = dict(resumed.progress_state["initial_validation"])
+            initial_conductances = deepcopy(
+                resumed.progress_state.get("initial_conductances")
+            )
+            resumed_last_train = deepcopy(
+                resumed.progress_state.get("last_train")
+            )
+            resumed_last_validation = deepcopy(
+                resumed.progress_state.get("last_validation")
+            )
             selected_weights = resumed.selected_weights
             if selected_weights is not None:
                 save_encoded_named_weights(weights_path, selected_weights, catalog=stack.bundle.catalog)
@@ -548,8 +698,114 @@ def run_train(request: "TrainRequest") -> int:
                 ),
             )
             stack.cost.gain = float(loaded.metadata["fixed_logit_gain"])
-            mapping_report = loaded.metadata.get("mapping")
-            if measured:
+            mapping_report = deepcopy(loaded.metadata.get("mapping"))
+            if cohort_b:
+                if device_data_sha is None:
+                    raise RuntimeError(
+                        "Expected cohort-B device data hash after request "
+                        "validation. Provided value: None."
+                    )
+                _validate_cohort_b_source_metadata(
+                    loaded.metadata,
+                    device_data_sha256=device_data_sha,
+                )
+                source_gain = stack.cost.gain
+                pre_deployment = _evaluate(
+                    stack,
+                    teacher,
+                    data.validation,
+                    maximum_batches=spec.settings.max_validation_batches,
+                )
+                pre_deployment_conductances = conductance_statistics(
+                    stack.bundle.catalog,
+                    encoding=spec.model.encoding,
+                )
+                deployment_source = {
+                    "path": str(request.weights.expanduser().resolve()),
+                    "sha256": sha256_file(request.weights),
+                    "update_backend": loaded.metadata.get("update_backend"),
+                    "initial_target_mapping": loaded.metadata.get(
+                        "initial_target_mapping"
+                    ),
+                    "device_data_sha256": loaded.metadata.get(
+                        "device_data_sha256"
+                    ),
+                    "device_assignment_sha256_by_parameter": deepcopy(
+                        loaded.metadata.get(
+                            "device_assignment_sha256_by_parameter"
+                        )
+                    ),
+                    "selection_epoch": loaded.metadata.get("selection_epoch"),
+                    "fixed_logit_gain": source_gain,
+                }
+                optimizer = MeasuredCohortBOptimizer(
+                    stack.optimizer,
+                    stack.bundle.catalog,
+                    spec.settings.update_backend.parameters,
+                    request.device_data,
+                )
+                stack = replace(stack, optimizer=optimizer)
+                programming_report = optimizer.initialize_from_loaded_targets()
+                post_deployment_source_gain = _evaluate(
+                    stack,
+                    teacher,
+                    data.validation,
+                    maximum_batches=spec.settings.max_validation_batches,
+                )
+                post_deployment_conductances = conductance_statistics(
+                    stack.bundle.catalog,
+                    encoding=spec.model.encoding,
+                )
+                raw_scores, teacher_logits = collect_calibration(
+                    stack,
+                    teacher,
+                    data.calibration,
+                )
+                deployment_calibration = fit_positive_logit_gain(
+                    raw_scores,
+                    teacher_logits,
+                    gain_min=spec.mapping.logit_gain_min,
+                    gain_max=spec.mapping.logit_gain_max,
+                    steps=spec.mapping.logit_gain_steps,
+                )
+                stack.cost.gain = float(deployment_calibration["gain"])
+                post_deployment_calibrated = _evaluate(
+                    stack,
+                    teacher,
+                    data.validation,
+                    maximum_batches=spec.settings.max_validation_batches,
+                )
+                if mapping_report is None:
+                    mapping_report = {}
+                mapping_report["cohort_b_deployment"] = {
+                    "initial_target_mapping": spec.settings.update_backend.parameters[
+                        "initial_target_mapping"
+                    ],
+                    "source_fixed_logit_gain": source_gain,
+                    "post_deployment_calibration": deployment_calibration,
+                }
+                deployment_metrics = {
+                    "source": deployment_source,
+                    "initial_target_mapping": spec.settings.update_backend.parameters[
+                        "initial_target_mapping"
+                    ],
+                    "pre_deployment": {
+                        "validation": pre_deployment,
+                        "conductances": pre_deployment_conductances,
+                    },
+                    "post_deployment_source_gain": {
+                        "validation": post_deployment_source_gain,
+                        "conductances": post_deployment_conductances,
+                    },
+                    "post_deployment_calibrated": {
+                        "calibration": deployment_calibration,
+                        "validation": post_deployment_calibrated,
+                        "conductances": post_deployment_conductances,
+                    },
+                }
+                initial = dict(post_deployment_calibrated)
+                initial_conductances = post_deployment_conductances
+            elif measured:
                 optimizer = MeasuredCohortAOptimizer(
                     stack.optimizer,
                     stack.bundle.catalog,
@@ -590,16 +846,30 @@ def run_train(request: "TrainRequest") -> int:
                 mapping_report["post_programming_calibration"] = actual_calibration
                 stack.cost.gain = float(actual_calibration["gain"])
 
-        initial = _evaluate(
-            stack,
-            teacher,
-            data.validation,
-            maximum_batches=spec.settings.max_validation_batches,
-        )
-        initial_conductances = conductance_statistics(
-            stack.bundle.catalog,
-            encoding=spec.model.encoding,
-        )
+        if initial is None:
+            initial = _evaluate(
+                stack,
+                teacher,
+                data.validation,
+                maximum_batches=spec.settings.max_validation_batches,
+            )
+        if initial_conductances is None:
+            initial_conductances = conductance_statistics(
+                stack.bundle.catalog,
+                encoding=spec.model.encoding,
+            )
+        if deployment_metrics is not None and not resumed_run:
+            for mode in (
+                "pre_deployment",
+                "post_deployment_source_gain",
+                "post_deployment_calibrated",
+            ):
+                store.append_metric(
+                    {
+                        "mode": mode,
+                        **deployment_metrics[mode],
+                    }
+                )
         store.append_metric(
             {
                 "mode": "initialization",
@@ -618,13 +888,18 @@ def run_train(request: "TrainRequest") -> int:
                 teacher_path=request.teacher_weights,
                 teacher_sha256=teacher_sha,
                 mapping=mapping_report,
+                deployment_source=deployment_source,
                 epoch=-1,
                 validation=initial,
             )
             save_encoded_named_weights(weights_path, selected_weights, catalog=stack.bundle.catalog)
 
-        last_train = None
-        last_validation = initial
+        last_train = resumed_last_train
+        last_validation = (
+            resumed_last_validation
+            if resumed_last_validation is not None
+            else initial
+        )
         for epoch in range(start_epoch, spec.settings.num_epochs):
             last_train, batches = _train_epoch(
                 stack,
@@ -652,6 +927,7 @@ def run_train(request: "TrainRequest") -> int:
                     teacher_path=request.teacher_weights,
                     teacher_sha256=teacher_sha,
                     mapping=mapping_report,
+                    deployment_source=deployment_source,
                     epoch=epoch,
                     validation=last_validation,
                 )
@@ -664,6 +940,11 @@ def run_train(request: "TrainRequest") -> int:
                 "selected_validation": selected_validation,
                 "mapping": mapping_report,
                 "initial_validation": initial,
+                "initial_conductances": initial_conductances,
+                "deployment_source": deployment_source,
+                "deployment": deployment_metrics,
+                "last_train": last_train,
+                "last_validation": last_validation,
             }
             save_epoch_boundary_checkpoint(
                 resume_path,
@@ -679,6 +960,7 @@ def run_train(request: "TrainRequest") -> int:
                     spec=spec,
                     teacher_sha256=teacher_sha,
                     mapping=mapping_report,
+                    deployment_source=deployment_source,
                 ),
             )
             if (epoch + 1) % spec.settings.log_every == 0 or epoch + 1 == spec.settings.num_epochs:
@@ -716,6 +998,11 @@ def run_train(request: "TrainRequest") -> int:
                     "selected_validation": selected_validation,
                     "mapping": mapping_report,
                     "initial_validation": initial,
+                    "initial_conductances": initial_conductances,
+                    "deployment_source": deployment_source,
+                    "deployment": deployment_metrics,
+                    "last_train": last_train,
+                    "last_validation": last_validation,
                 },
                 selected_weights=selected_weights,
                 dataloader_generators={"train": data.train_generator},
@@ -724,6 +1011,7 @@ def run_train(request: "TrainRequest") -> int:
                     spec=spec,
                     teacher_sha256=teacher_sha,
                     mapping=mapping_report,
+                    deployment_source=deployment_source,
                 ),
             )
         relative_improvement = (
@@ -732,6 +1020,16 @@ def run_train(request: "TrainRequest") -> int:
         final_programming = (
             stack.optimizer.programming_report
             if isinstance(stack.optimizer, MeasuredTraceOptimizer)
+            else None
+        )
+        adaptation = (
+            _adaptation_summary(
+                initial,
+                selected_validation,
+                last_validation,
+                selected_epoch=selected_epoch,
+            )
+            if cohort_b
             else None
         )
         store.complete(
@@ -747,6 +1045,8 @@ def run_train(request: "TrainRequest") -> int:
                 "temperature": spec.settings.temperature,
                 "update_backend": spec.settings.update_backend.type,
                 "mapping": mapping_report,
+                "deployment": deployment_metrics,
+                "analog_adaptation": adaptation,
                 "initial_validation": initial,
                 "last_train": last_train,
                 "last_validation": last_validation,

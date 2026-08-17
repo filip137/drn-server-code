@@ -17,7 +17,10 @@ from model.function.interaction import Function
 from model.function.network import Network
 from model.resistive.builders import ModelBundle, ParameterCatalog, build_deep_resistive_energy
 from model.variable.parameter import Bias, DenseWeight
-from training.measured_trace import MeasuredCohortAOptimizer
+from training.measured_trace import (
+    MeasuredCohortAOptimizer,
+    MeasuredCohortBOptimizer,
+)
 from training.sgd import Backprop
 
 
@@ -268,13 +271,19 @@ def build_student_stack(
     if (
         enable_measured
         and update_backend is not None
-        and update_backend.type == "measured_cohort_a"
+        and update_backend.type
+        in {"measured_cohort_a", "measured_cohort_b"}
     ):
         if device_data_path is None:
             raise ValueError(
-                "Expected --device-data for measured_cohort_a. Provided value: None."
+                f"Expected --device-data for {update_backend.type}. "
+                "Provided value: None."
             )
-        optimizer = MeasuredCohortAOptimizer(
+        optimizer_type = {
+            "measured_cohort_a": MeasuredCohortAOptimizer,
+            "measured_cohort_b": MeasuredCohortBOptimizer,
+        }[update_backend.type]
+        optimizer = optimizer_type(
             optimizer,
             bundle.catalog,
             update_backend.parameters,

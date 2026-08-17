@@ -295,6 +295,20 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
     )
     for encoding in ("single", "differential")
     for backend in ("ideal", "measured_cohort_a")
+) + (
+    ValidatedCombination(
+        ExtensionSelection(
+            "differential",
+            "none",
+            "measured_cohort_b",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Differential G+/G- deployment and fine-tuning on independently "
+            "held-out measured cohort-B device traces."
+        ),
+    ),
 )
 
 

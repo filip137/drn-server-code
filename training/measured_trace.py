@@ -147,13 +147,13 @@ class MeasuredTraceConfig:
                 f"Provided value: {config.initial_target_mapping!r}."
             )
         if (
-            config.initial_target_mapping != "literal"
-            and config.cohort != "A"
+            config.cohort == "B"
+            and config.initial_target_mapping == "per_device_affine"
         ):
             raise ValueError(
-                "Expected non-literal initial_target_mapping only for cohort "
-                f"A. Provided value: cohort={config.cohort!r}, "
-                f"initial_target_mapping={config.initial_target_mapping!r}."
+                "Expected cohort-B initial_target_mapping to be 'literal' "
+                "or 'paired_affine_common_window'. Provided value: "
+                f"{config.initial_target_mapping!r}."
             )
         if config.programming_deadband_mode not in {
             "none",
@@ -695,7 +695,7 @@ class MeasuredTraceOptimizer:
             maximum[start:stop] = mixed.amax(dim=1)
         return minimum, maximum
 
-    def _reset_initial_targets(
+    def _mapped_initial_targets(
         self,
     ) -> tuple[
         dict[str, torch.Tensor],
@@ -882,7 +882,7 @@ class MeasuredTraceOptimizer:
             )
         with torch.no_grad():
             nominal, clipped, targets, mapping_details = (
-                self._reset_initial_targets()
+                self._mapped_initial_targets()
             )
             for binding in self._bindings:
                 key = binding.key
@@ -984,13 +984,13 @@ class MeasuredTraceOptimizer:
                 "Provided value: optimizer is already initialized."
             )
         with torch.no_grad():
+            nominal, clipped, targets, mapping_details = (
+                self._mapped_initial_targets()
+            )
             for binding in self._bindings:
                 key = binding.key
-                lower = float(binding.parameter.min_cond)
-                upper = float(binding.parameter.max_cond)
-                loaded = binding.state.detach().clone()
-                clipped = (loaded < lower) | (loaded > upper)
-                target = loaded.clamp(min=lower, max=upper)
+                nominal_target = nominal[key]
+                target = targets[key]
                 realized, pulses = self._project(key, target.reshape(-1))
                 realized_shaped = realized.reshape(binding.state.shape)
                 binding.state.copy_(realized_shaped)
@@ -1003,9 +1003,24 @@ class MeasuredTraceOptimizer:
                 error = (target.reshape(-1) - realized).to(torch.float64)
                 pulse_long = pulses.to(torch.long)
                 self._initialization_reports[key] = {
-                    "kind": "loaded_target_global_nearest",
+                    "kind": (
+                        "loaded_target_global_nearest"
+                        if self._config.initial_target_mapping == "literal"
+                        else "mapped_loaded_target_global_nearest"
+                    ),
                     "target_clipped_fraction": float(
-                        clipped.to(torch.float64).mean().item()
+                        clipped[key].to(torch.float64).mean().item()
+                    ),
+                    "nominal_target_conductance_min_s": float(
+                        nominal_target.min().item()
+                    ),
+                    "nominal_target_conductance_max_s": float(
+                        nominal_target.max().item()
+                    ),
+                    "nominal_target_conductance_rms_s": float(
+                        torch.sqrt(
+                            nominal_target.to(torch.float64).square().mean()
+                        ).item()
                     ),
                     "target_conductance_min_s": float(target.min().item()),
                     "target_conductance_max_s": float(target.max().item()),
@@ -1044,6 +1059,7 @@ class MeasuredTraceOptimizer:
                         .mean()
                         .item()
                     ),
+                    **mapping_details[key],
                 }
         self._initialized = True
         return self.programming_report

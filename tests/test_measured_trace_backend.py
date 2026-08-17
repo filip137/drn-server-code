@@ -143,7 +143,7 @@ def _optimizer(
     return weight, measured
 
 
-def _differential_optimizer(path: Path):
+def _differential_optimizer(path: Path, cohort: str = "A"):
     bindings = []
     for role in ("conductance_plus", "conductance_minus"):
         weight = DenseWeight(
@@ -167,11 +167,17 @@ def _differential_optimizer(path: Path):
         [{"params": [binding.state for binding in bindings], "lr": 1.0}],
         lr=1.0,
     )
-    measured = MeasuredCohortAOptimizer(
+    optimizer_type = (
+        MeasuredCohortAOptimizer
+        if cohort == "A"
+        else MeasuredCohortBOptimizer
+    )
+    measured = optimizer_type(
         direct,
         catalog,
         _config(
             "raw",
+            cohort,
             initial_target_mapping="paired_affine_common_window",
         ),
         path,
@@ -332,6 +338,42 @@ def test_paired_affine_initialization_uses_shared_reachable_baseline(
         "base.conductance_minus.0",
     ):
         initial = report["parameters"][key]["initial_write"]
+        assert (
+            initial["initial_target_mapping"]
+            == "paired_affine_common_window"
+        )
+        assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
+
+
+def test_cohort_b_paired_deployment_preserves_a_shared_differential_target(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "devices.hdf5"
+    _write_device_data(path)
+    catalog, optimizer = _differential_optimizer(path, cohort="B")
+    plus = catalog.by_key["base.conductance_plus.0"].state
+    minus = catalog.by_key["base.conductance_minus.0"].state
+    fraction = torch.linspace(0.0, 1.0, plus.numel()).reshape(plus.shape)
+    with torch.no_grad():
+        plus.copy_(fraction * 1.1e-4)
+        minus.copy_((1.0 - fraction) * 1.1e-4)
+
+    report = optimizer.initialize_from_loaded_targets()
+
+    plus_shadow = optimizer._shadows["base.conductance_plus.0"]
+    minus_shadow = optimizer._shadows["base.conductance_minus.0"]
+    plus_fraction = plus_shadow.reshape(-1)
+    minus_fraction = minus_shadow.reshape(-1)
+    assert torch.equal(
+        torch.sign(plus_fraction - minus_fraction),
+        torch.sign((2.0 * fraction - 1.0).reshape(-1)),
+    )
+    for key in (
+        "base.conductance_plus.0",
+        "base.conductance_minus.0",
+    ):
+        initial = report["parameters"][key]["initial_write"]
+        assert initial["kind"] == "mapped_loaded_target_global_nearest"
         assert (
             initial["initial_target_mapping"]
             == "paired_affine_common_window"
