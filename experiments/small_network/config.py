@@ -356,6 +356,7 @@ def _number_tuple(
     *,
     nonempty: bool = False,
     minimum: Optional[float] = None,
+    strictly_positive: bool = False,
 ) -> Tuple[float, ...]:
     if not isinstance(value, (list, tuple)):
         raise config_error(path, "to be a JSON array of finite numbers", value)
@@ -366,7 +367,12 @@ def _number_tuple(
             value,
         )
     return tuple(
-        _number(item, f"{path}[{index}]", minimum=minimum)
+        _number(
+            item,
+            f"{path}[{index}]",
+            minimum=minimum,
+            strictly_positive=strictly_positive,
+        )
         for index, item in enumerate(value)
     )
 
@@ -493,6 +499,193 @@ def _weight_modifier(value: Any, path: str) -> ComponentSettings:
     }
     return ComponentSettings(
         type="add_normal",
+        parameters=freeze_json(normalized, path=parameters_path),
+    )
+
+
+def _learning_rate_selection(
+    value: Any,
+    path: str,
+    *,
+    weight_count: int,
+) -> ComponentSettings:
+    parsed = _object(value, path)
+    _check_keys(parsed, path, required=("type", "parameters"))
+    selection_type = _string(
+        parsed["type"],
+        f"{path}.type",
+        choices=("none", "bounded_relative_update_grid"),
+    )
+    parameters_path = f"{path}.parameters"
+    parameters = _object(parsed["parameters"], parameters_path)
+    if selection_type == "none":
+        if parameters:
+            raise config_error(
+                parameters_path,
+                "to be an empty object when type is 'none'",
+                dict(parameters),
+            )
+        return ComponentSettings(
+            type="none",
+            parameters=freeze_json({}, path=parameters_path),
+        )
+
+    _check_keys(
+        parameters,
+        parameters_path,
+        required=(
+            "probe_batches",
+            "stability_tolerance",
+            "weight_relative_update_targets",
+            "bias_quantile",
+            "canary_batches",
+            "candidate_epochs",
+            "grid_multipliers",
+            "max_center_reductions",
+            "plateau_relative_tolerance",
+            "safety",
+        ),
+    )
+    raw_probe_batches = parameters["probe_batches"]
+    if not isinstance(raw_probe_batches, (list, tuple)):
+        raise config_error(
+            f"{parameters_path}.probe_batches",
+            "to be a strictly increasing array of positive even integers",
+            raw_probe_batches,
+        )
+    probe_batches = tuple(
+        _integer(
+            item,
+            f"{parameters_path}.probe_batches[{index}]",
+            minimum=2,
+        )
+        for index, item in enumerate(raw_probe_batches)
+    )
+    if (
+        not probe_batches
+        or any(value % 2 for value in probe_batches)
+        or tuple(sorted(set(probe_batches))) != probe_batches
+    ):
+        raise config_error(
+            f"{parameters_path}.probe_batches",
+            "to be a strictly increasing array of positive even integers",
+            list(probe_batches),
+        )
+    targets = _number_tuple(
+        parameters["weight_relative_update_targets"],
+        f"{parameters_path}.weight_relative_update_targets",
+        nonempty=True,
+        strictly_positive=True,
+    )
+    if len(targets) != weight_count:
+        raise config_error(
+            f"{parameters_path}.weight_relative_update_targets",
+            f"to contain exactly {weight_count} values",
+            list(targets),
+        )
+    multipliers = _number_tuple(
+        parameters["grid_multipliers"],
+        f"{parameters_path}.grid_multipliers",
+        nonempty=True,
+        strictly_positive=True,
+    )
+    if tuple(sorted(set(multipliers))) != multipliers or 1.0 not in multipliers:
+        raise config_error(
+            f"{parameters_path}.grid_multipliers",
+            "to be strictly increasing, unique, and contain 1.0",
+            list(multipliers),
+        )
+    safety_path = f"{parameters_path}.safety"
+    safety = _object(parameters["safety"], safety_path)
+    _check_keys(
+        safety,
+        safety_path,
+        required=(
+            "warmup_batches",
+            "loss_ema_decay",
+            "loss_growth_factor",
+            "gradient_growth_factor",
+            "persistence_batches",
+        ),
+    )
+    ema_decay = _number(
+        safety["loss_ema_decay"],
+        f"{safety_path}.loss_ema_decay",
+        minimum=0.0,
+    )
+    if ema_decay >= 1.0:
+        raise config_error(
+            f"{safety_path}.loss_ema_decay",
+            "to be smaller than 1.0",
+            ema_decay,
+        )
+    bias_quantile = _number(
+        parameters["bias_quantile"],
+        f"{parameters_path}.bias_quantile",
+        strictly_positive=True,
+    )
+    if bias_quantile > 1.0:
+        raise config_error(
+            f"{parameters_path}.bias_quantile",
+            "to be in (0, 1]",
+            bias_quantile,
+        )
+    normalized = {
+        "probe_batches": probe_batches,
+        "stability_tolerance": _number(
+            parameters["stability_tolerance"],
+            f"{parameters_path}.stability_tolerance",
+            minimum=0.0,
+        ),
+        "weight_relative_update_targets": targets,
+        "bias_quantile": bias_quantile,
+        "canary_batches": _integer(
+            parameters["canary_batches"],
+            f"{parameters_path}.canary_batches",
+            minimum=1,
+        ),
+        "candidate_epochs": _integer(
+            parameters["candidate_epochs"],
+            f"{parameters_path}.candidate_epochs",
+            minimum=1,
+        ),
+        "grid_multipliers": multipliers,
+        "max_center_reductions": _integer(
+            parameters["max_center_reductions"],
+            f"{parameters_path}.max_center_reductions",
+            minimum=0,
+        ),
+        "plateau_relative_tolerance": _number(
+            parameters["plateau_relative_tolerance"],
+            f"{parameters_path}.plateau_relative_tolerance",
+            minimum=0.0,
+        ),
+        "safety": {
+            "warmup_batches": _integer(
+                safety["warmup_batches"],
+                f"{safety_path}.warmup_batches",
+                minimum=1,
+            ),
+            "loss_ema_decay": ema_decay,
+            "loss_growth_factor": _number(
+                safety["loss_growth_factor"],
+                f"{safety_path}.loss_growth_factor",
+                strictly_positive=True,
+            ),
+            "gradient_growth_factor": _number(
+                safety["gradient_growth_factor"],
+                f"{safety_path}.gradient_growth_factor",
+                strictly_positive=True,
+            ),
+            "persistence_batches": _integer(
+                safety["persistence_batches"],
+                f"{safety_path}.persistence_batches",
+                minimum=1,
+            ),
+        },
+    }
+    return ComponentSettings(
+        type=selection_type,
         parameters=freeze_json(normalized, path=parameters_path),
     )
 
