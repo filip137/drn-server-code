@@ -461,12 +461,28 @@ class ResistiveBiasInteraction(QFunction):
         return (self._layer.state.pow(2) * self._scale).mean(dim=0)
 
 
+def _logical_layer_index(layer, logical_layer_index):
+    return (
+        int(layer._name.rsplit("_", 1)[-1])
+        if logical_layer_index is None
+        else int(logical_layer_index)
+    )
+
+
 class HardSigmoidNonLinearInteraction(Function):
     """Piecewise-quadratic clamp with separate on/off conductances."""
 
-    def __init__(self, layer, params, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer,
+        params,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_layer_index=None,
+    ):
         self._layer = layer
-        layer_index = int(layer._name[-1])
+        layer_index = _logical_layer_index(layer, logical_layer_index)
         scale = (current_amp / voltage_amp) ** (layer_index - 1)
         self._g_on = params.get("g_on") * scale
         self._g_off = params.get("g_off") * scale
@@ -522,9 +538,17 @@ class HardSigmoidNonLinearInteraction(Function):
 class LpwNonLinearInteraction(Function):
     """LPW diode interaction: quadratic penalty for sign-violations beyond v_off."""
 
-    def __init__(self, layer, params, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer,
+        params,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_layer_index=None,
+    ):
         self._layer = layer
-        layer_index = int(layer._name[-1])
+        layer_index = _logical_layer_index(layer, logical_layer_index)
         scale = (current_amp / voltage_amp) ** (layer_index - 1)
         self._g = params.get("diode_conductance") * scale
         self._v_off = params.get("v_off", 0.0)
@@ -578,9 +602,17 @@ class DoubleQuadraticNonLinearInteraction(Function):
     c (float) : diode's conductances
     v_off, v_on (float) : the voltage at which the reverse and the forward diode turn on
     """
-    def __init__(self, layer, params, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer,
+        params,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_layer_index=None,
+    ):
         self._layer = layer
-        layer_index = int(layer._name[-1])
+        layer_index = _logical_layer_index(layer, logical_layer_index)
         self.c = params.get("diode_conductance", params.get("c")) * (current_amp /voltage_amp)**(layer_index-1)
         self.v_off = params.get("v_off", 0.0)
         self._voltage_amp = voltage_amp
@@ -632,9 +664,17 @@ class DoubleExponentialNonLinearInteraction(Function):
     layer (Layer): the layer involved in the interaction
     non_lineartiy (string) : type of the non linearity involved in the interaction
     """
-    def __init__(self, layer, params, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer,
+        params,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_layer_index=None,
+    ):
         self._layer = layer
-        layer_index = int(layer._name[-1])
+        layer_index = _logical_layer_index(layer, logical_layer_index)
         scaling_factor = (current_amp /voltage_amp)**(layer_index-1)
         self.I_s = params.get("I_s") * scaling_factor
         self.vt = params.get("V_t")
@@ -696,9 +736,17 @@ class SingleExponentialNonLinearInteraction(Function):
     first half forward, second half reverse.
     """
 
-    def __init__(self, layer, params, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer,
+        params,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_layer_index=None,
+    ):
         self._layer = layer
-        layer_index = int(layer._name[-1])
+        layer_index = _logical_layer_index(layer, logical_layer_index)
         scaling_factor = (current_amp / voltage_amp) ** (layer_index - 1)
         self.I_s = params.get("I_s") * scaling_factor
         self.vt = params.get("V_t")

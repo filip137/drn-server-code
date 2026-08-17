@@ -203,6 +203,27 @@ def test_composed_model_free_settling_matches_frozen_legacy_oracle() -> None:
     assert float(layers[-1].state.abs().sum()) > 0.0
 
 
+def test_repeated_model_build_keeps_logical_amplifier_depth() -> None:
+    """A selector model must not renumber the production circuit equations."""
+
+    oracle = _load_oracle()
+    first = _build_stack(oracle)
+    second = _build_stack(oracle)
+
+    _settle_free_phase(oracle, first)
+    _settle_free_phase(oracle, second)
+
+    for first_layer, second_layer in zip(
+        first.bundle.energy.layers(),
+        second.bundle.energy.layers(),
+        strict=True,
+    ):
+        torch.testing.assert_close(first_layer.state, second_layer.state)
+    first.cost_fn.set_target(_labels(oracle, first))
+    second.cost_fn.set_target(_labels(oracle, second))
+    torch.testing.assert_close(first.cost_fn.eval(), second.cost_fn.eval())
+
+
 def test_composed_centered_ep_gradients_match_frozen_legacy_oracle() -> None:
     oracle = _load_oracle()
     stack = _build_stack(oracle)

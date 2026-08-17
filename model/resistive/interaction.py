@@ -18,7 +18,17 @@ class DenseResistive(QFunction):
     _weight (DenseWeight): weight tensor between layer_pre and layer_post. Tensor of shape (layer_pre_shape, layer_post_shape). Type is float32.
     """
 
-    def __init__(self, layer_pre, layer_post, dense_weight, voltage_amp, current_amp):
+    def __init__(
+        self,
+        layer_pre,
+        layer_post,
+        dense_weight,
+        voltage_amp,
+        current_amp,
+        *,
+        logical_pre_index=None,
+        logical_post_index=None,
+    ):
         """Initializes an instance of DenseResistive
 
         Args:
@@ -33,6 +43,17 @@ class DenseResistive(QFunction):
         self._weight = dense_weight
         self._voltage_amp = voltage_amp
         self._current_amp = current_amp
+        self._logical_pre_index = (
+            int(self._layer_pre._name.rsplit("_", 1)[-1])
+            if logical_pre_index is None
+            else int(logical_pre_index)
+        )
+        self._logical_post_index = (
+            int(self._layer_post._name.rsplit("_", 1)[-1])
+            if logical_post_index is None
+            else int(logical_post_index)
+        )
+
         QFunction.__init__(self, [layer_pre, layer_post], [dense_weight])
 
     def eval(self):
@@ -43,7 +64,7 @@ class DenseResistive(QFunction):
         """
 
         layer_pre = self._layer_pre.state.clone()
-        if self._layer_pre.name != 'Layer_0':
+        if self._logical_pre_index != 0:
             layer_pre = layer_pre * self._voltage_amp
         layer_post = self._layer_post.state  # / self._layer_post.gain
         layer_post = layer_post
@@ -52,8 +73,7 @@ class DenseResistive(QFunction):
         for _ in range(dims_post): layer_pre = layer_pre.unsqueeze(-1)  # broadcast layer_pre to (batch_size, shape_pre, shape_post)
         for _ in range(dims_pre): layer_post = layer_post.unsqueeze(1)  # broadcast layer_post to (batch_size, shape_pre, shape_post)
         weight = self._weight.get().unsqueeze(0)  # broadcast weight to (batch_size, shape_pre, shape_post)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        return 0.5 * ((layer_pre - self._current_amp*layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1) * (self._current_amp/self._voltage_amp) ** layer_pre_index 
+        return 0.5 * ((layer_pre - self._current_amp*layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1) * (self._current_amp/self._voltage_amp) ** self._logical_pre_index
         #return 0.5 * ((layer_pre - layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1)
 
     def a_coef_fn(self, layer):
@@ -119,7 +139,7 @@ class DenseResistive(QFunction):
         layer_pre = self._layer_pre.state
         dims_pre = len(self._layer_pre.shape)  # number of dimensions involved in the tensor product
         b_coef = - torch.tensordot(layer_pre, self._weight.get(), dims=dims_pre)
-        if self._layer_post.name != 'Layer_1':
+        if self._logical_post_index != 1:
             b_coef = b_coef * self._voltage_amp
         return b_coef
 
@@ -144,15 +164,14 @@ class DenseResistive(QFunction):
 
 
         layer_pre = self._layer_pre.state.clone()
-        if self._layer_pre.name != 'Layer_0':
+        if self._logical_pre_index != 0:
             layer_pre *= self._voltage_amp
         layer_post = self._layer_post.state
         dims_pre = len(self._layer_pre.shape)
         dims_post = len(self._layer_post.shape)
         for _ in range(dims_post): layer_pre = layer_pre.unsqueeze(-1)
         for _ in range(dims_pre): layer_post = layer_post.unsqueeze(1)
-        layer_pre_index = int(self._layer_pre._name[-1])
-        amp = (self._current_amp/self._voltage_amp) ** layer_pre_index 
+        amp = (self._current_amp/self._voltage_amp) ** self._logical_pre_index
         grad_weight = 0.5 * ((layer_pre - self._current_amp*layer_post)**2).mean(dim=0) * amp
         #grad_weight = 0.5 * ((layer_pre - layer_post)**2).mean(dim=0)
         return grad_weight

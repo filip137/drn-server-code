@@ -39,6 +39,30 @@ This repository contains code and tooling for coordinate-descent simulations of 
   covered by a numerical parity or acceptance test.
 - Do not use module globals or monkey patches to compose experiments.
 
+## Model-Local Indexing and Construction Parity
+
+- Never let process-global object counters, generated names such as
+  `Layer_3`, or model-construction order affect numerical equations. They may
+  be used as diagnostic identifiers only. Amplifier stages, energy scales,
+  nonlinearities, parameter roles, and connectivity must use explicit
+  model-local topology indices.
+- Treat repeated construction as a required lifecycle check. Learning-rate
+  selection, canaries, production training, resume, validation, and test may
+  build multiple models in one process or use fresh subprocesses. Deleting a
+  model or reseeding random-number generators does not reset Python class
+  counters.
+- For models with depth-dependent amplification or scaling, verify that a
+  model built second in the same process has the same resolved numerical
+  semantics as a model built first. Also verify train/resume/validate parity
+  from recorded metadata or numerical acceptance tests.
+- Record resolved topology indices or equivalent stage scales in checkpoints
+  and result artifacts whenever they can affect the equations. Fail closed on
+  a mismatch between the requested experiment and checkpoint provenance.
+- A deliberate replay of process-global indexing is allowed only as an
+  explicitly named historical-control adapter with a required schema marker,
+  capability-matrix entry, provenance metadata, and dedicated lifecycle test.
+  Never present such a replay as the intended physical circuit.
+
 ## Artifacts and Checkpoints
 
 - A command owns exactly one run directory. Never append to a prior run.
@@ -58,11 +82,15 @@ This repository contains code and tooling for coordinate-descent simulations of 
 1. Update the strict schema and explicit experiment capability matrix.
 2. Implement against an existing extension protocol or add a focused one.
 3. Add unit tests for lifecycle/order and a numerical parity test where
-   behavior should remain unchanged.
-4. Add or update a nested example config.
-5. Run `python -m ebl describe --experiment small_drn.v1 --json`, the focused
+   behavior should remain unchanged. If a model uses layer-dependent scaling,
+   build it at least twice in one process and verify identical model-local
+   semantics; also check production versus fresh-process validation metadata.
+4. Audit numerical code for dependence on generated names, class counters, or
+   construction order, and make the relevant indices explicit and model-local.
+5. Add or update a nested example config.
+6. Run `python -m ebl describe --experiment small_drn.v1 --json`, the focused
    tests, and the legacy `labs/tests` suite.
-6. Keep HWA and LoRA feature commits separate so each can be rebased onto the
+7. Keep HWA and LoRA feature commits separate so each can be rebased onto the
    same foundation and compared by a campaign.
 
 ## Playbooks

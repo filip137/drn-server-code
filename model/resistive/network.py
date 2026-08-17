@@ -439,6 +439,14 @@ class DeepResistiveEnergy(SumSeparableFunction):
             dense_pairs,
             dense_weight_sets,
         ):
+            common = (
+                {}
+                if self._legacy_process_index_amplification
+                else {
+                    "logical_pre_index": logical_layer_indices[id(layer_pre)],
+                    "logical_post_index": logical_layer_indices[id(layer_post)],
+                }
+            )
             if len(weights) == 2:
                 interaction = SignedDenseResistive(
                     layer_pre,
@@ -447,8 +455,7 @@ class DeepResistiveEnergy(SumSeparableFunction):
                     weights[1],
                     self._voltage_amp,
                     self._current_amp,
-                    logical_pre_index=logical_layer_indices[id(layer_pre)],
-                    logical_post_index=logical_layer_indices[id(layer_post)],
+                    **common,
                 )
             else:
                 interaction = DenseResistive(
@@ -457,6 +464,7 @@ class DeepResistiveEnergy(SumSeparableFunction):
                     weights[0],
                     self._voltage_amp,
                     self._current_amp,
+                    **common,
                 )
             weight_interactions.append(interaction)
         
@@ -473,22 +481,58 @@ class DeepResistiveEnergy(SumSeparableFunction):
                     quadratic_diode_param,
                     voltage_amp=self._voltage_amp,
                     current_amp=self._current_amp,
+                    logical_layer_index=(
+                        None
+                        if self._legacy_process_index_amplification
+                        else logical_layer_indices[id(layer)]
+                    ),
                 )
                 for layer in non_linear_layers
             ]
 
         elif non_linearity == "hard_sigmoid":
-            non_linear_interaction = [HardSigmoidNonLinearInteraction(layer, hard_sigmoid_param, voltage_amp=self._voltage_amp, current_amp = self._current_amp)
+            non_linear_interaction = [
+                HardSigmoidNonLinearInteraction(
+                    layer,
+                    hard_sigmoid_param,
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
+                    logical_layer_index=(
+                        None
+                        if self._legacy_process_index_amplification
+                        else logical_layer_indices[id(layer)]
+                    ),
+                )
                 for layer in non_linear_layers
             ]
         elif non_linearity == "double_diode_quadratic":
             non_linear_interaction = [
-                DoubleQuadraticNonLinearInteraction(layer, quadratic_diode_param, voltage_amp=self._voltage_amp, current_amp = self._current_amp)
+                DoubleQuadraticNonLinearInteraction(
+                    layer,
+                    quadratic_diode_param,
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
+                    logical_layer_index=(
+                        None
+                        if self._legacy_process_index_amplification
+                        else logical_layer_indices[id(layer)]
+                    ),
+                )
                 for layer in non_linear_layers
             ]
         elif non_linearity == "double_diode_exponential":
             non_linear_interaction = [
-                DoubleExponentialNonLinearInteraction(layer, exponential_diode_param, voltage_amp=self._voltage_amp, current_amp = self._current_amp)
+                DoubleExponentialNonLinearInteraction(
+                    layer,
+                    exponential_diode_param,
+                    voltage_amp=self._voltage_amp,
+                    current_amp=self._current_amp,
+                    logical_layer_index=(
+                        None
+                        if self._legacy_process_index_amplification
+                        else logical_layer_indices[id(layer)]
+                    ),
+                )
                 for layer in non_linear_layers
             ]
         elif non_linearity == "single_diode_exponential":
@@ -498,6 +542,11 @@ class DeepResistiveEnergy(SumSeparableFunction):
                     exponential_diode_param,
                     voltage_amp=self._voltage_amp,
                     current_amp=self._current_amp,
+                    logical_layer_index=(
+                        None
+                        if self._legacy_process_index_amplification
+                        else logical_layer_indices[id(layer)]
+                    ),
                 )
                 for layer in non_linear_layers
             ]

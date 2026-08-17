@@ -5,7 +5,7 @@ import math
 import pytest
 import torch
 
-from model.resistive.interaction import SignedDenseResistive
+from model.resistive.interaction import DenseResistive, SignedDenseResistive
 from model.variable.layer import LinearLayer
 from model.variable.parameter import DenseWeight
 
@@ -200,6 +200,41 @@ def test_unity_input_edge_post_gradient_is_first_layer_kcl(
         - pre.state @ difference
     )
     torch.testing.assert_close(interaction.grad_layer_fn(post)(), expected)
+
+
+def test_zero_negative_branch_preserves_coordinate_update_targets() -> None:
+    pre, post = _layers()
+    value = torch.tensor([[0.2, 0.5], [0.3, 0.1]], dtype=DTYPE)
+    dense_weight = _weight(value)
+    plus = _weight(value)
+    minus = _weight(torch.zeros_like(value))
+    dense = DenseResistive(
+        pre,
+        post,
+        dense_weight,
+        3.0,
+        2.0,
+        logical_pre_index=1,
+        logical_post_index=2,
+    )
+    signed = SignedDenseResistive(
+        pre,
+        post,
+        plus,
+        minus,
+        3.0,
+        2.0,
+        logical_pre_index=1,
+        logical_post_index=2,
+    )
+    for layer in (pre, post):
+        dense_target = -dense.b_coef_fn(layer)() / (
+            2.0 * dense.a_coef_fn(layer)()
+        )
+        signed_target = -signed.b_coef_fn(layer)() / (
+            2.0 * signed.a_coef_fn(layer)()
+        )
+        torch.testing.assert_close(signed_target, dense_target)
 
 
 def test_equal_pair_cancels_cross_coupling_but_not_loading() -> None:

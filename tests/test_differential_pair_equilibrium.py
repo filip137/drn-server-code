@@ -342,6 +342,18 @@ def test_differential_biases_fail_closed() -> None:
         )
 
 
+@pytest.mark.parametrize("include_biases", [0, 1, "false", None])
+def test_include_biases_requires_an_explicit_boolean(
+    include_biases: object,
+) -> None:
+    with pytest.raises(ValueError, match="include_biases to be a bool"):
+        _energy(
+            voltage_amp=3.0,
+            current_amp=2.0,
+            include_biases=include_biases,
+        )
+
+
 def test_unscaled_nonlinearity_fails_closed() -> None:
     with pytest.raises(ValueError, match="'linear' or 'perfect_diode'"):
         _energy(
