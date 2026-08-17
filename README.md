@@ -31,8 +31,25 @@ python -m ebl validate \
   --output-dir runs
 ```
 
-Every invocation creates an immutable run directory containing its resolved
-config, source/runtime manifest, status, JSON-lines metrics, result record,
-logs, checkpoints, and content-hashed artifacts. See
+Every train, linspace, or validate invocation owns a new exclusive run
+directory. It starts with a resolved config, source/runtime manifest, and
+status, then records command-specific metrics, results, artifacts, logs, or
+checkpoints as the work proceeds. See
 [`docs/experiment_runtime.md`](docs/experiment_runtime.md) for the extension
 boundaries, checkpoint rules, worktree workflow, and campaign protocol.
+The cohort-A measured ReRAM projection and bounded-learning-rate workflow is
+documented in
+[`docs/measured_cohort_a_training.md`](docs/measured_cohort_a_training.md),
+with held-out cohort-B deployment and fine-tuning in
+[`docs/measured_cohort_b_finetuning.md`](docs/measured_cohort_b_finetuning.md),
+and physical low-rank recovery in
+[`docs/measured_cohort_b_lora_recovery.md`](docs/measured_cohort_b_lora_recovery.md).
+
+## LoRA/HWA result tracking
+
+New raw LoRA/HWA outputs live under [`results/`](results/README.md). The
+[current-simulation ledger](docs/current_simulations.md) automatically lists
+running native runs while retaining human-maintained paused and queued work.
+The
+[finished-simulation ledger](docs/experimental_manifest.md) records concluded
+studies and progress toward the research goal.
