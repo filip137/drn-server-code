@@ -42,6 +42,19 @@ from experiments.mnist_relu_drn.config import (
     parse_student_config,
     resolve_student_spec,
 )
+from experiments.mnist_relu_drn_reset.config import (
+    BIAS_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_BIAS_EXPERIMENT_ID,
+    EXPERIMENT_ID as MNIST_RELU_DRN_RESET_EXPERIMENT_ID,
+    FACTORIAL_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_FACTORIAL_EXPERIMENT_ID,
+    LEGACY_BIAS_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_LEGACY_BIAS_EXPERIMENT_ID,
+    SCHEMA_VERSION as MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
+    ResetTrainSpec,
+    parse_reset_bias_student_config,
+    parse_reset_factorial_student_config,
+    parse_reset_legacy_bias_student_config,
+    parse_reset_student_config,
+    resolve_reset_student_spec,
+)
 
 
 _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
@@ -237,11 +250,265 @@ MNIST_RELU_DRN_KD_V1 = ExperimentDefinition(
 )
 
 
+_MNIST_RELU_DRN_RESET_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
+    ValidatedCombination(
+        ExtensionSelection(
+            "single", "none", "measured_cohort_a", "teacher_kl"
+        ),
+        "experimental",
+        "One measured device per physical dual-rail edge, trained from RESET "
+        "against a frozen ReLU teacher.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single", "none", "measured_cohort_a", "cross_entropy"
+        ),
+        "experimental",
+        "Matched hard-label control using the same RESET device assignment.",
+    ),
+)
+
+
+def _resolve_mnist_relu_drn_reset(document, mode: RunMode):
+    spec = resolve_reset_student_spec(document, mode)
+    if isinstance(spec, ResetTrainSpec):
+        selection = ExtensionSelection(
+            spec.model.encoding,
+            "none",
+            spec.settings.update_backend.type,
+            spec.settings.objective,
+        )
+        if not any(
+            item.selection == selection
+            for item in _MNIST_RELU_DRN_RESET_COMBINATIONS
+        ):
+            raise config_error(
+                "the train extension combination",
+                "to be listed explicitly by the "
+                "'mnist_relu_drn_reset.v1' definition",
+                to_plain_data(selection),
+            )
+    return spec
+
+
+MNIST_RELU_DRN_RESET_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_DRN_RESET_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
+    description=(
+        "Single-device dual-rail MNIST DRN trained from measured cohort-A "
+        "RESET using teacher KL or matched label supervision."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_reset_student_config,
+    resolver=_resolve_mnist_relu_drn_reset,
+    combinations=_MNIST_RELU_DRN_RESET_COMBINATIONS,
+)
+
+
+_MNIST_RELU_DRN_RESET_BIAS_COMBINATIONS: Tuple[
+    ValidatedCombination, ...
+] = tuple(
+    ValidatedCombination(
+        ExtensionSelection(
+            "single_bias", "none", "measured_cohort_a", objective
+        ),
+        "experimental",
+        note,
+    )
+    for objective, note in (
+        (
+            "paired_squared_error",
+            "Historical paired-output squared-error control with the original "
+            "trainable digital hidden bias.",
+        ),
+        (
+            "cross_entropy",
+            "Matched hard-label cross-entropy arm with the original trainable "
+            "digital hidden bias.",
+        ),
+        (
+            "teacher_kl",
+            "Teacher-KL arm with the original trainable digital hidden bias.",
+        ),
+    )
+)
+
+
+def _resolve_mnist_relu_drn_reset_bias(document, mode: RunMode):
+    spec = resolve_reset_student_spec(document, mode)
+    if isinstance(spec, ResetTrainSpec):
+        selection = ExtensionSelection(
+            f"{spec.model.encoding}_bias",
+            "none",
+            spec.settings.update_backend.type,
+            spec.settings.objective,
+        )
+        if not any(
+            item.selection == selection
+            for item in _MNIST_RELU_DRN_RESET_BIAS_COMBINATIONS
+        ):
+            raise config_error(
+                "the train extension combination",
+                "to be listed explicitly by the "
+                "'mnist_relu_drn_reset_bias.v1' definition",
+                to_plain_data(selection),
+            )
+    return spec
+
+
+MNIST_RELU_DRN_RESET_BIAS_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_DRN_RESET_BIAS_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
+    description=(
+        "Single-device dual-rail MNIST DRN with the historical trainable "
+        "digital hidden bias, trained from measured cohort-A RESET under "
+        "paired squared error, cross-entropy, or teacher KL."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_reset_bias_student_config,
+    resolver=_resolve_mnist_relu_drn_reset_bias,
+    combinations=_MNIST_RELU_DRN_RESET_BIAS_COMBINATIONS,
+)
+
+
+_MNIST_RELU_DRN_RESET_LEGACY_BIAS_COMBINATIONS: Tuple[
+    ValidatedCombination, ...
+] = tuple(
+    ValidatedCombination(
+        ExtensionSelection(
+            "single_bias_legacy_process_index",
+            "none",
+            "measured_cohort_a",
+            objective,
+        ),
+        "historical_control",
+        "Explicit replay of the archived process-global amplifier indexing; "
+        "this is a provenance control, not the intended logical 4/0.25 circuit.",
+    )
+    for objective in (
+        "paired_squared_error",
+        "cross_entropy",
+        "teacher_kl",
+    )
+)
+
+
+def _resolve_mnist_relu_drn_reset_legacy_bias(document, mode: RunMode):
+    spec = resolve_reset_student_spec(document, mode)
+    if isinstance(spec, ResetTrainSpec):
+        selection = ExtensionSelection(
+            "single_bias_legacy_process_index",
+            "none",
+            spec.settings.update_backend.type,
+            spec.settings.objective,
+        )
+        if not any(
+            item.selection == selection
+            for item in _MNIST_RELU_DRN_RESET_LEGACY_BIAS_COMBINATIONS
+        ):
+            raise config_error(
+                "the train extension combination",
+                "to be listed explicitly by the "
+                "'mnist_relu_drn_reset_bias_legacy.v1' definition",
+                to_plain_data(selection),
+            )
+    return spec
+
+
+MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_DRN_RESET_LEGACY_BIAS_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
+    description=(
+        "Historical-control replay of the RESET-trained single-device MNIST "
+        "DRN with trainable digital bias and archived process-global "
+        "amplifier indexing, under three supervision losses."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_reset_legacy_bias_student_config,
+    resolver=_resolve_mnist_relu_drn_reset_legacy_bias,
+    combinations=_MNIST_RELU_DRN_RESET_LEGACY_BIAS_COMBINATIONS,
+)
+
+
+_MNIST_RELU_DRN_RESET_FACTORIAL_COMBINATIONS: Tuple[
+    ValidatedCombination, ...
+] = tuple(
+    ValidatedCombination(
+        ExtensionSelection(
+            (
+                "single_bias" if include_biases else "single"
+            )
+            + (
+                "_logical"
+                if amplification_indexing == "logical"
+                else "_legacy_process_index"
+            ),
+            "none",
+            "measured_cohort_a",
+            objective,
+        ),
+        "experimental",
+        "Controlled factorial arm with explicit minibatch input reset and "
+        "an identical reseed/rebuild production lifecycle.",
+    )
+    for include_biases in (False, True)
+    for amplification_indexing in ("logical", "legacy_process_global")
+    for objective in ("paired_squared_error", "teacher_kl")
+)
+
+
+def _resolve_mnist_relu_drn_reset_factorial(document, mode: RunMode):
+    spec = resolve_reset_student_spec(document, mode)
+    if isinstance(spec, ResetTrainSpec):
+        adapter = "single_bias" if spec.model.include_biases else "single"
+        adapter += (
+            "_logical"
+            if spec.model.amplification_indexing == "logical"
+            else "_legacy_process_index"
+        )
+        selection = ExtensionSelection(
+            adapter,
+            "none",
+            spec.settings.update_backend.type,
+            spec.settings.objective,
+        )
+        if not any(
+            item.selection == selection
+            for item in _MNIST_RELU_DRN_RESET_FACTORIAL_COMBINATIONS
+        ):
+            raise config_error(
+                "the train extension combination",
+                "to be listed explicitly by the "
+                "'mnist_relu_drn_reset_factorial.v1' definition",
+                to_plain_data(selection),
+            )
+    return spec
+
+
+MNIST_RELU_DRN_RESET_FACTORIAL_V1 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_DRN_RESET_FACTORIAL_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_DRN_RESET_SCHEMA_VERSION,
+    description=(
+        "Controlled RESET-trained MNIST factorial crossing digital hidden "
+        "bias, paired-MSE versus teacher-KL supervision, and logical versus "
+        "archived process-global amplifier indexing."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_reset_factorial_student_config,
+    resolver=_resolve_mnist_relu_drn_reset_factorial,
+    combinations=_MNIST_RELU_DRN_RESET_FACTORIAL_COMBINATIONS,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
     MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,
     MNIST_RELU_DRN_KD_V1.experiment_id: MNIST_RELU_DRN_KD_V1,
+    MNIST_RELU_DRN_RESET_V1.experiment_id: MNIST_RELU_DRN_RESET_V1,
+    MNIST_RELU_DRN_RESET_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_BIAS_V1,
+    MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1,
+    MNIST_RELU_DRN_RESET_FACTORIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_FACTORIAL_V1,
 }
 
 
