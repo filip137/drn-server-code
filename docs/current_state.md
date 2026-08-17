@@ -214,6 +214,21 @@ and fine-tuning updates must remain separately measurable.
   underestimate. These are seed-42 estimates without run-to-run uncertainty;
   details and artifacts are documented in
   [`mnist_relu_drn_reset_factorial.md`](mnist_relu_drn_reset_factorial.md).
+- **Literal-RESET differential screen:** we trained the bias-free corrected
+  logical circuit for ten production epochs with one independently assigned
+  measured cohort-A `G+`/`G-` pair per physical dual-rail edge. Paired MSE
+  training raised validation accuracy from `9.32%` at RESET to a selected
+  `92.98%`; fresh-process test accuracy was `93.94%`, with `94.70%` teacher
+  agreement and `0.0933816` paired squared error. The run produced an exact
+  epoch-10 resume state, a four-branch named-weights checkpoint, and matching
+  model-local amplification metadata across construction order and fresh
+  validation. This is evidence that the differential implementation trains
+  stably from literal RESET, not evidence of an advantage over one-device
+  synapses: the nearest factorial arms used 20 epochs, the selected learning
+  rates lay on the low/low search-grid edge, and neither a matched ten-epoch
+  one-device control nor a shared-reachable-zero differential arm was run.
+  Details are documented in
+  [`mnist_relu_drn_reset_differential_10ep.md`](mnist_relu_drn_reset_differential_10ep.md).
 
 ### Historical endpoint-model, conductance-floor, and adaptation results
 
@@ -509,6 +524,7 @@ documented in
 - [Differential memristor scheme](differential_scheme.md)
 - [Teacher-initialized MNIST DRN distillation](mnist_relu_drn_kd.md)
 - [Controlled RESET bias/loss/indexing factorial](mnist_relu_drn_reset_factorial.md)
+- [Literal-RESET differential MNIST screen](mnist_relu_drn_reset_differential_10ep.md)
 - [MNIST HWA and LoRA experiment setup](mnist_hwa_lora_experiment_setup.md)
 - [MNIST IBM PCM/CMO noisy-recovery study](mnist_ibm_pcm_cmo_noisy_recovery.md)
 - [Current LoRA/HWA simulations](current_simulations.md)

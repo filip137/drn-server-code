@@ -456,6 +456,49 @@ evidence available today, not pass/fail gates.
   `results/factorial_parallel_analysis_20260817_v3/factorial_arms.csv`, and
   `results/factorial_parallel_analysis_20260817_v3/factorial_accuracy.png`
 
+### mnist-differential-reram-reset-10ep
+
+**Literal-RESET differential ReRAM MNIST screen**
+
+- **Finished:** 2026-08-17
+- **Outcome:** completed; stable learning demonstrated, comparative benefit
+  still open
+- **Question:** Can the implemented two-device signed differential interaction
+  train the corrected bias-free MNIST DRN directly from measured pulse-zero
+  RESET states for ten production epochs?
+- **Setup:** Every physical dual-rail edge used independently assigned cohort-A
+  `G+` and `G-` traces, both initialized at pulse zero. The run used seed 42,
+  logical model-local amplification, `voltage_amp = 4`,
+  `current_amp = 0.25`, explicit input reset, paired hard-label squared error,
+  bounded two-group learning-rate selection, and exactly ten production
+  epochs. There was no teacher mapping or common-window prewrite.
+- **Headline result:** Validation accuracy rose from `9.32%` to a selected
+  `92.98%`. Fresh-process test accuracy was `93.94%`, teacher agreement was
+  `94.70%`, paired squared error was `0.0933816`, and raw teacher-to-student KL
+  was `1.60862`. The diagnostic-only validation-fitted gain reduced test KL to
+  `0.138329`; it was not used for training, selection, or accuracy.
+- **Integrity:** Both campaign stages exited zero from clean commit
+  `187441fd11d27cdcc021aea35609703d5d4d6f8a`. The metrics stream contains
+  exactly epochs 1-10, `resume.pt` records epoch 10, and fresh-process
+  validation matched the checkpoint's model-local indices and stage scales.
+  The selected checkpoint contains four stable conductance keys for the two
+  `G+`/`G-` layer pairs.
+- **Interpretation:** Literal dual-RESET differential training is numerically
+  viable under this protocol. This run does not establish an architecture
+  uplift because it lacks a matched ten-epoch one-device arm, and it does not
+  isolate common-floor cancellation because independently assigned devices do
+  not share an exactly matched RESET baseline. The selector also chose the
+  low/low boundary cell of its declared non-expanding grid.
+- **Next comparison:** Run a matched ten-epoch one-device control and a
+  differential arm written to a shared reachable zero baseline with identical
+  seed, device assignment policy, objective, update budget, and selection
+  rules. Promote only promising matched arms to the 20-epoch confirmatory
+  budget.
+- **Raw artifacts:**
+  `results/mnist-differential-reram-reset-10ep-20260817-v1/`
+- **Tracked detail:**
+  [differential RESET report](mnist_relu_drn_reset_differential_10ep.md)
+
 ## Shared validity notes
 
 - These studies are exploratory rather than final paper-facing evidence.
