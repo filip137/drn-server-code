@@ -11,6 +11,7 @@ from ebl.cli import (
     CommandHandlers,
     ImportLegacyCheckpointRequest,
     TrainRequest,
+    ValidateRequest,
     build_parser,
     main,
 )
@@ -189,6 +190,13 @@ def test_describe_lists_and_details_stable_experiment() -> None:
     assert payload["supported_modes"] == ["train", "linspace", "validate"]
     assert payload["capabilities"]["resume"]["full_training_state"] is True
     assert payload["capabilities"]["campaign"]["dry_run"] is True
+    assert payload["commands"]["train"]["optional_input_options"] == [
+        "--device-data",
+        "--teacher-weights",
+    ]
+    assert payload["commands"]["validate"]["optional_input_options"] == [
+        "--teacher-weights"
+    ]
     assert "checkpoint import-legacy" in payload["commands"]
     assert "campaign run" in payload["commands"]
 
@@ -222,6 +230,60 @@ def test_train_dispatches_an_immutable_resolved_request(
     assert seen[0].spec.settings.num_epochs == 2
     assert seen[0].base_weights == Path("base.pt")
     assert seen[0].command[0:2] == ("ebl", "train")
+
+
+def test_train_and_validate_forward_generic_external_inputs(
+    tmp_path: Path,
+) -> None:
+    config_path = _write_config(tmp_path)
+    train_requests: list[TrainRequest] = []
+    validate_requests: list[ValidateRequest] = []
+    device_data = tmp_path / "devices.hdf5"
+    teacher_weights = tmp_path / "teacher.pt"
+
+    def train(request: TrainRequest) -> int:
+        train_requests.append(request)
+        return 0
+
+    def validate(request: ValidateRequest) -> int:
+        validate_requests.append(request)
+        return 0
+
+    assert main(
+        [
+            "train",
+            "--config",
+            str(config_path),
+            "--output-dir",
+            str(tmp_path / "train-runs"),
+            "--device-data",
+            str(device_data),
+            "--teacher-weights",
+            str(teacher_weights),
+        ],
+        handlers=CommandHandlers(train=train),
+    ) == 0
+    assert main(
+        [
+            "validate",
+            "--config",
+            str(config_path),
+            "--output-dir",
+            str(tmp_path / "validate-runs"),
+            "--weights",
+            str(tmp_path / "weights.pt"),
+            "--teacher-weights",
+            str(teacher_weights),
+        ],
+        handlers=CommandHandlers(validate=validate),
+    ) == 0
+
+    assert train_requests[0].device_data == device_data
+    assert train_requests[0].teacher_weights == teacher_weights
+    assert "--device-data" in train_requests[0].command
+    assert "--teacher-weights" in train_requests[0].command
+    assert validate_requests[0].teacher_weights == teacher_weights
+    assert "--teacher-weights" in validate_requests[0].command
 
 
 def test_missing_runtime_handler_is_clear_and_post_validation(

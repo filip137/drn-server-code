@@ -64,6 +64,33 @@ def test_campaign_parses_and_orders_dependencies(tmp_path: Path) -> None:
     assert parsed.stages[1].inputs["weights"].stage == "base_train"
 
 
+def test_campaign_accepts_generic_external_input_paths(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    manifest["stages"][0]["inputs"] = {
+        "device_data": {"path": "devices.hdf5"},
+        "teacher_weights": {"path": "teacher.pt"},
+    }
+
+    parsed = CampaignSpec.parse(manifest, base_dir=tmp_path)
+
+    assert parsed.stages[0].inputs["device_data"].path == (
+        tmp_path / "devices.hdf5"
+    ).resolve()
+    assert parsed.stages[0].inputs["teacher_weights"].path == (
+        tmp_path / "teacher.pt"
+    ).resolve()
+
+
+def test_campaign_rejects_unknown_external_input_key(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    manifest["stages"][0]["inputs"] = {
+        "teacher_weight": {"path": "teacher.pt"}
+    }
+
+    with pytest.raises(ValueError, match="stage.inputs keys.*teacher_weights"):
+        CampaignSpec.parse(manifest, base_dir=tmp_path)
+
+
 def test_campaign_rejects_unknown_target(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     manifest["stages"][0]["target"] = "missing"

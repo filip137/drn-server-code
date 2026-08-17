@@ -434,6 +434,127 @@ def test_base_weights_remains_an_explicit_hyphenated_stage_input(
     assert str((tmp_path / "base.pt").resolve()) in command
 
 
+def test_optional_external_inputs_are_validated_and_forwarded(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    for name in (
+        "train.json",
+        "validate.json",
+        "devices.hdf5",
+        "teacher.pt",
+        "weights.pt",
+    ):
+        (tmp_path / name).write_bytes(b"input")
+    manifest = {
+        "schema_version": 1,
+        "campaign_id": "external-inputs",
+        "targets": [_target(tmp_path)],
+        "stages": [
+            {
+                "id": "train",
+                "case_id": "case",
+                "target": "target",
+                "command": "train",
+                "config": "train.json",
+                "inputs": {
+                    "device_data": {"path": "devices.hdf5"},
+                    "teacher_weights": {"path": "teacher.pt"},
+                },
+            },
+            {
+                "id": "validate",
+                "case_id": "case",
+                "target": "target",
+                "command": "validate",
+                "config": "validate.json",
+                "inputs": {
+                    "weights": {"path": "weights.pt"},
+                    "teacher_weights": {"path": "teacher.pt"},
+                },
+            },
+        ],
+    }
+    spec = CampaignSpec.parse(manifest, base_dir=tmp_path)
+
+    def supports_external_inputs(_target, *, allow_dirty):
+        result = _preflight(_target, allow_dirty=allow_dirty)
+        commands = result["description"]["commands"]
+        commands["train"]["optional_input_options"] = [
+            "--device-data",
+            "--teacher-weights",
+        ]
+        commands["validate"]["optional_input_options"] = [
+            "--teacher-weights"
+        ]
+        return result
+
+    monkeypatch.setattr(runner, "_preflight", supports_external_inputs)
+    records = runner.run_campaign(
+        spec,
+        output_root=tmp_path / "outputs",
+        dry_run=True,
+    )
+
+    train_command = records["train"]["command"]
+    assert train_command[
+        train_command.index("--device-data") + 1
+    ] == str((tmp_path / "devices.hdf5").resolve())
+    assert train_command[
+        train_command.index("--teacher-weights") + 1
+    ] == str((tmp_path / "teacher.pt").resolve())
+    assert "--device_data" not in train_command
+    assert "--teacher_weights" not in train_command
+
+    validate_command = records["validate"]["command"]
+    assert validate_command[
+        validate_command.index("--teacher-weights") + 1
+    ] == str((tmp_path / "teacher.pt").resolve())
+
+
+@pytest.mark.parametrize(
+    ("input_name", "filename"),
+    (
+        ("device_data", "devices.hdf5"),
+        ("teacher_weights", "teacher.pt"),
+    ),
+)
+def test_preflight_rejects_unadvertised_external_input(
+    tmp_path: Path,
+    monkeypatch,
+    input_name: str,
+    filename: str,
+) -> None:
+    (tmp_path / "train.json").write_text("{}", encoding="utf-8")
+    (tmp_path / filename).write_bytes(b"input")
+    spec = CampaignSpec.parse(
+        {
+            "schema_version": 1,
+            "campaign_id": f"unsupported-{input_name}",
+            "targets": [_target(tmp_path)],
+            "stages": [
+                {
+                    "id": "train",
+                    "case_id": "case",
+                    "target": "target",
+                    "command": "train",
+                    "config": "train.json",
+                    "inputs": {input_name: {"path": filename}},
+                }
+            ],
+        },
+        base_dir=tmp_path,
+    )
+    monkeypatch.setattr(runner, "_preflight", _preflight)
+
+    with pytest.raises(RuntimeError, match="accepted by its target command"):
+        runner.run_campaign(
+            spec,
+            output_root=tmp_path / "outputs",
+            dry_run=True,
+        )
+
+
 def test_fail_fast_marks_later_independent_stage_without_launching(
     tmp_path: Path,
     monkeypatch,

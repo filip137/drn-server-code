@@ -63,6 +63,8 @@ class TrainRequest:
     base_weights: Optional[Path]
     resume: Optional[Path]
     command: Tuple[str, ...]
+    device_data: Optional[Path] = None
+    teacher_weights: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +85,7 @@ class ValidateRequest:
     output_dir: Path
     weights: Path
     command: Tuple[str, ...]
+    teacher_weights: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -173,6 +176,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="resume from a full training-state checkpoint",
     )
+    train.add_argument(
+        "--device-data",
+        type=Path,
+        help=(
+            "explicit measured-device HDF5 input required by measured "
+            "training backends"
+        ),
+    )
+    train.add_argument(
+        "--teacher-weights",
+        type=Path,
+        help="explicit named ReLU teacher checkpoint for distillation",
+    )
 
     linspace = commands.add_parser(
         "linspace",
@@ -196,6 +212,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="explicit weights artifact to validate",
+    )
+    validate.add_argument(
+        "--teacher-weights",
+        type=Path,
+        help="explicit named ReLU teacher checkpoint for KL evaluation",
     )
 
     checkpoint = commands.add_parser(
@@ -328,6 +349,16 @@ def _definition_payload(definition: ExperimentDefinition) -> dict:
 def _protocol_payload(
     definitions: Sequence[ExperimentDefinition],
 ) -> dict:
+    reset_only = (
+        len(definitions) == 1
+        and definitions[0].experiment_id
+        in {
+            "mnist_relu_drn_reset.v1",
+            "mnist_relu_drn_reset_bias.v1",
+            "mnist_relu_drn_reset_bias_legacy.v1",
+            "mnist_relu_drn_reset_factorial.v1",
+        }
+    )
     combinations = [
         combination
         for definition in definitions
@@ -375,10 +406,10 @@ def _protocol_payload(
                 "unlisted_combinations": "rejected",
             },
             "resume": {
-                "weights": True,
-                "base_weights": True,
+                "weights": not reset_only,
+                "base_weights": not reset_only,
                 "full_training_state": True,
-                "legacy_checkpoint_import": True,
+                "legacy_checkpoint_import": not reset_only,
                 "campaign_stage_reuse": True,
             },
             "campaign": {
@@ -399,12 +430,26 @@ def _protocol_payload(
                     RunMode.TRAIN in item.supported_modes
                     for item in definitions
                 ),
-                "required_options": ["--config", "--output-dir"],
-                "exclusive_input_options": [
-                    "--weights",
-                    "--base-weights",
-                    "--resume",
-                ],
+                "required_options": (
+                    [
+                        "--config",
+                        "--output-dir",
+                        "--device-data",
+                        "--teacher-weights",
+                    ]
+                    if reset_only
+                    else ["--config", "--output-dir"]
+                ),
+                "exclusive_input_options": (
+                    ["--resume"]
+                    if reset_only
+                    else ["--weights", "--base-weights", "--resume"]
+                ),
+                "optional_input_options": (
+                    []
+                    if reset_only
+                    else ["--device-data", "--teacher-weights"]
+                ),
             },
             "linspace": {
                 "available": any(
@@ -426,7 +471,11 @@ def _protocol_payload(
                     "--config",
                     "--output-dir",
                     "--weights",
+                    *(["--teacher-weights"] if reset_only else []),
                 ],
+                "optional_input_options": (
+                    [] if reset_only else ["--teacher-weights"]
+                ),
             },
             "checkpoint import-legacy": {
                 "available": True,
@@ -546,19 +595,58 @@ def _handler_result(handler: Handler, request: Any) -> int:
 
 
 def _default_train_handler(request: TrainRequest) -> Optional[int]:
-    from experiments.small_network.runtime import run_train
+    if request.definition.experiment_id == "small_drn.v1":
+        from experiments.small_network.runtime import run_train
+    elif request.definition.experiment_id == "mnist_relu.v1":
+        from experiments.mnist_relu.runtime import run_train
+    elif request.definition.experiment_id == "mnist_relu_drn_kd.v1":
+        from experiments.mnist_relu_drn.runtime import run_train
+    elif request.definition.experiment_id in {
+        "mnist_relu_drn_reset.v1",
+        "mnist_relu_drn_reset_bias.v1",
+        "mnist_relu_drn_reset_bias_legacy.v1",
+        "mnist_relu_drn_reset_factorial.v1",
+    }:
+        from experiments.mnist_relu_drn_reset.runtime import run_train
+    else:  # pragma: no cover - registry and handler map change together
+        raise ConfigError(
+            "Expected train runtime dispatch for a registered experiment. "
+            f"Provided value: {request.definition.experiment_id!r}."
+        )
 
     return run_train(request)
 
 
 def _default_linspace_handler(request: LinspaceRequest) -> Optional[int]:
+    if request.definition.experiment_id != "small_drn.v1":
+        raise ConfigError(
+            "Expected linspace runtime dispatch only for 'small_drn.v1'. "
+            f"Provided value: {request.definition.experiment_id!r}."
+        )
     from experiments.small_network.runtime import run_linspace
 
     return run_linspace(request)
 
 
 def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
-    from experiments.small_network.runtime import run_validate
+    if request.definition.experiment_id == "small_drn.v1":
+        from experiments.small_network.runtime import run_validate
+    elif request.definition.experiment_id == "mnist_relu.v1":
+        from experiments.mnist_relu.runtime import run_validate
+    elif request.definition.experiment_id == "mnist_relu_drn_kd.v1":
+        from experiments.mnist_relu_drn.runtime import run_validate
+    elif request.definition.experiment_id in {
+        "mnist_relu_drn_reset.v1",
+        "mnist_relu_drn_reset_bias.v1",
+        "mnist_relu_drn_reset_bias_legacy.v1",
+        "mnist_relu_drn_reset_factorial.v1",
+    }:
+        from experiments.mnist_relu_drn_reset.runtime import run_validate
+    else:  # pragma: no cover - registry and handler map change together
+        raise ConfigError(
+            "Expected validate runtime dispatch for a registered experiment. "
+            f"Provided value: {request.definition.experiment_id!r}."
+        )
 
     return run_validate(request)
 
@@ -566,6 +654,11 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
 def _default_checkpoint_import_legacy_handler(
     request: ImportLegacyCheckpointRequest,
 ) -> Optional[int]:
+    if request.definition.experiment_id != "small_drn.v1":
+        raise ConfigError(
+            "Expected legacy checkpoint import only for 'small_drn.v1'. "
+            f"Provided value: {request.definition.experiment_id!r}."
+        )
     from experiments.small_network.runtime import import_legacy_checkpoint
 
     return import_legacy_checkpoint(request)
@@ -643,6 +736,8 @@ def _dispatch(
             base_weights=args.base_weights,
             resume=args.resume,
             command=command,
+            device_data=args.device_data,
+            teacher_weights=args.teacher_weights,
         )
         return _handler_result(
             _require_handler(handlers.train, "train"),
@@ -679,6 +774,7 @@ def _dispatch(
             output_dir=args.output_dir,
             weights=args.weights,
             command=command,
+            teacher_weights=args.teacher_weights,
         )
         return _handler_result(
             _require_handler(handlers.validate, "validate"),

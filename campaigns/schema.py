@@ -176,12 +176,20 @@ class StageSpec:
             "campaign stage.inputs",
         )
         unknown_inputs = sorted(
-            set(raw_inputs) - {"weights", "base_weights", "resume"}
+            set(raw_inputs)
+            - {
+                "weights",
+                "base_weights",
+                "resume",
+                "teacher_weights",
+                "device_data",
+            }
         )
         if unknown_inputs:
             raise ValueError(
                 "Expected campaign stage.inputs keys to be drawn from "
-                "['base_weights', 'resume', 'weights']. Provided value: "
+                "['base_weights', 'device_data', 'resume', "
+                "'teacher_weights', 'weights']. Provided value: "
                 "unknown keys "
                 f"{unknown_inputs!r} in {dict(raw_inputs)!r}."
             )

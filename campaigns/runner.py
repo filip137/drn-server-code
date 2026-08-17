@@ -482,6 +482,10 @@ def _validate_stage_capability(
         command_capability.get("exclusive_input_options", []),
         name=f"commands.{stage.command}.exclusive_input_options",
     )
+    optional_options = _string_list(
+        command_capability.get("optional_input_options", []),
+        name=f"commands.{stage.command}.optional_input_options",
+    )
     provided_options = {
         "--" + name.replace("_", "-")
         for name in stage.inputs
@@ -511,6 +515,7 @@ def _validate_stage_capability(
     known_input_options = (
         set(required_options)
         | set(exclusive_options)
+        | set(optional_options)
     ) - operational_options
     unsupported_inputs = sorted(provided_options - known_input_options)
     if unsupported_inputs:
@@ -536,6 +541,7 @@ def _validate_stage_capability(
     unavailable = sorted(
         name
         for name in stage.inputs
+        if name in capability_by_input
         if resume_capabilities.get(capability_by_input[name]) is not True
     )
     if unavailable:
