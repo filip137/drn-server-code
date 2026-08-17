@@ -21,10 +21,10 @@ choices do not belong in model classes or generic training loops.
 
 | Axis | Implementations | Responsibility |
 | --- | --- | --- |
-| training algorithm | `ep`, `backprop` | estimate a complete minibatch gradient |
-| model adapter | `none`, `passive_low_rank` | define the trainable parameterization |
+| training algorithm | `ep`, `backprop`, `digital` | estimate a complete minibatch gradient (`backprop` is BPTT through the configured minimizer iterations) |
+| model adapter | `none`, `passive_low_rank`, `digital_low_rank`, `passive_layerwise_low_rank` | define the trainable parameterization |
 | parameter modifier | `none`, `add_normal` | temporarily alter parameters during solver phases |
-| update backend | `direct`, `tiki_taka` | apply or accumulate the completed gradient |
+| update backend | `direct`, `tiki_taka`, `program_verify`, `measured_cohort_a`, `measured_cohort_b`, `measured_cohort_b_lora` | apply or accumulate the completed gradient; measured backends project trainable arrays onto assigned measured device curves |
 
 LoRA is therefore not another name for Tiki-Taka. Passive low-rank recovery
 changes which parameters produce the effective model weights; Tiki-Taka
@@ -33,12 +33,21 @@ can share the same experiment, engine, checkpoint, and evaluation structure
 without being coupled to each other. The focused circuit, configuration, and
 checkpoint contract is documented in
 [Passive low-rank adapter](passive_low_rank_adapter.md).
+The hybrid ideal-readout experiment is documented in
+[Digital low-rank recovery](digital_low_rank_recovery.md).
+The two-edge physical experiment is documented in
+[Passive layerwise low-rank recovery](passive_layerwise_low_rank_recovery.md).
+Its frozen-base, fully reset measured-device protocol is documented in
+[Measured cohort-B memristor LoRA recovery](measured_cohort_b_lora_recovery.md).
 
 Each worktree's experiment definition lists only combinations implemented in
 that worktree. The shared foundation advertises base direct and Tiki-Taka
 training; the HWA branch adds `add_normal` combinations, and the LoRA branch
-adds `passive_low_rank` combinations. Unlisted combinations, including LoRA
-plus hardware-aware perturbation, are rejected before numerical execution.
+adds `passive_low_rank`, `digital_low_rank`, and
+`passive_layerwise_low_rank` combinations. The measured-endpoint branch adds
+`program_verify` for full BPTT and passive-layerwise LoRA BPTT. Unlisted
+combinations, including LoRA plus the temporary `add_normal` modifier, are
+rejected before numerical execution.
 
 ## Commands
 
@@ -78,6 +87,20 @@ scientific intent. Operational paths are explicit CLI arguments:
 
 These initialization options are mutually exclusive.
 
+## MNIST dataset contract
+
+`small_drn.v1` accepts `data.dataset: "mnist"` for train and validate modes.
+The loader uses the canonical 60,000/10,000 torchvision splits, applies
+normalization with mean `0.1307` and standard deviation `0.3`, and flattens
+each image to 784 values before the DRN creates its positive/negative input
+pair. A full MNIST DRN therefore uses `model.dims[0] == 1568`.
+
+MNIST is never downloaded during config parsing or execution. The runtime
+looks under `~/datasets/mnist` by default; set `EBL_MNIST_ROOT` to select an
+existing alternative root. `data.num_points` may select a deterministic
+training subset for smoke tests, while the held-out test split remains
+canonical. Linspace mode is rejected for MNIST.
+
 ## Run contract
 
 Each command creates one new run directory:
@@ -105,6 +128,28 @@ Named weights and full resume state are intentionally different:
 - `resume.pt` contains model, optimizer, scheduler, modifier, tensor-bearing
   runtime continuation state (including carried equilibria), progress, random
   number generator, and named dataloader-generator state at an epoch boundary.
+
+For `program_verify`, selected `weights.pt` stores the realized device tensors.
+Only `resume.pt` additionally stores the clean digital targets and the exact
+next device-noise generator state needed to continue a noisy-write trajectory.
+
+Physical device floors are retained by default. CMO/HfOx accepts three
+explicit mappings:
+
+- `affine_floor` maps the complete logical interval across `9–88.199997 µS`
+  and leaves the minimum as an effective DRN connection;
+- `literal_conductance` directly scales DRN conductance by `G_max` and clips
+  sub-floor targets, so it is the absolute-scale/hard-clipping stress test;
+- `normalized_offset` uses affine physical targets but subtracts and rescales
+  the floor on conversion back, so it is an explicit
+  differential/reference-cancellation comparison.
+
+Selected `weights.pt` always stores the realized effective DRN tensors for the
+chosen interpretation. CMO programming reports distinguish total deployment
+distortion relative to the clean digital target from stochastic residual
+error relative to the ideal mapped target. The mapping rationale and measured
+voltage effects are in
+[Finite conductance floors in DRNs](conductance_floor_mitigation.md).
 
 Restore is transactional. All payloads are validated before mutation, and any
 failure rolls back already-restored components. AIHWKit-backed runs may
@@ -161,6 +206,9 @@ Then rebase the feature branches and implement only their extension:
 shared foundation
   +-- HWA branch: add_normal ParameterModifier
   +-- LoRA branch: passive_low_rank model adapter
+  +-- hybrid recovery: digital_low_rank model adapter
+  +-- layerwise passive recovery: passive_layerwise_low_rank model adapter
+  +-- measured endpoint recovery: program_verify update backend
 ```
 
 Do not merge HWA and LoRA branches merely to obtain the common pipeline.
