@@ -22,6 +22,7 @@ from experiments.mnist_relu_drn.components import (
 from experiments.mnist_relu_drn.config import StudentTrainSpec, StudentValidateSpec
 from experiments.mnist_shared import build_mnist_loaders, limited
 from experiments.schema import to_plain_data
+from model.resistive.interaction import DenseResistive, SignedDenseResistive
 from training.checkpoint import (
     encode_named_weights,
     load_epoch_boundary_checkpoint,
@@ -36,6 +37,138 @@ if TYPE_CHECKING:
 
 
 _ROOT = Path(__file__).resolve().parents[2]
+
+
+def _amplification_index_report(stack: StudentStack) -> list[dict[str, Any]]:
+    """Record model-local stage semantics independently of generated names."""
+
+    report = []
+    for interaction in stack.bundle.energy._interactions:
+        if not isinstance(
+            interaction, (DenseResistive, SignedDenseResistive)
+        ):
+            continue
+        item = {
+            "pre_layer": interaction._layer_pre.name,
+            "post_layer": interaction._layer_post.name,
+            "resolved_pre_index": interaction._logical_pre_index,
+            "resolved_post_index": interaction._logical_post_index,
+        }
+        if isinstance(interaction, SignedDenseResistive):
+            item.update(
+                {
+                    "interaction": "differential_pair",
+                    "voltage_amp": interaction._voltage_amp,
+                    "current_amp": interaction._current_amp,
+                    "forward_gain": interaction._forward_gain(),
+                    "post_layer_metric": interaction._post_metric(),
+                }
+            )
+        report.append(item)
+    return report
+
+
+def _differential_topology_signature(
+    report: Any,
+) -> tuple[tuple[int, int, float, float], ...] | None:
+    """Project recorded topology onto its model-local numerical semantics."""
+
+    if not isinstance(report, (list, tuple)):
+        return None
+    try:
+        return tuple(
+            (
+                int(item["resolved_pre_index"]),
+                int(item["resolved_post_index"]),
+                float(item["forward_gain"]),
+                float(item["post_layer_metric"]),
+            )
+            for item in report
+            if item.get("interaction") == "differential_pair"
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _model_checkpoint_metadata(
+    stack: StudentStack,
+    *,
+    spec: StudentTrainSpec,
+    teacher_sha256: str,
+    mapping: dict[str, Any] | None,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "experiment_id": spec.experiment_id,
+        "encoding": spec.model.encoding,
+        "include_biases": spec.model.include_biases,
+        "amplification_indexing": spec.model.amplification_indexing,
+        "amplification_indices": _amplification_index_report(stack),
+        "objective": "teacher_kl",
+        "initialization": "teacher_mapped",
+        "fixed_logit_gain": stack.cost.gain,
+        "temperature": spec.settings.temperature,
+        "teacher_sha256": teacher_sha256,
+        "mapping": mapping,
+        "update_backend": spec.settings.update_backend.type,
+    }
+    if isinstance(stack.optimizer, MeasuredTraceOptimizer):
+        data_report = stack.optimizer.data_report
+        metadata.update(
+            {
+                "initial_target_mapping": spec.settings.update_backend.parameters[
+                    "initial_target_mapping"
+                ],
+                "device_data_sha256": data_report["source_sha256"],
+                "device_assignment_sha256_by_parameter": data_report[
+                    "assignment_sha256_by_parameter"
+                ],
+            }
+        )
+    else:
+        metadata["initial_target_mapping"] = "ideal_teacher_mapping"
+    return metadata
+
+
+def _validate_checkpoint_metadata(
+    metadata: Any,
+    *,
+    spec: StudentValidateSpec | StudentTrainSpec,
+    teacher_sha256: str,
+    expected_amplification_indices: Any,
+) -> None:
+    provided = metadata if isinstance(metadata, dict) else {}
+    expected = {
+        "experiment_id": spec.experiment_id,
+        "encoding": spec.model.encoding,
+        "include_biases": spec.model.include_biases,
+        "amplification_indexing": spec.model.amplification_indexing,
+        "objective": "teacher_kl",
+        "initialization": "teacher_mapped",
+        "temperature": 1.0,
+        "teacher_sha256": teacher_sha256,
+    }
+    mismatches = {
+        name: {"expected": value, "provided": provided.get(name)}
+        for name, value in expected.items()
+        if provided.get(name) != value
+    }
+    if spec.model.encoding == "differential":
+        expected_signature = _differential_topology_signature(
+            expected_amplification_indices
+        )
+        provided_signature = _differential_topology_signature(
+            provided.get("amplification_indices")
+        )
+        if provided_signature != expected_signature:
+            mismatches["amplification_indices"] = {
+                "expected": expected_signature,
+                "provided": provided_signature,
+            }
+    if mismatches:
+        raise ValueError(
+            "Expected KD checkpoint metadata to match the requested model, "
+            f"topology, and teacher. Provided value: {mismatches!r}."
+        )
 
 
 def _input(role: str, path: Path) -> dict[str, Any]:
@@ -231,21 +364,25 @@ def _selected_payload(
     epoch: int,
     validation: dict[str, Any],
 ) -> dict[str, Any]:
-    return encode_named_weights(
-        stack.bundle.catalog,
-        metadata={
-            "experiment_id": spec.experiment_id,
-            "encoding": spec.model.encoding,
-            "fixed_logit_gain": stack.cost.gain,
+    metadata = _model_checkpoint_metadata(
+        stack,
+        spec=spec,
+        teacher_sha256=teacher_sha256,
+        mapping=mapping,
+    )
+    metadata.update(
+        {
             "teacher_path": str(teacher_path.expanduser().resolve()),
-            "teacher_sha256": teacher_sha256,
-            "mapping": mapping,
             "selection_metric": "validation.kl_teacher_student",
             "selection_value": validation["kl_teacher_student"],
             "selection_epoch": epoch,
             "selection_student_accuracy": validation["student_accuracy"],
             "selection_teacher_agreement": validation["teacher_agreement"],
-        },
+        }
+    )
+    return encode_named_weights(
+        stack.bundle.catalog,
+        metadata=metadata,
     )
 
 
@@ -306,12 +443,14 @@ def run_train(request: "TrainRequest") -> int:
                 optimizer=stack.optimizer,
                 dataloader_generators={"train": data.train_generator},
             )
-            if resumed.metadata.get("teacher_sha256") != teacher_sha:
-                raise ValueError(
-                    "Expected resume teacher hash to match --teacher-weights. "
-                    f"Provided value: checkpoint={resumed.metadata.get('teacher_sha256')!r}, "
-                    f"teacher={teacher_sha!r}."
-                )
+            _validate_checkpoint_metadata(
+                resumed.metadata,
+                spec=spec,
+                teacher_sha256=teacher_sha,
+                expected_amplification_indices=(
+                    _amplification_index_report(stack)
+                ),
+            )
             start_epoch = resumed.epoch
             global_step = resumed.global_step
             stack.cost.gain = float(resumed.progress_state["fixed_logit_gain"])
@@ -323,11 +462,14 @@ def run_train(request: "TrainRequest") -> int:
                 save_encoded_named_weights(weights_path, selected_weights, catalog=stack.bundle.catalog)
         elif request.weights is not None:
             loaded = load_named_weights(request.weights, stack.bundle.catalog)
-            if loaded.metadata.get("teacher_sha256") != teacher_sha:
-                raise ValueError(
-                    "Expected student checkpoint teacher hash to match "
-                    f"--teacher-weights. Provided value: {loaded.metadata.get('teacher_sha256')!r}."
-                )
+            _validate_checkpoint_metadata(
+                loaded.metadata,
+                spec=spec,
+                teacher_sha256=teacher_sha,
+                expected_amplification_indices=(
+                    _amplification_index_report(stack)
+                ),
+            )
             stack.cost.gain = float(loaded.metadata["fixed_logit_gain"])
             mapping_report = loaded.metadata.get("mapping")
             if measured:
@@ -455,11 +597,12 @@ def run_train(request: "TrainRequest") -> int:
                 progress_state=progress,
                 selected_weights=selected_weights,
                 dataloader_generators={"train": data.train_generator},
-                metadata={
-                    "experiment_id": spec.experiment_id,
-                    "teacher_sha256": teacher_sha,
-                    "encoding": spec.model.encoding,
-                },
+                metadata=_model_checkpoint_metadata(
+                    stack,
+                    spec=spec,
+                    teacher_sha256=teacher_sha,
+                    mapping=mapping_report,
+                ),
             )
             if (epoch + 1) % spec.settings.log_every == 0 or epoch + 1 == spec.settings.num_epochs:
                 metric = {
@@ -499,11 +642,12 @@ def run_train(request: "TrainRequest") -> int:
                 },
                 selected_weights=selected_weights,
                 dataloader_generators={"train": data.train_generator},
-                metadata={
-                    "experiment_id": spec.experiment_id,
-                    "teacher_sha256": teacher_sha,
-                    "encoding": spec.model.encoding,
-                },
+                metadata=_model_checkpoint_metadata(
+                    stack,
+                    spec=spec,
+                    teacher_sha256=teacher_sha,
+                    mapping=mapping_report,
+                ),
             )
         relative_improvement = (
             initial["kl_teacher_student"] - selected_validation["kl_teacher_student"]
@@ -517,6 +661,13 @@ def run_train(request: "TrainRequest") -> int:
             metrics={
                 "teacher": {"sha256": teacher_sha, "metadata": teacher_metadata},
                 "encoding": spec.model.encoding,
+                "include_biases": spec.model.include_biases,
+                "amplification_indexing": spec.model.amplification_indexing,
+                "amplification_indices": _amplification_index_report(stack),
+                "objective": "teacher_kl",
+                "initialization": "teacher_mapped",
+                "fixed_logit_gain": stack.cost.gain,
+                "temperature": spec.settings.temperature,
                 "update_backend": spec.settings.update_backend.type,
                 "mapping": mapping_report,
                 "initial_validation": initial,
@@ -582,12 +733,12 @@ def run_validate(request: "ValidateRequest") -> int:
         teacher_sha = sha256_file(request.teacher_weights)
         stack = build_student_stack(spec, enable_measured=False)
         loaded = load_named_weights(request.weights, stack.bundle.catalog)
-        if loaded.metadata.get("teacher_sha256") != teacher_sha:
-            raise ValueError(
-                "Expected student checkpoint teacher hash to match "
-                f"--teacher-weights. Provided value: checkpoint={loaded.metadata.get('teacher_sha256')!r}, "
-                f"teacher={teacher_sha!r}."
-            )
+        _validate_checkpoint_metadata(
+            loaded.metadata,
+            spec=spec,
+            teacher_sha256=teacher_sha,
+            expected_amplification_indices=_amplification_index_report(stack),
+        )
         stack.cost.gain = float(loaded.metadata["fixed_logit_gain"])
         loader = data.validation if spec.settings.split == "validation" else data.test
         metrics = _evaluate(
@@ -602,6 +753,11 @@ def run_validate(request: "ValidateRequest") -> int:
                 "split": spec.settings.split,
                 **metrics,
                 "encoding": spec.model.encoding,
+                "include_biases": spec.model.include_biases,
+                "amplification_indexing": spec.model.amplification_indexing,
+                "amplification_indices": _amplification_index_report(stack),
+                "objective": "teacher_kl",
+                "initialization": "teacher_mapped",
                 "teacher": {"sha256": teacher_sha, "metadata": teacher_metadata},
                 "checkpoint_metadata": loaded.metadata,
                 "conductances": conductance_statistics(
