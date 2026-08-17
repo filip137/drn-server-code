@@ -173,7 +173,16 @@ and fine-tuning updates must remain separately measurable.
   accuracy, `98.76%` agreement, and `0.0140905` KL. The additional ten-epoch
   budget improved KL and agreement but not accuracy on this single seed; this
   is consistent with checkpoint selection by validation KL and does not
-  establish that the shorter budget generalizes better.
+  establish that the shorter budget generalizes better. A clean, budget-
+  matched one-conductance replay also reproduced its earlier trajectory
+  exactly: it remained at `7.98%` test accuracy, `7.81%` agreement, and
+  `2.246097` KL. The ten-epoch differential pair therefore gains `89.50`
+  accuracy points and reduces KL by `99.37%` under the matched teacher, data,
+  seed, solver, amplification, objective, and minibatch budget. The nominal
+  one-conductance map was accurate before measured projection, but independent
+  device-affine floors destroyed its score direction, forced the fitted gain
+  to the `0.001` lower boundary, and left trace-projected fine-tuning almost
+  stationary.
 
 ### RESET-trained single-device teacher-matching result
 

@@ -534,6 +534,43 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [initialized differential report](mnist_relu_drn_initialized_differential_10ep.md)
 
+### mnist-single-reram-initialized-finetune-10ep
+
+**Teacher-initialized single-conductance ReRAM MNIST control**
+
+- **Finished:** 2026-08-17
+- **Outcome:** completed; ReLU programming and ten KL epochs did not rescue the
+  measured one-conductance scheme
+- **Question:** How does one measured conductance per physical edge perform
+  after per-device-affine ReLU-teacher programming and exactly ten epochs of
+  matched KL fine-tuning?
+- **Setup:** The frozen bias-free ReLU teacher was lifted into non-negative
+  dual rails and mapped into independently assigned cohort-A trace ranges. The
+  bias-free `[1568, 100, 20]` student used seed 42, batch size 16, learning
+  rates `[2.1e-10, 5.7e-13]`, model-local `voltage_amp = 4`,
+  `current_amp = 0.25`, and exactly ten epochs.
+- **Headline result:** Validation moved only from `8.10%` and KL `2.242688` to
+  `8.16%` and KL `2.242688`. Fresh-process test accuracy was `7.98%`, teacher
+  agreement `7.81%`, and KL `2.246097`; the recovery gate failed.
+- **Matched comparison:** The initialized `G+ - G-` arm reached `97.48%` test
+  accuracy and KL `0.0140905`, an `89.50`-point accuracy gain and `99.37%` KL
+  reduction. Ideal one-conductance and differential arms remain tied, so the
+  measured benefit is attributed to preserving signal direction through local
+  shared-window cancellation rather than to two devices intrinsically.
+- **Integrity:** Both stages exited zero from clean commit
+  `c507dd9d13825721aa4e25c05f2303302c2a050c`, with exactly ten epoch records,
+  an exact epoch-10 resume state, no non-finite metrics, two stable conductance
+  keys, and matching model-local topology, teacher, device source, and
+  assignment provenance. The first-ten trajectory exactly matches the earlier
+  20-epoch arm.
+- **Limitation:** This isolates the implemented mapping-plus-architecture
+  combination, not device count alone. The one-conductance and pair mappings
+  necessarily treat measured floors differently.
+- **Raw artifacts:**
+  `results/mnist-single-reram-initialized-finetune-10ep-20260817-v1/`
+- **Tracked detail:**
+  [initialized single-conductance report](mnist_relu_drn_initialized_single_10ep.md)
+
 ## Shared validity notes
 
 - These studies are exploratory rather than final paper-facing evidence.

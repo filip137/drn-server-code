@@ -90,6 +90,13 @@ validation KL, so this single-seed result supports ten epochs as a useful
 screening budget, not as a more accurate final budget. See the
 [ten-epoch initialized-differential report](mnist_relu_drn_initialized_differential_10ep.md).
 
+The corresponding clean ten-epoch one-conductance replay also exactly matched
+the first ten epochs of its earlier 20-epoch arm, but it remained at chance:
+`7.98%` held-out accuracy, `7.81%` agreement, and test KL `2.246097`. Against
+this budget-matched arm, the common-window differential pair gains `89.50`
+accuracy points and lowers test KL by `99.37%`. See the
+[ten-epoch initialized one-conductance report](mnist_relu_drn_initialized_single_10ep.md).
+
 Machine-readable metrics and the matplotlib learning curves are in
 `results/mnist-relu-drn-kd-exploratory-20260816/analysis/summary.json` and
 `validation_comparison.png`.

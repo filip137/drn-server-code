@@ -91,3 +91,15 @@ literal-RESET differential run's `93.94%` test accuracy. That gap is not a
 clean initialization ablation: the literal-RESET run used paired hard-label
 squared error with fixed gain one, while this run used teacher KL and a fitted
 gain.
+
+## Matched one-conductance comparison
+
+The clean ten-epoch one-conductance control remained at `7.98%` test accuracy,
+`7.81%` agreement, and KL `2.246097`. This differential pair is therefore
+`89.50` accuracy points higher and has `99.37%` lower test KL under the same
+teacher, data, seed, amplification, solver, objective, calibration set, and
+minibatch budget. The nominal mappings chose the same scale fractions and
+pre-programming gain, but independent per-device affine floors destroyed the
+one-conductance score direction. The pair's shared reachable window preserved
+direction through local common-component cancellation. See the
+[initialized one-conductance report](mnist_relu_drn_initialized_single_10ep.md).
