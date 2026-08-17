@@ -60,6 +60,7 @@ labs/mnist_pytorch/
 labs/Equilibrium-Propagation/
 
 # Local environments / large data
+.venv/
 py309/
 labs/experiments/
 
