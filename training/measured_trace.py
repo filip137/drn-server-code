@@ -55,6 +55,7 @@ class MeasuredTraceConfig:
     probabilistic_write_probability: float
     probabilistic_write_scale_relative: float
     probabilistic_write_seed: int
+    dual_rail_layout_by_parameter: tuple[tuple[str, str], ...] | None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "MeasuredTraceConfig":
@@ -71,6 +72,23 @@ class MeasuredTraceConfig:
         normalized.setdefault("probabilistic_write_probability", 1.0)
         normalized.setdefault("probabilistic_write_scale_relative", 0.0)
         normalized.setdefault("probabilistic_write_seed", 0)
+        normalized.setdefault("dual_rail_layout_by_parameter", None)
+        raw_layouts = normalized["dual_rail_layout_by_parameter"]
+        if isinstance(raw_layouts, Mapping):
+            normalized["dual_rail_layout_by_parameter"] = tuple(
+                sorted(raw_layouts.items())
+            )
+        elif isinstance(raw_layouts, (list, tuple)):
+            try:
+                normalized["dual_rail_layout_by_parameter"] = tuple(
+                    (item[0], item[1]) for item in raw_layouts
+                )
+            except (IndexError, TypeError) as error:
+                raise ValueError(
+                    "Expected dual_rail_layout_by_parameter to be null or "
+                    "an object mapping stable parameter keys to 'halves' or "
+                    f"'paired'. Provided value: {raw_layouts!r}."
+                ) from error
         expected = set(cls.__dataclass_fields__)
         if set(normalized) != expected:
             raise ValueError(
@@ -140,20 +158,48 @@ class MeasuredTraceConfig:
             "literal",
             "per_device_affine",
             "paired_affine_common_window",
+            "dual_rail_pairwise_common_window",
         }:
             raise ValueError(
                 "Expected initial_target_mapping to be 'literal', "
-                "'per_device_affine', or 'paired_affine_common_window'. "
+                "'per_device_affine', 'paired_affine_common_window', or "
+                "'dual_rail_pairwise_common_window'. "
                 f"Provided value: {config.initial_target_mapping!r}."
             )
         if (
             config.cohort == "B"
-            and config.initial_target_mapping == "per_device_affine"
+            and config.initial_target_mapping
+            in {"per_device_affine", "dual_rail_pairwise_common_window"}
         ):
             raise ValueError(
                 "Expected cohort-B initial_target_mapping to be 'literal' "
                 "or 'paired_affine_common_window'. Provided value: "
                 f"{config.initial_target_mapping!r}."
+            )
+        layouts = config.dual_rail_layout_by_parameter
+        if config.initial_target_mapping == "dual_rail_pairwise_common_window":
+            if (
+                not layouts
+                or len({key for key, _layout in layouts}) != len(layouts)
+                or any(
+                    not isinstance(key, str)
+                    or layout not in {"halves", "paired"}
+                    for key, layout in layouts
+                )
+            ):
+                raise ValueError(
+                    "Expected dual_rail_layout_by_parameter to map unique "
+                    "stable parameter keys to 'halves' or 'paired' when "
+                    "initial_target_mapping is "
+                    "'dual_rail_pairwise_common_window'. Provided value: "
+                    f"{layouts!r}."
+                )
+        elif layouts is not None:
+            raise ValueError(
+                "Expected dual_rail_layout_by_parameter to be null unless "
+                "initial_target_mapping is "
+                "'dual_rail_pairwise_common_window'. Provided value: "
+                f"{layouts!r}."
             )
         if config.programming_deadband_mode not in {
             "none",
@@ -495,6 +541,24 @@ class MeasuredTraceOptimizer:
                 "Expected a measured-cohort backend to target at least one trainable "
                 "DenseWeight. Provided value: none."
             )
+        if (
+            self._config.initial_target_mapping
+            == "dual_rail_pairwise_common_window"
+        ):
+            expected_layout_keys = {binding.key for binding in self._bindings}
+            provided_layout_keys = {
+                key
+                for key, _layout in (
+                    self._config.dual_rail_layout_by_parameter or ()
+                )
+            }
+            if provided_layout_keys != expected_layout_keys:
+                raise ValueError(
+                    "Expected dual_rail_layout_by_parameter keys to equal "
+                    "the stable trainable dense parameter keys. Provided "
+                    f"value: expected={sorted(expected_layout_keys)!r}, "
+                    f"provided={sorted(provided_layout_keys)!r}."
+                )
         self._projection_bindings = (
             self._bindings
             if projection_bindings is None
@@ -600,6 +664,11 @@ class MeasuredTraceOptimizer:
             "conductance_max_s": float(conductance.max()),
             "curve_preprocessing": self._config.curve_preprocessing,
             "initial_target_mapping": self._config.initial_target_mapping,
+            "dual_rail_layout_by_parameter": (
+                None
+                if self._config.dual_rail_layout_by_parameter is None
+                else dict(self._config.dual_rail_layout_by_parameter)
+            ),
             "raw_projection_cache": dict(
                 self._raw_projection_cache_report
             ),
@@ -744,6 +813,97 @@ class MeasuredTraceOptimizer:
                 }
             return nominal, clipped, targets, details
 
+        if mode == "dual_rail_pairwise_common_window":
+            layouts = dict(self._config.dual_rail_layout_by_parameter or ())
+            for binding in self._bindings:
+                key = binding.key
+                shape = tuple(binding.state.shape)
+                if (
+                    len(shape) != 2
+                    or shape[0] % 2
+                    or shape[1] % 2
+                ):
+                    raise ValueError(
+                        "Expected dual-rail pairwise common-window bindings "
+                        "to be even-by-even rank-2 tensors. Provided value: "
+                        f"key={key!r}, shape={shape!r}."
+                    )
+                layout = layouts[key]
+                input_count = shape[0] // 2
+                output_count = shape[1] // 2
+                if layout == "halves":
+                    plus_columns = torch.arange(
+                        output_count,
+                        device=binding.state.device,
+                    )
+                    minus_columns = plus_columns + output_count
+                else:
+                    plus_columns = torch.arange(
+                        output_count,
+                        device=binding.state.device,
+                    ) * 2
+                    minus_columns = plus_columns + 1
+                lower = float(binding.parameter.min_cond)
+                upper = float(binding.parameter.max_cond)
+                fraction = nominal[key].sub(lower).div(upper - lower)
+                curve_min, curve_max = self._curve_ranges(key)
+                curve_min = curve_min.reshape(shape)
+                curve_max = curve_max.reshape(shape)
+                target = torch.empty_like(nominal[key])
+                baselines = []
+                spans = []
+                overlaps = []
+                for row_offset in (0, input_count):
+                    rows = torch.arange(
+                        input_count,
+                        device=binding.state.device,
+                    ) + row_offset
+                    first_min = curve_min[rows[:, None], plus_columns]
+                    second_min = curve_min[rows[:, None], minus_columns]
+                    first_max = curve_max[rows[:, None], plus_columns]
+                    second_max = curve_max[rows[:, None], minus_columns]
+                    common_low = torch.maximum(first_min, second_min)
+                    common_high = torch.minimum(first_max, second_max)
+                    overlap = common_high >= common_low
+                    baseline = torch.where(
+                        overlap,
+                        common_low,
+                        0.5 * (common_low + common_high),
+                    )
+                    span = (common_high - common_low).clamp_min(0.0)
+                    target[rows[:, None], plus_columns] = (
+                        baseline
+                        + fraction[rows[:, None], plus_columns] * span
+                    )
+                    target[rows[:, None], minus_columns] = (
+                        baseline
+                        + fraction[rows[:, None], minus_columns] * span
+                    )
+                    baselines.append(baseline)
+                    spans.append(span)
+                    overlaps.append(overlap)
+                baseline = torch.cat(tuple(item.reshape(-1) for item in baselines))
+                span = torch.cat(tuple(item.reshape(-1) for item in spans))
+                overlap = torch.cat(tuple(item.reshape(-1) for item in overlaps))
+                targets[key] = target
+                details[key] = {
+                    "initial_target_mapping": mode,
+                    "dual_rail_layout": layout,
+                    "pair_count": int(overlap.numel()),
+                    "common_window_empty_fraction": float(
+                        (~overlap).to(torch.float64).mean().item()
+                    ),
+                    "common_window_baseline_mean_s": float(
+                        baseline.mean().item()
+                    ),
+                    "common_window_span_min_s": float(span.min().item()),
+                    "common_window_span_mean_s": float(span.mean().item()),
+                    "common_window_span_max_s": float(span.max().item()),
+                    "nominal_fraction_min": float(fraction.min().item()),
+                    "nominal_fraction_max": float(fraction.max().item()),
+                }
+            return nominal, clipped, targets, details
+
         if len(self._bindings) % 2:
             raise ValueError(
                 "Expected paired_affine_common_window to receive adjacent "
@@ -859,6 +1019,37 @@ class MeasuredTraceOptimizer:
             }
         self._initialized = True
         return self.programming_report
+
+    def preview_reset_targets(self) -> dict[str, torch.Tensor]:
+        """Project the current cohort-A targets without mutating optimizer state.
+
+        This supports calibration-only selection among explicitly declared
+        teacher mappings.  The selected candidate is still initialized later
+        through :meth:`initialize_from_reset_targets`, which records the one
+        accounted RESET-to-target write.
+        """
+
+        if self._config.cohort != "A":
+            raise RuntimeError(
+                "Expected reset-target preview only for cohort A. Provided "
+                f"value: cohort={self._config.cohort!r}."
+            )
+        if self._initialized:
+            raise RuntimeError(
+                "Expected reset-target preview before measured optimizer "
+                "initialization. Provided value: optimizer is initialized."
+            )
+        with torch.no_grad():
+            _nominal, _clipped, targets, _mapping_details = (
+                self._mapped_initial_targets()
+            )
+            return {
+                binding.key: self._project(
+                    binding.key,
+                    targets[binding.key].reshape(-1),
+                )[0].reshape(binding.state.shape)
+                for binding in self._bindings
+            }
 
     def initialize_from_reset_targets(self) -> dict[str, Any]:
         """RESET cohort-A cells, then perform one nearest-state target write.

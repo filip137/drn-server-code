@@ -367,6 +367,7 @@ def mapped_conductances(
     scale_fractions: tuple[float, float],
     conductance_min: float,
     conductance_max: float,
+    range_placement: str = "lower",
 ) -> tuple[tuple[torch.Tensor, ...], dict[str, Any]]:
     targets: list[torch.Tensor] = []
     layers = []
@@ -380,8 +381,24 @@ def mapped_conductances(
             peak = float(lifted.max().item())
             largest_scale = (conductance_max - conductance_min) / peak
             scale = fraction * largest_scale
-            layer_targets = (conductance_min + scale * lifted,)
+            if range_placement == "lower":
+                baseline = conductance_min
+            elif range_placement == "centered":
+                baseline = conductance_min + 0.5 * (
+                    conductance_max - conductance_min - scale * peak
+                )
+            else:
+                raise ValueError(
+                    "Expected range_placement to be 'lower' or 'centered'. "
+                    f"Provided value: {range_placement!r}."
+                )
+            layer_targets = (baseline + scale * lifted,)
         elif encoding == "differential":
+            if range_placement != "lower":
+                raise ValueError(
+                    "Expected differential mapping range_placement to equal "
+                    f"'lower'. Provided value: {range_placement!r}."
+                )
             lifted = signed_differential_lift(logical, target_layout=layout)
             peak = float(lifted.abs().max().item())
             largest_scale = (conductance_max - conductance_min) / peak
@@ -404,6 +421,10 @@ def mapped_conductances(
                 "scale_fraction": fraction,
                 "largest_nonclipping_scale_s": largest_scale,
                 "selected_scale_s": scale,
+                "range_placement": range_placement,
+                "selected_baseline_s": (
+                    baseline if encoding == "single" else conductance_min
+                ),
             }
         )
     return tuple(targets), {"encoding": encoding, "layers": layers}
@@ -488,33 +509,62 @@ def select_mapping_and_gain(
     teacher: BiasFreeReluTeacher,
     loader: Iterable,
     spec: StudentTrainSpec,
+    *,
+    measured_candidate_projector: MeasuredCohortAOptimizer | None = None,
 ) -> tuple[dict[str, Any], tuple[torch.Tensor, ...]]:
     teacher_weights = tuple(item.detach() for item in teacher.parameters())
     candidates = []
     selected_targets = None
     selected_key = None
-    for fractions in product(spec.mapping.scale_fractions, repeat=2):
+    fraction_pairs = (
+        spec.mapping.scale_fraction_pairs
+        if spec.mapping.scale_fraction_pairs is not None
+        else product(spec.mapping.scale_fractions, repeat=2)
+    )
+    for fractions in fraction_pairs:
         targets, mapping = mapped_conductances(
             teacher_weights,
             encoding=spec.model.encoding,
             scale_fractions=(float(fractions[0]), float(fractions[1])),
             conductance_min=spec.model.conductance_min,
             conductance_max=spec.model.conductance_max,
+            range_placement=spec.mapping.range_placement,
         )
         apply_targets(stack.bundle.catalog, targets)
         raw, teacher_logits = collect_calibration(stack, teacher, loader)
-        calibration = fit_positive_logit_gain(
+        nominal_calibration = fit_positive_logit_gain(
             raw,
             teacher_logits,
             gain_min=spec.mapping.logit_gain_min,
             gain_max=spec.mapping.logit_gain_max,
             steps=spec.mapping.logit_gain_steps,
         )
+        calibration = nominal_calibration
+        if measured_candidate_projector is not None:
+            projected = measured_candidate_projector.preview_reset_targets()
+            with torch.no_grad():
+                for binding in stack.bundle.catalog.trainable:
+                    binding.state.copy_(projected[binding.key])
+            raw, teacher_logits = collect_calibration(stack, teacher, loader)
+            calibration = fit_positive_logit_gain(
+                raw,
+                teacher_logits,
+                gain_min=spec.mapping.logit_gain_min,
+                gain_max=spec.mapping.logit_gain_max,
+                steps=spec.mapping.logit_gain_steps,
+            )
         record = {
             "scale_fractions": list(fractions),
             "mapping": mapping,
             "calibration": calibration,
         }
+        if measured_candidate_projector is not None:
+            record.update(
+                {
+                    "selection_domain": "measured_projected",
+                    "nominal_calibration": nominal_calibration,
+                }
+            )
         candidates.append(record)
         key = (calibration["calibrated_kl"], fractions)
         if selected_key is None or key < selected_key:
@@ -532,6 +582,11 @@ def select_mapping_and_gain(
     apply_targets(stack.bundle.catalog, selected_targets)
     return {
         "search_examples": spec.mapping.calibration_examples,
+        "selection_domain": (
+            "measured_projected"
+            if measured_candidate_projector is not None
+            else "nominal"
+        ),
         "candidates": candidates,
         "selected_index": selected_index,
         "selected": candidates[selected_index],

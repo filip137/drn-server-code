@@ -51,6 +51,7 @@ def _config(
     write_probability: float = 1.0,
     write_scale_relative: float = 0.0,
     write_seed: int = 0,
+    dual_rail_layout_by_parameter: dict[str, str] | None = None,
 ) -> dict:
     config = {
         "curve_preprocessing": preprocessing,
@@ -66,6 +67,10 @@ def _config(
     }
     if initial_target_mapping != "literal":
         config["initial_target_mapping"] = initial_target_mapping
+    if dual_rail_layout_by_parameter is not None:
+        config["dual_rail_layout_by_parameter"] = (
+            dual_rail_layout_by_parameter
+        )
     if explicit_deadband or deadband_relative > 0.0:
         config.update(
             {
@@ -183,6 +188,43 @@ def _differential_optimizer(path: Path, cohort: str = "A"):
         path,
     )
     return catalog, measured
+
+
+def _dual_rail_single_optimizer(path: Path):
+    weight = DenseWeight(
+        (4,),
+        (4,),
+        gain=1.0,
+        device="cpu",
+        clamp=True,
+        clamp_min=0.0,
+        clamp_max=1.1e-4,
+    )
+    binding = ParameterBinding(
+        key="base.dense_weight.0",
+        parameter=weight,
+        role="dense_weight",
+    )
+    catalog = ParameterCatalog((binding,))
+    direct = torch.optim.SGD(
+        [{"params": weight.state, "lr": 1.0}],
+        lr=1.0,
+    )
+    measured = MeasuredCohortAOptimizer(
+        direct,
+        catalog,
+        _config(
+            "raw",
+            initial_target_mapping=(
+                "dual_rail_pairwise_common_window"
+            ),
+            dual_rail_layout_by_parameter={
+                "base.dense_weight.0": "halves"
+            },
+        ),
+        path,
+    )
+    return weight, measured
 
 
 def _lora_optimizer(path: Path):
@@ -343,6 +385,77 @@ def test_paired_affine_initialization_uses_shared_reachable_baseline(
             == "paired_affine_common_window"
         )
         assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
+
+
+def test_dual_rail_pairwise_mapping_cancels_each_complementary_baseline(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "devices.hdf5"
+    _write_device_data(path)
+    weight, optimizer = _dual_rail_single_optimizer(path)
+    fractions = torch.tensor(
+        [
+            [0.75, 0.25, 0.25, 0.75],
+            [0.25, 0.75, 0.75, 0.25],
+            [0.25, 0.75, 0.75, 0.25],
+            [0.75, 0.25, 0.25, 0.75],
+        ],
+        dtype=weight.state.dtype,
+    )
+    with torch.no_grad():
+        weight.state.copy_(fractions * 1.1e-4)
+    nominal_state = weight.state.detach().clone()
+    preview = optimizer.preview_reset_targets()
+    assert optimizer.initialized is False
+    assert optimizer._pulse_indices == {}
+    torch.testing.assert_close(weight.state, nominal_state)
+
+    _nominal, _clipped, targets, details = (
+        optimizer._mapped_initial_targets()
+    )
+    target = targets["base.dense_weight.0"]
+    curve_min, curve_max = optimizer._curve_ranges(
+        "base.dense_weight.0"
+    )
+    curve_min = curve_min.reshape(weight.state.shape)
+    curve_max = curve_max.reshape(weight.state.shape)
+    plus_columns = torch.tensor([0, 1])
+    minus_columns = torch.tensor([2, 3])
+    for rows in (torch.tensor([0, 1]), torch.tensor([2, 3])):
+        low = torch.maximum(
+            curve_min[rows[:, None], plus_columns],
+            curve_min[rows[:, None], minus_columns],
+        )
+        high = torch.minimum(
+            curve_max[rows[:, None], plus_columns],
+            curve_max[rows[:, None], minus_columns],
+        )
+        span = (high - low).clamp_min(0.0)
+        expected_difference = span * (
+            fractions[rows[:, None], plus_columns]
+            - fractions[rows[:, None], minus_columns]
+        )
+        torch.testing.assert_close(
+            target[rows[:, None], plus_columns]
+            - target[rows[:, None], minus_columns],
+            expected_difference,
+        )
+
+    report = optimizer.initialize_from_reset_targets()
+    torch.testing.assert_close(
+        weight.state,
+        preview["base.dense_weight.0"],
+    )
+    initial = report["parameters"]["base.dense_weight.0"][
+        "initial_write"
+    ]
+    assert (
+        initial["initial_target_mapping"]
+        == "dual_rail_pairwise_common_window"
+    )
+    assert initial["dual_rail_layout"] == "halves"
+    assert initial["pair_count"] == 8
+    assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
 
 
 def test_cohort_b_paired_deployment_preserves_a_shared_differential_target(

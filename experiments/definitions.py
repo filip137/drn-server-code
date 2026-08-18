@@ -284,7 +284,13 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
         (
             "Teacher-mapped DRN with pure KL distillation and "
             + (
-                "one device per physical edge."
+                (
+                    "one device per physical edge; the measured cohort-A "
+                    "path includes the strict model-local dual-rail "
+                    "pairwise common-window initialization."
+                    if backend == "measured_cohort_a"
+                    else "one device per physical edge."
+                )
                 if encoding == "single"
                 else (
                     "a differential G+/G- pair per physical edge with "

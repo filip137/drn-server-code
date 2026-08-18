@@ -46,6 +46,8 @@ def test_teacher_kaiming_initialization_uses_logical_fan_in() -> None:
         "examples/mnist_relu_drn/ideal_differential_general_ab.json",
         "examples/mnist_relu_drn/measured_raw_single.json",
         "examples/mnist_relu_drn/measured_raw_differential.json",
+        "examples/mnist_relu_drn/measured_raw_single_pairwise_common_window_finetune_10ep.json",
+        "examples/mnist_relu_drn/ideal_single_centered_70_90us_finetune_10ep.json",
     ],
 )
 def test_new_examples_resolve_train_and_validate(relative: str) -> None:
@@ -134,4 +136,35 @@ def test_paired_affine_mapping_requires_differential_encoding() -> None:
     ] = "paired_affine_common_window"
 
     with pytest.raises(ConfigError, match="differential model encoding"):
+        parse_experiment_config(payload)
+
+
+def test_dual_rail_pairwise_mapping_requires_single_encoding() -> None:
+    payload = json.loads(
+        (
+            ROOT
+            / "examples/mnist_relu_drn/"
+            "measured_raw_single_pairwise_common_window_finetune_10ep.json"
+        ).read_text()
+    )
+    payload["model"]["encoding"] = "differential"
+
+    with pytest.raises(ConfigError, match="single model encoding"):
+        parse_experiment_config(payload)
+
+
+def test_dual_rail_pairwise_mapping_requires_model_local_layout_keys() -> None:
+    payload = json.loads(
+        (
+            ROOT
+            / "examples/mnist_relu_drn/"
+            "measured_raw_single_pairwise_common_window_finetune_10ep.json"
+        ).read_text()
+    )
+    layouts = payload["modes"]["train"]["update_backend"]["parameters"][
+        "dual_rail_layout_by_parameter"
+    ]
+    layouts["base.dense_weight.0"] = "paired"
+
+    with pytest.raises(ConfigError, match="model-local dual-rail layouts"):
         parse_experiment_config(payload)

@@ -174,6 +174,16 @@ def _model_checkpoint_metadata(
         "initialization": "teacher_mapped",
         "fixed_logit_gain": stack.cost.gain,
         "temperature": spec.settings.temperature,
+        "conductance_bounds_s": [
+            spec.model.conductance_min,
+            spec.model.conductance_max,
+        ],
+        "mapping_range_placement": spec.mapping.range_placement,
+        "mapping_scale_fraction_pairs": (
+            None
+            if spec.mapping.scale_fraction_pairs is None
+            else [list(pair) for pair in spec.mapping.scale_fraction_pairs]
+        ),
         "teacher_sha256": teacher_sha256,
         "mapping": mapping,
         "update_backend": spec.settings.update_backend.type,
@@ -186,6 +196,18 @@ def _model_checkpoint_metadata(
                 "initial_target_mapping": spec.settings.update_backend.parameters[
                     "initial_target_mapping"
                 ],
+                "dual_rail_layout_by_parameter": (
+                    None
+                    if spec.settings.update_backend.parameters.get(
+                        "dual_rail_layout_by_parameter"
+                    )
+                    is None
+                    else dict(
+                        spec.settings.update_backend.parameters[
+                            "dual_rail_layout_by_parameter"
+                        ]
+                    )
+                ),
                 "device_data_sha256": data_report["source_sha256"],
                 "device_assignment_sha256_by_parameter": data_report[
                     "assignment_sha256_by_parameter"
@@ -215,6 +237,50 @@ def _validate_checkpoint_metadata(
         "temperature": 1.0,
         "teacher_sha256": teacher_sha256,
     }
+    if (
+        spec.mapping.range_placement != "lower"
+        or spec.mapping.scale_fraction_pairs is not None
+    ):
+        expected.update(
+            {
+                "conductance_bounds_s": [
+                    spec.model.conductance_min,
+                    spec.model.conductance_max,
+                ],
+                "mapping_range_placement": spec.mapping.range_placement,
+                "mapping_scale_fraction_pairs": (
+                    None
+                    if spec.mapping.scale_fraction_pairs is None
+                    else [
+                        list(pair)
+                        for pair in spec.mapping.scale_fraction_pairs
+                    ]
+                ),
+            }
+        )
+    train_settings = (
+        spec.settings
+        if isinstance(spec, StudentTrainSpec)
+        else None
+    )
+    if (
+        train_settings is not None
+        and train_settings.update_backend.type == "measured_cohort_a"
+        and train_settings.update_backend.parameters["initial_target_mapping"]
+        == "dual_rail_pairwise_common_window"
+    ):
+        expected.update(
+            {
+                "initial_target_mapping": (
+                    "dual_rail_pairwise_common_window"
+                ),
+                "dual_rail_layout_by_parameter": dict(
+                    train_settings.update_backend.parameters[
+                        "dual_rail_layout_by_parameter"
+                    ]
+                ),
+            }
+        )
     mismatches = {
         name: {"expected": value, "provided": provided.get(name)}
         for name, value in expected.items()
@@ -299,6 +365,36 @@ def _validate_resume_backend_metadata(
                     "initial_target_mapping"
                 ],
                 "device_data_sha256": device_data_sha256,
+            }
+        )
+        if (
+            spec.settings.update_backend.parameters["initial_target_mapping"]
+            == "dual_rail_pairwise_common_window"
+        ):
+            expected["dual_rail_layout_by_parameter"] = dict(
+                spec.settings.update_backend.parameters[
+                    "dual_rail_layout_by_parameter"
+                ]
+            )
+    if (
+        spec.mapping.range_placement != "lower"
+        or spec.mapping.scale_fraction_pairs is not None
+    ):
+        expected.update(
+            {
+                "conductance_bounds_s": [
+                    spec.model.conductance_min,
+                    spec.model.conductance_max,
+                ],
+                "mapping_range_placement": spec.mapping.range_placement,
+                "mapping_scale_fraction_pairs": (
+                    None
+                    if spec.mapping.scale_fraction_pairs is None
+                    else [
+                        list(pair)
+                        for pair in spec.mapping.scale_fraction_pairs
+                    ]
+                ),
             }
         )
     mismatches = {
@@ -815,22 +911,48 @@ def run_train(request: "TrainRequest") -> int:
                 stack = replace(stack, optimizer=optimizer)
                 programming_report = optimizer.initialize_from_reset_targets()
         else:
-            mapping_report, _targets = select_mapping_and_gain(
-                stack,
-                teacher,
-                data.calibration,
-                spec,
-            )
-            stack.cost.gain = float(mapping_report["selected"]["calibration"]["gain"])
-            if measured:
-                optimizer = MeasuredCohortAOptimizer(
+            measured_candidate_projector = None
+            if (
+                measured
+                and spec.settings.update_backend.parameters[
+                    "initial_target_mapping"
+                ]
+                == "dual_rail_pairwise_common_window"
+            ):
+                measured_candidate_projector = MeasuredCohortAOptimizer(
                     stack.optimizer,
                     stack.bundle.catalog,
                     spec.settings.update_backend.parameters,
                     request.device_data,
                 )
-                stack = replace(stack, optimizer=optimizer)
-                programming_report = optimizer.initialize_from_reset_targets()
+                stack = replace(
+                    stack,
+                    optimizer=measured_candidate_projector,
+                )
+            mapping_report, _targets = select_mapping_and_gain(
+                stack,
+                teacher,
+                data.calibration,
+                spec,
+                measured_candidate_projector=(
+                    measured_candidate_projector
+                ),
+            )
+            stack.cost.gain = float(mapping_report["selected"]["calibration"]["gain"])
+            if measured:
+                if measured_candidate_projector is None:
+                    optimizer = MeasuredCohortAOptimizer(
+                        stack.optimizer,
+                        stack.bundle.catalog,
+                        spec.settings.update_backend.parameters,
+                        request.device_data,
+                    )
+                    stack = replace(stack, optimizer=optimizer)
+                else:
+                    optimizer = measured_candidate_projector
+                programming_report = (
+                    optimizer.initialize_from_reset_targets()
+                )
                 raw_scores, teacher_logits = collect_calibration(
                     stack,
                     teacher,

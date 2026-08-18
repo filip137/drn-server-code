@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -11,6 +12,7 @@ from experiments.mnist_relu_drn.components import (
     TeacherKLDivergence,
     build_student_stack,
     fit_positive_logit_gain,
+    mapped_conductances,
     signed_differential_lift,
     signed_dual_rail_lift,
 )
@@ -45,6 +47,32 @@ def test_differential_lift_has_expected_effective_signed_matrix() -> None:
         torch.testing.assert_close(positive - negative, effective)
         assert bool((positive >= 0.0).all())
         assert bool((negative >= 0.0).all())
+
+
+def test_centered_single_mapping_uses_symmetric_range_margin() -> None:
+    teacher = (
+        torch.tensor([[1.0, -0.5], [-0.25, 0.75]]),
+        torch.tensor([[1.0, -0.5], [-0.25, 0.75]]),
+    )
+    targets, report = mapped_conductances(
+        teacher,
+        encoding="single",
+        scale_fractions=(0.5, 0.25),
+        conductance_min=70.0e-6,
+        conductance_max=90.0e-6,
+        range_placement="centered",
+    )
+
+    assert float(targets[0].min()) == pytest.approx(75.0e-6)
+    assert float(targets[0].max()) == pytest.approx(85.0e-6)
+    assert float(targets[1].min()) == pytest.approx(77.5e-6)
+    assert float(targets[1].max()) == pytest.approx(82.5e-6)
+    assert report["layers"][0]["selected_baseline_s"] == pytest.approx(
+        75.0e-6
+    )
+    assert report["layers"][1]["selected_baseline_s"] == pytest.approx(
+        77.5e-6
+    )
 
 
 def test_kl_matches_pytorch_teacher_to_student_direction() -> None:

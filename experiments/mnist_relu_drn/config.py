@@ -41,6 +41,9 @@ _MEASURED_KEYS = {
     "probabilistic_write_scale_relative",
     "probabilistic_write_seed",
 }
+_MEASURED_OPTIONAL_KEYS = {
+    "dual_rail_layout_by_parameter",
+}
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,8 @@ class SolverSettings:
 @dataclass(frozen=True)
 class MappingSettings:
     scale_fractions: tuple[float, ...]
+    scale_fraction_pairs: tuple[tuple[float, float], ...] | None
+    range_placement: str
     calibration_examples: int
     calibration_batch_size: int
     logit_gain_min: float
@@ -240,19 +245,75 @@ def _parse_solver(value: Any) -> SolverSettings:
 def _parse_mapping(value: Any) -> MappingSettings:
     path = "config.mapping"
     raw = _object(value, path)
-    _keys(raw, path, {"scale_fractions", "calibration_examples", "calibration_batch_size", "logit_gain_min", "logit_gain_max", "logit_gain_steps"})
+    _keys(
+        raw,
+        path,
+        {
+            "scale_fractions",
+            "calibration_examples",
+            "calibration_batch_size",
+            "logit_gain_min",
+            "logit_gain_max",
+            "logit_gain_steps",
+        },
+        {"scale_fraction_pairs", "range_placement"},
+    )
     fractions = raw["scale_fractions"]
     if not isinstance(fractions, (list, tuple)) or not fractions:
         raise config_error(f"{path}.scale_fractions", "to be a non-empty list of values in (0, 1]", fractions)
     parsed = tuple(_number(item, f"{path}.scale_fractions[{index}]") for index, item in enumerate(fractions))
     if any(item <= 0.0 or item > 1.0 for item in parsed) or len(set(parsed)) != len(parsed):
         raise config_error(f"{path}.scale_fractions", "to contain unique values in (0, 1]", fractions)
+    raw_pairs = raw.get("scale_fraction_pairs")
+    parsed_pairs = None
+    if raw_pairs is not None:
+        if not isinstance(raw_pairs, (list, tuple)) or not raw_pairs:
+            raise config_error(
+                f"{path}.scale_fraction_pairs",
+                "to be null or a non-empty list of unique two-value lists in (0, 1]",
+                raw_pairs,
+            )
+        candidate_pairs = []
+        for index, pair in enumerate(raw_pairs):
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise config_error(
+                    f"{path}.scale_fraction_pairs[{index}]",
+                    "to contain exactly two values in (0, 1]",
+                    pair,
+                )
+            candidate = tuple(
+                _number(item, f"{path}.scale_fraction_pairs[{index}][{offset}]")
+                for offset, item in enumerate(pair)
+            )
+            if any(item <= 0.0 or item > 1.0 for item in candidate):
+                raise config_error(
+                    f"{path}.scale_fraction_pairs[{index}]",
+                    "to contain exactly two values in (0, 1]",
+                    pair,
+                )
+            candidate_pairs.append((candidate[0], candidate[1]))
+        if len(set(candidate_pairs)) != len(candidate_pairs):
+            raise config_error(
+                f"{path}.scale_fraction_pairs",
+                "to contain unique two-value lists",
+                raw_pairs,
+            )
+        parsed_pairs = tuple(candidate_pairs)
+    range_placement = raw.get("range_placement", "lower")
+    if range_placement not in {"lower", "centered"}:
+        raise config_error(
+            f"{path}.range_placement",
+            "to be 'lower' or 'centered'",
+            range_placement,
+        )
     gain_min = _number(raw["logit_gain_min"], f"{path}.logit_gain_min")
     gain_max = _number(raw["logit_gain_max"], f"{path}.logit_gain_max")
     if gain_min <= 0.0 or gain_min >= gain_max:
         raise config_error(path, "to have 0 < logit_gain_min < logit_gain_max", dict(raw))
     return MappingSettings(
         scale_fractions=parsed,
+        scale_fraction_pairs=parsed_pairs,
+        range_placement=range_placement,
         calibration_examples=_integer(raw["calibration_examples"], f"{path}.calibration_examples", minimum=1),
         calibration_batch_size=_integer(raw["calibration_batch_size"], f"{path}.calibration_batch_size", minimum=1),
         logit_gain_min=gain_min,
@@ -268,18 +329,20 @@ def _parse_measured(
     backend_type: str,
 ) -> Mapping[str, Any]:
     raw = _object(value, path)
-    _keys(raw, path, _MEASURED_KEYS)
+    _keys(raw, path, _MEASURED_KEYS, _MEASURED_OPTIONAL_KEYS)
     if raw["curve_preprocessing"] not in {"raw", "isotonic_nonincreasing"}:
         raise config_error(f"{path}.curve_preprocessing", "to be 'raw' or 'isotonic_nonincreasing'", raw["curve_preprocessing"])
     if raw["initial_target_mapping"] not in {
         "literal",
         "per_device_affine",
         "paired_affine_common_window",
+        "dual_rail_pairwise_common_window",
     }:
         raise config_error(
             f"{path}.initial_target_mapping",
-            "to be 'literal', 'per_device_affine', or "
-            "'paired_affine_common_window'",
+            "to be 'literal', 'per_device_affine', "
+            "'paired_affine_common_window', or "
+            "'dual_rail_pairwise_common_window'",
             raw["initial_target_mapping"],
         )
     expected_cohort = {
@@ -288,12 +351,41 @@ def _parse_measured(
     }[backend_type]
     if (
         expected_cohort == "B"
-        and raw["initial_target_mapping"] == "per_device_affine"
+        and raw["initial_target_mapping"]
+        in {"per_device_affine", "dual_rail_pairwise_common_window"}
     ):
         raise config_error(
             f"{path}.initial_target_mapping",
             "to be 'literal' or 'paired_affine_common_window' for cohort B",
             raw["initial_target_mapping"],
+        )
+    layouts = raw.get("dual_rail_layout_by_parameter")
+    if raw["initial_target_mapping"] == "dual_rail_pairwise_common_window":
+        if not isinstance(layouts, Mapping) or not layouts:
+            raise config_error(
+                f"{path}.dual_rail_layout_by_parameter",
+                "to map stable single-conductance parameter keys to "
+                "'halves' or 'paired' for dual-rail common-window mapping",
+                layouts,
+            )
+        invalid = {
+            key: layout
+            for key, layout in layouts.items()
+            if not isinstance(key, str)
+            or layout not in {"halves", "paired"}
+        }
+        if invalid:
+            raise config_error(
+                f"{path}.dual_rail_layout_by_parameter",
+                "to map stable parameter keys to 'halves' or 'paired'",
+                layouts,
+            )
+    elif layouts is not None:
+        raise config_error(
+            f"{path}.dual_rail_layout_by_parameter",
+            "to be omitted or null unless initial_target_mapping is "
+            "'dual_rail_pairwise_common_window'",
+            layouts,
         )
     exact = {
         "cohort": expected_cohort,
@@ -316,7 +408,9 @@ def _parse_measured(
     _integer(raw["expected_trace_length"], f"{path}.expected_trace_length", minimum=2)
     if _number(raw["formed_resistance_max_ohm"], f"{path}.formed_resistance_max_ohm") <= 0.0:
         raise config_error(f"{path}.formed_resistance_max_ohm", "to be positive", raw["formed_resistance_max_ohm"])
-    return freeze_json(raw, path=path)
+    normalized = dict(raw)
+    normalized.setdefault("dual_rail_layout_by_parameter", None)
+    return freeze_json(normalized, path=path)
 
 
 def _parse_train(value: Any) -> StudentTrainSettings:
@@ -404,6 +498,48 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
             "'paired_affine_common_window'",
             train.update_backend.parameters["initial_target_mapping"],
         )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type
+        in {"measured_cohort_a", "measured_cohort_b"}
+        and train.update_backend.parameters["initial_target_mapping"]
+        == "dual_rail_pairwise_common_window"
+        and model.encoding != "single"
+    ):
+        raise config_error(
+            "config.modes.train.update_backend.parameters.initial_target_mapping",
+            "to select single model encoding when using "
+            "'dual_rail_pairwise_common_window'",
+            train.update_backend.parameters["initial_target_mapping"],
+        )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type == "measured_cohort_a"
+        and train.update_backend.parameters["initial_target_mapping"]
+        == "dual_rail_pairwise_common_window"
+    ):
+        layouts = train.update_backend.parameters[
+            "dual_rail_layout_by_parameter"
+        ]
+        expected_layouts = {
+            "base.dense_weight.0": "halves",
+            "base.dense_weight.1": "paired",
+        }
+        if dict(layouts) != expected_layouts:
+            raise config_error(
+                "config.modes.train.update_backend.parameters."
+                "dual_rail_layout_by_parameter",
+                "to equal the model-local dual-rail layouts "
+                f"{expected_layouts!r}",
+                dict(layouts),
+            )
+    mapping = _parse_mapping(raw["mapping"])
+    if mapping.range_placement == "centered" and model.encoding != "single":
+        raise config_error(
+            "config.mapping.range_placement",
+            "to select single model encoding when using 'centered'",
+            mapping.range_placement,
+        )
     return StudentConfig(
         schema_version=1,
         experiment_id=EXPERIMENT_ID,
@@ -411,7 +547,7 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         data=_parse_data(raw["data"]),
         model=model,
         solver=_parse_solver(raw["solver"]),
-        mapping=_parse_mapping(raw["mapping"]),
+        mapping=mapping,
         modes=MappingProxyType(modes),
     )
 
