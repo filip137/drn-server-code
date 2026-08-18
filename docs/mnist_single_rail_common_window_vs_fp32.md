@@ -50,4 +50,34 @@ This is an exploratory, single-seed screen rather than paper-facing evidence.
 
 ## Result
 
-Pending execution.
+All four stages completed from clean commit `7e144ace8b573149057bf55d9e3fc63eda20b623`.
+An immediate `--resume` replay reused the completed stages after validating
+their fingerprints and artifact hashes.
+
+| Arm | Selected layer scales | Initial validation | Epoch-10 validation | Selected checkpoint | Fresh test |
+| --- | --- | ---: | ---: | --- | ---: |
+| Measured cohort-A common window | `(1.0, 0.5)` | 34.20% | 96.20% | epoch 10 | 96.96% |
+| Bounded FP32, 70--90 uS | `(1.0, 1.0)` | 97.26% | 97.44% | initialization | 97.37% |
+
+Selection used validation teacher KL, not accuracy.  The measured arm's
+selected epoch-10 checkpoint has validation KL 0.050072 and fresh-test KL
+0.041213.  The FP32 initialization exactly preserves the teacher closely
+enough that none of its trained checkpoints improves on its initial
+validation KL of 7.804e-6; its selected fresh-test KL is 8.180e-6.  The FP32
+epoch-10 validation accuracy is reported as an endpoint diagnostic, while its
+fresh test uses the protocol-selected initialization checkpoint.
+
+The measured initialization used mean common-window baselines of 70.799 and
+71.209 uS and mean spans of 18.323 and 17.934 uS for the two layers.  Empty
+pairwise overlaps affected 1.367% and 1.200% of pairs.  Despite small
+per-device nearest-state projection errors (0.245 and 0.148 uS RMS), the
+independently projected complementary rails accumulated enough mismatch to
+reduce initial validation accuracy to 34.20%.
+
+Ten epochs of measured on-chip-style updates recovered 62.00 validation
+percentage points and 97.16% of the initial teacher-KL gap.  Its selected
+fresh-test accuracy is only 0.41 percentage points below the bounded FP32
+control.  Thus the narrow conductance range itself is not the limiting factor:
+device-specific projection mismatch damages the initial function, while
+analog adaptation recovers nearly all of the classification-accuracy loss in
+this single-seed screen.
