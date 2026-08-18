@@ -190,7 +190,7 @@ def _differential_optimizer(path: Path, cohort: str = "A"):
     return catalog, measured
 
 
-def _dual_rail_single_optimizer(path: Path):
+def _dual_rail_single_optimizer(path: Path, *, layout: str):
     weight = DenseWeight(
         (4,),
         (4,),
@@ -219,7 +219,7 @@ def _dual_rail_single_optimizer(path: Path):
                 "dual_rail_pairwise_common_window"
             ),
             dual_rail_layout_by_parameter={
-                "base.dense_weight.0": "halves"
+                "base.dense_weight.0": layout
             },
         ),
         path,
@@ -387,12 +387,14 @@ def test_paired_affine_initialization_uses_shared_reachable_baseline(
         assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
 
 
+@pytest.mark.parametrize("layout", ["halves", "paired"])
 def test_dual_rail_pairwise_mapping_cancels_each_complementary_baseline(
     tmp_path: Path,
+    layout: str,
 ) -> None:
     path = tmp_path / "devices.hdf5"
     _write_device_data(path)
-    weight, optimizer = _dual_rail_single_optimizer(path)
+    weight, optimizer = _dual_rail_single_optimizer(path, layout=layout)
     fractions = torch.tensor(
         [
             [0.75, 0.25, 0.25, 0.75],
@@ -419,8 +421,12 @@ def test_dual_rail_pairwise_mapping_cancels_each_complementary_baseline(
     )
     curve_min = curve_min.reshape(weight.state.shape)
     curve_max = curve_max.reshape(weight.state.shape)
-    plus_columns = torch.tensor([0, 1])
-    minus_columns = torch.tensor([2, 3])
+    if layout == "halves":
+        plus_columns = torch.tensor([0, 1])
+        minus_columns = torch.tensor([2, 3])
+    else:
+        plus_columns = torch.tensor([0, 2])
+        minus_columns = torch.tensor([1, 3])
     for rows in (torch.tensor([0, 1]), torch.tensor([2, 3])):
         low = torch.maximum(
             curve_min[rows[:, None], plus_columns],
@@ -453,7 +459,7 @@ def test_dual_rail_pairwise_mapping_cancels_each_complementary_baseline(
         initial["initial_target_mapping"]
         == "dual_rail_pairwise_common_window"
     )
-    assert initial["dual_rail_layout"] == "halves"
+    assert initial["dual_rail_layout"] == layout
     assert initial["pair_count"] == 8
     assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
 

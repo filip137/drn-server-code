@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 import json
 from pathlib import Path
 
+import pytest
+
 from campaigns.schema import load_campaign_manifest
 from experiments.definitions import parse_experiment_config
 from experiments.mnist_relu_drn.components import build_student_stack
-from experiments.mnist_relu_drn.runtime import _model_checkpoint_metadata
+from experiments.mnist_relu_drn.runtime import (
+    _model_checkpoint_metadata,
+    _validate_checkpoint_metadata,
+)
 from experiments.schema import RunMode
 from training.measured_trace import MeasuredTraceOptimizer
 
@@ -116,3 +122,27 @@ def test_checkpoint_metadata_serializes_frozen_layout_mapping(
         "base.dense_weight.1": "paired",
     }
     json.dumps(metadata)
+
+    validation_arguments = {
+        "spec": spec,
+        "teacher_sha256": "teacher-sha",
+        "expected_amplification_indices": metadata[
+            "amplification_indices"
+        ],
+    }
+    _validate_checkpoint_metadata(metadata, **validation_arguments)
+    mutations = {
+        "conductance_bounds_s": [0.0, 1.0e-4],
+        "mapping_range_placement": "lower",
+        "mapping_scale_fraction_pairs": [[1.0, 1.0]],
+        "initial_target_mapping": "per_device_affine",
+        "dual_rail_layout_by_parameter": {
+            "base.dense_weight.0": "paired",
+            "base.dense_weight.1": "halves",
+        },
+    }
+    for key, value in mutations.items():
+        mutated = deepcopy(metadata)
+        mutated[key] = value
+        with pytest.raises(ValueError, match=key):
+            _validate_checkpoint_metadata(mutated, **validation_arguments)
