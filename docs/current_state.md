@@ -196,6 +196,18 @@ and fine-tuning updates must remain separately measurable.
   matter, and eight when initialization-only feed-forward fidelity matters.
   See the [four-versus-eight report](dual_rail_input_four_vs_eight_devices.md).
 
+- **Four-device held-out cohort-B follow-up:** Re-encoding the selected
+  four-device checkpoint with one common cohort-B window per four-cell block
+  reduced fresh-test accuracy from `97.46%` to `35.79%`. Ten matched off-chip
+  epochs recovered it to `97.31%` (`97.61%` teacher agreement, `0.0557048`
+  KL), only `0.15` accuracy points below its cohort-A source. The window
+  widths themselves were comparable across cohorts; the immediate failure
+  coincided with `6.16x/7.32x` signed-drive contraction and roughly `9%`
+  higher four-cell load. Relative to the eight-device common-window arm, four
+  devices were `7.17` points lower immediately and `0.50` points lower after
+  adaptation, while using half the conductances. See the
+  [cohort-B report](mnist_four_device_cohort_b_adaptation.md).
+
 ### RESET-trained single-device teacher-matching result
 
 - **Training without teacher-weight programming:** we trained the original

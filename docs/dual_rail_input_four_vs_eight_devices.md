@@ -173,6 +173,36 @@ the eight-device classification benefit with four conductances per teacher
 weight. The eight-device realization remains better if initialization-only
 fidelity or close teacher-logit matching is the goal.
 
+## Held-out cohort-B follow-up
+
+The matched four-device cohort-B campaign is now complete. Each selected
+cohort-A checkpoint was re-encoded on the same held-out cohort using its
+scheme's common-window rule, evaluated immediately, fine-tuned for ten
+off-chip epochs, and evaluated again in a fresh process.
+
+| Arm | Cohort-B stage | Test accuracy | Teacher agreement | Test KL |
+| --- | --- | ---: | ---: | ---: |
+| Four-device quad window | immediate deployment | 35.79% | 35.72% | 1.761729 |
+| Four-device quad window | after 10 epochs | **97.31%** | 97.61% | 0.0557048 |
+| Eight-device paired window | immediate deployment | 42.96% | 43.32% | 2.03767 |
+| Eight-device paired window | after 10 epochs | **97.81%** | 98.12% | 0.03156 |
+
+The four-device arm recovers `61.52` accuracy points and reduces test KL by
+`96.84%`, ending `0.15` points below its own cohort-A source. It is `7.17` points
+below eight devices immediately and `0.50` points below after adaptation.
+The result closes the earlier experimental gap: neither scheme is portable
+without adaptation, both remain expressive on cohort B, and the eight-device
+common-window scheme is more robust at immediate deployment and closer to
+the teacher logits after adaptation.
+
+The cohort-B four-cell windows are not systematically worse than the
+cohort-A windows. Instead, reassignment contracts layerwise effective signed-
+drive RMS by factors of `6.16` and `7.32` and raises mean four-cell load by
+about `9%`. Differential initialization cancels the nominal common baseline,
+but independent trace projection still changes both the signed numerators and
+passive denominators. Full protocol, diagnostics, and hashes are in the
+[four-device cohort-B report](mnist_four_device_cohort_b_adaptation.md).
+
 Raw campaign output is under
 `results/mnist-dual-rail-four-vs-eight-common-window-10ep-20260819-v1/` in
 the operational `tiki-taka-lora-integration` worktree. The selected four- and

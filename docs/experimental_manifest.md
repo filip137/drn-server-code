@@ -639,6 +639,58 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [four-versus-eight report](dual_rail_input_four_vs_eight_devices.md)
 
+### mnist-four-device-reram-cohort-b-quad-common-window-10ep
+
+**Four-device common-window deployment and adaptation on held-out cohort B**
+
+- **Finished:** 2026-08-19
+- **Outcome:** completed; immediate cross-cohort transfer failed, but ten
+  matched off-chip epochs recovered `99.76%` of the lost classification
+  accuracy while retaining four conductances per teacher weight
+- **Question:** Can the selected cohort-A four-device checkpoint be
+  re-encoded on held-out cohort-B devices using one common reachable window
+  per four-cell block, and can device-constrained fine-tuning recover any
+  transfer loss?
+- **Setup:** The source was the selected four-device checkpoint from the
+  preceding comparison. Cohort B used the same teacher, split and assignment
+  seeds, the `halves`/`paired` model-local layouts, raw measured curves,
+  global-nearest projection, inherited learning rates `[2.1e-10, 5.7e-13]`,
+  pure teacher KL, and ten epochs. A zero-learning-rate control isolated the
+  immediate deployment state. There was no cohort-B learning-rate search.
+- **Headline result:** Fresh-test accuracy/agreement/KL changed from
+  `97.46%`/`98.68%`/`0.0183103` on cohort A to
+  `35.79%`/`35.72%`/`1.761729` immediately on cohort B. The selected tenth
+  cohort-B epoch reached `97.31%`/`97.61%`/`0.0557048`. Fine-tuning therefore
+  gained `61.52` accuracy points and reduced KL by `96.84%`, finishing only
+  `0.15` accuracy points below the source.
+- **Four-versus-eight comparison:** The earlier eight-device paired-common-
+  window arm reached `42.96%` immediately and `97.81%` after adaptation.
+  Four devices were `7.17` points lower before adaptation and `0.50` points
+  lower afterward, while using half the conductances. Its final KL was
+  `76.50%` higher (`0.0557048` versus `0.03156`).
+- **Mechanism:** Cohort-A and cohort-B four-cell windows have similar spans
+  and empty-window rates. Re-encoding nevertheless contracts layerwise
+  effective signed-drive RMS from `3.401/4.023 uS` to `0.552/0.550 uS`
+  (`6.16x/7.32x`) and raises mean four-cell load by `9.48%/8.84%`. The failure
+  is therefore device-specific signed rescaling plus changed passive loading,
+  not simply an unusually narrow cohort-B window. Adaptation finds a new
+  cohort-B-specific solution rather than restoring the source matrix.
+- **Interpretation:** Differential initialization cancels a nominal common
+  baseline but does not preserve symmetry, signed scale, or circuit
+  denominators after independent measured-state projection. The four-device
+  scheme is expressive after adaptation; the eight-device scheme remains
+  better for immediate transfer and final logit fidelity in this single-seed
+  comparison.
+- **Integrity:** All four stages exited zero from clean implementation commit
+  `8325b2a2d503a0b1afe49ecb052bf2bfe3fd863a`, with exactly ten epoch records,
+  finite metrics, a fresh 10,000-example test for both endpoints, and only
+  `attempt-001` directories. A clean `--resume` audit validated fingerprints
+  and result hashes and reused every stage.
+- **Raw artifacts:**
+  `results/mnist-four-device-reram-cohort-b-quad-common-window-10ep-20260819-v1/`
+- **Tracked detail:**
+  [four-device cohort-B report](mnist_four_device_cohort_b_adaptation.md)
+
 ## Shared validity notes
 
 - These studies are exploratory rather than final paper-facing evidence.
