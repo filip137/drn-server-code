@@ -159,17 +159,24 @@ class MeasuredTraceConfig:
             "per_device_affine",
             "paired_affine_common_window",
             "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
         }:
             raise ValueError(
                 "Expected initial_target_mapping to be 'literal', "
                 "'per_device_affine', 'paired_affine_common_window', or "
-                "'dual_rail_pairwise_common_window'. "
+                "a dual-rail common-window mapping "
+                "('dual_rail_pairwise_common_window' or "
+                "'dual_rail_quad_common_window'). "
                 f"Provided value: {config.initial_target_mapping!r}."
             )
         if (
             config.cohort == "B"
             and config.initial_target_mapping
-            in {"per_device_affine", "dual_rail_pairwise_common_window"}
+            in {
+                "per_device_affine",
+                "dual_rail_pairwise_common_window",
+                "dual_rail_quad_common_window",
+            }
         ):
             raise ValueError(
                 "Expected cohort-B initial_target_mapping to be 'literal' "
@@ -177,7 +184,10 @@ class MeasuredTraceConfig:
                 f"{config.initial_target_mapping!r}."
             )
         layouts = config.dual_rail_layout_by_parameter
-        if config.initial_target_mapping == "dual_rail_pairwise_common_window":
+        if config.initial_target_mapping in {
+            "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
+        }:
             if (
                 not layouts
                 or len({key for key, _layout in layouts}) != len(layouts)
@@ -190,15 +200,15 @@ class MeasuredTraceConfig:
                 raise ValueError(
                     "Expected dual_rail_layout_by_parameter to map unique "
                     "stable parameter keys to 'halves' or 'paired' when "
-                    "initial_target_mapping is "
-                    "'dual_rail_pairwise_common_window'. Provided value: "
+                    "initial_target_mapping is a dual-rail common-window "
+                    "mapping. Provided value: "
                     f"{layouts!r}."
                 )
         elif layouts is not None:
             raise ValueError(
                 "Expected dual_rail_layout_by_parameter to be null unless "
-                "initial_target_mapping is "
-                "'dual_rail_pairwise_common_window'. Provided value: "
+                "initial_target_mapping is a dual-rail common-window "
+                "mapping. Provided value: "
                 f"{layouts!r}."
             )
         if config.programming_deadband_mode not in {
@@ -541,10 +551,10 @@ class MeasuredTraceOptimizer:
                 "Expected a measured-cohort backend to target at least one trainable "
                 "DenseWeight. Provided value: none."
             )
-        if (
-            self._config.initial_target_mapping
-            == "dual_rail_pairwise_common_window"
-        ):
+        if self._config.initial_target_mapping in {
+            "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
+        }:
             expected_layout_keys = {binding.key for binding in self._bindings}
             provided_layout_keys = {
                 key
@@ -890,6 +900,105 @@ class MeasuredTraceOptimizer:
                     "initial_target_mapping": mode,
                     "dual_rail_layout": layout,
                     "pair_count": int(overlap.numel()),
+                    "common_window_empty_fraction": float(
+                        (~overlap).to(torch.float64).mean().item()
+                    ),
+                    "common_window_baseline_mean_s": float(
+                        baseline.mean().item()
+                    ),
+                    "common_window_span_min_s": float(span.min().item()),
+                    "common_window_span_mean_s": float(span.mean().item()),
+                    "common_window_span_max_s": float(span.max().item()),
+                    "nominal_fraction_min": float(fraction.min().item()),
+                    "nominal_fraction_max": float(fraction.max().item()),
+                }
+            return nominal, clipped, targets, details
+
+        if mode == "dual_rail_quad_common_window":
+            layouts = dict(self._config.dual_rail_layout_by_parameter or ())
+            for binding in self._bindings:
+                key = binding.key
+                shape = tuple(binding.state.shape)
+                if (
+                    len(shape) != 2
+                    or shape[0] % 2
+                    or shape[1] % 2
+                ):
+                    raise ValueError(
+                        "Expected dual-rail quad common-window bindings to "
+                        "be even-by-even rank-2 tensors. Provided value: "
+                        f"key={key!r}, shape={shape!r}."
+                    )
+                layout = layouts[key]
+                input_count = shape[0] // 2
+                output_count = shape[1] // 2
+                plus_rows = torch.arange(
+                    input_count,
+                    device=binding.state.device,
+                )
+                minus_rows = plus_rows + input_count
+                if layout == "halves":
+                    plus_columns = torch.arange(
+                        output_count,
+                        device=binding.state.device,
+                    )
+                    minus_columns = plus_columns + output_count
+                else:
+                    plus_columns = torch.arange(
+                        output_count,
+                        device=binding.state.device,
+                    ) * 2
+                    minus_columns = plus_columns + 1
+
+                lower = float(binding.parameter.min_cond)
+                upper = float(binding.parameter.max_cond)
+                fraction = nominal[key].sub(lower).div(upper - lower)
+                curve_min, curve_max = self._curve_ranges(key)
+                curve_min = curve_min.reshape(shape)
+                curve_max = curve_max.reshape(shape)
+                # One logical synapse occupies the Cartesian product of its
+                # two source rails and two destination rails.  Sharing all
+                # four cells' window prevents a source-row-dependent
+                # baseline from reappearing as signed forward drive.
+                row_groups = (plus_rows, minus_rows)
+                column_groups = (plus_columns, minus_columns)
+                group_minimum = torch.stack(
+                    tuple(
+                        curve_min[rows[:, None], columns]
+                        for rows in row_groups
+                        for columns in column_groups
+                    )
+                )
+                group_maximum = torch.stack(
+                    tuple(
+                        curve_max[rows[:, None], columns]
+                        for rows in row_groups
+                        for columns in column_groups
+                    )
+                )
+                common_low = group_minimum.amax(dim=0)
+                common_high = group_maximum.amin(dim=0)
+                overlap = common_high >= common_low
+                baseline = torch.where(
+                    overlap,
+                    common_low,
+                    0.5 * (common_low + common_high),
+                )
+                span = (common_high - common_low).clamp_min(0.0)
+                target = torch.empty_like(nominal[key])
+                for rows in row_groups:
+                    for columns in column_groups:
+                        target[rows[:, None], columns] = (
+                            baseline
+                            + fraction[rows[:, None], columns] * span
+                        )
+                targets[key] = target
+                details[key] = {
+                    "initial_target_mapping": mode,
+                    "dual_rail_layout": layout,
+                    "group_size": 4,
+                    "quad_count": int(overlap.numel()),
+                    "logical_synapse_count": int(overlap.numel()),
                     "common_window_empty_fraction": float(
                         (~overlap).to(torch.float64).mean().item()
                     ),

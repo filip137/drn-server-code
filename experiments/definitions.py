@@ -286,8 +286,8 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
             + (
                 (
                     "one device per physical edge; the measured cohort-A "
-                    "path includes the strict model-local dual-rail "
-                    "pairwise common-window initialization."
+                    "path includes strict model-local dual-rail pairwise "
+                    "and four-cell-block common-window initializations."
                     if backend == "measured_cohort_a"
                     else "one device per physical edge."
                 )

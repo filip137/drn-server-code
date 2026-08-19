@@ -190,7 +190,12 @@ def _differential_optimizer(path: Path, cohort: str = "A"):
     return catalog, measured
 
 
-def _dual_rail_single_optimizer(path: Path, *, layout: str):
+def _dual_rail_single_optimizer(
+    path: Path,
+    *,
+    layout: str,
+    initial_target_mapping: str = "dual_rail_pairwise_common_window",
+):
     weight = DenseWeight(
         (4,),
         (4,),
@@ -215,9 +220,7 @@ def _dual_rail_single_optimizer(path: Path, *, layout: str):
         catalog,
         _config(
             "raw",
-            initial_target_mapping=(
-                "dual_rail_pairwise_common_window"
-            ),
+            initial_target_mapping=initial_target_mapping,
             dual_rail_layout_by_parameter={
                 "base.dense_weight.0": layout
             },
@@ -461,6 +464,104 @@ def test_dual_rail_pairwise_mapping_cancels_each_complementary_baseline(
     )
     assert initial["dual_rail_layout"] == layout
     assert initial["pair_count"] == 8
+    assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
+
+
+@pytest.mark.parametrize("layout", ["halves", "paired"])
+def test_dual_rail_quad_mapping_uses_one_window_for_each_four_cell_block(
+    tmp_path: Path,
+    layout: str,
+) -> None:
+    path = tmp_path / "devices.hdf5"
+    _write_device_data(path)
+    weight, optimizer = _dual_rail_single_optimizer(
+        path,
+        layout=layout,
+        initial_target_mapping="dual_rail_quad_common_window",
+    )
+    fractions = torch.tensor(
+        [
+            [0.75, 0.25, 0.25, 0.75],
+            [0.25, 0.75, 0.75, 0.25],
+            [0.25, 0.75, 0.75, 0.25],
+            [0.75, 0.25, 0.25, 0.75],
+        ],
+        dtype=weight.state.dtype,
+    )
+    with torch.no_grad():
+        weight.state.copy_(fractions * 1.1e-4)
+
+    preview = optimizer.preview_reset_targets()
+    _nominal, _clipped, targets, details = (
+        optimizer._mapped_initial_targets()
+    )
+    key = "base.dense_weight.0"
+    target = targets[key]
+    curve_min, curve_max = optimizer._curve_ranges(key)
+    curve_min = curve_min.reshape(weight.state.shape)
+    curve_max = curve_max.reshape(weight.state.shape)
+    plus_rows = torch.tensor([0, 1])
+    minus_rows = torch.tensor([2, 3])
+    if layout == "halves":
+        plus_columns = torch.tensor([0, 1])
+        minus_columns = torch.tensor([2, 3])
+    else:
+        plus_columns = torch.tensor([0, 2])
+        minus_columns = torch.tensor([1, 3])
+
+    group_minimum = torch.stack(
+        tuple(
+            curve_min[rows[:, None], columns]
+            for rows in (plus_rows, minus_rows)
+            for columns in (plus_columns, minus_columns)
+        )
+    )
+    group_maximum = torch.stack(
+        tuple(
+            curve_max[rows[:, None], columns]
+            for rows in (plus_rows, minus_rows)
+            for columns in (plus_columns, minus_columns)
+        )
+    )
+    common_low = group_minimum.amax(dim=0)
+    common_high = group_maximum.amin(dim=0)
+    overlap = common_high >= common_low
+    baseline = torch.where(
+        overlap,
+        common_low,
+        0.5 * (common_low + common_high),
+    )
+    span = (common_high - common_low).clamp_min(0.0)
+    for rows in (plus_rows, minus_rows):
+        for columns in (plus_columns, minus_columns):
+            torch.testing.assert_close(
+                target[rows[:, None], columns],
+                baseline
+                + fractions[rows[:, None], columns] * span,
+            )
+    torch.testing.assert_close(
+        target[plus_rows[:, None], plus_columns],
+        target[minus_rows[:, None], minus_columns],
+    )
+    torch.testing.assert_close(
+        target[plus_rows[:, None], minus_columns],
+        target[minus_rows[:, None], plus_columns],
+    )
+
+    assert details[key]["group_size"] == 4
+    assert details[key]["quad_count"] == 4
+    assert details[key]["logical_synapse_count"] == 4
+    report = optimizer.initialize_from_reset_targets()
+    torch.testing.assert_close(weight.state, preview[key])
+    initial = report["parameters"][key]["initial_write"]
+    assert (
+        initial["initial_target_mapping"]
+        == "dual_rail_quad_common_window"
+    )
+    assert initial["dual_rail_layout"] == layout
+    assert initial["group_size"] == 4
+    assert initial["quad_count"] == 4
+    assert initial["logical_synapse_count"] == 4
     assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
 
 

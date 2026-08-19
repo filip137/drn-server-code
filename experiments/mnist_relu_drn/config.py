@@ -337,12 +337,15 @@ def _parse_measured(
         "per_device_affine",
         "paired_affine_common_window",
         "dual_rail_pairwise_common_window",
+        "dual_rail_quad_common_window",
     }:
         raise config_error(
             f"{path}.initial_target_mapping",
             "to be 'literal', 'per_device_affine', "
             "'paired_affine_common_window', or "
-            "'dual_rail_pairwise_common_window'",
+            "a dual-rail common-window mapping "
+            "('dual_rail_pairwise_common_window' or "
+            "'dual_rail_quad_common_window')",
             raw["initial_target_mapping"],
         )
     expected_cohort = {
@@ -352,7 +355,11 @@ def _parse_measured(
     if (
         expected_cohort == "B"
         and raw["initial_target_mapping"]
-        in {"per_device_affine", "dual_rail_pairwise_common_window"}
+        in {
+            "per_device_affine",
+            "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
+        }
     ):
         raise config_error(
             f"{path}.initial_target_mapping",
@@ -360,12 +367,15 @@ def _parse_measured(
             raw["initial_target_mapping"],
         )
     layouts = raw.get("dual_rail_layout_by_parameter")
-    if raw["initial_target_mapping"] == "dual_rail_pairwise_common_window":
+    if raw["initial_target_mapping"] in {
+        "dual_rail_pairwise_common_window",
+        "dual_rail_quad_common_window",
+    }:
         if not isinstance(layouts, Mapping) or not layouts:
             raise config_error(
                 f"{path}.dual_rail_layout_by_parameter",
                 "to map stable single-conductance parameter keys to "
-                "'halves' or 'paired' for dual-rail common-window mapping",
+                "'halves' or 'paired' for a dual-rail common-window mapping",
                 layouts,
             )
         invalid = {
@@ -384,7 +394,7 @@ def _parse_measured(
         raise config_error(
             f"{path}.dual_rail_layout_by_parameter",
             "to be omitted or null unless initial_target_mapping is "
-            "'dual_rail_pairwise_common_window'",
+            "a dual-rail common-window mapping",
             layouts,
         )
     exact = {
@@ -503,20 +513,26 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         and train.update_backend.type
         in {"measured_cohort_a", "measured_cohort_b"}
         and train.update_backend.parameters["initial_target_mapping"]
-        == "dual_rail_pairwise_common_window"
+        in {
+            "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
+        }
         and model.encoding != "single"
     ):
         raise config_error(
             "config.modes.train.update_backend.parameters.initial_target_mapping",
             "to select single model encoding when using "
-            "'dual_rail_pairwise_common_window'",
+            "a dual-rail common-window mapping",
             train.update_backend.parameters["initial_target_mapping"],
         )
     if (
         isinstance(train, StudentTrainSettings)
         and train.update_backend.type == "measured_cohort_a"
         and train.update_backend.parameters["initial_target_mapping"]
-        == "dual_rail_pairwise_common_window"
+        in {
+            "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
+        }
     ):
         layouts = train.update_backend.parameters[
             "dual_rail_layout_by_parameter"

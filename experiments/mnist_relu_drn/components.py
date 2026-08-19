@@ -353,6 +353,70 @@ def signed_differential_lift(
     return 0.5 * (positive_lift - negative_lift)
 
 
+def collapse_clamped_dual_rail_input(
+    conductance_plus: torch.Tensor,
+    conductance_minus: torch.Tensor,
+) -> torch.Tensor:
+    """Collapse an eight-device signed input block into four rail edges.
+
+    The source rows must use the repository's ``[x, -x]`` halves layout.
+    At a clamped input boundary, the negative port of the positive source rail
+    is the negative source rail, and conversely.  Regrouping branches that see
+    the same voltage gives the ordinary dual-rail conductance tensor returned
+    here.  It preserves the post-layer energy and KCL on the antipodal input
+    subspace.  It does not identify source-side currents of independent
+    dynamic rails and therefore must not be applied to an interior edge.
+    """
+
+    valid = (
+        isinstance(conductance_plus, torch.Tensor)
+        and isinstance(conductance_minus, torch.Tensor)
+        and conductance_plus.ndim == 2
+        and conductance_minus.ndim == 2
+        and conductance_plus.shape == conductance_minus.shape
+        and conductance_plus.shape[0] % 2 == 0
+        and conductance_plus.device == conductance_minus.device
+        and conductance_plus.dtype == conductance_minus.dtype
+        and bool(torch.isfinite(conductance_plus).all())
+        and bool(torch.isfinite(conductance_minus).all())
+        and bool((conductance_plus >= 0.0).all())
+        and bool((conductance_minus >= 0.0).all())
+    )
+    if not valid:
+        plus_shape = (
+            tuple(conductance_plus.shape)
+            if isinstance(conductance_plus, torch.Tensor)
+            else None
+        )
+        minus_shape = (
+            tuple(conductance_minus.shape)
+            if isinstance(conductance_minus, torch.Tensor)
+            else None
+        )
+        raise ValueError(
+            "Expected finite non-negative rank-2 G+/G- tensors with "
+            "identical dtype, device, shape, and an even source dimension. "
+            "Provided value: "
+            f"plus_shape={plus_shape!r}, minus_shape={minus_shape!r}."
+        )
+
+    logical_inputs = conductance_plus.shape[0] // 2
+    plus_source = slice(0, logical_inputs)
+    minus_source = slice(logical_inputs, 2 * logical_inputs)
+    effective_plus_source = (
+        conductance_plus[plus_source]
+        + conductance_minus[minus_source]
+    )
+    effective_minus_source = (
+        conductance_minus[plus_source]
+        + conductance_plus[minus_source]
+    )
+    return torch.cat(
+        (effective_plus_source, effective_minus_source),
+        dim=0,
+    )
+
+
 def _normalized(weight: torch.Tensor) -> torch.Tensor:
     maximum = weight.detach().abs().max()
     if float(maximum.item()) == 0.0:
@@ -651,6 +715,7 @@ __all__ = [
     "paired_scores",
     "select_mapping_and_gain",
     "settle_scores",
+    "collapse_clamped_dual_rail_input",
     "signed_differential_lift",
     "signed_dual_rail_lift",
 ]

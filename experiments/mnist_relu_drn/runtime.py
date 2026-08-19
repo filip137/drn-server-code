@@ -267,13 +267,16 @@ def _validate_checkpoint_metadata(
         train_settings is not None
         and train_settings.update_backend.type == "measured_cohort_a"
         and train_settings.update_backend.parameters["initial_target_mapping"]
-        == "dual_rail_pairwise_common_window"
+        in {
+            "dual_rail_pairwise_common_window",
+            "dual_rail_quad_common_window",
+        }
     ):
         expected.update(
             {
-                "initial_target_mapping": (
-                    "dual_rail_pairwise_common_window"
-                ),
+                "initial_target_mapping": train_settings.update_backend.parameters[
+                    "initial_target_mapping"
+                ],
                 "dual_rail_layout_by_parameter": dict(
                     train_settings.update_backend.parameters[
                         "dual_rail_layout_by_parameter"
@@ -369,7 +372,10 @@ def _validate_resume_backend_metadata(
         )
         if (
             spec.settings.update_backend.parameters["initial_target_mapping"]
-            == "dual_rail_pairwise_common_window"
+            in {
+                "dual_rail_pairwise_common_window",
+                "dual_rail_quad_common_window",
+            }
         ):
             expected["dual_rail_layout_by_parameter"] = dict(
                 spec.settings.update_backend.parameters[
@@ -917,7 +923,10 @@ def run_train(request: "TrainRequest") -> int:
                 and spec.settings.update_backend.parameters[
                     "initial_target_mapping"
                 ]
-                == "dual_rail_pairwise_common_window"
+                in {
+                    "dual_rail_pairwise_common_window",
+                    "dual_rail_quad_common_window",
+                }
             ):
                 measured_candidate_projector = MeasuredCohortAOptimizer(
                     stack.optimizer,
