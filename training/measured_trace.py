@@ -175,12 +175,13 @@ class MeasuredTraceConfig:
             in {
                 "per_device_affine",
                 "dual_rail_pairwise_common_window",
-                "dual_rail_quad_common_window",
             }
         ):
             raise ValueError(
                 "Expected cohort-B initial_target_mapping to be 'literal' "
-                "or 'paired_affine_common_window'. Provided value: "
+                "or a matched common-window mapping "
+                "('paired_affine_common_window' or "
+                "'dual_rail_quad_common_window'). Provided value: "
                 f"{config.initial_target_mapping!r}."
             )
         layouts = config.dual_rail_layout_by_parameter

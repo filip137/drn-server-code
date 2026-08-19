@@ -93,13 +93,12 @@ def test_deployment_controls_make_no_conductance_update(path: Path) -> None:
     assert train.settings.learning_rates == (0.0, 0.0)
 
 
-def test_cohort_b_capability_is_differential_only() -> None:
+def test_cohort_b_single_encoding_requires_quad_common_window() -> None:
     payload = json.loads(LITERAL_CONFIG.read_text(encoding="utf-8"))
     payload["model"]["encoding"] = "single"
 
-    definition, document = parse_experiment_config(payload)
-    with pytest.raises(ValueError, match="definition"):
-        definition.resolve(document, RunMode.TRAIN)
+    with pytest.raises(ValueError, match="dual_rail_quad_common_window"):
+        parse_experiment_config(payload)
 
 
 def test_cohort_b_training_requires_a_source_checkpoint() -> None:
@@ -119,6 +118,7 @@ def test_cohort_b_training_requires_a_source_checkpoint() -> None:
 
 
 def test_cohort_b_source_provenance_fails_closed() -> None:
+    spec = _train_spec(COMMON_WINDOW_CONFIG)
     metadata = {
         "encoding": "differential",
         "initialization": "teacher_mapped",
@@ -128,6 +128,7 @@ def test_cohort_b_source_provenance_fails_closed() -> None:
     }
     _validate_cohort_b_source_metadata(
         metadata,
+        spec=spec,
         device_data_sha256="device-sha",
     )
 
@@ -137,6 +138,7 @@ def test_cohort_b_source_provenance_fails_closed() -> None:
         with pytest.raises(ValueError, match=key):
             _validate_cohort_b_source_metadata(
                 mutated,
+                spec=spec,
                 device_data_sha256="device-sha",
             )
 

@@ -327,18 +327,54 @@ def _validate_checkpoint_metadata(
 def _validate_cohort_b_source_metadata(
     metadata: Any,
     *,
+    spec: StudentTrainSpec,
     device_data_sha256: str,
 ) -> None:
     """Require cohort-B deployment to originate from the matched A protocol."""
 
     provided = metadata if isinstance(metadata, dict) else {}
+    destination_mapping = spec.settings.update_backend.parameters[
+        "initial_target_mapping"
+    ]
+    source_protocols = {
+        ("differential", "literal"): "paired_affine_common_window",
+        (
+            "differential",
+            "paired_affine_common_window",
+        ): "paired_affine_common_window",
+        (
+            "single",
+            "dual_rail_quad_common_window",
+        ): "dual_rail_quad_common_window",
+    }
+    source_mapping = source_protocols.get(
+        (spec.model.encoding, destination_mapping)
+    )
+    if source_mapping is None:
+        raise ValueError(
+            "Expected cohort-B deployment to select a registered source "
+            "protocol for its encoding and target mapping. Provided value: "
+            f"encoding={spec.model.encoding!r}, "
+            f"initial_target_mapping={destination_mapping!r}."
+        )
+    source_layouts = (
+        dict(
+            spec.settings.update_backend.parameters[
+                "dual_rail_layout_by_parameter"
+            ]
+        )
+        if spec.model.encoding == "single"
+        else None
+    )
     expected = {
-        "encoding": "differential",
+        "encoding": spec.model.encoding,
         "initialization": "teacher_mapped",
         "update_backend": "measured_cohort_a",
-        "initial_target_mapping": "paired_affine_common_window",
+        "initial_target_mapping": source_mapping,
         "device_data_sha256": device_data_sha256,
     }
+    if source_layouts is not None:
+        expected["dual_rail_layout_by_parameter"] = source_layouts
     mismatches = {
         name: {"expected": value, "provided": provided.get(name)}
         for name, value in expected.items()
@@ -347,7 +383,7 @@ def _validate_cohort_b_source_metadata(
     if mismatches:
         raise ValueError(
             "Expected cohort-B deployment weights to come from the matched "
-            "differential cohort-A common-window protocol. Provided value: "
+            "cohort-A common-window protocol. Provided value: "
             f"{mismatches!r}."
         )
 
@@ -809,6 +845,7 @@ def run_train(request: "TrainRequest") -> int:
                     )
                 _validate_cohort_b_source_metadata(
                     loaded.metadata,
+                    spec=spec,
                     device_data_sha256=device_data_sha,
                 )
                 source_gain = stack.cost.gain

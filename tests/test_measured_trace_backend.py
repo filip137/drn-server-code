@@ -195,6 +195,7 @@ def _dual_rail_single_optimizer(
     *,
     layout: str,
     initial_target_mapping: str = "dual_rail_pairwise_common_window",
+    cohort: str = "A",
 ):
     weight = DenseWeight(
         (4,),
@@ -215,11 +216,17 @@ def _dual_rail_single_optimizer(
         [{"params": weight.state, "lr": 1.0}],
         lr=1.0,
     )
-    measured = MeasuredCohortAOptimizer(
+    optimizer_type = (
+        MeasuredCohortAOptimizer
+        if cohort == "A"
+        else MeasuredCohortBOptimizer
+    )
+    measured = optimizer_type(
         direct,
         catalog,
         _config(
             "raw",
+            cohort,
             initial_target_mapping=initial_target_mapping,
             dual_rail_layout_by_parameter={
                 "base.dense_weight.0": layout
@@ -563,6 +570,64 @@ def test_dual_rail_quad_mapping_uses_one_window_for_each_four_cell_block(
     assert initial["quad_count"] == 4
     assert initial["logical_synapse_count"] == 4
     assert 0.0 <= initial["common_window_empty_fraction"] <= 1.0
+
+
+@pytest.mark.parametrize("layout", ["halves", "paired"])
+def test_cohort_b_quad_deployment_preserves_four_way_nominal_symmetry(
+    tmp_path: Path,
+    layout: str,
+) -> None:
+    path = tmp_path / "devices.hdf5"
+    _write_device_data(path)
+    weight, optimizer = _dual_rail_single_optimizer(
+        path,
+        layout=layout,
+        initial_target_mapping="dual_rail_quad_common_window",
+        cohort="B",
+    )
+    fractions = torch.tensor(
+        [
+            [0.75, 0.25, 0.25, 0.75],
+            [0.25, 0.75, 0.75, 0.25],
+            [0.25, 0.75, 0.75, 0.25],
+            [0.75, 0.25, 0.25, 0.75],
+        ],
+        dtype=weight.state.dtype,
+    )
+    with torch.no_grad():
+        weight.state.copy_(fractions * 1.1e-4)
+
+    report = optimizer.initialize_from_loaded_targets()
+    target = optimizer._shadows["base.dense_weight.0"]
+    plus_rows = torch.tensor([0, 1])
+    minus_rows = torch.tensor([2, 3])
+    if layout == "halves":
+        plus_columns = torch.tensor([0, 1])
+        minus_columns = torch.tensor([2, 3])
+    else:
+        plus_columns = torch.tensor([0, 2])
+        minus_columns = torch.tensor([1, 3])
+    torch.testing.assert_close(
+        target[plus_rows[:, None], plus_columns],
+        target[minus_rows[:, None], minus_columns],
+    )
+    torch.testing.assert_close(
+        target[plus_rows[:, None], minus_columns],
+        target[minus_rows[:, None], plus_columns],
+    )
+
+    initial = report["parameters"]["base.dense_weight.0"][
+        "initial_write"
+    ]
+    assert report["active_cohort"] == "B"
+    assert initial["kind"] == "mapped_loaded_target_global_nearest"
+    assert (
+        initial["initial_target_mapping"]
+        == "dual_rail_quad_common_window"
+    )
+    assert initial["dual_rail_layout"] == layout
+    assert initial["group_size"] == 4
+    assert initial["quad_count"] == 4
 
 
 def test_cohort_b_paired_deployment_preserves_a_shared_differential_target(

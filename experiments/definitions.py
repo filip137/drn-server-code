@@ -304,6 +304,20 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
 ) + (
     ValidatedCombination(
         ExtensionSelection(
+            "single",
+            "none",
+            "measured_cohort_b",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Four-device single-conductance deployment and fine-tuning on "
+            "independently held-out measured cohort-B traces using one "
+            "common reachable window per dual-rail four-cell block."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
             "differential",
             "none",
             "measured_cohort_b",
