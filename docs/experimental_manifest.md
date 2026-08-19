@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-08-17
+Last updated: 2026-08-19
 
 ## Program goal
 
@@ -570,6 +570,74 @@ evidence available today, not pass/fail gates.
   `results/mnist-single-reram-initialized-finetune-10ep-20260817-v1/`
 - **Tracked detail:**
   [initialized single-conductance report](mnist_relu_drn_initialized_single_10ep.md)
+
+### mnist-dual-rail-four-vs-eight-common-window-10ep
+
+**Four-device clamped-input collapse versus eight-device differential realization**
+
+- **Finished:** 2026-08-19
+- **Outcome:** completed; the four-device arm passed the preregistered
+  post-adaptation accuracy-retention screen, while the eight-device arm
+  retained better initialization and teacher-logit fidelity
+- **Question:** At a clamped dual-rail input `[x, -x]`, can the exact
+  eight-to-four port collapse be realized with one measured conductance at
+  each of the four post-facing connections while retaining the benefit of the
+  eight-device differential implementation?
+- **Setup:** Both arms used the same frozen bias-free `784 -> 50 -> 10` ReLU
+  teacher, MNIST split, seed 42, minibatch order, solver, model-local
+  amplification, raw cohort-A traces and assignment seed, pure teacher-KL
+  objective, and ten-epoch budget. The four-device arm required all four
+  symmetry-related conductances of one teacher weight to share a single
+  reachable window (`dual_rail_quad_common_window`). The eight-device control
+  retained one measured `G+`/`G-` pair per physical dual-rail edge. Mapping
+  and checkpoint selection used calibration or validation teacher KL; test
+  examples were not used for mapping, gain, epoch, or checkpoint selection.
+- **Exact boundary result:** On the clamped input subspace, regrouping the
+  eight conductances into four pair sums preserves the input-edge energy,
+  hidden-node KCL, hidden coordinate coefficients, and derivative in the
+  permitted logical-input direction. It does not preserve independent source-
+  port currents and does not apply when both rails are free dynamic states.
+  Twelve focused equivalence and mapping tests passed.
+- **Headline result:** The four-device arm initialized at `61.48%` validation
+  accuracy and KL `0.958320`, selected epoch 10 at `97.26%` accuracy,
+  `98.74%` teacher agreement, and KL `0.0197817`, and reached `97.46%`
+  accuracy, `98.68%` agreement, and KL `0.0183103` on the 10,000-example
+  fresh test. The eight-device arm initialized at `89.12%` and KL `0.231839`,
+  selected epoch 9 at `97.42%`, `98.94%` agreement, and KL `0.0138965`, and
+  reached `97.48%`, `98.76%` agreement, and KL `0.0140905` on test. The
+  four-device test-accuracy deficit was only `0.02` percentage points, inside
+  the preregistered `1.0`-point retention threshold.
+- **Reachable-window diagnostic:** Averaged over the two layers, the four-cell
+  intersection had an `11.195 uS` mean span and `5.918%` empty-window rate,
+  versus `18.225 uS` and `1.451%` for the eight-device pairwise windows. No
+  nominal targets were clipped. The stricter intersection and independent
+  nearest-state projection explain why the four-device initialization was
+  `27.64` accuracy points below the eight-device initialization even though
+  adaptation nearly closed the final classification gap.
+- **Earlier four-device comparison:** Relative to the prior four-device
+  pairwise-window mapping, the shared quad window improved initialization
+  from `34.20%` to `61.48%`, test accuracy from `96.96%` to `97.46%`, and test
+  KL from `0.041213` to `0.0183103`.
+- **Interpretation:** Four measured conductances per teacher weight retain
+  essentially all classification benefit after adaptation while halving the
+  conductance count relative to the eight-device realization. They are not a
+  physical initialization-equivalent replacement: using one device for each
+  collapsed pair sum loses reachable range and mismatch averaging, and the
+  four-device test KL remains `29.95%` higher. The eight-device realization is
+  therefore preferred for initialization-only feed-forward fidelity; the
+  four-device realization is attractive when device count matters and
+  measured fine-tuning is available. This is an exploratory single-seed
+  result, not a universal equivalence claim.
+- **Integrity:** All four train/test stages exited zero from clean commit
+  `bb88b007fa424f88bec86f8602690dac988b022a`. An immediate `--resume` audit
+  validated fingerprints and artifact hashes and reused every stage without
+  creating another attempt. The selected four- and eight-device weight hashes
+  are `e95eb276ed30d20c024495480c1f7d985ced853b761b8a3d5f2151aa9614fcb8`
+  and `898131127b636893b3cc50e895635243e1ee0e0efd4ce4d9d1d35129a50195f9`.
+- **Raw artifacts:**
+  `results/mnist-dual-rail-four-vs-eight-common-window-10ep-20260819-v1/`
+- **Tracked detail:**
+  [four-versus-eight report](dual_rail_input_four_vs_eight_devices.md)
 
 ## Shared validity notes
 

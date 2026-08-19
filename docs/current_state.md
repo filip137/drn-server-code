@@ -184,6 +184,18 @@ and fine-tuning updates must remain separately measurable.
   to the `0.001` lower boundary, and left trace-projected fine-tuning almost
   stationary.
 
+- **Four-device clamped-input follow-up:** At the fixed input boundary
+  `[x, -x]`, the eight-device differential interface can be regrouped exactly
+  into four post-facing conductances, but replacing each device pair sum with
+  one measured memristor loses range and mismatch averaging. A shared-four-
+  device-window arm therefore initialized below the eight-device arm
+  (`61.48%` versus `89.12%`), yet after ten measured fine-tuning epochs their
+  test accuracies were effectively tied (`97.46%` versus `97.48%`). The
+  four-device test KL remained higher (`0.0183103` versus `0.0140905`), so the
+  current evidence favors four devices when adaptation and device economy
+  matter, and eight when initialization-only feed-forward fidelity matters.
+  See the [four-versus-eight report](dual_rail_input_four_vs_eight_devices.md).
+
 ### RESET-trained single-device teacher-matching result
 
 - **Training without teacher-weight programming:** we trained the original
