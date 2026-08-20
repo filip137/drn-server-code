@@ -28,6 +28,15 @@ predate that convention and remain under their original ignored
 Inline paths labeled as local ignored detail exist only in a workspace that
 still has those ignored raw roots.
 
+New workflow-managed studies begin with a tracked plan under `studies/`. Once
+the exact declared coverage is complete, a human writes the outcome, final
+interpretation, limitations, and next steps in the study review. Running
+`python -m ebl study finalize` adds an idempotent marked entry to this ledger.
+Every such entry retains the **initial hypothesis** as well as the **final
+interpretation**; negative and inconclusive outcomes are first-class results.
+The operational procedure is in
+[`experiment_workflow.md`](experiment_workflow.md).
+
 ## Progress toward the program goal
 
 The states `supported`, `partial`, and `open` are a compact view of the
@@ -638,6 +647,111 @@ evidence available today, not pass/fail gates.
   `results/mnist-dual-rail-four-vs-eight-common-window-10ep-20260819-v1/`
 - **Tracked detail:**
   [four-versus-eight report](dual_rail_input_four_vs_eight_devices.md)
+
+<!-- BEGIN EBL STUDY mnist-four-device-cohort-b-transfer-5seed-20260819-v1 -->
+### mnist-four-device-cohort-b-transfer-5seed-20260819-v1
+
+**Four-device cohort-A to cohort-B transfer across five assignments**
+
+- **Finished:** 2026-08-19
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Initial hypothesis:** Reprojecting the selected cohort-A four-device quad-common-window checkpoint onto held-out cohort-B devices will reduce mean held-out test accuracy by more than 1 percentage point after scalar recalibration alone.
+- **Completion criteria:**
+  - The source checkpoint has one fresh completed 10,000-example test evaluation.
+  - All five cohort-B assignment seeds complete a zero-learning-rate deployment with exactly one batch and no conductance update.
+  - All five transferred checkpoints have one fresh completed 10,000-example test evaluation.
+  - Every run retains the source checkpoint, teacher checkpoint, device-data, config, and study provenance in its native manifest.
+  - The final interpretation reports accuracy loss distribution as exploratory single-model evidence.
+- **Coverage:** 11 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared five-assignment series supports the hypothesis. The fresh cohort-A source test accuracy was 97.46%. Zero-update reprojection onto cohort-B four-device assignments produced test accuracies of 35.79%, 41.65%, 50.85%, 45.28%, and 40.65%: a mean of 42.844%, population standard deviation of 5.021 percentage points, and range of 35.79% to 50.85%. The corresponding accuracy loss averaged 54.616 percentage points and ranged from 46.61 to 61.67 points. Mean teacher agreement fell from 98.68% to 43.02%, while mean teacher-student KL rose from 0.0183103 to 1.665943. Scalar logit recalibration did not recover classification accuracy. All five zero-learning-rate deployment runs retained identical initial and final conductance summaries and reported zero adaptation change. Cohort-B quad-window diagnostics averaged 11.288 uS and 11.064 uS mean span with 4.952% and 6.080% empty-window fractions in the two layers, respectively. Because these aggregate window statistics are similar to the earlier cohort-A four-device result, the observed collapse is more consistent with sensitivity to device-level reassignment and nearest-state reprojection than with a simple cohort-wide loss of reachable range; that mechanism remains an inference rather than a causal isolation.
+- **Main limitations:** This is exploratory evidence from one trained four-device checkpoint, one teacher, one MNIST split, and five deterministic device-assignment seeds drawn from the same held-out cohort-B trace pool; the assignments are not independent model-training seeds. The simulator uses global-nearest endpoint projection of measured program-and-verify traces, not measured incremental-pulse dynamics or a fabricated circuit. The study measures immediate zero-update transfer after scalar gain recalibration and does not test cohort-B adaptation. Aggregate common-window statistics do not identify which layer, weights, or device mismatches cause the loss.
+- **Next steps:**
+  - Run a matched five-assignment eight-device cohort-B transfer control to determine whether the four-device collapse is specifically worsened by the quad-common-window realization.
+  - Fine-tune each transferred four-device cohort-B checkpoint with a fixed matched budget and report the initialization-to-transfer-to-recovery trajectory.
+  - Measure layerwise realized-weight error, score-direction change, and voltage operating points for the five assignments before changing the mapping or recovery method.
+- **Raw artifacts:** `results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/`
+- **Workflow summary:** `results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-four-device-cohort-b-transfer-5seed-20260819-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-four-device-cohort-a-sign-sgd-20260819-v1 -->
+### mnist-four-device-cohort-a-sign-sgd-20260819-v1
+
+**Four-device cohort-A fine-tuning with sign-only SGD**
+
+- **Finished:** 2026-08-19
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Initial hypothesis:** At least one fixed-magnitude signSGD schedule will recover the cohort-A four-device initialization to at least 95% fresh test accuracy within ten epochs, showing that gradient direction alone can provide useful same-cohort adaptation under global-nearest measured-state projection.
+- **Completion criteria:**
+  - Both train arms reproduce the same deterministic cohort-A four-device initialization and complete exactly ten full epochs.
+  - Both selected checkpoints have a fresh completed 10,000-example test evaluation.
+  - Every checkpoint records the measured_cohort_a_sign_sgd backend, quad-common-window layout, device-data identity, assignment identity, and model-local amplification metadata.
+  - The interpretation reports whether either sign-only schedule reaches at least 95% test accuracy and distinguishes update-rule effects from step-scale effects.
+  - The result is labeled exploratory single-model evidence and retains the ordinary-SGD result as a historical matched control rather than a newly randomized replicate.
+- **Coverage:** 4 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is supported. Both sign-only schedules reproduced the deterministic cohort-A four-device initialization at 61.48% validation accuracy and KL 0.958320, completed ten full epochs, and exceeded 95% on a fresh 10,000-example test. Using the ordinary-SGD arm's numeric rates [2.1e-10, 5.7e-13], signSGD reached 95.46% test accuracy, 96.67% teacher agreement, and KL 0.0784538. Using a balanced 0.21 nS shadow step in both layers reached 95.77%, 97.03%, and KL 0.0640143. Balancing improved accuracy by 0.31 points and reduced KL by 18.41% relative to matched-rate signSGD. Direction alone therefore provides useful same-cohort adaptation, recovering 34.29 accuracy points from initialization in the better arm. Gradient magnitude still matters for fidelity: the balanced sign arm remained 1.69 accuracy points below the matched ordinary-SGD historical control at 97.46%, and its KL was 3.50 times higher than the control's 0.0183103. The matched-rate arm never changed the measured output-layer state because its 0.00057 nS sign step was too small; balancing produced a 3.804% output-layer state-change fraction and explains part of its improvement. Neither sign arm clipped its shadow or reached conductance bounds.
+- **Main limitations:** This is exploratory evidence from one teacher, model seed, MNIST split, cohort-A device assignment, and two hand-selected sign-step schedules. The ordinary-SGD comparison is an earlier deterministic matched run rather than a concurrently rerun randomized control, although both new arms exactly reproduced its initialization. SignSGD operates on an ideal digital conductance shadow and each minibatch globally reprojects the target to the nearest of 5,000 measured endpoint states. It is not a sequential one-pulse potentiation/depression rule; raw nonmonotonic curves permit large pulse-index jumps. The result therefore shows that gradient signs are sufficient within this endpoint-projection simulator, not that sign-only local hardware pulses would achieve the same accuracy.
+- **Next steps:**
+  - If the intended hardware rule is one pulse step in the gradient-sign direction, implement it as a separate sequential-pulse backend and compare it without reusing this result as evidence for pulse-local learning.
+  - Run a small validation-only layerwise sign-step sweep, especially increasing the first-layer step, because balanced signSGD changed first-layer measured states on 3.11% of cell-updates versus 15.28% for ordinary SGD.
+  - Replicate the chosen sign-step schedule across independent teacher/model seeds and device assignments before making a general optimizer claim.
+- **Raw artifacts:** `results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/`
+- **Workflow summary:** `results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-four-device-cohort-a-sign-sgd-20260819-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-four-device-cohort-a-one-pulse-down-20260819-v1 -->
+### mnist-four-device-cohort-a-one-pulse-down-20260819-v1
+
+**Four-device cohort-A fine-tuning with one-pulse conductance decreases**
+
+- **Finished:** 2026-08-19
+- **Evidence class:** `exploratory`
+- **Outcome:** refuted
+- **Initial hypothesis:** Strict one-pulse-down-or-hold fine-tuning will improve selected validation accuracy by at least 5 percentage points over its own isotonic cohort-A four-device initialization within ten epochs, while producing no conductance increase and no pulse-index jump larger than one.
+- **Completion criteria:**
+  - The train arm completes exactly ten full epochs from its recorded isotonic cohort-A four-device initialization.
+  - The selected checkpoint has one fresh completed 10,000-example test evaluation.
+  - Every checkpoint records the measured_cohort_a_one_pulse_down backend, quad-common-window layout, device-data identity, assignment identity, and model-local amplification metadata.
+  - Both layer reports show max_abs_pulse_jump at most one, zero conductance increases, no fine-tuning global-nearest projection, and no digital-shadow accumulation.
+  - The interpretation tests the predeclared five-percentage-point validation-improvement threshold and labels comparisons with raw-trace SGD/signSGD as unmatched historical context.
+- **Coverage:** 2 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is refuted. The strict one-pulse-down-or-hold backend completed all ten epochs and satisfied its physical-update invariants exactly, but validation-KL selection retained the isotonic initialization at epoch -1: selected validation accuracy remained 38.32%, so the required improvement was 0 rather than at least 5 percentage points. The selected initialization reached 38.40% accuracy, 38.56% teacher agreement, and KL 1.535809 on a fresh 10,000-example test. There was a transient classification improvement after one epoch: live validation accuracy rose by 21.52 points to 59.84%, but KL simultaneously worsened from 1.555411 to 6.477425, so that state was not selected. Continued one-sided updates then collapsed accuracy to 10.30% and raised KL to 105.524120 by epoch 10. The mechanism is directly visible in the programming diagnostics. Final-pulse occupancy increased from 4.794% to 99.881% in the first layer and from 5.350% to 99.750% in the second. Across all cell-updates, 49.168% and 47.760% requested a downward pulse, but only 6.952% and 7.307% could still advance; 42.216% and 40.453% were blocked at the final pulse. Isotonic plateaus were also dominant: only 1.992% and 1.972% of applied pulse advances produced a measurable conductance decrease. The implementation nevertheless did exactly what was requested: both layers report maximum pulse jump 1, zero conductance increases, zero fine-tuning projection error, no global-nearest fine-tuning, no digital-shadow accumulation, and no use of learning-rate magnitude. The result therefore indicates that an unconditional per-minibatch decrease-only rule is not a viable ten-epoch fine-tuning mechanism in this setup; it rapidly exhausts the available pulse trajectory. The earlier raw-trace ordinary-SGD and signSGD accuracies are not matched controls because isotonic fitting also changed the initialization substrate: the present initialization was 38.32% validation accuracy versus 61.48% in those raw-trace studies.
+- **Main limitations:** This is exploratory evidence from one teacher, model seed, MNIST split, cohort-A device assignment, and one ten-epoch update schedule. Checkpoint selection uses validation teacher-student KL, so the epoch-1 accuracy increase was intentionally not selected; no fresh test was run on that transient live state. The source consists of measured program-and-verify endpoint sequences, while this experiment traverses isotonic non-increasing fits to those sequences. PAVA introduces long exact plateaus and changes both initialization and step statistics; the simulation is not independent evidence that one fabricated-device pulse produces the fitted next state. The update fires on every eligible positive minibatch gradient without a pulse budget, confidence threshold, persistence rule, stochastic write probability, recalibration, or upward/homeostatic correction. Historical raw-trace SGD and signSGD results differ in preprocessing and update semantics and therefore provide context only, not causal optimizer comparisons.
+- **Next steps:**
+  - Run a predeclared short-horizon sweep over exact minibatch budgets before saturation, retaining the same backend and reporting both KL and accuracy, to determine whether the epoch-1 accuracy gain occurs in a reproducible usable window.
+  - Test a pulse-budget or sparse eligibility rule that still permits only one downward pulse per accepted update but prevents nearly every cell from exhausting its trajectory within three epochs.
+  - Evaluate a complementary-rail logical update that realizes both logical gradient directions by decreasing one of the appropriate physical conductances, while continuing to prohibit conductance increases on every individual cell.
+- **Raw artifacts:** `results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/`
+- **Workflow summary:** `results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-four-device-cohort-a-one-pulse-down-20260819-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
+### mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1
+
+**Four-device cohort-A one-pulse-down gradient-threshold sweep**
+
+- **Finished:** 2026-08-20
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Initial hypothesis:** A fixed layer-specific positive-gradient threshold can prevent the destructive saturation seen in the zero-threshold one-pulse-down control while retaining useful decrease-only adaptation: at least one p90, p99, or p99.9 arm will improve selected validation accuracy by at least 5 percentage points over the shared isotonic initialization and keep epoch-10 last-pulse saturation below 50 percent in both layers.
+- **Completion criteria:**
+  - All three threshold-train runs complete exactly ten full epochs from numerically identical isotonic cohort-A four-device initializations.
+  - Each selected checkpoint receives one fresh completed 10,000-example test evaluation using its predeclared matching config.
+  - Every threshold value and its raw-gradient strict-greater-than semantics are present in config, checkpoint provenance, and programming diagnostics.
+  - Both layer reports in every arm show max_abs_pulse_jump at most one, zero conductance increases, no fine-tuning global-nearest projection, and no digital-shadow accumulation.
+  - The analysis tests whether any threshold arm improves selected validation accuracy by at least five percentage points over the shared initialization and whether any arm keeps epoch-10 last-pulse saturation below 50 percent in both layers.
+  - The final interpretation reports the validation-derived threshold-calibration limitation and treats the fresh test split as the held-out accuracy estimate.
+- **Coverage:** 6 declared run(s) completed; 1 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is supported. The three arms used strict instantaneous raw-gradient gates with fixed layer-specific thresholds and otherwise identical isotonic cohort-A four-device initialization. All began at exactly 38.32% validation accuracy and KL 1.555411. P99 and p99.9 both exceeded the required five-point selected-validation gain while keeping epoch-10 final-pulse occupancy below 50% in both layers. P99 selected epoch 7 at 82.22% validation accuracy and KL 0.534162, reached 83.65% accuracy and KL 0.501183 on the fresh 10,000-example test, ended at 77.00% validation accuracy, and had only 6.995%/8.800% final saturation. P99.9 selected the epoch-10 state at 72.98% validation accuracy and KL 0.924399, reached 74.38% test accuracy, and had 4.945%/5.900% saturation. P90 produced the strongest selected checkpoint at epoch 1: 84.18% validation accuracy, KL 0.437640, and 85.91% fresh test accuracy. It was not stable for a fixed ten-epoch run, however; continued one-way updates drove saturation to 93.705%/81.650% and final validation accuracy to 13.76%. Thus p90 is an early-stopping regime, while p99 is the best observed balance for a fixed ten-epoch protocol. Relative to the finalized matched zero-threshold control, selected test accuracy improved from 38.40% to 85.91%, 83.65%, and 74.38% for p90, p99, and p99.9. Across every arm and both layers, maximum pulse jump was one, conductance-increase count was zero, and the backend used neither fine-tuning global-nearest projection, digital-shadow accumulation, nor learning-rate magnitude. The mechanism is clear in the write statistics: p99 admitted only 0.0852%/0.2220% of cumulative cell-updates and ended with low saturation, whereas cumulative p90 eligibility rose to 21.351%/17.062% and still exhausted most traces. The threshold therefore repairs the unconditional update rule, but its useful operating point depends strongly on whether early stopping is allowed.
+- **Main limitations:** This is exploratory evidence from one teacher, model and data seed, MNIST split, cohort-A device split, virtual-device assignment, batch size, fixed gain, and solver. Thresholds were calibrated from a read-only replay of the same validation split used for checkpoint selection, so validation improvements are not a fully untouched estimate; fresh test metrics provide the held-out accuracy check, but there are no repetitions or confidence intervals. The absolute raw-gradient values are specific to this loss scaling, batch size, parameterization, and operating point and should not be transferred unchanged to another setup. The measured source contains program-and-verify endpoint sequences, while the update traverses PAVA-fitted non-increasing curves; an adjacent simulated pulse index is not independent evidence that one open-loop physical pulse reproduces that fitted state. Long exact PAVA plateaus remain, so only about 2.0% to 5.7% of applied pulse advances changed conductance. The p99.9 launcher was interrupted after epoch 1 and recovered through the guarded exact epoch-boundary checkpoint; the failed attempt and recovery receipt are retained, but no duplicate uninterrupted p99.9 production run was performed for bitwise trajectory comparison.
+- **Next steps:**
+  - Run a predeclared p95/p97/p98 sweep with the same initialization and ten-epoch budget to locate the transition between p90's high early accuracy and p99's low saturation.
+  - Repeat the leading p90 early-stop and p99 fixed-budget protocols across several data seeds and device assignments, reporting confidence intervals on selected test accuracy, write count, and saturation.
+  - Test a pulse-budget or adaptive threshold schedule that retains p90-like early improvement but raises the gate or stops writes before saturation, without permitting any conductance increase.
+- **Raw artifacts:** `results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/`
+- **Workflow summary:** `results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
 
 ## Shared validity notes
 
