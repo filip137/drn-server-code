@@ -40,6 +40,18 @@ This repository contains code and tooling for coordinate-descent simulations of 
 - New combinations fail closed until listed in the experiment definition and
   covered by a numerical parity or acceptance test.
 - Do not use module globals or monkey patches to compose experiments.
+- New exploratory studies start from a tracked strict plan under `studies/`.
+  The plan states the initial hypothesis, exact arm configs, completion
+  criteria, and analysis plan before native runs begin.
+- Materialize plans with `python -m ebl study prepare`; write native runs only
+  below their declared `results/<study-id>/runs/<arm-id>/` roots.
+- After exact coverage is present, run `python -m ebl study summarize`, write
+  a human review, and use `python -m ebl study finalize` so
+  `experimental_manifest.md` retains both the initial hypothesis and final
+  interpretation.
+- Keep `current_state.md` as the concise human-readable big picture and next
+  steps. Run status belongs in `current_simulations.md`; detailed final
+  evidence belongs in `experimental_manifest.md`.
 
 ## Model-Local Indexing and Construction Parity
 

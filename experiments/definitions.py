@@ -366,6 +366,20 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
         ExtensionSelection(
             "single",
             "none",
+            "measured_cohort_a_sign_sgd",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Four-device cohort-A quad-common-window training with "
+            "fixed-magnitude signSGD shadow updates followed by measured "
+            "global-nearest projection."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "none",
             "measured_cohort_a_one_pulse_down",
             "teacher_kl",
         ),
@@ -374,7 +388,8 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
             "Four-device cohort-A quad-common-window initialization followed "
             "by strict isotonic local updates: gradients above explicit "
             "per-parameter thresholds advance exactly one pulse toward lower "
-            "conductance and all other gradients hold."
+            "conductance and all other gradients hold. Omitted thresholds "
+            "define the zero-threshold control."
         ),
     ),
     ValidatedCombination(

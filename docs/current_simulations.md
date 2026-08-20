@@ -11,6 +11,9 @@ human-maintained.
 
 Statuses (`queued`, `running`, `analyzing`, and `paused`) are descriptive
 only. This file does not approve, validate, launch, or block simulations.
+Prepared workflow studies retain their hypothesis in
+`results/<study-id>/study.json`; exact coverage and review readiness come from
+`python -m ebl study summarize`, not from this live view.
 
 <!-- BEGIN AUTOMATIC ACTIVE SIMULATIONS -->
 ## Active
@@ -78,3 +81,4 @@ study-level state.
 - [Current research state and notes](current_state.md)
 - [Finished LoRA/HWA simulations and progress](experimental_manifest.md)
 - [Raw result home](../results/README.md)
+- [Experiment workflow](experiment_workflow.md)

@@ -11,7 +11,10 @@ import torch
 import torch.nn.functional as F
 
 from experiments.mnist_relu.model import BiasFreeReluTeacher
-from experiments.mnist_relu_drn.config import MEASURED_BACKENDS, StudentTrainSpec
+from experiments.mnist_relu_drn.config import (
+    MEASURED_BACKENDS,
+    StudentTrainSpec,
+)
 from labs.custom_minimizer import CustomQuadraticMinimizer, MinimizerSettings
 from model.function.interaction import Function
 from model.function.network import Network
@@ -25,6 +28,7 @@ from training.measured_trace import (
 )
 from training.program_verify import ProgramVerifyOptimizer
 from training.sgd import Backprop
+from training.sign_sgd import SignSGD
 
 
 def paired_scores(output: torch.Tensor) -> torch.Tensor:
@@ -195,7 +199,8 @@ def _logical_optimizer(
     *,
     encoding: str,
     rates: tuple[float, ...],
-) -> torch.optim.SGD:
+    sign_only: bool = False,
+) -> torch.optim.Optimizer:
     bindings = catalog.trainable
     if encoding == "single":
         dense = tuple(
@@ -246,6 +251,8 @@ def _logical_optimizer(
             }
             for index in range(2)
         ]
+    if sign_only:
+        return SignSGD(groups, lr=0.0)
     return torch.optim.SGD(groups, momentum=0.0, weight_decay=0.0)
 
 
@@ -254,6 +261,7 @@ def measured_optimizer_type(update_backend_type: str) -> type:
 
     implementations = {
         "measured_cohort_a": MeasuredCohortAOptimizer,
+        "measured_cohort_a_sign_sgd": MeasuredCohortAOptimizer,
         "measured_cohort_a_one_pulse_down": (
             MeasuredCohortAOnePulseDownOptimizer
         ),
@@ -329,6 +337,11 @@ def build_student_stack(
         bundle.catalog,
         encoding=spec.model.encoding,
         rates=rates,
+        sign_only=(
+            getattr(spec.settings, "update_backend", None) is not None
+            and spec.settings.update_backend.type
+            == "measured_cohort_a_sign_sgd"
+        ),
     )
     update_backend = getattr(spec.settings, "update_backend", None)
     if (

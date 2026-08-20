@@ -7,8 +7,10 @@ virtual curve is a pointwise convex interpolation of two distinct measured
 traces from the selected physical-device cohort.  Biases remain ordinary
 digital SGD parameters.
 
-This is deliberately not a sequential pulse model: pulse indices are labels
-on the measured graph and every update may choose any point on that graph.
+The standard cohort optimizers are deliberately not sequential pulse models:
+pulse indices are labels on the measured graph and every update may choose any
+point on that graph. ``MeasuredCohortAOnePulseDownOptimizer`` is the explicit
+exception; it traverses an isotonic trace locally by at most one pulse index.
 """
 
 from __future__ import annotations
@@ -2619,6 +2621,9 @@ class MeasuredCohortAOnePulseDownOptimizer(MeasuredCohortAOptimizer):
             for binding in self._bindings:
                 key = binding.key
                 realized = binding.state.detach().clone()
+                # Fine-tuning starts from the physical state itself.  The
+                # mapped target used for the one initialization write is not
+                # retained as a digital accumulator.
                 self._shadows[key] = realized.clone()
                 self._last_programmed_shadows[key] = realized.clone()
                 self._initialization_reports[key].update(

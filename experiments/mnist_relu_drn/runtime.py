@@ -24,6 +24,7 @@ from experiments.mnist_relu_drn.components import (
 )
 from experiments.mnist_relu_drn.config import (
     MEASURED_BACKENDS,
+    MEASURED_COHORT_A_BACKENDS,
     MEASURED_COHORT_B_BACKENDS,
     StudentTrainSpec,
     StudentValidateSpec,
@@ -361,7 +362,7 @@ def _validate_checkpoint_metadata(
         provenance_required = (
             backend == "measured_cohort_a_one_pulse_down"
             or (
-                backend == "measured_cohort_a"
+                backend in MEASURED_COHORT_A_BACKENDS
                 and initial_target_mapping
                 in {
                     "dual_rail_pairwise_common_window",
@@ -1303,9 +1304,13 @@ def run_train(request: "TrainRequest") -> int:
                 deployment_source = {
                     "path": str(request.weights.expanduser().resolve()),
                     "sha256": sha256_file(request.weights),
+                    "encoding": loaded.metadata.get("encoding"),
                     "update_backend": loaded.metadata.get("update_backend"),
                     "initial_target_mapping": loaded.metadata.get(
                         "initial_target_mapping"
+                    ),
+                    "dual_rail_layout_by_parameter": deepcopy(
+                        loaded.metadata.get("dual_rail_layout_by_parameter")
                     ),
                     "device_data_sha256": loaded.metadata.get(
                         "device_data_sha256"
@@ -1386,7 +1391,7 @@ def run_train(request: "TrainRequest") -> int:
                 initial = dict(post_deployment_calibrated)
                 initial_conductances = post_deployment_conductances
             elif measured:
-                if measured_optimizer is None:  # pragma: no cover
+                if measured_optimizer is None:  # pragma: no cover - guarded above
                     raise AssertionError("measured optimizer type is missing")
                 optimizer = measured_optimizer(
                     stack.optimizer,

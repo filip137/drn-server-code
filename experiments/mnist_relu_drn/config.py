@@ -32,6 +32,7 @@ SCHEMA_VERSION = 1
 MEASURED_COHORT_A_BACKENDS = frozenset(
     {
         "measured_cohort_a",
+        "measured_cohort_a_sign_sgd",
         "measured_cohort_a_one_pulse_down",
     }
 )
@@ -439,6 +440,7 @@ def _parse_measured(
         )
     expected_cohort = {
         "measured_cohort_a": "A",
+        "measured_cohort_a_sign_sgd": "A",
         "measured_cohort_a_one_pulse_down": "A",
         "measured_cohort_b": "B",
     }[backend_type]
@@ -522,6 +524,7 @@ def _parse_measured(
             )
         normalized["positive_gradient_threshold_by_parameter"] = None
     elif raw_thresholds is None:
+        # Omission is the exact zero-threshold historical control.
         normalized["positive_gradient_threshold_by_parameter"] = None
     else:
         mapping = raw["initial_target_mapping"]
@@ -718,6 +721,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
     if backend["type"] not in {
         "ideal",
         "measured_cohort_a",
+        "measured_cohort_a_sign_sgd",
         "measured_cohort_a_one_pulse_down",
         "measured_cohort_b",
         "program_verify",
@@ -725,6 +729,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         raise config_error(
             f"{path}.update_backend.type",
             "to be 'ideal', 'measured_cohort_a', "
+            "'measured_cohort_a_sign_sgd', "
             "'measured_cohort_a_one_pulse_down', 'measured_cohort_b', "
             "or 'program_verify'",
             backend["type"],
@@ -951,6 +956,22 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
             "to equal 'dual_rail_quad_common_window' for a four-device "
             "single-encoding cohort-B deployment",
             train.update_backend.parameters["initial_target_mapping"],
+        )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type == "measured_cohort_a_sign_sgd"
+        and (
+            model.encoding != "single"
+            or train.update_backend.parameters["initial_target_mapping"]
+            != "dual_rail_quad_common_window"
+        )
+    ):
+        raise config_error(
+            "config.modes.train.update_backend.type",
+            "to select the single-encoding four-device "
+            "dual_rail_quad_common_window protocol when using "
+            "'measured_cohort_a_sign_sgd'",
+            train.update_backend.type,
         )
     if (
         isinstance(train, StudentTrainSettings)

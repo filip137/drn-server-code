@@ -93,7 +93,7 @@ def test_deployment_controls_make_no_conductance_update(path: Path) -> None:
     assert train.settings.learning_rates == (0.0, 0.0)
 
 
-def test_cohort_b_single_encoding_requires_quad_common_window() -> None:
+def test_cohort_b_single_encoding_rejects_non_quad_transfer() -> None:
     payload = json.loads(LITERAL_CONFIG.read_text(encoding="utf-8"))
     payload["model"]["encoding"] = "single"
 

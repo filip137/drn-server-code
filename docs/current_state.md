@@ -16,6 +16,45 @@ The wording under **Personal notes** is user-owned. Preserve it verbatim
 unless the user explicitly asks for an edit. Assistant-maintained context
 belongs in the other sections.
 
+## Big picture
+
+The repository asks one central question: **how can a dissipative resistive
+network preserve useful computation when ideal weights are mapped onto
+realistic, nonzero-floor, noisy ReRAM devices, and what is the least costly
+way to recover any lost performance?**
+
+The strongest current interpretation is:
+
+- Physical representation matters before optimization. Differential/common-
+  window mappings preserve signed information far better than independent
+  one-device affine mappings, while literal floor clipping can erase most
+  learned small conductances.
+- A finite conductance floor is not automatically destructive when the map is
+  injective, but it can strongly attenuate voltage and class margins. Accuracy
+  without a calibrated noise-margin test is therefore incomplete evidence.
+- Full-model rewriting is the strongest recovery control observed so far.
+  Passive low-rank adaptation can recover useful accuracy with far fewer new
+  conductances and no base rewrite, but the present positive-only branch
+  cannot correct every failure direction.
+- The adapted four-device common-window representation is highly sensitive to
+  physical-device reassignment: zero-update transfer from cohort A to five
+  cohort-B assignments lost `54.62` accuracy points on average despite scalar
+  recalibration and broadly similar aggregate reachable-window statistics.
+- Gradient direction alone is sufficient for substantial same-cohort
+  four-device recovery in the endpoint-projection simulator: balanced
+  signSGD reached `95.77%` test accuracy from a `61.48%` initialization, but
+  remained `1.69` points behind ordinary SGD and had `3.50x` its test KL.
+- Most conclusions remain exploratory: the key studies use one base-training
+  seed, and endpoint program-and-verify models are not substitutes for
+  measured incremental pulse dynamics.
+
+The active direction is to turn those observations into matched, predeclared
+studies with independent seeds, explicit device mappings, voltage/noise-margin
+measurements, and intervention-cost accounting. Exact completed-study
+measurements and limitations belong in
+[`experimental_manifest.md`](experimental_manifest.md); transient execution
+state belongs in [`current_simulations.md`](current_simulations.md).
+
 ## Repository goals
 
 ### Primary goal: ReLU-to-DRN transfer across realistic ReRAM devices
@@ -150,7 +189,7 @@ and fine-tuning updates must remain separately measurable.
 - MNIST with a `[1568, 100, 20]` dual-rail DRN is the primary benchmark;
   sklearn digits remains a compact development and numerical-parity benchmark.
 
-## Results and current interpretation
+## Current evidence
 
 ### Primary teacher-initialized measured-trace result
 
@@ -207,6 +246,34 @@ and fine-tuning updates must remain separately measurable.
   devices were `7.17` points lower immediately and `0.50` points lower after
   adaptation, while using half the conductances. See the
   [cohort-B report](mnist_four_device_cohort_b_adaptation.md).
+
+- **Four-device cohort transfer:** We reprojected that fixed cohort-A
+  four-device checkpoint onto five deterministic assignments from held-out
+  cohort-B traces without applying a learning update. Fresh test accuracy fell
+  from `97.46%` at the source checkpoint to `42.844%` on average (`5.021`
+  percentage-point population standard deviation; `35.79%` to `50.85%`
+  range), for a mean loss of `54.616` points. Mean teacher agreement was
+  `43.02%` and mean KL was `1.665943`, versus `98.68%` and `0.0183103` at the
+  source. The two layers' cohort-B quad windows averaged `11.288 uS` and
+  `11.064 uS` in span with `4.952%` and `6.080%` empty windows, broadly similar
+  to the earlier cohort-A aggregate. That makes device-level reassignment and
+  nearest-state reprojection the leading explanation, but not yet a causally
+  isolated one. The next matched control is the eight-device transfer on the
+  same assignments, followed by a fixed-budget four-device recovery study.
+  This remains single-model, endpoint-projection simulation evidence.
+
+- **Four-device sign-only fine-tuning:** Starting from the same deterministic
+  cohort-A quad-common-window initialization (`61.48%` validation accuracy),
+  ten epochs of signSGD at the original numeric learning rates reached
+  `95.46%` fresh test accuracy, `96.67%` teacher agreement, and KL `0.0784538`.
+  Giving both layers a balanced `0.21 nS` shadow step improved those values to
+  `95.77%`, `97.03%`, and `0.0640143`. On the like-for-like validation split,
+  the balanced arm improved from `61.48%` to `94.94%`, a `33.46`-point
+  recovery. This supports the claim that gradient direction alone can provide
+  useful adaptation. It still trailed ordinary SGD by `1.69` test-accuracy
+  points, and its KL was `3.50x` higher. These updates changed an ideal digital
+  shadow and globally selected the nearest measured endpoint after every
+  minibatch; they were not one-pulse-local sign updates on physical devices.
 
 ### RESET-trained single-device teacher-matching result
 
@@ -562,7 +629,7 @@ Exact measurements, limitations, and raw artifact locations are in the
 - Is fine-tuning only W2 or W2 plus bias enough to close most of the
   `1.908`-point gap between rank-4 LoRA and full-model fine-tuning?
 
-## Next experiment candidates
+## Next steps
 
 1. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify

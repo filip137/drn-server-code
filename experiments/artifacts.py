@@ -266,6 +266,22 @@ class RunStore:
             )
 
         output_path = Path(output_root).expanduser().resolve()
+        # Canonical ``results/<study-id>/runs/<arm-id>`` roots are linked to
+        # their predeclared study before any run directory is created.  The
+        # import stays lazy so ordinary runs retain the lightweight artifact
+        # boundary and do not pay for study parsing.
+        study_context = None
+        if (
+            output_path.parent.name == "runs"
+            and (output_path.parent.parent / "study.json").is_file()
+        ):
+            from experiments.study_workflow import study_context_for_run
+
+            study_context = study_context_for_run(
+                output_path,
+                experiment_id=experiment_id,
+                command=command,
+            )
         output_path.mkdir(parents=True, exist_ok=True)
         run_dir = output_path / run_id
         run_dir.mkdir(parents=False, exist_ok=False)
@@ -292,6 +308,8 @@ class RunStore:
             "runtime": runtime_identity(),
             "resume_capability": resume_capability,
         }
+        if study_context is not None:
+            manifest["study"] = study_context
         atomic_write_json(run_dir / "config.resolved.json", canonical_config)
         atomic_write_json(run_dir / "manifest.json", manifest)
         atomic_write_json(

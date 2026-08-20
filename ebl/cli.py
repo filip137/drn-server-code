@@ -312,6 +312,81 @@ def build_parser() -> argparse.ArgumentParser:
         help="continue launching independent stages after failures (default)",
     )
     campaign_run.set_defaults(fail_fast=False)
+
+    study = commands.add_parser(
+        "study",
+        help="prepare, summarize, and finalize lightweight result studies",
+    )
+    study_commands = study.add_subparsers(
+        dest="study_command",
+        required=True,
+        metavar="STUDY_COMMAND",
+    )
+    study_prepare = study_commands.add_parser(
+        "prepare",
+        help="materialize a tracked study plan below the results root",
+    )
+    study_prepare.add_argument(
+        "--plan",
+        type=Path,
+        required=True,
+        help="strict tracked JSON plan containing the initial hypothesis",
+    )
+    study_prepare.add_argument(
+        "--results-root",
+        type=Path,
+        default=Path("results"),
+        help="parent for results/<study-id> (default: results)",
+    )
+
+    study_summarize = study_commands.add_parser(
+        "summarize",
+        help="validate run metadata and write a compact study handoff",
+    )
+    study_summarize.add_argument(
+        "--study-dir",
+        type=Path,
+        required=True,
+        help="prepared results/<study-id> directory",
+    )
+    study_summarize.add_argument(
+        "--verify-artifacts",
+        action="store_true",
+        help="also hash tensor and analysis artifacts (slower, opt-in)",
+    )
+    study_summarize.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the complete summary JSON to stdout",
+    )
+
+    study_finalize = study_commands.add_parser(
+        "finalize",
+        help="record a reviewed final interpretation in the finished ledger",
+    )
+    study_finalize.add_argument(
+        "--study-dir",
+        type=Path,
+        required=True,
+        help="prepared results/<study-id> directory",
+    )
+    study_finalize.add_argument(
+        "--review",
+        type=Path,
+        required=True,
+        help="strict JSON review with outcome and final interpretation",
+    )
+    study_finalize.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("docs/experimental_manifest.md"),
+        help="finished-study Markdown ledger",
+    )
+    study_finalize.add_argument(
+        "--verify-artifacts",
+        action="store_true",
+        help="hash every declared artifact before finalizing",
+    )
     return parser
 
 
@@ -375,6 +450,9 @@ def _protocol_payload(
                 "validate",
                 "checkpoint import-legacy",
                 "campaign run",
+                "study prepare",
+                "study summarize",
+                "study finalize",
             ],
             "config_selects_experiment": True,
             "strict_json_config": True,
@@ -499,6 +577,22 @@ def _protocol_payload(
                     "--fail-fast",
                     "--continue-on-error",
                 ],
+            },
+            "study prepare": {
+                "available": True,
+                "required_options": ["--plan"],
+                "optional_options": ["--results-root"],
+            },
+            "study summarize": {
+                "available": True,
+                "required_options": ["--study-dir"],
+                "optional_flags": ["--verify-artifacts", "--json"],
+            },
+            "study finalize": {
+                "available": True,
+                "required_options": ["--study-dir", "--review"],
+                "optional_options": ["--manifest"],
+                "optional_flags": ["--verify-artifacts"],
             },
         },
     }
@@ -830,6 +924,45 @@ def _dispatch(
             handlers.campaign_run or _default_campaign_handler,
             request,
         )
+
+    if args.command_name == "study":
+        from experiments.study_workflow import (
+            finalize_study,
+            prepare_study,
+            summarize_study,
+        )
+
+        try:
+            if args.study_command == "prepare":
+                root = prepare_study(args.plan, args.results_root)
+                stdout.write(f"{root}\n")
+                return 0
+            if args.study_command == "summarize":
+                summary = summarize_study(
+                    args.study_dir,
+                    verify_artifacts=args.verify_artifacts,
+                )
+                if args.json:
+                    json.dump(summary, stdout, indent=2, sort_keys=True)
+                    stdout.write("\n")
+                else:
+                    stdout.write(
+                        f"{summary['study_id']}: {summary['state']} "
+                        f"(ready_for_review="
+                        f"{str(summary['ready_for_review']).lower()})\n"
+                    )
+                return 0
+            if args.study_command == "finalize":
+                final_path = finalize_study(
+                    args.study_dir,
+                    review_path=args.review,
+                    manifest_path=args.manifest,
+                    verify_artifacts=args.verify_artifacts,
+                )
+                stdout.write(f"{final_path}\n")
+                return 0
+        except (OSError, ValueError) as error:
+            raise ConfigError(str(error)) from error
 
     raise CliUsageError(
         "Expected a supported ebl command. "
