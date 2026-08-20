@@ -1,0 +1,9 @@
+{
+  "final_interpretation": "State what the collected evidence supports, refutes, or leaves unresolved. Distinguish the measurements from your inference.",
+  "limitations": "State the important coverage, dataset, seed, model, and protocol limitations.",
+  "next_steps": [
+    "Name the smallest follow-up that would resolve the most important uncertainty."
+  ],
+  "outcome": "inconclusive",
+  "schema_version": 1
+}

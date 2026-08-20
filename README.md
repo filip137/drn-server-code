@@ -37,6 +37,11 @@ status, then records command-specific metrics, results, artifacts, logs, or
 checkpoints as the work proceeds. See
 [`docs/experiment_runtime.md`](docs/experiment_runtime.md) for the extension
 boundaries, checkpoint rules, worktree workflow, and campaign protocol.
+New multi-run studies follow the lightweight
+[`experiment workflow`](docs/experiment_workflow.md): a tracked plan freezes
+the initial hypothesis and exact configs, native runs retain the existing
+bundle contract, and reviewed finalization records the interpretation in the
+finished-study ledger.
 The cohort-A measured ReRAM projection and bounded-learning-rate workflow is
 documented in
 [`docs/measured_cohort_a_training.md`](docs/measured_cohort_a_training.md),
