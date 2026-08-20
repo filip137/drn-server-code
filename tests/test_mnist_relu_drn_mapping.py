@@ -18,6 +18,7 @@ from experiments.mnist_relu_drn.components import (
 )
 from experiments.schema import RunMode
 from model.variable.layer import LinearLayer
+from training.program_verify import ProgramVerifyOptimizer
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,3 +124,66 @@ def test_differential_student_has_four_physical_weights_and_no_biases() -> None:
         "base.conductance_minus.1",
     ]
     assert not any(binding.role == "bias" for binding in stack.bundle.catalog)
+
+
+def test_teacher_mapped_program_verify_build_is_model_local_and_bias_free() -> None:
+    payload = json.loads(
+        (
+            ROOT
+            / "examples/mnist_relu_drn/wan_cmo_teacher_initialized/"
+            "cmo_full_bptt.json"
+        ).read_text()
+    )
+    payload["runtime"]["device"] = "cpu"
+    definition, document = parse_experiment_config(payload)
+    spec = definition.resolve(document, RunMode.TRAIN)
+
+    stacks = [
+        build_student_stack(spec, enable_measured=True)
+        for _ in range(2)
+    ]
+    signatures = []
+    for stack in stacks:
+        assert isinstance(stack.optimizer, ProgramVerifyOptimizer)
+        assert [binding.key for binding in stack.bundle.catalog] == [
+            "base.dense_weight.0",
+            "base.dense_weight.1",
+        ]
+        assert not any(
+            binding.role == "bias" for binding in stack.bundle.catalog
+        )
+        signatures.append(
+            tuple(
+                    (
+                        interaction._logical_pre_index,
+                        interaction._logical_post_index,
+                        (
+                            1.0
+                            if interaction._logical_pre_index == 0
+                            else float(interaction._voltage_amp)
+                        ),
+                        (
+                            float(interaction._current_amp)
+                            / float(interaction._voltage_amp)
+                        )
+                        ** interaction._logical_pre_index,
+                    )
+                for interaction in stack.bundle.energy._interactions
+                if hasattr(interaction, "_logical_pre_index")
+            )
+        )
+    assert signatures[0] == signatures[1] == (
+        (0, 1, 1.0, 1.0),
+        (1, 2, 4.0, 0.0625),
+    )
+
+    initial = stacks[0].optimizer.initialize_from_loaded_targets()
+    assert stacks[0].optimizer.initialized is True
+    assert initial["model"] == "aihwkit_reram_cmo"
+    assert initial["parameter_keys"] == [
+        "base.dense_weight.0",
+        "base.dense_weight.1",
+    ]
+    floor = 0.00011 * 9.0 / 88.199997
+    for binding in stacks[0].bundle.catalog.trainable:
+        assert float(binding.state.min()) >= floor - 1e-10

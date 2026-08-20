@@ -10,9 +10,15 @@ from typing import Any, TypeAlias
 
 
 WAN2022 = "aihwkit_reram_wan2022"
+WAN2022_PHYSICAL = "aihwkit_reram_wan2022_physical"
 IBM_AFM2025_PCM = "ibm_afm2025_pcm"
 AIHWKIT_RERAM_CMO = "aihwkit_reram_cmo"
-DEVICE_TYPES = (WAN2022, IBM_AFM2025_PCM, AIHWKIT_RERAM_CMO)
+DEVICE_TYPES = (
+    WAN2022,
+    WAN2022_PHYSICAL,
+    IBM_AFM2025_PCM,
+    AIHWKIT_RERAM_CMO,
+)
 _WAN_TIMES_SECONDS = (1.0, 86400.0, 172800.0)
 
 
@@ -26,6 +32,20 @@ class Wan2022ProgrammingConfig:
     drn_conductance_at_g_max: float
     noise_scale: float
     t_inference_seconds: float
+
+
+@dataclass(frozen=True)
+class Wan2022PhysicalProgrammingConfig:
+    """Wan-2022 endpoint model with an explicit physical floor mapping."""
+
+    type: str
+    programming_seed: int
+    g_min_us: float
+    g_max_us: float
+    drn_conductance_at_g_max: float
+    noise_scale: float
+    t_inference_seconds: float
+    mapping: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +79,7 @@ class CmoHfOxProgrammingConfig:
 
 DeviceProgrammingConfig: TypeAlias = (
     Wan2022ProgrammingConfig
+    | Wan2022PhysicalProgrammingConfig
     | IbmAfm2025PcmProgrammingConfig
     | CmoHfOxProgrammingConfig
 )
@@ -75,6 +96,7 @@ def parse_device_programming_config(
         value,
         (
             Wan2022ProgrammingConfig,
+            Wan2022PhysicalProgrammingConfig,
             IbmAfm2025PcmProgrammingConfig,
             CmoHfOxProgrammingConfig,
         ),
@@ -89,6 +111,7 @@ def parse_device_programming_config(
         device_type = value.get("type")
         classes = {
             WAN2022: Wan2022ProgrammingConfig,
+            WAN2022_PHYSICAL: Wan2022PhysicalProgrammingConfig,
             IBM_AFM2025_PCM: IbmAfm2025PcmProgrammingConfig,
             AIHWKIT_RERAM_CMO: CmoHfOxProgrammingConfig,
         }
@@ -145,6 +168,42 @@ def _validate_device_config(
                 f"Expected {path}.t_inference_seconds to be one of "
                 f"{_WAN_TIMES_SECONDS!r}. Provided value: "
                 f"{config.t_inference_seconds!r}."
+            )
+        return
+    if config.type == WAN2022_PHYSICAL:
+        if not isinstance(config, Wan2022PhysicalProgrammingConfig):
+            _wrong_dataclass(config, path)
+        for name in (
+            "g_min_us",
+            "g_max_us",
+            "drn_conductance_at_g_max",
+        ):
+            _positive(getattr(config, name), name=f"{path}.{name}")
+        if float(config.g_min_us) >= float(config.g_max_us):
+            raise ValueError(
+                f"Expected {path}.g_min_us < {path}.g_max_us. "
+                f"Provided value: g_min_us={config.g_min_us!r}, "
+                f"g_max_us={config.g_max_us!r}."
+            )
+        _non_negative(config.noise_scale, name=f"{path}.noise_scale")
+        if (
+            not _finite_real(config.t_inference_seconds)
+            or float(config.t_inference_seconds) not in _WAN_TIMES_SECONDS
+        ):
+            raise ValueError(
+                f"Expected {path}.t_inference_seconds to be one of "
+                f"{_WAN_TIMES_SECONDS!r}. Provided value: "
+                f"{config.t_inference_seconds!r}."
+            )
+        if config.mapping not in (
+            "literal_conductance",
+            "affine_floor",
+            "normalized_offset",
+        ):
+            raise ValueError(
+                f"Expected {path}.mapping to be 'literal_conductance', "
+                "'affine_floor', or 'normalized_offset'. Provided value: "
+                f"{config.mapping!r}."
             )
         return
     if config.type == IBM_AFM2025_PCM:
@@ -294,10 +353,12 @@ __all__ = [
     "DEVICE_TYPES",
     "IBM_AFM2025_PCM",
     "WAN2022",
+    "WAN2022_PHYSICAL",
     "CmoHfOxProgrammingConfig",
     "DeviceProgrammingConfig",
     "IbmAfm2025PcmProgrammingConfig",
     "Wan2022ProgrammingConfig",
+    "Wan2022PhysicalProgrammingConfig",
     "device_programming_to_mapping",
     "parse_device_programming_config",
 ]

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-17
+Last updated: 2026-08-20
 
 ## Purpose
 
@@ -354,6 +354,43 @@ and fine-tuning updates must remain separately measurable.
   `+0.02 pp`). These archived CMO numbers use the normalized-offset
   cancellation mapping. The changes are too small and under-replicated to
   establish a full-versus-LoRA winner.
+- **Historical independently trained CMO versus Wan-2022 control:** a seed-17
+  comparison used the same `96.15%` independently trained FP32 DRN checkpoint,
+  the same two-epoch HWA checkpoint, one-day retention, retained affine floors,
+  and ten epochs of full BPTT with a fresh endpoint write after every
+  minibatch. The first FP32 device write gives
+  `96.02%` on CMO and `87.80%` on Wan. The clean HWA checkpoint is `95.67%`;
+  its first device write gives `96.19%` on CMO and `75.78%` on Wan.
+  Cost-selected noisy BPTT finishes at `95.56%` on CMO and `94.23%` on Wan,
+  verified in fresh processes. Thus BPTT changes the deployed HWA result by
+  `-0.63 pp` for CMO but `+18.45 pp` for Wan. Wan's direct-write programming
+  RMSE relative to the ideal affine target is `0.03145` DRN units, versus
+  `0.00963` for CMO. This is a matched single-seed result, not a population
+  estimate; the shared IBM-style HWA noise is not fitted to the Wan
+  polynomial. This remains a useful endpoint-noise control, but it is
+  superseded as the primary ReLU-to-DRN protocol because its DRN weights were
+  not initialized from the frozen feed-forward ReLU teacher. Full protocol,
+  provenance, and limitations are in
+  [`mnist_wan_cmo_head_to_head.md`](mnist_wan_cmo_head_to_head.md).
+- **Teacher-initialized CMO versus Wan-2022 result:** the corrected matched
+  protocol starts every arm from one frozen bias-free `784 -> 50 -> 10` ReLU
+  teacher and maps its signed matrices directly into the bias-free
+  `[1568,100,20]` dual-rail DRN before any HWA or endpoint write. On the
+  untouched MNIST test split, the teacher is `97.36%`, the immediate ideal DRN
+  mapping is `96.91%` with teacher KL `0.009345`, and two generic 3%-modifier
+  HWA epochs select a clean `97.34%` checkpoint with KL `0.002681`. The first
+  ideal-map write gives `91.15%` CMO and `78.62%` Wan; the first HWA write
+  gives `92.18%` and `80.31%`. Ten epochs of full BPTT, with gradients at the
+  realized state and a fresh endpoint rewrite after every minibatch, select
+  `96.46%` CMO and `91.84%` Wan, with KL `0.032341` and `0.186471`. HWA adds
+  only `+1.03/+1.69 pp` at first write, while noisy BPTT adds
+  `+4.28/+11.53 pp`, so post-deployment adaptation is the dominant
+  intervention in this realization. HWA necessity is still unresolved because
+  a matched no-HWA BPTT arm was not run. Wan programming error relative to the
+  ideal affine target is `4.45x` the CMO value (`5.130` versus `1.152 uS` in
+  effective DRN units), even though CMO has the larger finite floor. The full
+  setup, KL results, provenance, and limitations are in
+  [`mnist_wan_cmo_teacher_initialized.md`](mnist_wan_cmo_teacher_initialized.md).
 - **CMO literal hard-clipping follow-up:** the literal mapping lowers FP32
   from `96.15%` to `79.51%` and HWA from `96.37%` to `80.61%`. The initial
   write raises `98.13%` of W1 and `88.10%` of W2 targets to the device floor.
@@ -532,10 +569,11 @@ Exact measurements, limitations, and raw artifact locations are in the
    HWA models as pulse-update models unless their source papers provide the
    required per-pulse trajectories. Measure write count, update noise, energy,
    and endurance alongside accuracy.
-2. Before spending more recovery compute on the IBM endpoint models, run a
-   multi-seed deployment-only severity screen. Choose a physically supported
-   acceptance/retention condition that produces a reproducible nonzero gap,
-   without tuning that choice on the final test set.
+2. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
+   seeds and add a direct ideal-map-to-device-to-BPTT arm. This separates
+   whether HWA is necessary for recovery from whether it merely improves the
+   first write. Then compare the generic 3% modifier with device-matched HWA,
+   without tuning either choice on the final test set.
 3. Compare three targeted post-HWA interventions on the same deployment:
    rank-4 LoRA, W2-plus-bias fine-tuning, and full-model fine-tuning. This
    tests whether the full rewrite is actually needed.
@@ -565,6 +603,8 @@ documented in
 - [Literal-RESET differential MNIST screen](mnist_relu_drn_reset_differential_10ep.md)
 - [MNIST HWA and LoRA experiment setup](mnist_hwa_lora_experiment_setup.md)
 - [MNIST IBM PCM/CMO noisy-recovery study](mnist_ibm_pcm_cmo_noisy_recovery.md)
+- [MNIST CMO versus Wan-2022 head-to-head](mnist_wan_cmo_head_to_head.md)
+- [Teacher-initialized CMO versus Wan-2022](mnist_wan_cmo_teacher_initialized.md)
 - [Current LoRA/HWA simulations](current_simulations.md)
 - [Finished LoRA/HWA simulations and progress](experimental_manifest.md)
 - [ReRAM device catalog](reram_device_catalog.md)

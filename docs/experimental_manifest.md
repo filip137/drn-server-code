@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Program goal
 
@@ -40,7 +40,7 @@ evidence available today, not pass/fail gates.
 | `M3` | Demonstrate recovery at full-MNIST scale. | partial | [`mnist-hwa-lora-rank-study`](#mnist-hwa-lora-rank-study) | Current evidence uses one base-training seed despite replication over device seeds. |
 | `M4` | Characterize device-seed robustness and adaptation-overhead behavior. | partial | Ten rank-4 device pairs and a matched five-pair rank sweep in [`mnist-hwa-lora-rank-study`](#mnist-hwa-lora-rank-study), plus the rewrite-versus-added-array control in [`mnist-hwa-reram-full-finetune`](#mnist-hwa-reram-full-finetune) | Repeat the adaptation comparison across independent base models and add physical write costs. |
 | `M5` | Replicate with multiple base-training seeds and separate validation and final-test data. | open | Tracked as paused in the [current-simulation ledger](current_simulations.md) | Resume and analyze the matched multi-base comparison when base-seed generalization returns to active priority. |
-| `M6` | Characterize base-device degradation mechanisms, then extend them to realistic factor-device effects aligned with a positive-only correction path. | partial | Base-device evidence comes from [`measured-device-screen`](#measured-device-screen) and [`cmo-range-mismatch-lora`](#cmo-range-mismatch-lora); repeated endpoint noise is exercised in [`mnist-ibm-pcm-cmo-noisy-recovery`](#mnist-ibm-pcm-cmo-noisy-recovery); [`mnist-cmo-literal-floor-noisy-recovery`](#mnist-cmo-literal-floor-noisy-recovery) establishes the hard-clipping failure; and [`mnist-cmo-floor-mitigation`](#mnist-cmo-floor-mitigation) separates that failure from passive floor loading. | Replicate across device/base seeds, train through the affine floor from initialization, validate selector and active-cancellation circuits, and add a physical incremental-pulse model. |
+| `M6` | Characterize base-device degradation mechanisms, then extend them to realistic factor-device effects aligned with a positive-only correction path. | partial | Base-device evidence comes from [`measured-device-screen`](#measured-device-screen) and [`cmo-range-mismatch-lora`](#cmo-range-mismatch-lora); repeated endpoint noise is exercised in [`mnist-ibm-pcm-cmo-noisy-recovery`](#mnist-ibm-pcm-cmo-noisy-recovery); [`mnist-cmo-literal-floor-noisy-recovery`](#mnist-cmo-literal-floor-noisy-recovery) establishes the hard-clipping failure; [`mnist-cmo-floor-mitigation`](#mnist-cmo-floor-mitigation) separates that failure from passive floor loading; and [`mnist-wan-cmo-teacher-initialized-seed17-10ep`](#mnist-wan-cmo-teacher-initialized-seed17-10ep) compares retained-floor endpoints from a common teacher initialization. | Replicate across device/base seeds, add the no-HWA BPTT control, validate selector and active-cancellation circuits, and add a physical incremental-pulse model. |
 
 ## Finished simulations
 
@@ -262,6 +262,84 @@ evidence available today, not pass/fail gates.
 - **Local ignored detail:**
   `results/mnist-ibm-pcm-cmo-noisy-recovery/README.md` and
   `results/mnist-ibm-pcm-cmo-noisy-recovery/analysis/summary.json`
+
+### mnist-wan-cmo-head-to-head-seed17-10ep
+
+**Historical independently trained retained-floor CMO versus Wan-2022 control**
+
+- **Finished:** 2026-08-20
+- **Outcome:** CMO deployment-positive; Wan recovery-positive
+- **Question:** Under identical DRN, HWA, retention, mapping, seed, and noisy
+  BPTT budgets, how do the CMO/HfOx and Wan-2022 endpoint models compare?
+- **Setup:** One `[1568, 100, 20]` FP32 checkpoint, a shared two-epoch
+  additive-normal HWA checkpoint, `V_amp=4`, `I_amp=0.25`, one-day device
+  age, device seed 17, affine maps retaining `9–88.199997 µS` CMO and
+  `1–40 µS` Wan floors, and ten full-BPTT epochs with a fresh endpoint write
+  after every minibatch.
+- **Headline result:** Clean FP32 was `96.15%`. Its first device write was
+  `96.02%` CMO and `87.80%` Wan. Clean HWA was `95.67%`; its first device
+  write was `96.19%` CMO and `75.78%` Wan. Cost-selected noisy BPTT reached
+  `95.56%` CMO and `94.23%` Wan, both reproduced by fresh validation.
+- **Interpretation:** BPTT changed deployed HWA accuracy by `-0.63 pp` on
+  CMO and `+18.45 pp` on Wan. The direct-write programming RMSE relative to
+  the ideal affine target was `0.00963` CMO versus `0.03145` Wan DRN units;
+  stochastic endpoint distortion, not finite-floor ratio, dominates the
+  one-seed gap. This is retained as an endpoint-noise control but superseded
+  as the primary initialization protocol because its DRN was trained
+  independently rather than mapped from the frozen ReLU teacher.
+- **Main limitations:** One device seed, a generic IBM-style HWA modifier
+  rather than a Wan-fitted modifier, test-set checkpoint selection, endpoint
+  rather than pulse updates, and a one-device nonnegative-edge encoding
+  rather than NeuRRAM's signed differential pair.
+- **Raw artifacts:**
+  `results/mnist_wan_cmo_head_to_head_seed17_10ep/`
+- **Tracked detail:**
+  [study document](mnist_wan_cmo_head_to_head.md)
+
+### mnist-wan-cmo-teacher-initialized-seed17-10ep
+
+**Teacher-initialized retained-floor CMO versus Wan-2022 comparison**
+
+- **Finished:** 2026-08-20
+- **Outcome:** HWA modestly positive; noisy BPTT strongly positive; CMO ahead
+- **Question:** When every DRN arm is initialized from the same frozen ReLU
+  teacher, how useful are HWA and post-deployment noisy BPTT on CMO/HfOx and
+  Wan-2022 endpoint models?
+- **Setup:** One frozen bias-free `784 -> 50 -> 10` ReLU teacher, direct lift
+  into a bias-free `[1568,100,20]` dual-rail DRN, `V_amp=4`, `I_amp=0.25`,
+  logical `0..110 uS`, true 5,000-example validation selection and untouched
+  10,000-example test evaluation, two generic 3%-modifier HWA epochs, retained
+  affine CMO `9..88.199997 uS` and Wan `1..40 uS` floors, one-day age, device
+  seed 17, and ten full-BPTT epochs with a fresh endpoint rewrite after every
+  minibatch.
+- **Headline result:** The teacher reached `97.36%`; its immediate ideal DRN
+  mapping reached `96.91%` with teacher KL `0.009345`, and clean HWA reached
+  `97.34%` with KL `0.002681`. The ideal-map first write was `91.15%` CMO and
+  `78.62%` Wan. The HWA first write was `92.18%` and `80.31%`. Selected noisy
+  BPTT reached `96.46%` CMO and `91.84%` Wan, with KL `0.032341` and
+  `0.186471`.
+- **Intervention result:** HWA improved the first write by `+1.03 pp` CMO and
+  `+1.69 pp` Wan. Noisy BPTT then added `+4.28 pp` and `+11.53 pp`, recovering
+  `82.9%` and `67.7%` of the respective clean-HWA accuracy gaps. HWA necessity
+  remains unresolved because the study did not include a no-HWA BPTT arm.
+- **Device interpretation:** Wan programming-error RMSE relative to the ideal
+  affine target was `5.130 uS` in effective DRN units, `4.45x` CMO's
+  `1.152 uS`. CMO nevertheless had the larger deterministic floor-mapping
+  error (`10.681 uS` versus `2.617 uS`). The common affine floor is structured
+  and largely rejected by the dual-rail computation, whereas stochastic
+  endpoint distortion changes relative edge strengths.
+- **Physical controls:** Both BPTT arms performed exactly `34,380` rewrite
+  steps, all 17 campaign stages completed from clean source commit
+  `f60d4406c5a5cde7b75726626e4adeae5f4e4c03`, and fresh-process test
+  validation loaded the explicitly selected named checkpoints.
+- **Main limitations:** One teacher and device seed, generic rather than
+  device-matched HWA, endpoint rather than pulse updates, single-conductance
+  nonnegative physical edges, and no endurance, energy, ADC/DAC, IR-drop, or
+  dynamic inference-noise model.
+- **Raw artifacts:**
+  `results/mnist_wan_cmo_teacher_initialized_seed17_f60d4406/`
+- **Tracked detail:**
+  [study document](mnist_wan_cmo_teacher_initialized.md)
 
 ### mnist-cmo-literal-floor-noisy-recovery
 

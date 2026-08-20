@@ -18,10 +18,25 @@ from experiments.mnist_relu.config import (
     _parse_runtime,
 )
 from experiments.schema import RunMode, config_error, freeze_json
+from model.resistive.device_config import (
+    AIHWKIT_RERAM_CMO,
+    IBM_AFM2025_PCM,
+    WAN2022_PHYSICAL,
+    device_programming_to_mapping,
+    parse_device_programming_config,
+)
 
 
 EXPERIMENT_ID = "mnist_relu_drn_kd.v1"
 SCHEMA_VERSION = 1
+MEASURED_COHORT_A_BACKENDS = frozenset(
+    {
+        "measured_cohort_a",
+        "measured_cohort_a_one_pulse_down",
+    }
+)
+MEASURED_COHORT_B_BACKENDS = frozenset({"measured_cohort_b"})
+MEASURED_BACKENDS = MEASURED_COHORT_A_BACKENDS | MEASURED_COHORT_B_BACKENDS
 _MEASURED_KEYS = {
     "curve_preprocessing",
     "split_seed",
@@ -43,6 +58,7 @@ _MEASURED_KEYS = {
 }
 _MEASURED_OPTIONAL_KEYS = {
     "dual_rail_layout_by_parameter",
+    "positive_gradient_threshold_by_parameter",
 }
 
 
@@ -90,6 +106,13 @@ class UpdateBackendSettings:
 
 
 @dataclass(frozen=True)
+class TeacherSettings:
+    type: str
+    initialization: str
+    conductance_bounds: tuple[float, float] | None
+
+
+@dataclass(frozen=True)
 class StudentTrainSettings:
     num_epochs: int
     learning_rates: tuple[float, float]
@@ -98,6 +121,9 @@ class StudentTrainSettings:
     max_batches: int | None
     max_validation_batches: int | None
     minimum_relative_kl_improvement: float
+    selection_evaluation: str
+    selection_noise_repeats: int
+    weight_modifier: UpdateBackendSettings
     update_backend: UpdateBackendSettings
 
 
@@ -113,6 +139,7 @@ class StudentConfig:
     experiment_id: str
     runtime: RuntimeSettings
     data: DataSettings
+    teacher: TeacherSettings
     model: StudentModelSettings
     solver: SolverSettings
     mapping: MappingSettings
@@ -124,6 +151,7 @@ class StudentTrainSpec:
     experiment_id: str
     runtime: RuntimeSettings
     data: DataSettings
+    teacher: TeacherSettings
     model: StudentModelSettings
     solver: SolverSettings
     mapping: MappingSettings
@@ -135,6 +163,7 @@ class StudentValidateSpec:
     experiment_id: str
     runtime: RuntimeSettings
     data: DataSettings
+    teacher: TeacherSettings
     model: StudentModelSettings
     solver: SolverSettings
     mapping: MappingSettings
@@ -146,6 +175,66 @@ def _empty_object(value: Any, path: str) -> Mapping[str, Any]:
     if raw:
         raise config_error(path, "to be an explicit empty JSON object", dict(raw))
     return MappingProxyType({})
+
+
+def _parse_teacher(value: Any) -> TeacherSettings:
+    path = "config.teacher"
+    raw = _object(value, path)
+    if "type" not in raw:
+        raise config_error(path, "to contain 'type'", dict(raw))
+    teacher_type = raw["type"]
+    if teacher_type not in {"bias_free_relu", "bounded_drn"}:
+        raise config_error(
+            f"{path}.type",
+            "to be 'bias_free_relu' or 'bounded_drn'",
+            teacher_type,
+        )
+    expected_keys = {"type", "initialization"}
+    if teacher_type == "bounded_drn":
+        expected_keys.add("conductance_bounds")
+    _keys(raw, path, expected_keys)
+    expected_initialization = {
+        "bias_free_relu": "signed_weight_mapping",
+        "bounded_drn": "literal_named_weight_copy",
+    }[teacher_type]
+    if raw["initialization"] != expected_initialization:
+        raise config_error(
+            f"{path}.initialization",
+            f"to equal {expected_initialization!r} for teacher type "
+            f"{teacher_type!r}",
+            raw["initialization"],
+        )
+    conductance_bounds = None
+    if teacher_type == "bounded_drn":
+        raw_bounds = raw["conductance_bounds"]
+        if not isinstance(raw_bounds, (list, tuple)) or len(raw_bounds) != 2:
+            raise config_error(
+                f"{path}.conductance_bounds",
+                "to be [minimum, maximum]",
+                raw_bounds,
+            )
+        lower = _number(
+            raw_bounds[0],
+            f"{path}.conductance_bounds[0]",
+            minimum=0.0,
+        )
+        upper = _number(
+            raw_bounds[1],
+            f"{path}.conductance_bounds[1]",
+            minimum=0.0,
+        )
+        if lower >= upper:
+            raise config_error(
+                f"{path}.conductance_bounds",
+                "to satisfy 0 <= minimum < maximum",
+                raw_bounds,
+            )
+        conductance_bounds = (lower, upper)
+    return TeacherSettings(
+        type=teacher_type,
+        initialization=expected_initialization,
+        conductance_bounds=conductance_bounds,
+    )
 
 
 def _parse_model(value: Any) -> StudentModelSettings:
@@ -350,6 +439,7 @@ def _parse_measured(
         )
     expected_cohort = {
         "measured_cohort_a": "A",
+        "measured_cohort_a_one_pulse_down": "A",
         "measured_cohort_b": "B",
     }[backend_type]
     if (
@@ -421,17 +511,203 @@ def _parse_measured(
         raise config_error(f"{path}.formed_resistance_max_ohm", "to be positive", raw["formed_resistance_max_ohm"])
     normalized = dict(raw)
     normalized.setdefault("dual_rail_layout_by_parameter", None)
+    raw_thresholds = raw.get("positive_gradient_threshold_by_parameter")
+    if backend_type != "measured_cohort_a_one_pulse_down":
+        if raw_thresholds is not None:
+            raise config_error(
+                f"{path}.positive_gradient_threshold_by_parameter",
+                "to be omitted or null unless update_backend.type is "
+                "'measured_cohort_a_one_pulse_down'",
+                raw_thresholds,
+            )
+        normalized["positive_gradient_threshold_by_parameter"] = None
+    elif raw_thresholds is None:
+        normalized["positive_gradient_threshold_by_parameter"] = None
+    else:
+        mapping = raw["initial_target_mapping"]
+        expected_threshold_keys = (
+            {
+                "base.conductance_plus.0",
+                "base.conductance_minus.0",
+                "base.conductance_plus.1",
+                "base.conductance_minus.1",
+            }
+            if mapping == "paired_affine_common_window"
+            else {
+                "base.dense_weight.0",
+                "base.dense_weight.1",
+            }
+        )
+        if not isinstance(raw_thresholds, Mapping) or (
+            set(raw_thresholds) != expected_threshold_keys
+        ):
+            raise config_error(
+                f"{path}.positive_gradient_threshold_by_parameter",
+                "to map exactly the stable parameter keys "
+                f"{sorted(expected_threshold_keys)!r} to finite "
+                "non-negative raw-gradient thresholds",
+                raw_thresholds,
+            )
+        parsed_thresholds = {
+            key: _number(
+                raw_thresholds[key],
+                f"{path}.positive_gradient_threshold_by_parameter.{key}",
+            )
+            for key in sorted(expected_threshold_keys)
+        }
+        if any(value < 0.0 for value in parsed_thresholds.values()):
+            raise config_error(
+                f"{path}.positive_gradient_threshold_by_parameter",
+                "to map exactly the stable parameter keys "
+                f"{sorted(expected_threshold_keys)!r} to finite "
+                "non-negative raw-gradient thresholds",
+                raw_thresholds,
+            )
+        normalized["positive_gradient_threshold_by_parameter"] = (
+            parsed_thresholds
+        )
+    if backend_type == "measured_cohort_a_one_pulse_down":
+        if normalized["curve_preprocessing"] != "isotonic_nonincreasing":
+            raise config_error(
+                f"{path}.curve_preprocessing",
+                "to equal 'isotonic_nonincreasing' for "
+                "measured_cohort_a_one_pulse_down",
+                normalized["curve_preprocessing"],
+            )
+        allowed_mappings = {
+            "paired_affine_common_window",
+            "dual_rail_quad_common_window",
+        }
+        if normalized["initial_target_mapping"] not in allowed_mappings:
+            raise config_error(
+                f"{path}.initial_target_mapping",
+                "to be 'paired_affine_common_window' or "
+                "'dual_rail_quad_common_window' for "
+                "measured_cohort_a_one_pulse_down",
+                normalized["initial_target_mapping"],
+            )
     return freeze_json(normalized, path=path)
+
+
+def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
+    raw = _object(value, path)
+    _keys(raw, path, {"type", "parameters"})
+    modifier_type = raw["type"]
+    parameters_path = f"{path}.parameters"
+    parameters = _object(raw["parameters"], parameters_path)
+    if modifier_type == "none":
+        return UpdateBackendSettings(
+            type="none",
+            parameters=_empty_object(parameters, parameters_path),
+        )
+    if modifier_type != "add_normal":
+        raise config_error(
+            f"{path}.type",
+            "to be 'none' or 'add_normal'",
+            modifier_type,
+        )
+    _keys(
+        parameters,
+        parameters_path,
+        {"std_dev", "seed", "noisy_evaluation", "scale_mode"},
+    )
+    std_dev = _number(parameters["std_dev"], f"{parameters_path}.std_dev")
+    seed = _integer(parameters["seed"], f"{parameters_path}.seed")
+    if seed > 2**64 - 1:
+        raise config_error(
+            f"{parameters_path}.seed",
+            "to be an integer in [0, 2**64 - 1]",
+            seed,
+        )
+    if not isinstance(parameters["noisy_evaluation"], bool):
+        raise config_error(
+            f"{parameters_path}.noisy_evaluation",
+            "to be a boolean",
+            parameters["noisy_evaluation"],
+        )
+    scale_mode = parameters["scale_mode"]
+    if scale_mode not in {"tensor_abs_max", "output_channel_abs_max"}:
+        raise config_error(
+            f"{parameters_path}.scale_mode",
+            "to be 'tensor_abs_max' or 'output_channel_abs_max'",
+            scale_mode,
+        )
+    return UpdateBackendSettings(
+        type="add_normal",
+        parameters=freeze_json(
+            {
+                "std_dev": std_dev,
+                "seed": seed,
+                "noisy_evaluation": parameters["noisy_evaluation"],
+                "scale_mode": scale_mode,
+            },
+            path=parameters_path,
+        ),
+    )
+
+
+def _parse_program_verify(value: Any, path: str) -> Mapping[str, Any]:
+    raw = _object(value, path)
+    _keys(raw, path, {"device"})
+    try:
+        device = parse_device_programming_config(
+            raw["device"],
+            path=f"{path}.device",
+        )
+    except ValueError as error:
+        raise config_error(
+            f"{path}.device",
+            "to contain a valid repeated-write endpoint device model",
+            raw["device"],
+        ) from error
+    if device.type not in {
+        IBM_AFM2025_PCM,
+        WAN2022_PHYSICAL,
+        AIHWKIT_RERAM_CMO,
+    }:
+        raise config_error(
+            f"{path}.device.type",
+            "to select a device model with repeated-write support",
+            device.type,
+        )
+    return freeze_json(
+        {"device": device_programming_to_mapping(device)},
+        path=path,
+    )
 
 
 def _parse_train(value: Any) -> StudentTrainSettings:
     path = "config.modes.train"
     raw = _object(value, path)
-    _keys(raw, path, {"num_epochs", "learning_rates", "temperature", "log_every", "max_batches", "max_validation_batches", "minimum_relative_kl_improvement", "update_backend"})
+    _keys(
+        raw,
+        path,
+        {
+            "num_epochs",
+            "learning_rates",
+            "temperature",
+            "log_every",
+            "max_batches",
+            "max_validation_batches",
+            "minimum_relative_kl_improvement",
+            "update_backend",
+        },
+        {
+            "weight_modifier",
+            "selection_evaluation",
+            "selection_noise_repeats",
+        },
+    )
     rates = raw["learning_rates"]
     if not isinstance(rates, (list, tuple)) or len(rates) != 2:
         raise config_error(f"{path}.learning_rates", "to contain exactly two non-negative rates", rates)
     parsed_rates = tuple(_number(item, f"{path}.learning_rates[{index}]") for index, item in enumerate(rates))
+    if any(rate < 0.0 for rate in parsed_rates):
+        raise config_error(
+            f"{path}.learning_rates",
+            "to contain exactly two non-negative rates",
+            rates,
+        )
     if _number(raw["temperature"], f"{path}.temperature") != 1.0:
         raise config_error(f"{path}.temperature", "to equal 1.0", raw["temperature"])
     relative = _number(raw["minimum_relative_kl_improvement"], f"{path}.minimum_relative_kl_improvement")
@@ -442,29 +718,90 @@ def _parse_train(value: Any) -> StudentTrainSettings:
     if backend["type"] not in {
         "ideal",
         "measured_cohort_a",
+        "measured_cohort_a_one_pulse_down",
         "measured_cohort_b",
+        "program_verify",
     }:
         raise config_error(
             f"{path}.update_backend.type",
-            "to be 'ideal', 'measured_cohort_a', or 'measured_cohort_b'",
+            "to be 'ideal', 'measured_cohort_a', "
+            "'measured_cohort_a_one_pulse_down', 'measured_cohort_b', "
+            "or 'program_verify'",
             backend["type"],
         )
     if backend["type"] == "ideal":
         parameters = _empty_object(backend["parameters"], f"{path}.update_backend.parameters")
+    elif backend["type"] == "program_verify":
+        parameters = _parse_program_verify(
+            backend["parameters"],
+            f"{path}.update_backend.parameters",
+        )
     else:
         parameters = _parse_measured(
             backend["parameters"],
             f"{path}.update_backend.parameters",
             backend_type=backend["type"],
         )
+    if (
+        backend["type"] == "measured_cohort_a_one_pulse_down"
+        and parsed_rates != (0.0, 0.0)
+    ):
+        raise config_error(
+            f"{path}.learning_rates",
+            "to equal [0.0, 0.0] because "
+            "measured_cohort_a_one_pulse_down ignores learning-rate magnitude",
+            rates,
+        )
+    weight_modifier = _parse_weight_modifier(
+        raw.get(
+            "weight_modifier",
+            {"type": "none", "parameters": {}},
+        ),
+        f"{path}.weight_modifier",
+    )
+    selection_evaluation = raw.get("selection_evaluation", "clean")
+    if selection_evaluation not in {"clean", "modifier"}:
+        raise config_error(
+            f"{path}.selection_evaluation",
+            "to be 'clean' or 'modifier'",
+            selection_evaluation,
+        )
+    selection_noise_repeats = _integer(
+        raw.get("selection_noise_repeats", 1),
+        f"{path}.selection_noise_repeats",
+        minimum=1,
+    )
+    if selection_evaluation == "modifier":
+        valid_modifier = (
+            weight_modifier.type == "add_normal"
+            and bool(
+                weight_modifier.parameters.get("noisy_evaluation", False)
+            )
+        )
+        if not valid_modifier:
+            raise config_error(
+                f"{path}.selection_evaluation",
+                "to select an add_normal weight modifier with "
+                "noisy_evaluation=true when set to 'modifier'",
+                selection_evaluation,
+            )
+    elif selection_noise_repeats != 1:
+        raise config_error(
+            f"{path}.selection_noise_repeats",
+            "to equal 1 when selection_evaluation is 'clean'",
+            selection_noise_repeats,
+        )
     return StudentTrainSettings(
-        num_epochs=_integer(raw["num_epochs"], f"{path}.num_epochs", minimum=1),
+        num_epochs=_integer(raw["num_epochs"], f"{path}.num_epochs", minimum=0),
         learning_rates=(parsed_rates[0], parsed_rates[1]),
         temperature=1.0,
         log_every=_integer(raw["log_every"], f"{path}.log_every", minimum=1),
         max_batches=_optional_batches(raw["max_batches"], f"{path}.max_batches"),
         max_validation_batches=_optional_batches(raw["max_validation_batches"], f"{path}.max_validation_batches"),
         minimum_relative_kl_improvement=relative,
+        selection_evaluation=selection_evaluation,
+        selection_noise_repeats=selection_noise_repeats,
+        weight_modifier=weight_modifier,
         update_backend=UpdateBackendSettings(type=backend["type"], parameters=parameters),
     )
 
@@ -480,7 +817,21 @@ def _parse_validate(value: Any) -> StudentValidateSettings:
 
 def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
     raw = _object(payload, "config")
-    _keys(raw, "config", {"schema_version", "experiment_id", "runtime", "data", "model", "solver", "mapping", "modes"})
+    _keys(
+        raw,
+        "config",
+        {
+            "schema_version",
+            "experiment_id",
+            "runtime",
+            "data",
+            "model",
+            "solver",
+            "mapping",
+            "modes",
+        },
+        {"teacher"},
+    )
     if raw["schema_version"] != 1:
         raise config_error("config.schema_version", "to equal 1", raw["schema_version"])
     if raw["experiment_id"] != EXPERIMENT_ID:
@@ -493,12 +844,48 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         modes["train"] = _parse_train(modes_raw["train"])
     if "validate" in modes_raw:
         modes["validate"] = _parse_validate(modes_raw["validate"])
+    teacher = _parse_teacher(
+        raw.get(
+            "teacher",
+            {
+                "type": "bias_free_relu",
+                "initialization": "signed_weight_mapping",
+            },
+        )
+    )
     model = _parse_model(raw["model"])
+    if teacher.type == "bounded_drn":
+        teacher_bounds = teacher.conductance_bounds
+        if teacher_bounds is None:  # pragma: no cover - parser guarantees it
+            raise RuntimeError("Expected bounded_drn teacher bounds after parsing.")
+        if (
+            model.conductance_min > teacher_bounds[0]
+            or model.conductance_max < teacher_bounds[1]
+        ):
+            raise config_error(
+                "config.model",
+                "to contain the bounded_drn teacher conductance interval "
+                f"{list(teacher_bounds)!r}",
+                {
+                    "conductance_min": model.conductance_min,
+                    "conductance_max": model.conductance_max,
+                },
+            )
     train = modes.get("train")
+    if (
+        teacher.type == "bounded_drn"
+        and isinstance(train, StudentTrainSettings)
+        and train.update_backend.type in MEASURED_BACKENDS
+    ):
+        raise config_error(
+            "config.modes.train.update_backend.type",
+            "to be 'ideal' or 'program_verify' for a bounded_drn teacher",
+            train.update_backend.type,
+        )
     if (
         isinstance(train, StudentTrainSettings)
         and train.update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        in MEASURED_BACKENDS
         and train.update_backend.parameters["initial_target_mapping"]
         == "paired_affine_common_window"
         and model.encoding != "differential"
@@ -512,7 +899,7 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
     if (
         isinstance(train, StudentTrainSettings)
         and train.update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        in MEASURED_BACKENDS
         and train.update_backend.parameters["initial_target_mapping"]
         in {
             "dual_rail_pairwise_common_window",
@@ -529,7 +916,7 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
     if (
         isinstance(train, StudentTrainSettings)
         and train.update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        in MEASURED_BACKENDS
         and train.update_backend.parameters["initial_target_mapping"]
         in {
             "dual_rail_pairwise_common_window",
@@ -565,7 +952,51 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
             "single-encoding cohort-B deployment",
             train.update_backend.parameters["initial_target_mapping"],
         )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type
+        == "measured_cohort_a_one_pulse_down"
+    ):
+        expected_mapping = (
+            "dual_rail_quad_common_window"
+            if model.encoding == "single"
+            else "paired_affine_common_window"
+        )
+        provided_mapping = train.update_backend.parameters[
+            "initial_target_mapping"
+        ]
+        if provided_mapping != expected_mapping:
+            raise config_error(
+                "config.modes.train.update_backend.parameters."
+                "initial_target_mapping",
+                f"to equal {expected_mapping!r} for {model.encoding!r} "
+                "encoding with measured_cohort_a_one_pulse_down",
+                provided_mapping,
+            )
     mapping = _parse_mapping(raw["mapping"])
+    if teacher.type == "bounded_drn":
+        constraints = {
+            "config.model.encoding": (model.encoding, "single"),
+            "config.mapping.scale_fractions": (
+                mapping.scale_fractions,
+                (1.0,),
+            ),
+            "config.mapping.scale_fraction_pairs": (
+                mapping.scale_fraction_pairs,
+                None,
+            ),
+            "config.mapping.range_placement": (
+                mapping.range_placement,
+                "lower",
+            ),
+        }
+        for constraint_path, (provided, expected) in constraints.items():
+            if provided != expected:
+                raise config_error(
+                    constraint_path,
+                    f"to equal {expected!r} for a bounded_drn teacher",
+                    provided,
+                )
     if mapping.range_placement == "centered" and model.encoding != "single":
         raise config_error(
             "config.mapping.range_placement",
@@ -577,6 +1008,7 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         experiment_id=EXPERIMENT_ID,
         runtime=_parse_runtime(raw["runtime"]),
         data=_parse_data(raw["data"]),
+        teacher=teacher,
         model=model,
         solver=_parse_solver(raw["solver"]),
         mapping=mapping,
@@ -592,6 +1024,7 @@ def resolve_student_spec(document: StudentConfig, mode: RunMode) -> Any:
         "experiment_id": document.experiment_id,
         "runtime": document.runtime,
         "data": document.data,
+        "teacher": document.teacher,
         "model": document.model,
         "solver": document.solver,
         "mapping": document.mapping,
@@ -606,10 +1039,14 @@ def resolve_student_spec(document: StudentConfig, mode: RunMode) -> Any:
 
 __all__ = [
     "EXPERIMENT_ID",
+    "MEASURED_BACKENDS",
+    "MEASURED_COHORT_A_BACKENDS",
+    "MEASURED_COHORT_B_BACKENDS",
     "SCHEMA_VERSION",
     "StudentConfig",
     "StudentTrainSpec",
     "StudentValidateSpec",
+    "TeacherSettings",
     "parse_student_config",
     "resolve_student_spec",
 ]

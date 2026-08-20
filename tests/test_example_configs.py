@@ -218,6 +218,132 @@ def test_mnist_ibm_device_study_examples_resolve() -> None:
     assert pcm_lora.settings.learning_rates == (0.01,) * 4
 
 
+def test_mnist_wan_cmo_head_to_head_examples_resolve() -> None:
+    directory = (
+        ROOT
+        / "examples"
+        / "small_drn"
+        / "mnist_wan_cmo_head_to_head"
+    )
+    paths = sorted(directory.glob("*.json"))
+    assert [path.name for path in paths] == [
+        "cmo_affine_one_day_deployment.json",
+        "cmo_affine_one_day_full_bptt.json",
+        "hwa_shared_from_fp32.json",
+        "wan_affine_one_day_deployment.json",
+        "wan_affine_one_day_full_bptt.json",
+    ]
+
+    resolved = {
+        path.name: resolve_experiment_config(path, RunMode.TRAIN)[1]
+        for path in paths
+    }
+    for spec in resolved.values():
+        assert spec.common.data.dataset == "mnist"
+        assert spec.common.model.voltage_amp == 4.0
+        assert spec.common.model.current_amp == 0.25
+
+    hwa = resolved["hwa_shared_from_fp32.json"]
+    assert hwa.settings.num_epochs == 2
+    assert hwa.settings.weight_modifier.type == "add_normal"
+    assert hwa.settings.update_backend.type == "direct"
+
+    for name, spec in resolved.items():
+        if name == "hwa_shared_from_fp32.json":
+            continue
+        device = spec.settings.update_backend.parameters["device"]
+        assert spec.settings.update_backend.type == "program_verify"
+        assert device["mapping"] == "affine_floor"
+        assert device["t_inference_seconds"] == 86400.0
+        if name.startswith("wan_"):
+            assert device["type"] == "aihwkit_reram_wan2022_physical"
+            assert device["g_min_us"] == 1.0
+            assert device["g_max_us"] == 40.0
+        else:
+            assert device["type"] == "aihwkit_reram_cmo"
+            assert device["g_min_us"] == 9.0
+            assert device["g_max_us"] == 88.199997
+
+    assert resolved["wan_affine_one_day_full_bptt.json"].settings.num_epochs == 10
+    assert resolved["cmo_affine_one_day_full_bptt.json"].settings.num_epochs == 10
+
+
+def test_teacher_initialized_wan_cmo_examples_share_the_relu_mapping() -> None:
+    directory = (
+        ROOT
+        / "examples"
+        / "mnist_relu_drn"
+        / "wan_cmo_teacher_initialized"
+    )
+    paths = sorted(directory.glob("*.json"))
+    assert [path.name for path in paths] == [
+        "cmo_deployment.json",
+        "cmo_full_bptt.json",
+        "hwa_add_normal.json",
+        "ideal_teacher_map.json",
+        "wan_deployment.json",
+        "wan_full_bptt.json",
+    ]
+    resolved = {
+        path.name: resolve_experiment_config(path, RunMode.TRAIN)[1]
+        for path in paths
+    }
+    for spec in resolved.values():
+        assert spec.model.dims == (1568, 100, 20)
+        assert spec.model.input_gain == 100.0
+        assert spec.model.conductance_min == 0.0
+        assert spec.model.conductance_max == 0.00011
+        assert spec.model.voltage_amp == 4.0
+        assert spec.model.current_amp == 0.25
+        assert spec.model.encoding == "single"
+        assert spec.model.include_biases is False
+        assert spec.data.validation_points == 5000
+
+    ideal = resolved["ideal_teacher_map.json"]
+    assert ideal.settings.num_epochs == 0
+    assert ideal.settings.weight_modifier.type == "none"
+    assert ideal.settings.update_backend.type == "ideal"
+
+    hwa = resolved["hwa_add_normal.json"]
+    assert hwa.settings.num_epochs == 2
+    assert hwa.settings.weight_modifier.type == "add_normal"
+    assert dict(hwa.settings.weight_modifier.parameters) == {
+        "std_dev": 0.03,
+        "seed": 101,
+        "noisy_evaluation": False,
+        "scale_mode": "output_channel_abs_max",
+    }
+    assert hwa.settings.update_backend.type == "ideal"
+
+    for name in (
+        "cmo_deployment.json",
+        "cmo_full_bptt.json",
+        "wan_deployment.json",
+        "wan_full_bptt.json",
+    ):
+        spec = resolved[name]
+        assert spec.settings.weight_modifier.type == "none"
+        assert spec.settings.update_backend.type == "program_verify"
+        device = spec.settings.update_backend.parameters["device"]
+        assert device["mapping"] == "affine_floor"
+        assert device["drn_conductance_at_g_max"] == 0.00011
+        assert device["t_inference_seconds"] == 86400.0
+        assert spec.settings.num_epochs == (
+            10 if name.endswith("full_bptt.json") else 0
+        )
+
+    assert (
+        resolved["cmo_deployment.json"]
+        .settings.update_backend.parameters["device"]["g_min_us"]
+        == 9.0
+    )
+    assert (
+        resolved["wan_deployment.json"]
+        .settings.update_backend.parameters["device"]["g_min_us"]
+        == 1.0
+    )
+
+
 def test_measured_cohort_a_examples_resolve_matched_raw_and_isotonic_arms() -> None:
     directory = ROOT / "examples" / "small_drn"
     raw = resolve_experiment_config(

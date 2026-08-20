@@ -302,6 +302,39 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
     for encoding in ("single", "differential")
     for backend in ("ideal", "measured_cohort_a")
 ) + (
+    *(
+        ValidatedCombination(
+            ExtensionSelection(
+                encoding,
+                "add_normal",
+                "ideal",
+                "teacher_kl",
+            ),
+            "experimental",
+            (
+                "Teacher-mapped DRN hardware-aware training with temporary "
+                "output-channel-scaled additive Gaussian conductance noise."
+            ),
+        )
+        for encoding in ("single", "differential")
+    ),
+    *(
+        ValidatedCombination(
+            ExtensionSelection(
+                encoding,
+                "none",
+                "program_verify",
+                "teacher_kl",
+            ),
+            "experimental",
+            (
+                "Teacher-mapped DRN deployment and full BPTT with a fresh "
+                "program-and-verify endpoint-device realization after every "
+                "conductance update."
+            ),
+        )
+        for encoding in ("single", "differential")
+    ),
     ValidatedCombination(
         ExtensionSelection(
             "single",
@@ -329,6 +362,35 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
             "held-out measured cohort-B device traces."
         ),
     ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "none",
+            "measured_cohort_a_one_pulse_down",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Four-device cohort-A quad-common-window initialization followed "
+            "by strict isotonic local updates: gradients above explicit "
+            "per-parameter thresholds advance exactly one pulse toward lower "
+            "conductance and all other gradients hold."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "differential",
+            "none",
+            "measured_cohort_a_one_pulse_down",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Eight-device cohort-A paired-common-window initialization "
+            "followed by the same threshold-gated one-pulse-down rule on "
+            "each physical G+/G- conductance tensor."
+        ),
+    ),
 )
 
 
@@ -337,7 +399,7 @@ def _resolve_mnist_relu_drn(document, mode: RunMode):
     if isinstance(spec, StudentTrainSpec):
         selection = ExtensionSelection(
             spec.model.encoding,
-            "none",
+            spec.settings.weight_modifier.type,
             spec.settings.update_backend.type,
             "teacher_kl",
         )

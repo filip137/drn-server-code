@@ -27,6 +27,7 @@ from model.resistive.digital_low_rank_config import (
 from model.resistive.device_config import (
     AIHWKIT_RERAM_CMO,
     IBM_AFM2025_PCM,
+    WAN2022_PHYSICAL,
     device_programming_to_mapping,
     parse_device_programming_config,
 )
@@ -792,7 +793,11 @@ def _update_backend(value: Any, path: str) -> ComponentSettings:
         )
     except ValueError as error:
         raise ConfigError(str(error)) from error
-    if device.type not in (IBM_AFM2025_PCM, AIHWKIT_RERAM_CMO):
+    if device.type not in (
+        IBM_AFM2025_PCM,
+        WAN2022_PHYSICAL,
+        AIHWKIT_RERAM_CMO,
+    ):
         raise config_error(
             f"{parameters_path}.device.type",
             "to select an endpoint model with a repeated-write "

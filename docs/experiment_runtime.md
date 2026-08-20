@@ -24,7 +24,7 @@ choices do not belong in model classes or generic training loops.
 | training algorithm | `ep`, `backprop`, `digital` | estimate a complete minibatch gradient (`backprop` is BPTT through the configured minimizer iterations) |
 | model adapter | `none`, `passive_low_rank`, `digital_low_rank`, `passive_layerwise_low_rank` | define the trainable parameterization |
 | parameter modifier | `none`, `add_normal` | temporarily alter parameters during solver phases |
-| update backend | `direct`, `tiki_taka`, `program_verify`, `measured_cohort_a`, `measured_cohort_b`, `measured_cohort_b_lora` | apply or accumulate the completed gradient; measured backends project trainable arrays onto assigned measured device curves |
+| update backend | `direct`, `tiki_taka`, `program_verify`, `measured_cohort_a`, `measured_cohort_a_one_pulse_down`, `measured_cohort_b`, `measured_cohort_b_lora` | apply or accumulate the completed gradient; measured backends project trainable arrays onto assigned measured device curves; the one-pulse-down backend permits only a local step toward lower conductance |
 
 LoRA is therefore not another name for Tiki-Taka. Passive low-rank recovery
 changes which parameters produce the effective model weights; Tiki-Taka
@@ -48,6 +48,25 @@ adds `passive_low_rank`, `digital_low_rank`, and
 `program_verify` for full BPTT and passive-layerwise LoRA BPTT. Unlisted
 combinations, including LoRA plus the temporary `add_normal` modifier, are
 rejected before numerical execution.
+
+`measured_cohort_a_one_pulse_down` fits each cohort-A source trace to an
+isotonic non-increasing endpoint sequence. Teacher-mapped initialization uses
+one global-nearest write. During fine-tuning, a raw gradient strictly greater
+than its stable parameter's `positive_gradient_threshold_by_parameter` value
+increments that cell's pulse index by exactly one; equality, a sub-threshold
+positive gradient, zero, or a negative gradient holds. Omitting the mapping is
+the explicit zero-threshold control. The backend does not use learning-rate
+magnitude, a digital shadow accumulator, or global-nearest projection after
+initialization, so configs declare learning rates `[0.0, 0.0]`.
+
+The registered four-device form uses single encoding with
+`dual_rail_quad_common_window`. The eight-device form uses differential
+encoding with paired `G+`/`G-` common windows and calibrates thresholds for all
+four stable conductance tensors. Both retain pulse indices and cumulative
+gating, saturation, pulse-jump, and conductance-monotonicity diagnostics in
+their resume checkpoints. The isotonic trajectory is a simulator rule over
+measured endpoints; it is not evidence that an open-loop physical pulse will
+exactly reproduce the next fitted state.
 
 ## Commands
 

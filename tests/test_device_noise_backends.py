@@ -12,6 +12,7 @@ from model.resistive.builders import ParameterBinding, ParameterCatalog
 from model.resistive.device_config import (
     CmoHfOxProgrammingConfig,
     IbmAfm2025PcmProgrammingConfig,
+    Wan2022PhysicalProgrammingConfig,
 )
 from model.variable.parameter import DenseWeight
 from training.add_normal import AddNormalConfig, AddNormalParameterModifier
@@ -68,6 +69,25 @@ def _cmo_config(
         t_inference_seconds=t_seconds,
         read_noise_scale=noise_scale,
         drift_scale=noise_scale,
+        mapping=mapping,
+    )
+
+
+def _wan_physical_config(
+    *,
+    noise_scale: float = 1.0,
+    t_seconds: float = 86400.0,
+    mapping: str = "affine_floor",
+    reference: float = 1.0,
+):
+    return Wan2022PhysicalProgrammingConfig(
+        type="aihwkit_reram_wan2022_physical",
+        programming_seed=23,
+        g_min_us=1.0,
+        g_max_us=40.0,
+        drn_conductance_at_g_max=reference,
+        noise_scale=noise_scale,
+        t_inference_seconds=t_seconds,
         mapping=mapping,
     )
 
@@ -250,6 +270,84 @@ def test_cmo_literal_mapping_preserves_the_measured_nine_us_floor() -> None:
     assert report["physical_target_max_us"] == pytest.approx(88.199997)
     assert report["clipped_low_fraction"] == 0.5
     assert report["clipped_high_fraction"] == 0.25
+
+
+def test_wan_physical_affine_mapping_preserves_the_one_us_floor() -> None:
+    target = torch.tensor([[0.0], [0.5], [1.0]])
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(23)
+
+    realized, report = realize_programmed_tensor(
+        target,
+        _wan_physical_config(noise_scale=0.0),
+        generator=generator,
+    )
+
+    torch.testing.assert_close(
+        realized.flatten(),
+        torch.tensor([0.025, 0.5125, 1.0]),
+    )
+    assert report["physical_target_min_us"] == 1.0
+    assert report["physical_target_max_us"] == 40.0
+    assert report["mapping"] == "affine_floor"
+    assert report["mapping_error_rmse"] > 0.0
+    assert report["programming_error_rmse"] == pytest.approx(0.0)
+
+
+def test_wan_physical_literal_mapping_matches_the_paper_device_floor() -> None:
+    target = torch.tensor([[0.0], [0.01], [0.5], [1.5]])
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(23)
+
+    realized, report = realize_programmed_tensor(
+        target,
+        _wan_physical_config(
+            noise_scale=0.0,
+            mapping="literal_conductance",
+        ),
+        generator=generator,
+    )
+
+    torch.testing.assert_close(
+        realized.flatten(),
+        torch.tensor([0.025, 0.025, 0.5, 1.0]),
+    )
+    assert report["clipped_low_fraction"] == 0.5
+    assert report["clipped_high_fraction"] == 0.25
+
+
+def test_wan_physical_noise_matches_aihwkit_1_1_polynomial() -> None:
+    target = torch.tensor([[0.1], [0.5], [0.9]])
+    config = _wan_physical_config(mapping="normalized_offset")
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(config.programming_seed)
+
+    realized, report = realize_programmed_tensor(
+        target,
+        config,
+        generator=generator,
+    )
+
+    reference_generator = torch.Generator(device="cpu")
+    reference_generator.manual_seed(config.programming_seed)
+    target_us = 1.0 + 39.0 * target
+    x = target_us / 40.0
+    coefficients = (0.701, 22.086, -50.773, 47.095, -16.458)
+    sigma = torch.zeros_like(target_us)
+    power = torch.ones_like(target_us)
+    for coefficient in coefficients:
+        sigma = sigma + coefficient * power
+        power = power * x
+    final_us = (
+        target_us
+        + sigma
+        * torch.randn(target.shape, generator=reference_generator)
+    ).clamp(min=1.0, max=40.0)
+    expected = (final_us - 1.0) / 39.0
+
+    torch.testing.assert_close(realized, expected, rtol=0.0, atol=1e-7)
+    assert report["noise_sigma_min_us"] == pytest.approx(float(sigma.min()))
+    assert report["noise_sigma_max_us"] == pytest.approx(float(sigma.max()))
 
 
 def test_cmo_normalized_offset_maps_zero_to_the_physical_floor() -> None:

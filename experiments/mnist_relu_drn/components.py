@@ -11,16 +11,19 @@ import torch
 import torch.nn.functional as F
 
 from experiments.mnist_relu.model import BiasFreeReluTeacher
-from experiments.mnist_relu_drn.config import StudentTrainSpec
+from experiments.mnist_relu_drn.config import MEASURED_BACKENDS, StudentTrainSpec
 from labs.custom_minimizer import CustomQuadraticMinimizer, MinimizerSettings
 from model.function.interaction import Function
 from model.function.network import Network
 from model.resistive.builders import ModelBundle, ParameterCatalog, build_deep_resistive_energy
+from model.resistive.device_config import parse_device_programming_config
 from model.variable.parameter import Bias, DenseWeight
 from training.measured_trace import (
     MeasuredCohortAOptimizer,
+    MeasuredCohortAOnePulseDownOptimizer,
     MeasuredCohortBOptimizer,
 )
+from training.program_verify import ProgramVerifyOptimizer
 from training.sgd import Backprop
 
 
@@ -108,6 +111,48 @@ class StudentStack:
     differentiator: Backprop
     optimizer: Any
     device: torch.device
+
+
+@dataclass(frozen=True)
+class BoundedDrnTeacher:
+    """Frozen equilibrium teacher loaded from stable named DRN weights."""
+
+    stack: StudentStack
+    checkpoint_metadata: dict[str, Any]
+
+    def logits(self, inputs: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            self.stack.network.set_input(
+                inputs.to(self.stack.device, dtype=torch.float32),
+                reset=True,
+            )
+            self.stack.minimizer.compute_equilibrium()
+            return paired_scores(
+                self.stack.bundle.energy.layers()[-1].state
+            ).detach()
+
+    def copy_named_weights_to(self, catalog: ParameterCatalog) -> None:
+        source = self.stack.bundle.catalog
+        expected = tuple(binding.key for binding in catalog.trainable)
+        provided = tuple(binding.key for binding in source.trainable)
+        if provided != expected:
+            raise ValueError(
+                "Expected bounded DRN teacher and student to expose the "
+                "same stable trainable parameter keys. Provided value: "
+                f"teacher={provided!r}, student={expected!r}."
+            )
+        with torch.no_grad():
+            for key in expected:
+                teacher_state = source.by_key[key].state
+                student_state = catalog.by_key[key].state
+                if teacher_state.shape != student_state.shape:
+                    raise ValueError(
+                        "Expected bounded DRN teacher and student parameter "
+                        f"{key!r} to have the same shape. Provided value: "
+                        f"teacher={tuple(teacher_state.shape)!r}, "
+                        f"student={tuple(student_state.shape)!r}."
+                    )
+                student_state.copy_(teacher_state.to(student_state))
 
 
 def _minimizer(energy, *, iterations: int, mode: str, overrelaxation: float):
@@ -204,6 +249,24 @@ def _logical_optimizer(
     return torch.optim.SGD(groups, momentum=0.0, weight_decay=0.0)
 
 
+def measured_optimizer_type(update_backend_type: str) -> type:
+    """Resolve the explicitly registered measured optimizer implementation."""
+
+    implementations = {
+        "measured_cohort_a": MeasuredCohortAOptimizer,
+        "measured_cohort_a_one_pulse_down": (
+            MeasuredCohortAOnePulseDownOptimizer
+        ),
+        "measured_cohort_b": MeasuredCohortBOptimizer,
+    }
+    if update_backend_type not in implementations:
+        raise ValueError(
+            "Expected a registered MNIST measured update backend. Provided "
+            f"value: {update_backend_type!r}."
+        )
+    return implementations[update_backend_type]
+
+
 def build_student_stack(
     spec: Any,
     *,
@@ -271,23 +334,34 @@ def build_student_stack(
     if (
         enable_measured
         and update_backend is not None
-        and update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        and update_backend.type in MEASURED_BACKENDS
     ):
         if device_data_path is None:
             raise ValueError(
                 f"Expected --device-data for {update_backend.type}. "
                 "Provided value: None."
             )
-        optimizer_type = {
-            "measured_cohort_a": MeasuredCohortAOptimizer,
-            "measured_cohort_b": MeasuredCohortBOptimizer,
-        }[update_backend.type]
+        optimizer_type = measured_optimizer_type(update_backend.type)
         optimizer = optimizer_type(
             optimizer,
             bundle.catalog,
             update_backend.parameters,
             device_data_path,
+        )
+    elif (
+        enable_measured
+        and update_backend is not None
+        and update_backend.type == "program_verify"
+    ):
+        optimizer = ProgramVerifyOptimizer(
+            optimizer,
+            bundle.catalog,
+            parse_device_programming_config(
+                update_backend.parameters["device"],
+                path=(
+                    "config.modes.train.update_backend.parameters.device"
+                ),
+            ),
         )
     return StudentStack(
         bundle=bundle,
@@ -555,7 +629,7 @@ def fit_positive_logit_gain(
 
 def collect_calibration(
     stack: StudentStack,
-    teacher: BiasFreeReluTeacher,
+    teacher: BiasFreeReluTeacher | BoundedDrnTeacher,
     loader: Iterable,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     scores = []
@@ -704,6 +778,7 @@ def conductance_statistics(catalog: ParameterCatalog, *, encoding: str) -> dict[
 
 
 __all__ = [
+    "BoundedDrnTeacher",
     "StudentStack",
     "TeacherKLDivergence",
     "apply_targets",
@@ -712,6 +787,7 @@ __all__ = [
     "conductance_statistics",
     "fit_positive_logit_gain",
     "mapped_conductances",
+    "measured_optimizer_type",
     "paired_scores",
     "select_mapping_and_gain",
     "settle_scores",

@@ -12,9 +12,11 @@ from model.resistive.builders import ParameterCatalog
 from model.resistive.device_config import (
     AIHWKIT_RERAM_CMO,
     IBM_AFM2025_PCM,
+    WAN2022_PHYSICAL,
     CmoHfOxProgrammingConfig,
     DeviceProgrammingConfig,
     IbmAfm2025PcmProgrammingConfig,
+    Wan2022PhysicalProgrammingConfig,
     Wan2022ProgrammingConfig,
     device_programming_to_mapping,
     parse_device_programming_config,
@@ -42,6 +44,12 @@ _CMO_DECAY_MEAN = -0.08900206
 _CMO_DECAY_STD = (0.04201137, 0.41183342)
 _CMO_READ_K = 0.0277316483
 _CMO_T_READ_SECONDS = 1e-6
+_WAN2022_COEFFICIENTS = {
+    1.0: (0.348, 16.030, -43.853, 45.393, -16.815),
+    86400.0: (0.701, 22.086, -50.773, 47.095, -16.458),
+    172800.0: (0.782, 20.274, -43.507, 37.062, -11.934),
+}
+_WAN2022_COEFFICIENT_G_MAX_US = 40.0
 
 
 def program_wan2022_base_conductance(
@@ -285,6 +293,12 @@ def realize_programmed_tensor(
             normalized,
             generator=generator,
         )
+    if isinstance(normalized, Wan2022PhysicalProgrammingConfig):
+        return _realize_wan2022_physical(
+            target,
+            normalized,
+            generator=generator,
+        )
     if isinstance(normalized, CmoHfOxProgrammingConfig):
         return _realize_cmo(
             target,
@@ -293,7 +307,8 @@ def realize_programmed_tensor(
         )
     raise ValueError(
         "Expected repeated program-and-verify writes to use "
-        f"{IBM_AFM2025_PCM!r} or {AIHWKIT_RERAM_CMO!r}. "
+        f"{IBM_AFM2025_PCM!r}, {WAN2022_PHYSICAL!r}, or "
+        f"{AIHWKIT_RERAM_CMO!r}. "
         f"Provided value: {normalized.type!r}."
     )
 
@@ -385,6 +400,129 @@ def _realize_ibm_afm_pcm(
         "clipped_low_fraction": 0.0,
         "clipped_high_fraction": 0.0,
         "mapping": "per_output_channel_or_tile_abs_max",
+    }
+
+
+def _realize_wan2022_physical(
+    target: torch.Tensor,
+    config: Wan2022PhysicalProgrammingConfig,
+    *,
+    generator: torch.Generator,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    """Apply the AIHWKit Wan fit with an explicit physical floor mapping."""
+
+    reference = float(config.drn_conductance_at_g_max)
+    g_min = float(config.g_min_us)
+    g_max = float(config.g_max_us)
+    if config.mapping == "literal_conductance":
+        clipped_low = target < reference * (g_min / g_max)
+        clipped_high = target > reference
+        raw_target_us = target * (g_max / reference)
+    else:
+        clipped_low = target < 0.0
+        clipped_high = target > reference
+        raw_target_us = g_min + target * (
+            (g_max - g_min) / reference
+        )
+    target_us = raw_target_us.clamp(min=g_min, max=g_max)
+
+    coefficients = _WAN2022_COEFFICIENTS[
+        float(config.t_inference_seconds)
+    ]
+    normalized_target = target_us / g_max
+    power = torch.ones_like(target_us)
+    sigma_us = torch.zeros_like(target_us)
+    for coefficient in coefficients:
+        sigma_us = sigma_us + float(coefficient) * power
+        power = power * normalized_target
+    sigma_us = sigma_us * (
+        g_max / _WAN2022_COEFFICIENT_G_MAX_US
+    )
+    realized_us = target_us + (
+        float(config.noise_scale)
+        * sigma_us
+        * torch.randn(
+            target_us.shape,
+            dtype=target_us.dtype,
+            device=target_us.device,
+            generator=generator,
+        )
+    )
+    realized_us = realized_us.clamp(min=g_min, max=g_max)
+
+    if config.mapping in ("literal_conductance", "affine_floor"):
+        realized = realized_us * (reference / g_max)
+        ideal_mapped = target_us * (reference / g_max)
+    else:
+        realized = (realized_us - g_min) * (
+            reference / (g_max - g_min)
+        )
+        ideal_mapped = (target_us - g_min) * (
+            reference / (g_max - g_min)
+        )
+
+    mapping_error = ideal_mapped - target
+    programming_error = realized - ideal_mapped
+    return realized, {
+        "physical_target_min_us": (
+            float(target_us.min()) if target_us.numel() else None
+        ),
+        "physical_target_max_us": (
+            float(target_us.max()) if target_us.numel() else None
+        ),
+        "physical_realized_min_us": (
+            float(realized_us.min()) if realized_us.numel() else None
+        ),
+        "physical_realized_max_us": (
+            float(realized_us.max()) if realized_us.numel() else None
+        ),
+        "noise_sigma_min_us": (
+            float(sigma_us.min()) if sigma_us.numel() else None
+        ),
+        "noise_sigma_max_us": (
+            float(sigma_us.max()) if sigma_us.numel() else None
+        ),
+        "zeroed_fraction": 0.0,
+        "clipped_low_fraction": (
+            float(clipped_low.float().mean()) if clipped_low.numel() else None
+        ),
+        "clipped_high_fraction": (
+            float(clipped_high.float().mean())
+            if clipped_high.numel()
+            else None
+        ),
+        "mapping_error_mean": (
+            float(mapping_error.mean()) if mapping_error.numel() else None
+        ),
+        "mapping_error_rmse": (
+            float(torch.sqrt(mapping_error.square().mean()))
+            if mapping_error.numel()
+            else None
+        ),
+        "mapping_error_abs_max": (
+            float(mapping_error.abs().max())
+            if mapping_error.numel()
+            else None
+        ),
+        "programming_error_mean": (
+            float(programming_error.mean())
+            if programming_error.numel()
+            else None
+        ),
+        "programming_error_rmse": (
+            float(torch.sqrt(programming_error.square().mean()))
+            if programming_error.numel()
+            else None
+        ),
+        "programming_error_abs_max": (
+            float(programming_error.abs().max())
+            if programming_error.numel()
+            else None
+        ),
+        "programming_error_reference": (
+            "realized_effective_drn_minus_ideal_mapped_target"
+        ),
+        "mapping": config.mapping,
     }
 
 

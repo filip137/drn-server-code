@@ -1,0 +1,172 @@
+\documentclass{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tabularx}
+
+\title{MNIST Validation Accuracy for Four- and Eight-Device ReRAM Synapses}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{table}[ht]
+  \centering
+  \caption{Validation accuracy at each deployment and training stage.}
+  \label{tab:four-vs-eight-device-validation-accuracy}
+  \begin{tabularx}{\textwidth}{@{}Xcc@{}}
+    \toprule
+    Stage & Four-device scheme & Eight-device ($G^+/G^-$) scheme \\
+    \midrule
+    Initial FP32 ReLU teacher
+      & 97.26\% & 97.26\% \\
+    Deployed on cohort A, before HWA
+      & 61.48\% & 89.12\% \\
+    After 10 epochs of cohort-A HWA/BPTT
+      & 97.26\% & 97.42\% \\
+    Immediately deployed on cohort B
+      & 35.68\% & 42.52\% \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Why accuracy drops on cohort B.}
+The cohort-B values are zero-update deployment controls. The cohort-A weights
+were re-encoded into common reachable windows and projected onto the measured
+states of newly assigned cohort-B devices, but the individual cell states were
+not subsequently recalibrated through cohort-B-specific hardware-aware
+optimization before evaluation. Because each logical weight depends on
+differences among several conductances, independent projection onto new device
+curves changes the signed weight, cancellation error, and total passive load in
+an edge- and layer-dependent way. In the four-device realization, for example,
+the layerwise signed-drive RMS contracted by factors of 6.16 and 7.32. A single
+scalar readout calibration cannot undo these nonuniform changes, which explains
+the severe immediate loss of accuracy. The later recovery under cohort-B HWA
+shows that the new devices remain capable of representing an accurate solution;
+the poor deployment result primarily reflects the absence of device-specific
+weight adaptation before evaluation.
+
+\section*{Threshold-gated, decrease-only fine-tuning}
+
+The following experiment is separate from the raw-trace HWA/BPTT comparison
+above. Both schemes were initialized on cohort A using isotonic non-increasing
+measured traces and a common reachable-window mapping. During fine-tuning,
+each physical device could only stay at its current state or move down by one
+adjacent pulse state per minibatch:
+\[
+  p_i \leftarrow
+  \begin{cases}
+    p_i+1, & \displaystyle
+      \frac{\partial \mathcal{L}_{\mathrm{KL}}}{\partial G_i} > \tau_i
+      \text{ and } p_i < p_{\max}, \\
+    p_i, & \text{otherwise.}
+  \end{cases}
+\]
+Here increasing the pulse index selects the next non-increasing conductance
+state. The gate is strict: equality, negative gradients, and positive
+gradients below the threshold all hold. The update uses neither a
+learning-rate magnitude nor a digital shadow.
+
+\begin{table}[ht]
+  \centering
+  \caption{Fixed raw-gradient thresholds calibrated at each scheme's shared
+  isotonic initialization. Eight-device entries show $G^+/G^-$ thresholds.}
+  \label{tab:four-vs-eight-gradient-thresholds}
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Gate & Four-device, layers 0 / 1
+         & Eight-device, layer 0 $G^+/G^-$
+         & Eight-device, layer 1 $G^+/G^-$ \\
+    \midrule
+    p90   & 494.02 / 5,849.46
+          & 178.29 / 178.29
+          & 12,716.26 / 12,716.63 \\
+    p99   & 1,487.06 / 14,197.82
+          & 559.64 / 559.64
+          & 30,829.93 / 30,842.37 \\
+    p99.9 & 3,078.10 / 22,323.40
+          & 1,173.11 / 1,173.11
+          & 52,414.81 / 52,409.63 \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{table}[ht]
+  \centering
+  \caption{Accuracy of KL-selected checkpoints after ten-epoch,
+  one-pulse-down fine-tuning. Epoch 0 denotes the initialization; test
+  accuracy is from a fresh held-out 10,000-example evaluation.}
+  \label{tab:four-vs-eight-one-pulse-accuracy}
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    Gate & Four selected val. & Four test
+         & Eight selected val. & Eight test
+         & Selected epoch, four / eight \\
+    \midrule
+    Zero control & 38.32\% & 38.40\% & 48.54\% & 48.98\% & 0 / 0 \\
+    p90          & \textbf{84.18\%} & \textbf{85.91\%}
+                 & 82.40\% & 84.04\% & 1 / 1 \\
+    p99          & 82.22\% & 83.65\%
+                 & \textbf{86.08\%} & \textbf{86.72\%} & 7 / 6 \\
+    p99.9        & 72.98\% & 74.38\%
+                 & 81.74\% & 82.96\% & 10 / 10 \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{table}[ht]
+  \centering
+  \caption{Epoch-10 behavior. Eight-device saturation is the range across
+  $G^+$ and $G^-$ in each layer.}
+  \label{tab:four-vs-eight-one-pulse-saturation}
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Gate & Four final val. & Eight final val.
+         & Four saturation, L0 / L1
+         & Eight saturation, L0 / L1 \\
+    \midrule
+    Zero control & 10.30\% & 8.76\%
+      & 99.88\% / 99.75\% & 99.95--99.95\% / 99.80--99.85\% \\
+    p90 & 13.76\% & 13.76\%
+      & 93.70\% / 81.65\% & 97.11--97.13\% / 81.75--83.10\% \\
+    p99 & 77.00\% & 78.34\%
+      & 6.99\% / 8.80\% & 14.61--14.77\% / 15.80--17.70\% \\
+    p99.9 & 72.98\% & 81.74\%
+      & 4.94\% / 5.90\% & 9.10--9.24\% / 10.45--12.05\% \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\paragraph{Comparison.}
+The eight-device initialization is 10.22 percentage points more accurate than
+the four-device initialization. The four-device p90 arm gives the stronger
+p90 selected test result (85.91\% versus 84.04\%), but both p90 trajectories
+are sharp early-stopping regimes and collapse when continued through epoch 10.
+At p99, the eight-device scheme is stronger and stable: its selected test
+accuracy is 86.72\%, compared with 83.65\% for four devices, while its final
+validation accuracy is 78.34\%. The conservative p99.9 gate also favors eight
+devices by 8.58 test-accuracy points. The best observed selected test result
+is therefore eight-device p99 at 86.72\%, 0.81 points above the best
+four-device result (p90 at 85.91\%).
+
+All arms respected the intended physical rule: the maximum pulse-index jump
+was one, no conductance increased, and no post-initialization nearest-state
+projection or digital-shadow accumulation was used. These are exploratory
+single-seed results. Thresholds were calibrated and checkpoints selected on
+the validation split; the reported test split was held out until the selected
+checkpoints were evaluated.
+
+\end{document}
