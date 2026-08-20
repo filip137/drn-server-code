@@ -161,6 +161,30 @@ class DenseWeight(Parameter):
         elif mode == 'bounded_uniform':
             # direct range [0, gain]
             torch.nn.init.uniform_(self._state, 0.0, self.max_cond)
+        elif mode == 'bounded_range_uniform':
+            if self.min_cond is None or self.max_cond is None:
+                raise ValueError(
+                    "Expected bounded_range_uniform initialization to have "
+                    "finite min_cond and max_cond bounds. Provided value: "
+                    f"min_cond={self.min_cond!r}, max_cond={self.max_cond!r}."
+                )
+            torch.nn.init.uniform_(
+                self._state,
+                float(self.min_cond),
+                float(self.max_cond),
+            )
+        elif mode == 'floor_shifted_kaiming_uniform':
+            if self.min_cond is None or self.max_cond is None:
+                raise ValueError(
+                    "Expected floor_shifted_kaiming_uniform initialization "
+                    "to have finite min_cond and max_cond bounds. Provided "
+                    f"value: min_cond={self.min_cond!r}, "
+                    f"max_cond={self.max_cond!r}."
+                )
+            scale = gain * np.sqrt(1. / size_pre)
+            torch.nn.init.uniform_(self._state, -scale, +scale)
+            self._state.clamp_(min=0.0)
+            self._state.add_(float(self.min_cond))
         elif mode == 'Kendall':
             lower = 1e-7
             upper = 0.08 / np.sqrt(size_pre + size_post)

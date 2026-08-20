@@ -286,6 +286,8 @@ def build_model_stack(common: CommonSettings) -> ModelStack:
         current_amp=common.model.current_amp,
         weight_min=common.model.weight_min,
         weight_max=common.model.weight_max,
+        weight_init_mode=common.model.weight_init_mode,
+        include_biases=common.model.include_biases,
         passive_low_rank_adapter=(
             dict(adapter.parameters)
             if adapter.type == "passive_low_rank"

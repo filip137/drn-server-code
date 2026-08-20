@@ -48,6 +48,7 @@ from experiments.small_network.config import (
 )
 from labs.datasets import MoonsDataset
 from model.resistive.builders import ParameterCatalog
+from model.resistive.interaction import DenseResistive, SignedDenseResistive
 from model.resistive.digital_low_rank_config import (
     parse_digital_low_rank_adapter,
 )
@@ -788,7 +789,7 @@ def _execute_training(
             selected_weights = encode_named_weights(
                 catalog,
                 metadata={
-                    "experiment_id": spec.experiment_id,
+                    **_selected_model_metadata(spec, runtime),
                     "selection_metric": "validation.mean_cost",
                     "selection_value": selected_cost,
                     "selection_epoch": selected_epoch,
@@ -826,7 +827,7 @@ def _execute_training(
             selected_weights=selected_weights,
             dataloader_generators=generators,
             resume_capability=runtime.resume_capability,
-            metadata=_resume_metadata(spec),
+            metadata=_resume_metadata(spec, runtime),
         )
 
         should_log = (
@@ -894,7 +895,7 @@ def _execute_training(
             selected_weights=selected_weights,
             dataloader_generators=generators,
             resume_capability=runtime.resume_capability,
-            metadata=_resume_metadata(spec),
+            metadata=_resume_metadata(spec, runtime),
         )
 
     metrics = {
@@ -1406,11 +1407,107 @@ def _optional_fraction(value: Any, *, name: str) -> float | None:
     return float(value)
 
 
-def _resume_metadata(spec: TrainSpec) -> dict[str, Any]:
+def _resume_metadata(
+    spec: TrainSpec,
+    runtime: TrainRuntime,
+) -> dict[str, Any]:
+    return {
+        **_selected_model_metadata(spec, runtime),
+        "resume_config_sha256": _resume_config_sha256(spec),
+    }
+
+
+def _amplification_index_report(runtime: TrainRuntime) -> list[dict[str, Any]]:
+    """Record the model-local numerical topology of every dense edge."""
+
+    report: list[dict[str, Any]] = []
+    for interaction in runtime.stack.bundle.energy._interactions:
+        if not isinstance(
+            interaction,
+            (DenseResistive, SignedDenseResistive),
+        ):
+            continue
+        pre_index = int(interaction._logical_pre_index)
+        post_index = int(interaction._logical_post_index)
+        item: dict[str, Any] = {
+            "resolved_pre_index": pre_index,
+            "resolved_post_index": post_index,
+        }
+        if isinstance(interaction, SignedDenseResistive):
+            item.update(
+                {
+                    "interaction": "differential_pair",
+                    "voltage_amp": float(interaction._voltage_amp),
+                    "current_amp": float(interaction._current_amp),
+                    "forward_gain": float(interaction._forward_gain()),
+                    "post_layer_metric": float(interaction._post_metric()),
+                }
+            )
+        else:
+            voltage_amp = float(interaction._voltage_amp)
+            current_amp = float(interaction._current_amp)
+            item.update(
+                {
+                    "interaction": "single_conductance",
+                    "voltage_amp": voltage_amp,
+                    "current_amp": current_amp,
+                    "forward_gain": (
+                        1.0 if pre_index == 0 else voltage_amp
+                    ),
+                    "post_layer_metric": (
+                        (current_amp / voltage_amp) ** pre_index
+                    ),
+                }
+            )
+        report.append(item)
+    return report
+
+
+def _selected_model_metadata(
+    spec: TrainSpec,
+    runtime: TrainRuntime,
+) -> dict[str, Any]:
+    """Describe enough numerical semantics to consume a DRN as a teacher."""
+
+    model = spec.common.model
+    paired_outputs = model.dims[-1] == 2 * runtime.stack.num_classes
     return {
         "experiment_id": spec.experiment_id,
         "schema_version": spec.schema_version,
-        "resume_config_sha256": _resume_config_sha256(spec),
+        "checkpoint_role": "supervised_drn",
+        "architecture": "deep_resistive_network",
+        "objective": (
+            "supervised_paired_squared_error"
+            if paired_outputs
+            else "supervised_squared_error"
+        ),
+        "output_semantics": (
+            "adjacent_pair_difference"
+            if paired_outputs
+            else "direct_output"
+        ),
+        "model": {
+            "dims": list(model.dims),
+            "logical_input_dim": runtime.stack.logical_input_dim,
+            "num_classes": runtime.stack.num_classes,
+            "input_gain": model.input_gain,
+            "weight_gains": list(model.weight_gains),
+            "weight_bounds": [model.weight_min, model.weight_max],
+            "weight_init_mode": model.weight_init_mode,
+            "include_biases": model.include_biases,
+            "voltage_amp": model.voltage_amp,
+            "current_amp": model.current_amp,
+            "non_linearity": to_plain_data(model.non_linearity),
+            "adapter": to_plain_data(model.adapter),
+            "amplification_indexing": "model_local",
+            "amplification_indices": _amplification_index_report(runtime),
+        },
+        "solver": to_plain_data(spec.common.solver),
+        "dataset": {
+            "name": spec.common.data.dataset,
+            "validation_points": spec.common.data.validation_points,
+            "data_seed": spec.common.runtime.data_seed,
+        },
     }
 
 

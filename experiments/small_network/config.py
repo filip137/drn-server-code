@@ -82,6 +82,8 @@ class ModelSettings:
     weight_gains: Tuple[float, ...]
     weight_min: float
     weight_max: float
+    weight_init_mode: str
+    include_biases: bool
     voltage_amp: float
     current_amp: float
     non_linearity: NonLinearitySettings
@@ -1192,6 +1194,7 @@ def _parse_model(value: Any) -> ModelSettings:
             "non_linearity",
             "adapter",
         ),
+        optional=("weight_init_mode", "include_biases"),
     )
 
     dims_value = parsed["dims"]
@@ -1309,6 +1312,20 @@ def _parse_model(value: Any) -> ModelSettings:
         weight_gains=weight_gains,
         weight_min=weight_min,
         weight_max=weight_max,
+        weight_init_mode=_string(
+            parsed.get("weight_init_mode", "kaiming_uniform"),
+            f"{path}.weight_init_mode",
+            choices=(
+                "kaiming_uniform",
+                "bounded_uniform",
+                "bounded_range_uniform",
+                "floor_shifted_kaiming_uniform",
+            ),
+        ),
+        include_biases=_boolean(
+            parsed.get("include_biases", True),
+            f"{path}.include_biases",
+        ),
         voltage_amp=voltage_amp,
         current_amp=current_amp,
         non_linearity=_parse_non_linearity(parsed["non_linearity"]),
@@ -1967,7 +1984,9 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
         bias_count = 0
     else:
         weight_count = len(model.dims) - 1
-        bias_count = max(0, weight_count - 1)
+        bias_count = (
+            max(0, weight_count - 1) if model.include_biases else 0
+        )
     train_settings = (
         _parse_train(
             modes["train"],
