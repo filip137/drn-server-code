@@ -7,8 +7,10 @@ virtual curve is a pointwise convex interpolation of two distinct measured
 traces from the selected physical-device cohort.  Biases remain ordinary
 digital SGD parameters.
 
-This is deliberately not a sequential pulse model: pulse indices are labels
-on the measured graph and every update may choose any point on that graph.
+The standard cohort optimizers are deliberately not sequential pulse models:
+pulse indices are labels on the measured graph and every update may choose any
+point on that graph. ``MeasuredCohortAOnePulseDownOptimizer`` is the explicit
+exception; it traverses an isotonic trace locally by at most one pulse index.
 """
 
 from __future__ import annotations
@@ -56,6 +58,9 @@ class MeasuredTraceConfig:
     probabilistic_write_scale_relative: float
     probabilistic_write_seed: int
     dual_rail_layout_by_parameter: tuple[tuple[str, str], ...] | None
+    positive_gradient_threshold_by_parameter: (
+        tuple[tuple[str, float], ...] | None
+    )
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "MeasuredTraceConfig":
@@ -73,6 +78,7 @@ class MeasuredTraceConfig:
         normalized.setdefault("probabilistic_write_scale_relative", 0.0)
         normalized.setdefault("probabilistic_write_seed", 0)
         normalized.setdefault("dual_rail_layout_by_parameter", None)
+        normalized.setdefault("positive_gradient_threshold_by_parameter", None)
         raw_layouts = normalized["dual_rail_layout_by_parameter"]
         if isinstance(raw_layouts, Mapping):
             normalized["dual_rail_layout_by_parameter"] = tuple(
@@ -88,6 +94,25 @@ class MeasuredTraceConfig:
                     "Expected dual_rail_layout_by_parameter to be null or "
                     "an object mapping stable parameter keys to 'halves' or "
                     f"'paired'. Provided value: {raw_layouts!r}."
+                ) from error
+        raw_thresholds = normalized[
+            "positive_gradient_threshold_by_parameter"
+        ]
+        if isinstance(raw_thresholds, Mapping):
+            normalized["positive_gradient_threshold_by_parameter"] = tuple(
+                sorted(raw_thresholds.items())
+            )
+        elif isinstance(raw_thresholds, (list, tuple)):
+            try:
+                normalized["positive_gradient_threshold_by_parameter"] = tuple(
+                    (item[0], item[1]) for item in raw_thresholds
+                )
+            except (IndexError, TypeError) as error:
+                raise ValueError(
+                    "Expected positive_gradient_threshold_by_parameter to be "
+                    "null or an object mapping stable parameter keys to "
+                    "finite non-negative raw-gradient thresholds. Provided "
+                    f"value: {raw_thresholds!r}."
                 ) from error
         expected = set(cls.__dataclass_fields__)
         if set(normalized) != expected:
@@ -175,12 +200,12 @@ class MeasuredTraceConfig:
             in {
                 "per_device_affine",
                 "dual_rail_pairwise_common_window",
-                "dual_rail_quad_common_window",
             }
         ):
             raise ValueError(
                 "Expected cohort-B initial_target_mapping to be 'literal' "
-                "or 'paired_affine_common_window'. Provided value: "
+                "'paired_affine_common_window', or "
+                "'dual_rail_quad_common_window'. Provided value: "
                 f"{config.initial_target_mapping!r}."
             )
         layouts = config.dual_rail_layout_by_parameter
@@ -210,6 +235,25 @@ class MeasuredTraceConfig:
                 "initial_target_mapping is a dual-rail common-window "
                 "mapping. Provided value: "
                 f"{layouts!r}."
+            )
+        thresholds = config.positive_gradient_threshold_by_parameter
+        if thresholds is not None and (
+            len({key for key, _threshold in thresholds}) != len(thresholds)
+            or any(
+                not isinstance(key, str)
+                or not key
+                or isinstance(threshold, bool)
+                or not isinstance(threshold, (int, float))
+                or not math.isfinite(float(threshold))
+                or float(threshold) < 0.0
+                for key, threshold in thresholds
+            )
+        ):
+            raise ValueError(
+                "Expected positive_gradient_threshold_by_parameter to be "
+                "null or map unique non-empty stable parameter keys to "
+                "finite non-negative raw-gradient thresholds. Provided "
+                f"value: {thresholds!r}."
             )
         if config.programming_deadband_mode not in {
             "none",
@@ -530,6 +574,8 @@ def _assignment_digest(
 class MeasuredTraceOptimizer:
     """Wrap direct SGD with deterministic measured-state projection."""
 
+    _SUPPORTS_POSITIVE_GRADIENT_THRESHOLDS = False
+
     def __init__(
         self,
         optimizer: Any,
@@ -568,6 +614,30 @@ class MeasuredTraceOptimizer:
                     "the stable trainable dense parameter keys. Provided "
                     f"value: expected={sorted(expected_layout_keys)!r}, "
                     f"provided={sorted(provided_layout_keys)!r}."
+                )
+        thresholds = self._config.positive_gradient_threshold_by_parameter
+        if thresholds is not None and not (
+            self._SUPPORTS_POSITIVE_GRADIENT_THRESHOLDS
+        ):
+            raise ValueError(
+                "Expected positive_gradient_threshold_by_parameter to be "
+                "null for this measured update backend. Provided value: "
+                f"{dict(thresholds)!r}."
+            )
+        if thresholds is not None:
+            expected_threshold_keys = {
+                binding.key for binding in self._bindings
+            }
+            provided_threshold_keys = {
+                key for key, _threshold in thresholds
+            }
+            if provided_threshold_keys != expected_threshold_keys:
+                raise ValueError(
+                    "Expected positive_gradient_threshold_by_parameter keys "
+                    "to equal the stable trainable dense parameter keys. "
+                    "Provided value: "
+                    f"expected={sorted(expected_threshold_keys)!r}, "
+                    f"provided={sorted(provided_threshold_keys)!r}."
                 )
         self._projection_bindings = (
             self._bindings
@@ -678,6 +748,17 @@ class MeasuredTraceOptimizer:
                 None
                 if self._config.dual_rail_layout_by_parameter is None
                 else dict(self._config.dual_rail_layout_by_parameter)
+            ),
+            "positive_gradient_threshold_by_parameter": (
+                None
+                if self._config.positive_gradient_threshold_by_parameter
+                is None
+                else {
+                    key: float(value)
+                    for key, value in (
+                        self._config.positive_gradient_threshold_by_parameter
+                    )
+                }
             ),
             "raw_projection_cache": dict(
                 self._raw_projection_cache_report
@@ -2392,6 +2473,416 @@ class MeasuredCohortAOptimizer(MeasuredTraceOptimizer):
             )
 
 
+class MeasuredCohortAOnePulseDownOptimizer(MeasuredCohortAOptimizer):
+    """Apply only one local pulse toward lower conductance per update.
+
+    The teacher-mapped initialization remains a single global-nearest write.
+    Fine-tuning has no digital target accumulator: a gradient strictly above
+    its parameter's configured threshold advances the assigned virtual device
+    by exactly one pulse, while every other gradient holds the device at its
+    current pulse. Isotonic preprocessing is required so increasing the pulse
+    index can never increase conductance.
+    """
+
+    _UPDATE_RULE = "positive_gradient_one_pulse_down_else_hold"
+    _SUPPORTS_POSITIVE_GRADIENT_THRESHOLDS = True
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        expected = {
+            "curve_preprocessing": "isotonic_nonincreasing",
+            "source_traces_per_cell": 2,
+            "initial_pulse_index": 0,
+            "projection": "global_nearest",
+            "initial_target_mapping": "dual_rail_quad_common_window",
+            "programming_deadband_mode": "none",
+            "programming_deadband_relative": 0.0,
+            "probabilistic_write_mode": "none",
+            "probabilistic_write_probability": 1.0,
+            "probabilistic_write_scale_relative": 0.0,
+        }
+        mismatches = {
+            name: {
+                "expected": value,
+                "provided": getattr(self._config, name),
+            }
+            for name, value in expected.items()
+            if getattr(self._config, name) != value
+        }
+        if mismatches:
+            raise ValueError(
+                "Expected measured_cohort_a_one_pulse_down to use the strict "
+                "isotonic four-device local-pulse protocol. Provided value: "
+                f"{mismatches!r}."
+            )
+        configured = dict(
+            self._config.positive_gradient_threshold_by_parameter or ()
+        )
+        self._positive_gradient_threshold_by_parameter = {
+            binding.key: float(configured.get(binding.key, 0.0))
+            for binding in self._bindings
+        }
+
+    @property
+    def _update_rule(self) -> str:
+        if any(
+            threshold > 0.0
+            for threshold in (
+                self._positive_gradient_threshold_by_parameter.values()
+            )
+        ):
+            return (
+                "gradient_above_parameter_threshold_one_pulse_down_else_hold"
+            )
+        return self._UPDATE_RULE
+
+    @property
+    def data_report(self) -> dict[str, Any]:
+        report = super().data_report
+        report.update(
+            {
+                "semantics": "cohort_a_isotonic_one_pulse_down_or_hold",
+                "pulse_model": True,
+                "fine_tuning_update_rule": self._update_rule,
+                "gradient_gate": (
+                    "raw_gradient_strictly_greater_than_parameter_threshold"
+                ),
+                "positive_gradient_threshold_by_parameter": dict(
+                    self._positive_gradient_threshold_by_parameter
+                ),
+                "pulse_index_direction": (
+                    "an increment of one selects the next non-increasing "
+                    "conductance state"
+                ),
+                "global_nearest_initialization": True,
+                "global_nearest_fine_tuning": False,
+                "digital_shadow_accumulation": False,
+                "learning_rate_magnitude_used": False,
+            }
+        )
+        return report
+
+    @staticmethod
+    def _empty_accumulators(device: torch.device) -> dict[str, torch.Tensor]:
+        result = MeasuredTraceOptimizer._empty_accumulators(device)
+        zeros = lambda: torch.zeros((), dtype=torch.float64, device=device)
+        result.update(
+            {
+                "down_request_count": zeros(),
+                "down_applied_count": zeros(),
+                "down_blocked_last_pulse_count": zeros(),
+                "negative_gradient_hold_count": zeros(),
+                "zero_gradient_hold_count": zeros(),
+                "conductance_decrease_count": zeros(),
+                "conductance_hold_count": zeros(),
+                "conductance_increase_count": zeros(),
+                "max_conductance_increase_s": zeros(),
+            }
+        )
+        return result
+
+    def _values_at_pulses(
+        self,
+        key: str,
+        pulses: torch.Tensor,
+    ) -> torch.Tensor:
+        table = self._tables[key]
+        source = self._source_curves[key]
+        indices = pulses.to(torch.long)
+        return (
+            table.alpha * source[table.source_left, indices]
+            + (1.0 - table.alpha) * source[table.source_right, indices]
+        )
+
+    @staticmethod
+    def _monotonic_tolerance(
+        previous: torch.Tensor,
+        realized: torch.Tensor,
+    ) -> float:
+        scale = max(
+            float(previous.detach().abs().max().item()),
+            float(realized.detach().abs().max().item()),
+            torch.finfo(previous.dtype).tiny,
+        )
+        return 8.0 * torch.finfo(previous.dtype).eps * scale
+
+    def initialize_from_reset_targets(self) -> dict[str, Any]:
+        super().initialize_from_reset_targets()
+        with torch.no_grad():
+            for binding in self._bindings:
+                key = binding.key
+                realized = binding.state.detach().clone()
+                # Fine-tuning starts from the physical state itself.  The
+                # mapped target used for the one initialization write is not
+                # retained as a digital accumulator.
+                self._shadows[key] = realized.clone()
+                self._last_programmed_shadows[key] = realized.clone()
+                self._initialization_reports[key].update(
+                    {
+                        "fine_tuning_update_rule": self._update_rule,
+                        "positive_gradient_threshold": (
+                            self._positive_gradient_threshold_by_parameter[key]
+                        ),
+                        "fine_tuning_global_nearest_projection": False,
+                        "fine_tuning_digital_shadow_accumulation": False,
+                    }
+                )
+        return self.programming_report
+
+    def initialize_at_pulse_zero(self) -> dict[str, Any]:
+        raise RuntimeError(
+            "Expected measured_cohort_a_one_pulse_down to use teacher-mapped "
+            "reset-target initialization. Provided value: pulse-zero-only "
+            "initialization."
+        )
+
+    def step(self, closure=None):
+        if closure is not None:
+            raise ValueError(
+                "Expected one-pulse-down updates without an optimizer "
+                f"closure. Provided value: {closure!r}."
+            )
+        if not self._initialized:
+            raise RuntimeError(
+                "Expected cohort-A reset-target initialization before the "
+                "first one-pulse-down step. Provided value: uninitialized."
+            )
+
+        with torch.no_grad():
+            for binding in self._bindings:
+                gradient = binding.state.grad
+                if gradient is None:
+                    continue
+                if (
+                    tuple(gradient.shape) != tuple(binding.state.shape)
+                    or not bool(torch.isfinite(gradient).all())
+                ):
+                    raise ValueError(
+                        "Expected every one-pulse-down gradient to be finite "
+                        "and match its conductance tensor. Provided value: "
+                        f"key={binding.key!r}, shape={tuple(gradient.shape)!r}, "
+                        f"expected_shape={tuple(binding.state.shape)!r}."
+                    )
+
+                key = binding.key
+                previous = binding.state.detach().reshape(-1).clone()
+                previous_pulses = self._pulse_indices[key].to(torch.long)
+                indexed_previous = self._values_at_pulses(
+                    key,
+                    previous_pulses,
+                )
+                tolerance = self._monotonic_tolerance(
+                    previous,
+                    indexed_previous,
+                )
+                if bool((previous - indexed_previous).abs().gt(tolerance).any()):
+                    maximum = float(
+                        (previous - indexed_previous).abs().max().item()
+                    )
+                    raise RuntimeError(
+                        "Expected the live conductance to equal its recorded "
+                        "pulse state before a one-pulse-down update. Provided "
+                        f"value: key={key!r}, max_abs_error_s={maximum!r}."
+                    )
+
+                flat_gradient = gradient.detach().reshape(-1)
+                threshold = self._positive_gradient_threshold_by_parameter[key]
+                down_requested = flat_gradient > threshold
+                at_last_pulse = (
+                    previous_pulses
+                    == self._config.expected_trace_length - 1
+                )
+                down_applied = down_requested & ~at_last_pulse
+                pulses = previous_pulses + down_applied.to(torch.long)
+                realized = self._values_at_pulses(key, pulses)
+                tolerance = self._monotonic_tolerance(previous, realized)
+                increases = realized > previous + tolerance
+                if bool(increases.any()):
+                    maximum = float((realized - previous).max().item())
+                    raise RuntimeError(
+                        "Expected an isotonic one-pulse-down update never to "
+                        "increase conductance. Provided value: "
+                        f"key={key!r}, max_increase_s={maximum!r}."
+                    )
+
+                shaped = realized.reshape(binding.state.shape)
+                binding.state.copy_(shaped)
+                self._shadows[key].copy_(shaped)
+                self._last_programmed_shadows[key].copy_(shaped)
+                self._accumulate(
+                    key,
+                    previous_shadow=previous,
+                    previous_realized=previous,
+                    realized=realized,
+                    pulses=pulses,
+                    clipped=torch.zeros_like(realized, dtype=torch.bool),
+                    programming_eligible=down_applied,
+                    write_probability=None,
+                )
+                accumulator = self._accumulators[key]
+                accumulator["down_request_count"].add_(
+                    down_requested.to(torch.float64).sum()
+                )
+                accumulator["down_applied_count"].add_(
+                    down_applied.to(torch.float64).sum()
+                )
+                accumulator["down_blocked_last_pulse_count"].add_(
+                    (down_requested & at_last_pulse).to(torch.float64).sum()
+                )
+                accumulator["negative_gradient_hold_count"].add_(
+                    (flat_gradient < 0.0).to(torch.float64).sum()
+                )
+                accumulator["zero_gradient_hold_count"].add_(
+                    (flat_gradient == 0.0).to(torch.float64).sum()
+                )
+                decrease = realized < previous - tolerance
+                hold = ~decrease & ~increases
+                accumulator["conductance_decrease_count"].add_(
+                    decrease.to(torch.float64).sum()
+                )
+                accumulator["conductance_hold_count"].add_(
+                    hold.to(torch.float64).sum()
+                )
+                accumulator["conductance_increase_count"].add_(
+                    increases.to(torch.float64).sum()
+                )
+                accumulator["max_conductance_increase_s"].copy_(
+                    torch.maximum(
+                        accumulator["max_conductance_increase_s"],
+                        (realized - previous).clamp_min(0.0).max().to(
+                            torch.float64
+                        ),
+                    )
+                )
+                self._pulse_indices[key] = pulses.to(torch.int16)
+        self._step_count += 1
+        return None
+
+    def _binding_report(self, key: str) -> dict[str, Any]:
+        report = super()._binding_report(key)
+        if not self._initialized:
+            return report
+        accumulator = self._accumulators[key]
+        count = float(accumulator["element_updates"].item())
+
+        def fraction(name: str) -> float | None:
+            return (
+                None
+                if count == 0.0
+                else float(accumulator[name].item()) / count
+            )
+
+        pulses = self._pulse_indices[key].to(torch.long)
+        down_request_fraction = fraction("down_request_count")
+        negative_fraction = fraction("negative_gradient_hold_count")
+        zero_fraction = fraction("zero_gradient_hold_count")
+        positive_fraction = (
+            None
+            if count == 0.0
+            else 1.0 - float(negative_fraction) - float(zero_fraction)
+        )
+        report.update(
+            {
+                "fine_tuning_update_rule": self._update_rule,
+                "gradient_gate": (
+                    "raw_gradient_strictly_greater_than_parameter_threshold"
+                ),
+                "positive_gradient_threshold": (
+                    self._positive_gradient_threshold_by_parameter[key]
+                ),
+                "learning_rate_magnitude_used": False,
+                "digital_shadow_accumulation": False,
+                "down_request_fraction": down_request_fraction,
+                "threshold_eligible_fraction": down_request_fraction,
+                "positive_gradient_fraction": positive_fraction,
+                "positive_gradient_suppressed_by_threshold_fraction": (
+                    None
+                    if positive_fraction is None
+                    else positive_fraction - float(down_request_fraction)
+                ),
+                "down_pulse_applied_fraction": fraction(
+                    "down_applied_count"
+                ),
+                "down_request_blocked_at_last_pulse_fraction": fraction(
+                    "down_blocked_last_pulse_count"
+                ),
+                "negative_gradient_hold_fraction": negative_fraction,
+                "zero_gradient_hold_fraction": zero_fraction,
+                "conductance_decrease_fraction": fraction(
+                    "conductance_decrease_count"
+                ),
+                "conductance_hold_fraction": fraction(
+                    "conductance_hold_count"
+                ),
+                "conductance_increase_fraction": fraction(
+                    "conductance_increase_count"
+                ),
+                "max_conductance_increase_s": float(
+                    accumulator["max_conductance_increase_s"].item()
+                ),
+                "one_pulse_down_invariant_passed": (
+                    int(accumulator["pulse_jump_max"].item()) <= 1
+                    and float(
+                        accumulator["conductance_increase_count"].item()
+                    )
+                    == 0.0
+                ),
+                "current_pulse_index_min": int(pulses.min().item()),
+                "current_pulse_index_max": int(pulses.max().item()),
+                "current_pulse_index_mean": float(
+                    pulses.to(torch.float64).mean().item()
+                ),
+                "current_last_pulse_fraction": float(
+                    (
+                        pulses
+                        == self._config.expected_trace_length - 1
+                    )
+                    .to(torch.float64)
+                    .mean()
+                    .item()
+                ),
+            }
+        )
+        return report
+
+    def load_state_dict(self, state_dict: Mapping[str, Any]) -> None:
+        super().load_state_dict(state_dict)
+        if not self._initialized:
+            return
+        with torch.no_grad():
+            for binding in self._bindings:
+                key = binding.key
+                initial = self._initialization_reports.get(key, {})
+                if initial.get("fine_tuning_update_rule") != self._update_rule:
+                    raise ValueError(
+                        "Expected a one-pulse-down checkpoint initialization "
+                        "marker. Provided value: "
+                        f"key={key!r}, report={initial!r}."
+                    )
+                expected = self._values_at_pulses(
+                    key,
+                    self._pulse_indices[key].to(torch.long),
+                ).reshape(binding.state.shape)
+                tolerance = self._monotonic_tolerance(
+                    binding.state,
+                    expected,
+                )
+                values = (
+                    binding.state,
+                    self._shadows[key],
+                    self._last_programmed_shadows[key],
+                )
+                if any(
+                    bool((value - expected).abs().gt(tolerance).any())
+                    for value in values
+                ):
+                    raise ValueError(
+                        "Expected one-pulse-down live conductance, shadow, and "
+                        "recorded pulse state to agree on resume. Provided "
+                        f"value: key={key!r}, mismatch=true."
+                    )
+
+
 class MeasuredCohortBOptimizer(MeasuredTraceOptimizer):
     """Measured optimizer for deployment and fine-tuning on held-out cohort B."""
 
@@ -2585,6 +3076,7 @@ class MeasuredCohortBLoRAOptimizer(MeasuredTraceOptimizer):
 
 __all__ = [
     "MeasuredCohortAOptimizer",
+    "MeasuredCohortAOnePulseDownOptimizer",
     "MeasuredCohortBOptimizer",
     "MeasuredCohortBLoRAOptimizer",
     "MeasuredTraceOptimizer",

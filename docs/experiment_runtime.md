@@ -24,7 +24,7 @@ choices do not belong in model classes or generic training loops.
 | training algorithm | `ep`, `backprop`, `digital` | estimate a complete minibatch gradient (`backprop` is BPTT through the configured minimizer iterations) |
 | model adapter | `none`, `passive_low_rank`, `digital_low_rank`, `passive_layerwise_low_rank` | define the trainable parameterization |
 | parameter modifier | `none`, `add_normal` | temporarily alter parameters during solver phases |
-| update backend | `direct`, `tiki_taka`, `program_verify`, `measured_cohort_a`, `measured_cohort_b`, `measured_cohort_b_lora` | apply or accumulate the completed gradient; measured backends project trainable arrays onto assigned measured device curves |
+| update backend | `direct`, `tiki_taka`, `program_verify`, `measured_cohort_a`, `measured_cohort_a_sign_sgd`, `measured_cohort_a_one_pulse_down`, `measured_cohort_b`, `measured_cohort_b_lora` | apply or accumulate the completed gradient; measured backends project trainable arrays onto assigned measured device curves; the signSGD variant discards gradient magnitude before its cohort-A projection, while the one-pulse-down variant permits only a local step toward lower conductance |
 
 LoRA is therefore not another name for Tiki-Taka. Passive low-rank recovery
 changes which parameters produce the effective model weights; Tiki-Taka
@@ -49,7 +49,39 @@ adds `passive_low_rank`, `digital_low_rank`, and
 combinations, including LoRA plus the temporary `add_normal` modifier, are
 rejected before numerical execution.
 
+For the four-device MNIST protocol,
+`measured_cohort_a_sign_sgd` applies
+`target <- target - learning_rate * sign(gradient)` to the ideal conductance
+shadow and then uses the same global-nearest measured-state projection as
+`measured_cohort_a`. A zero gradient produces no shadow update. This is a
+fixed-magnitude endpoint-projection experiment, not a sequential one-pulse
+potentiation/depression model; the selected measured state may be anywhere on
+the assigned raw trace.
+
+`measured_cohort_a_one_pulse_down` is a separate, fail-closed four-device
+protocol. It first fits every cohort-A source trace to an isotonic
+non-increasing curve and performs the declared teacher-mapped
+quad-common-window initialization with one global-nearest write. During
+fine-tuning, a raw gradient strictly greater than the layer's
+`positive_gradient_threshold_by_parameter` value increments that cell's pulse
+index by exactly one, selecting the next non-increasing conductance. Equality,
+a sub-threshold positive gradient, zero, or a negative gradient holds. Omitting
+the mapping is the explicit zero-threshold control. A cell already at the final
+pulse also holds. The backend does not call SGD, use learning-rate magnitude,
+accumulate a digital shadow, or run global-nearest projection after
+initialization. Configs therefore declare learning rates `[0.0, 0.0]`.
+Checkpoints retain the stable-key threshold mapping, pulse indices, and
+cumulative gating, saturation, pulse-jump, and conductance-monotonicity
+diagnostics.
+The trajectory is over isotonic fits to the measured endpoint sequence; it is
+an explicit simulator rule, not independent evidence that one physical pulse
+will reproduce the fitted next state.
+
 ## Commands
+
+This document describes the numerical runtime. The plan-to-review lifecycle
+for multi-run studies is documented separately in
+[`experiment_workflow.md`](experiment_workflow.md).
 
 Inspect the machine-readable protocol:
 

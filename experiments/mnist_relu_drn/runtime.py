@@ -18,9 +18,16 @@ from experiments.mnist_relu_drn.components import (
     collect_calibration,
     conductance_statistics,
     fit_positive_logit_gain,
+    measured_optimizer_type,
     select_mapping_and_gain,
 )
-from experiments.mnist_relu_drn.config import StudentTrainSpec, StudentValidateSpec
+from experiments.mnist_relu_drn.config import (
+    MEASURED_BACKENDS,
+    MEASURED_COHORT_A_BACKENDS,
+    MEASURED_COHORT_B_BACKENDS,
+    StudentTrainSpec,
+    StudentValidateSpec,
+)
 from experiments.mnist_shared import build_mnist_loaders, limited
 from experiments.schema import to_plain_data
 from model.resistive.interaction import DenseResistive, SignedDenseResistive
@@ -32,7 +39,6 @@ from training.checkpoint import (
     save_epoch_boundary_checkpoint,
 )
 from training.measured_trace import (
-    MeasuredCohortAOptimizer,
     MeasuredCohortBOptimizer,
     MeasuredTraceOptimizer,
 )
@@ -208,6 +214,11 @@ def _model_checkpoint_metadata(
                         ]
                     )
                 ),
+                "positive_gradient_threshold_by_parameter": (
+                    data_report.get(
+                        "positive_gradient_threshold_by_parameter"
+                    )
+                ),
                 "device_data_sha256": data_report["source_sha256"],
                 "device_assignment_sha256_by_parameter": data_report[
                     "assignment_sha256_by_parameter"
@@ -265,7 +276,7 @@ def _validate_checkpoint_metadata(
     )
     if (
         train_settings is not None
-        and train_settings.update_backend.type == "measured_cohort_a"
+        and train_settings.update_backend.type in MEASURED_COHORT_A_BACKENDS
         and train_settings.update_backend.parameters["initial_target_mapping"]
         in {
             "dual_rail_pairwise_common_window",
@@ -283,6 +294,20 @@ def _validate_checkpoint_metadata(
                     ]
                 ),
             }
+        )
+    if (
+        train_settings is not None
+        and train_settings.update_backend.type
+        == "measured_cohort_a_one_pulse_down"
+        and train_settings.update_backend.parameters.get(
+            "positive_gradient_threshold_by_parameter"
+        )
+        is not None
+    ):
+        expected["positive_gradient_threshold_by_parameter"] = dict(
+            train_settings.update_backend.parameters[
+                "positive_gradient_threshold_by_parameter"
+            ]
         )
     mismatches = {
         name: {"expected": value, "provided": provided.get(name)}
@@ -327,18 +352,30 @@ def _validate_checkpoint_metadata(
 def _validate_cohort_b_source_metadata(
     metadata: Any,
     *,
+    spec: StudentTrainSpec,
     device_data_sha256: str,
 ) -> None:
     """Require cohort-B deployment to originate from the matched A protocol."""
 
     provided = metadata if isinstance(metadata, dict) else {}
+    source_mapping = (
+        "dual_rail_quad_common_window"
+        if spec.model.encoding == "single"
+        else "paired_affine_common_window"
+    )
     expected = {
-        "encoding": "differential",
+        "encoding": spec.model.encoding,
         "initialization": "teacher_mapped",
         "update_backend": "measured_cohort_a",
-        "initial_target_mapping": "paired_affine_common_window",
+        "initial_target_mapping": source_mapping,
         "device_data_sha256": device_data_sha256,
     }
+    if spec.model.encoding == "single":
+        expected["dual_rail_layout_by_parameter"] = dict(
+            spec.settings.update_backend.parameters[
+                "dual_rail_layout_by_parameter"
+            ]
+        )
     mismatches = {
         name: {"expected": value, "provided": provided.get(name)}
         for name, value in expected.items()
@@ -361,7 +398,7 @@ def _validate_resume_backend_metadata(
     provided = metadata if isinstance(metadata, dict) else {}
     backend = spec.settings.update_backend.type
     expected = {"update_backend": backend}
-    if backend in {"measured_cohort_a", "measured_cohort_b"}:
+    if backend in MEASURED_BACKENDS:
         expected.update(
             {
                 "initial_target_mapping": spec.settings.update_backend.parameters[
@@ -380,6 +417,18 @@ def _validate_resume_backend_metadata(
             expected["dual_rail_layout_by_parameter"] = dict(
                 spec.settings.update_backend.parameters[
                     "dual_rail_layout_by_parameter"
+                ]
+            )
+        if (
+            backend == "measured_cohort_a_one_pulse_down"
+            and spec.settings.update_backend.parameters.get(
+                "positive_gradient_threshold_by_parameter"
+            )
+            is not None
+        ):
+            expected["positive_gradient_threshold_by_parameter"] = dict(
+                spec.settings.update_backend.parameters[
+                    "positive_gradient_threshold_by_parameter"
                 ]
             )
     if (
@@ -442,7 +491,7 @@ def _validate_train_request(request: Any, spec: StudentTrainSpec) -> None:
             "Expected at most one of --weights or --resume. Provided value: both."
         )
     backend = spec.settings.update_backend.type
-    measured = backend in {"measured_cohort_a", "measured_cohort_b"}
+    measured = backend in MEASURED_BACKENDS
     if measured != (request.device_data is not None):
         expected = "an explicit --device-data" if measured else "no --device-data"
         raise ValueError(
@@ -450,7 +499,7 @@ def _validate_train_request(request: Any, spec: StudentTrainSpec) -> None:
             f"Provided value: {request.device_data!r}."
         )
     if (
-        backend == "measured_cohort_b"
+        backend in MEASURED_COHORT_B_BACKENDS
         and request.weights is None
         and request.resume is None
     ):
@@ -715,8 +764,11 @@ def run_train(request: "TrainRequest") -> int:
         )
         teacher_sha = sha256_file(request.teacher_weights)
         backend = spec.settings.update_backend.type
-        measured = backend in {"measured_cohort_a", "measured_cohort_b"}
-        cohort_b = backend == "measured_cohort_b"
+        measured = backend in MEASURED_BACKENDS
+        cohort_b = backend in MEASURED_COHORT_B_BACKENDS
+        measured_optimizer = (
+            measured_optimizer_type(backend) if measured else None
+        )
         device_data_sha = (
             sha256_file(request.device_data)
             if request.device_data is not None
@@ -809,6 +861,7 @@ def run_train(request: "TrainRequest") -> int:
                     )
                 _validate_cohort_b_source_metadata(
                     loaded.metadata,
+                    spec=spec,
                     device_data_sha256=device_data_sha,
                 )
                 source_gain = stack.cost.gain
@@ -825,9 +878,13 @@ def run_train(request: "TrainRequest") -> int:
                 deployment_source = {
                     "path": str(request.weights.expanduser().resolve()),
                     "sha256": sha256_file(request.weights),
+                    "encoding": loaded.metadata.get("encoding"),
                     "update_backend": loaded.metadata.get("update_backend"),
                     "initial_target_mapping": loaded.metadata.get(
                         "initial_target_mapping"
+                    ),
+                    "dual_rail_layout_by_parameter": deepcopy(
+                        loaded.metadata.get("dual_rail_layout_by_parameter")
                     ),
                     "device_data_sha256": loaded.metadata.get(
                         "device_data_sha256"
@@ -908,7 +965,9 @@ def run_train(request: "TrainRequest") -> int:
                 initial = dict(post_deployment_calibrated)
                 initial_conductances = post_deployment_conductances
             elif measured:
-                optimizer = MeasuredCohortAOptimizer(
+                if measured_optimizer is None:  # pragma: no cover - guarded above
+                    raise AssertionError("measured optimizer type is missing")
+                optimizer = measured_optimizer(
                     stack.optimizer,
                     stack.bundle.catalog,
                     spec.settings.update_backend.parameters,
@@ -928,7 +987,9 @@ def run_train(request: "TrainRequest") -> int:
                     "dual_rail_quad_common_window",
                 }
             ):
-                measured_candidate_projector = MeasuredCohortAOptimizer(
+                if measured_optimizer is None:  # pragma: no cover - guarded above
+                    raise AssertionError("measured optimizer type is missing")
+                measured_candidate_projector = measured_optimizer(
                     stack.optimizer,
                     stack.bundle.catalog,
                     spec.settings.update_backend.parameters,
@@ -950,7 +1011,9 @@ def run_train(request: "TrainRequest") -> int:
             stack.cost.gain = float(mapping_report["selected"]["calibration"]["gain"])
             if measured:
                 if measured_candidate_projector is None:
-                    optimizer = MeasuredCohortAOptimizer(
+                    if measured_optimizer is None:  # pragma: no cover
+                        raise AssertionError("measured optimizer type is missing")
+                    optimizer = measured_optimizer(
                         stack.optimizer,
                         stack.bundle.catalog,
                         spec.settings.update_backend.parameters,

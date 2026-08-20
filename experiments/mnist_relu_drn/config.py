@@ -22,6 +22,15 @@ from experiments.schema import RunMode, config_error, freeze_json
 
 EXPERIMENT_ID = "mnist_relu_drn_kd.v1"
 SCHEMA_VERSION = 1
+MEASURED_COHORT_A_BACKENDS = frozenset(
+    {
+        "measured_cohort_a",
+        "measured_cohort_a_sign_sgd",
+        "measured_cohort_a_one_pulse_down",
+    }
+)
+MEASURED_COHORT_B_BACKENDS = frozenset({"measured_cohort_b"})
+MEASURED_BACKENDS = MEASURED_COHORT_A_BACKENDS | MEASURED_COHORT_B_BACKENDS
 _MEASURED_KEYS = {
     "curve_preprocessing",
     "split_seed",
@@ -43,6 +52,7 @@ _MEASURED_KEYS = {
 }
 _MEASURED_OPTIONAL_KEYS = {
     "dual_rail_layout_by_parameter",
+    "positive_gradient_threshold_by_parameter",
 }
 
 
@@ -350,6 +360,8 @@ def _parse_measured(
         )
     expected_cohort = {
         "measured_cohort_a": "A",
+        "measured_cohort_a_sign_sgd": "A",
+        "measured_cohort_a_one_pulse_down": "A",
         "measured_cohort_b": "B",
     }[backend_type]
     if (
@@ -358,12 +370,12 @@ def _parse_measured(
         in {
             "per_device_affine",
             "dual_rail_pairwise_common_window",
-            "dual_rail_quad_common_window",
         }
     ):
         raise config_error(
             f"{path}.initial_target_mapping",
-            "to be 'literal' or 'paired_affine_common_window' for cohort B",
+            "to be 'literal', 'paired_affine_common_window', or "
+            "'dual_rail_quad_common_window' for cohort B",
             raw["initial_target_mapping"],
         )
     layouts = raw.get("dual_rail_layout_by_parameter")
@@ -420,6 +432,65 @@ def _parse_measured(
         raise config_error(f"{path}.formed_resistance_max_ohm", "to be positive", raw["formed_resistance_max_ohm"])
     normalized = dict(raw)
     normalized.setdefault("dual_rail_layout_by_parameter", None)
+    raw_thresholds = raw.get("positive_gradient_threshold_by_parameter")
+    if backend_type != "measured_cohort_a_one_pulse_down":
+        if raw_thresholds is not None:
+            raise config_error(
+                f"{path}.positive_gradient_threshold_by_parameter",
+                "to be omitted or null unless update_backend.type is "
+                "'measured_cohort_a_one_pulse_down'",
+                raw_thresholds,
+            )
+        normalized["positive_gradient_threshold_by_parameter"] = None
+    elif raw_thresholds is None:
+        # Omission is the exact zero-threshold historical control.
+        normalized["positive_gradient_threshold_by_parameter"] = None
+    else:
+        expected_threshold_keys = {
+            "base.dense_weight.0",
+            "base.dense_weight.1",
+        }
+        if not isinstance(raw_thresholds, Mapping) or (
+            set(raw_thresholds) != expected_threshold_keys
+        ):
+            raise config_error(
+                f"{path}.positive_gradient_threshold_by_parameter",
+                "to map exactly the stable parameter keys "
+                f"{sorted(expected_threshold_keys)!r} to finite "
+                "non-negative raw-gradient thresholds",
+                raw_thresholds,
+            )
+        parsed_thresholds = {
+            key: _number(
+                raw_thresholds[key],
+                f"{path}.positive_gradient_threshold_by_parameter.{key}",
+            )
+            for key in sorted(expected_threshold_keys)
+        }
+        if any(value < 0.0 for value in parsed_thresholds.values()):
+            raise config_error(
+                f"{path}.positive_gradient_threshold_by_parameter",
+                "to map exactly the stable parameter keys "
+                f"{sorted(expected_threshold_keys)!r} to finite "
+                "non-negative raw-gradient thresholds",
+                raw_thresholds,
+            )
+        normalized["positive_gradient_threshold_by_parameter"] = (
+            parsed_thresholds
+        )
+    if backend_type == "measured_cohort_a_one_pulse_down":
+        strict = {
+            "curve_preprocessing": "isotonic_nonincreasing",
+            "initial_target_mapping": "dual_rail_quad_common_window",
+        }
+        for name, expected in strict.items():
+            if normalized[name] != expected:
+                raise config_error(
+                    f"{path}.{name}",
+                    f"to equal {expected!r} for "
+                    "measured_cohort_a_one_pulse_down",
+                    normalized[name],
+                )
     return freeze_json(normalized, path=path)
 
 
@@ -431,6 +502,12 @@ def _parse_train(value: Any) -> StudentTrainSettings:
     if not isinstance(rates, (list, tuple)) or len(rates) != 2:
         raise config_error(f"{path}.learning_rates", "to contain exactly two non-negative rates", rates)
     parsed_rates = tuple(_number(item, f"{path}.learning_rates[{index}]") for index, item in enumerate(rates))
+    if any(rate < 0.0 for rate in parsed_rates):
+        raise config_error(
+            f"{path}.learning_rates",
+            "to contain exactly two non-negative rates",
+            rates,
+        )
     if _number(raw["temperature"], f"{path}.temperature") != 1.0:
         raise config_error(f"{path}.temperature", "to equal 1.0", raw["temperature"])
     relative = _number(raw["minimum_relative_kl_improvement"], f"{path}.minimum_relative_kl_improvement")
@@ -441,11 +518,16 @@ def _parse_train(value: Any) -> StudentTrainSettings:
     if backend["type"] not in {
         "ideal",
         "measured_cohort_a",
+        "measured_cohort_a_sign_sgd",
+        "measured_cohort_a_one_pulse_down",
         "measured_cohort_b",
     }:
         raise config_error(
             f"{path}.update_backend.type",
-            "to be 'ideal', 'measured_cohort_a', or 'measured_cohort_b'",
+            "to be 'ideal', 'measured_cohort_a', "
+            "'measured_cohort_a_sign_sgd', "
+            "'measured_cohort_a_one_pulse_down', or "
+            "'measured_cohort_b'",
             backend["type"],
         )
     if backend["type"] == "ideal":
@@ -455,6 +537,16 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             backend["parameters"],
             f"{path}.update_backend.parameters",
             backend_type=backend["type"],
+        )
+    if (
+        backend["type"] == "measured_cohort_a_one_pulse_down"
+        and parsed_rates != (0.0, 0.0)
+    ):
+        raise config_error(
+            f"{path}.learning_rates",
+            "to equal [0.0, 0.0] because "
+            "measured_cohort_a_one_pulse_down ignores learning-rate magnitude",
+            rates,
         )
     return StudentTrainSettings(
         num_epochs=_integer(raw["num_epochs"], f"{path}.num_epochs", minimum=1),
@@ -496,8 +588,7 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
     train = modes.get("train")
     if (
         isinstance(train, StudentTrainSettings)
-        and train.update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        and train.update_backend.type in MEASURED_BACKENDS
         and train.update_backend.parameters["initial_target_mapping"]
         == "paired_affine_common_window"
         and model.encoding != "differential"
@@ -510,8 +601,7 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         )
     if (
         isinstance(train, StudentTrainSettings)
-        and train.update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        and train.update_backend.type in MEASURED_BACKENDS
         and train.update_backend.parameters["initial_target_mapping"]
         in {
             "dual_rail_pairwise_common_window",
@@ -527,7 +617,20 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         )
     if (
         isinstance(train, StudentTrainSettings)
-        and train.update_backend.type == "measured_cohort_a"
+        and train.update_backend.type in MEASURED_COHORT_B_BACKENDS
+        and model.encoding == "single"
+        and train.update_backend.parameters["initial_target_mapping"]
+        != "dual_rail_quad_common_window"
+    ):
+        raise config_error(
+            "config.modes.train.update_backend.parameters.initial_target_mapping",
+            "to equal 'dual_rail_quad_common_window' for a single-encoding "
+            "cohort-B transfer",
+            train.update_backend.parameters["initial_target_mapping"],
+        )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type in MEASURED_BACKENDS
         and train.update_backend.parameters["initial_target_mapping"]
         in {
             "dual_rail_pairwise_common_window",
@@ -549,6 +652,41 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
                 f"{expected_layouts!r}",
                 dict(layouts),
             )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type == "measured_cohort_a_sign_sgd"
+        and (
+            model.encoding != "single"
+            or train.update_backend.parameters["initial_target_mapping"]
+            != "dual_rail_quad_common_window"
+        )
+    ):
+        raise config_error(
+            "config.modes.train.update_backend.type",
+            "to select the single-encoding four-device "
+            "dual_rail_quad_common_window protocol when using "
+            "'measured_cohort_a_sign_sgd'",
+            train.update_backend.type,
+        )
+    if (
+        isinstance(train, StudentTrainSettings)
+        and train.update_backend.type
+        == "measured_cohort_a_one_pulse_down"
+        and (
+            model.encoding != "single"
+            or train.update_backend.parameters["initial_target_mapping"]
+            != "dual_rail_quad_common_window"
+            or train.update_backend.parameters["curve_preprocessing"]
+            != "isotonic_nonincreasing"
+        )
+    ):
+        raise config_error(
+            "config.modes.train.update_backend.type",
+            "to select the single-encoding isotonic four-device "
+            "dual_rail_quad_common_window protocol when using "
+            "'measured_cohort_a_one_pulse_down'",
+            train.update_backend.type,
+        )
     mapping = _parse_mapping(raw["mapping"])
     if mapping.range_placement == "centered" and model.encoding != "single":
         raise config_error(

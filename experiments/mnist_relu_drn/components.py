@@ -11,7 +11,10 @@ import torch
 import torch.nn.functional as F
 
 from experiments.mnist_relu.model import BiasFreeReluTeacher
-from experiments.mnist_relu_drn.config import StudentTrainSpec
+from experiments.mnist_relu_drn.config import (
+    MEASURED_BACKENDS,
+    StudentTrainSpec,
+)
 from labs.custom_minimizer import CustomQuadraticMinimizer, MinimizerSettings
 from model.function.interaction import Function
 from model.function.network import Network
@@ -19,9 +22,11 @@ from model.resistive.builders import ModelBundle, ParameterCatalog, build_deep_r
 from model.variable.parameter import Bias, DenseWeight
 from training.measured_trace import (
     MeasuredCohortAOptimizer,
+    MeasuredCohortAOnePulseDownOptimizer,
     MeasuredCohortBOptimizer,
 )
 from training.sgd import Backprop
+from training.sign_sgd import SignSGD
 
 
 def paired_scores(output: torch.Tensor) -> torch.Tensor:
@@ -150,7 +155,8 @@ def _logical_optimizer(
     *,
     encoding: str,
     rates: tuple[float, ...],
-) -> torch.optim.SGD:
+    sign_only: bool = False,
+) -> torch.optim.Optimizer:
     bindings = catalog.trainable
     if encoding == "single":
         dense = tuple(
@@ -201,7 +207,28 @@ def _logical_optimizer(
             }
             for index in range(2)
         ]
+    if sign_only:
+        return SignSGD(groups, lr=0.0)
     return torch.optim.SGD(groups, momentum=0.0, weight_decay=0.0)
+
+
+def measured_optimizer_type(update_backend_type: str) -> type:
+    """Resolve the explicitly registered measured optimizer implementation."""
+
+    implementations = {
+        "measured_cohort_a": MeasuredCohortAOptimizer,
+        "measured_cohort_a_sign_sgd": MeasuredCohortAOptimizer,
+        "measured_cohort_a_one_pulse_down": (
+            MeasuredCohortAOnePulseDownOptimizer
+        ),
+        "measured_cohort_b": MeasuredCohortBOptimizer,
+    }
+    if update_backend_type not in implementations:
+        raise ValueError(
+            "Expected a registered MNIST measured update backend. Provided "
+            f"value: {update_backend_type!r}."
+        )
+    return implementations[update_backend_type]
 
 
 def build_student_stack(
@@ -266,23 +293,25 @@ def build_student_stack(
         bundle.catalog,
         encoding=spec.model.encoding,
         rates=rates,
+        sign_only=(
+            getattr(spec.settings, "update_backend", None) is not None
+            and spec.settings.update_backend.type
+            == "measured_cohort_a_sign_sgd"
+        ),
     )
     update_backend = getattr(spec.settings, "update_backend", None)
     if (
         enable_measured
         and update_backend is not None
         and update_backend.type
-        in {"measured_cohort_a", "measured_cohort_b"}
+        in MEASURED_BACKENDS
     ):
         if device_data_path is None:
             raise ValueError(
                 f"Expected --device-data for {update_backend.type}. "
                 "Provided value: None."
             )
-        optimizer_type = {
-            "measured_cohort_a": MeasuredCohortAOptimizer,
-            "measured_cohort_b": MeasuredCohortBOptimizer,
-        }[update_backend.type]
+        optimizer_type = measured_optimizer_type(update_backend.type)
         optimizer = optimizer_type(
             optimizer,
             bundle.catalog,
@@ -712,6 +741,7 @@ __all__ = [
     "conductance_statistics",
     "fit_positive_logit_gain",
     "mapped_conductances",
+    "measured_optimizer_type",
     "paired_scores",
     "select_mapping_and_gain",
     "settle_scores",

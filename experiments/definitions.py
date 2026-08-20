@@ -315,6 +315,49 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
             "held-out measured cohort-B device traces."
         ),
     ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "none",
+            "measured_cohort_b",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Four-device dual-rail quad-common-window transfer onto "
+            "independently held-out measured cohort-B device traces."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "none",
+            "measured_cohort_a_sign_sgd",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Four-device cohort-A quad-common-window training with "
+            "fixed-magnitude signSGD shadow updates followed by measured "
+            "global-nearest projection."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "none",
+            "measured_cohort_a_one_pulse_down",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Four-device cohort-A quad-common-window initialization followed "
+            "by strict isotonic local updates: gradients above explicit "
+            "per-parameter thresholds advance exactly one pulse toward lower "
+            "conductance and all other gradients hold. Omitted thresholds "
+            "define the zero-threshold control."
+        ),
+    ),
 )
 
 
