@@ -1,6 +1,6 @@
 # Perfect-Diode Bounded-Weight Initializer And Rho Protocol
 
-Updated: 2026-07-29
+Updated: 2026-08-17
 
 Status: active scientific specification; all-depth execution and global
 initializer selection are pending.
@@ -8,8 +8,8 @@ initializer selection are pending.
 ## Purpose
 
 Select one bounded initialization method and complete bounded
-parameter-specific learning-rate handoffs before deterministic medium-affine
-paper training.
+parameter-specific learning-rate handoffs before sealing the ordinary-MNIST
+paper checkpoints and official-test evaluation.
 
 This is an ordinary-MNIST optimization study. It covers all 18 surfaces:
 
@@ -46,6 +46,12 @@ training projection interval = [1e-5,1e-4]
 
 Biases retain the active perfect-diode bias initialization and LR policy and
 are not projected into this interval.
+
+That sentence describes the historical bounded selector. For any bounded row
+in the seed-0 paper-ready BPTT--EqProp extension, the
+[matching protocol](conv_paper_one_seed_bptt_eqprop_protocol.md) instead
+requires exact-zero bias initialization and learning rates in both algorithms.
+The bounded weight-rate handoff remains independent of the wide-range one.
 
 Test both initializers:
 
@@ -163,13 +169,16 @@ architecture-specific initializer is allowed.
 ## Paper Handoff
 
 For the selected global initializer, freeze all 18 ordered raw LR vectors.
-The corresponding deterministic medium-affine paper rows use those vectors
-unchanged and start from fresh paper-run initializations under the selected
-bounded initializer.
+The corresponding ordinary-MNIST paper rows use those vectors unchanged and
+start from fresh paper-run initializations under the selected bounded
+initializer, unless an existing checkpoint passes the explicit paper reuse
+gate.
 
 The bounded result is a combined physical-range and initialization contract.
 If full-range uniform wins, do not describe the wide-range-versus-bounded
 comparison as changing only the conductance bounds.
 
 Every handoff and selector artifact records `official_test_read=false`.
-Ordinary-MNIST metrics select the setup but are not paper results.
+Ordinary-MNIST validation metrics select the setup but are not paper results.
+Only the once-read official-test metric from an eligible sealed checkpoint is
+paper-facing accuracy.

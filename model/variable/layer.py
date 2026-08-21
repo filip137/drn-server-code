@@ -65,7 +65,17 @@ class Layer(Variable, ABC):
         """
 
         shape = (batch_size,) + self._shape
-        self._state = torch.zeros(shape, requires_grad=False, device=device)
+        # Preserve an explicitly selected runtime dtype across batch resets.
+        # New layers still start in PyTorch's default dtype (float32), while a
+        # layer promoted to float64 by a scientific runner remains float64 when
+        # Network.set_input(..., reset=True) reinitializes its batch state.
+        dtype = self._state.dtype if hasattr(self, "_state") else None
+        self._state = torch.zeros(
+            shape,
+            requires_grad=False,
+            device=device,
+            dtype=dtype,
+        )
     
     @abstractmethod
     def activate(self):

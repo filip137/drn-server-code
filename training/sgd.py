@@ -302,7 +302,20 @@ class EquilibriumProp(GradientEstimator):
         Compute and return the sequence of time-dependent layer- and parameter- EP gradients
     """
 
-    def __init__(self, params, layers, energy_fn, cost_fn, energy_minimizer, variant='centered', nudging=0.25, use_alternative_formula=False):
+    def __init__(
+        self,
+        params,
+        layers,
+        energy_fn,
+        cost_fn,
+        energy_minimizer,
+        variant='centered',
+        nudging=0.25,
+        use_alternative_formula=False,
+        normalize_current_scale=False,
+        endpoint_read_noise_std=0.0,
+        endpoint_read_noise_seed=None,
+    ):
         """Creates an instance of equilibrium propagation
 
         Args:
@@ -332,6 +345,33 @@ class EquilibriumProp(GradientEstimator):
         self._set_nudgings()
 
         self._use_alternative_formula = use_alternative_formula
+
+        self._normalize_current_scale = bool(normalize_current_scale)
+        self._endpoint_read_noise_std = float(endpoint_read_noise_std)
+        if (
+            not torch.isfinite(torch.tensor(self._endpoint_read_noise_std))
+            or self._endpoint_read_noise_std < 0.0
+        ):
+            raise ValueError(
+                "endpoint_read_noise_std must be finite and non-negative, "
+                "but got {}".format(endpoint_read_noise_std)
+            )
+        if self._endpoint_read_noise_std > 0.0 and endpoint_read_noise_seed is None:
+            raise ValueError(
+                "endpoint_read_noise_seed is required when endpoint read noise is enabled"
+            )
+        self._endpoint_read_noise_seed = (
+            None if endpoint_read_noise_seed is None else int(endpoint_read_noise_seed)
+        )
+        self._endpoint_read_noise_generators = {}
+        self._endpoint_read_noise_draw_count = 0
+
+        if self._normalize_current_scale and getattr(
+            self._augmented_fn, "nudging_mode", None
+        ) != "current":
+            raise ValueError(
+                "normalize_current_scale requires current-mode nudging"
+            )
 
     @property
     def nudging(self):
@@ -386,20 +426,76 @@ class EquilibriumProp(GradientEstimator):
             self._augmented_fn.prepare_nudging()
         self._augmented_fn.nudging = self._first_nudging
         layers_first = self._energy_minimizer.compute_equilibrium()
+        layers_first = self._apply_endpoint_read_noise(layers_first)
         
         # Second phase: compute the second equilibrium state of the layers
         for layer, state in zip(self._layers, layers_free): layer.state = state  # hack: we start the second phase from the `free state' again
         self._augmented_fn.nudging = self._second_nudging
         layers_second = self._energy_minimizer.compute_equilibrium()
+        layers_second = self._apply_endpoint_read_noise(layers_second)
 
         # Compute the parameter gradients with either the standard EquilibriumProp formula, or the alternative EquilibriumProp formula
         if self._use_alternative_formula:
             param_grads = self._alternative_param_grads(layers_free, layers_first, layers_second)
         else:
             param_grads = self._standard_param_grads(layers_first, layers_second)
+        param_grads = self._normalize_amplified_current_gradient(param_grads)
         param_grads = self._apply_amplified_current_bias_gradient_scale(param_grads)
 
         return param_grads + cost_grads
+
+    @property
+    def endpoint_read_noise_draw_count(self):
+        """Number of independently noised endpoint layer tensors read so far."""
+
+        return self._endpoint_read_noise_draw_count
+
+    def _noise_generator(self, state):
+        key = str(state.device)
+        generator = self._endpoint_read_noise_generators.get(key)
+        if generator is None:
+            generator = torch.Generator(device=state.device)
+            generator.manual_seed(self._endpoint_read_noise_seed)
+            self._endpoint_read_noise_generators[key] = generator
+        return generator
+
+    def _apply_endpoint_read_noise(self, states):
+        """Read phase endpoint voltages with independent additive Gaussian noise.
+
+        The physical phase state is not perturbed.  Noise is added only to the
+        copied free-layer voltages consumed by the unchanged local energy-
+        gradient evaluation; the clamped input layer is therefore exact.
+        """
+
+        if self._endpoint_read_noise_std == 0.0:
+            return states
+        noised = {}
+        for layer in self._layers:
+            state = states[layer.name]
+            standard_normal = torch.randn(
+                state.shape,
+                dtype=state.dtype,
+                device=state.device,
+                generator=self._noise_generator(state),
+            )
+            noised[layer.name] = (
+                state.detach().clone()
+                + self._endpoint_read_noise_std * standard_normal
+            )
+            self._endpoint_read_noise_draw_count += 1
+        return noised
+
+    def _normalize_amplified_current_gradient(self, param_grads):
+        if not self._normalize_current_scale:
+            return param_grads
+        current_scale = float(getattr(self._augmented_fn, "_current_scale", 1.0))
+        if not torch.isfinite(torch.tensor(current_scale)) or current_scale <= 0.0:
+            raise RuntimeError(
+                "Expected a finite positive current-nudge scale, got {}".format(
+                    current_scale
+                )
+            )
+        return [gradient / current_scale for gradient in param_grads]
 
 
     def return_free_and_nudged_states(self):

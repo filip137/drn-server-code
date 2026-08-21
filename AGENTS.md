@@ -40,6 +40,8 @@ quality; they are not human approval gates.
   diode defaults.
 - Use `matplotlib` for generated plots unless the user requests another
   backend.
+- Treat `docs/current_state.md` as human-authored: read it for context, but do
+  not edit it unless Filip explicitly grants permission for that edit.
 - Read or edit `docs/my_notes.md` only when Filip explicitly asks.
 
 ## Scientific Authority
@@ -61,9 +63,13 @@ New runs follow `docs/experiment_reporting.md`; live state is generated in
 is indexed persistently there, and analyzed conclusions are curated manually in
 `docs/experimental_manifest.md`.
 
-Ordinary MNIST is used for `T/K`, rho, learning-rate, and bounded-initializer
-selection. Deterministic medium-affine MNIST is used for paper runs. A
-diagnostic accuracy from ordinary MNIST is never paper-facing evidence.
+Ordinary MNIST is used for both hyperparameter selection and the active paper
+runs. Selection uses the deterministic 55,000/5,000 train/validation split and
+must not read the official test split. A paper-facing accuracy is the official
+10,000-example MNIST test result read exactly once after the complete contract
+and checkpoint-selection rule are frozen; ordinary-MNIST validation accuracy
+is never paper-facing evidence. Deterministic medium-affine MNIST is retained
+as historical or optional robustness evidence, not a required paper dataset.
 
 ## Experiments
 

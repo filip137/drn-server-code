@@ -1,0 +1,222 @@
+{
+  "schema_version": "perfectdiode-conv13-zero-bias-adam-eqprop-one-decade-read-noise-study/v1",
+  "study_id": "perfectdiode-conv13-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-10-30ep-seed0-20260817-v1",
+  "scientific_question": "At the already training-stable one-decade beta, do the exact zero-bias shared-T/K Conv1 and Conv3 Adam EqProp cases remain stable with endpoint read-noise sigma 5e-4?",
+  "evidence_class": "ordinary_mnist_eqprop_zero_bias_read_noise_training_diagnostic",
+  "evidence_tier": "user_directed_exploratory_read_noise_robustness",
+  "paper_facing": false,
+  "scientific_contract": {
+    "architectures": [
+      "conv1",
+      "conv3"
+    ],
+    "schemes": [
+      "baseline",
+      "ours",
+      "legacy"
+    ],
+    "optimizer": "Adam",
+    "dataset": "ordinary_mnist_deterministic_55000_train_5000_validation",
+    "official_test_read": false,
+    "model_seed": 0,
+    "split_seed": 0,
+    "shuffle_seed": 0,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "epochs": {
+      "conv1": 10,
+      "conv3": 30
+    },
+    "T": {
+      "conv1": 4,
+      "conv3": 8
+    },
+    "K": {
+      "conv1": 4,
+      "conv3": 8
+    },
+    "output_row_exponent_L": {
+      "conv1": 1,
+      "conv3": 3
+    },
+    "injected_beta_B": {
+      "conv1": {
+        "baseline": 100.0,
+        "ours": 30.0,
+        "legacy": 3.0
+      },
+      "conv3": {
+        "baseline": 100.0,
+        "ours": 3.0,
+        "legacy": 0.001
+      }
+    },
+    "base_beta": {
+      "conv1": {
+        "baseline": 100.0,
+        "ours": 7.5,
+        "legacy": 0.1875
+      },
+      "conv3": {
+        "baseline": 100.0,
+        "ours": 0.046875,
+        "legacy": 2.44140625e-7
+      }
+    },
+    "runtime_dtype": "float64",
+    "training_algorithm": "centered_frozen_current_eqprop",
+    "current_scale": "auto",
+    "normalize_current_scale": true,
+    "endpoint_read_noise_std": 0.0005,
+    "endpoint_read_noise_seed": 2026081601,
+    "input_read_noise": false,
+    "noise_applied_after_equilibrium_before_local_energy_gradient": true,
+    "phase_noise_correlation": "independent",
+    "layer_noise_correlation": "independent",
+    "matched_standard_normal_draws_across_cases": true,
+    "expected_endpoint_read_noise_draws": {
+      "smoke": {
+        "conv1": 4,
+        "conv3": 8
+      },
+      "production": {
+        "conv1": 137520,
+        "conv3": 825120
+      }
+    },
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "stable_definition": {
+      "finite_full_epoch_completion": true,
+      "final_validation_drop_from_best_pp_strictly_less_than": 5.0
+    },
+    "retain_all_scientific_terminal_outcomes": true,
+    "clean_control_study_id": "perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1",
+    "bias_learning_rate": 0.0,
+    "weight_min": 0.0,
+    "weight_max": 100.0,
+    "weight_initialization": "kaiming_uniform",
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {
+      "I_s": 1e-6,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    }
+  },
+  "protocol_deviations": {
+    "one_decade_gradient_gate": {
+      "source": "results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/review.md",
+      "passing_layer_batch_rows": 213,
+      "total_layer_batch_rows": 216,
+      "failed_rows": [
+        "conv3_baseline_reconstructed_initialization_C0_batch1",
+        "conv3_ours_reconstructed_initialization_C0_batch1",
+        "conv3_ours_reconstructed_initialization_C0_batch2"
+      ],
+      "user_directed_override": true,
+      "reclassified_as_gradient_passing": false
+    },
+    "conv3_baseline_t8_free_state_residual": {
+      "present": true,
+      "policy": "retain as a separately reported equilibrium deviation",
+      "reclassified_as_residual_passing": false
+    },
+    "paper_ready": false
+  },
+  "source": {
+    "parent_clean_study_config": {
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json",
+      "sha256": "adeec73eca2a2182912668a583855b24f4900c0c76a78e53cef6e33de91ee990"
+    },
+    "configs": {
+      "conv1": {
+        "baseline": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/01_baseline_adam_bias_zero_seed0.json",
+          "sha256": "405388114945645b2700858b485e67759cc343ecc975302e559fa4b938151b76"
+        },
+        "ours": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/03_ours_adam_bias_zero_seed0.json",
+          "sha256": "26fe23f01f185579b42dca22a4ee8b015981ddb37c427d46d25ad56008dc77e5"
+        },
+        "legacy": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json",
+          "sha256": "4469a635e679d213aa42949cfd46a32ddba3d61282c10e65992af85b9024c8f7"
+        }
+      },
+      "conv3": {
+        "baseline": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/01_baseline_adam_bias_zero_seed0.json",
+          "sha256": "0f0a216967c36350807c7c77345d9b8d08532df980945882f989799fdd38a10c"
+        },
+        "ours": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/03_ours_adam_bias_zero_seed0.json",
+          "sha256": "4d28abeabe50f9ef595bafc94c0e676ca6676668149956588a7d82a0be74a831"
+        },
+        "legacy": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json",
+          "sha256": "06f658e108463da0612ca9322c7c6e6bd92c18640ff0f12c37259a96b79e9784"
+        }
+      }
+    },
+    "clean_controls": {
+      "result_root": "results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1",
+      "result_sha256": {
+        "conv1": {
+          "baseline": "493922a5d735cb15e012fce1f24786e5edfae86b2ea7c36d944b12fb38f665fb",
+          "ours": "7854fb167d4ee1539285759338066bf8c29859e7dff66da471dc0b3049d68779",
+          "legacy": "69668306e32379b910a06590aa76ac6b443d44d5b4417f5b52edc41e8e3be0a6"
+        },
+        "conv3": {
+          "baseline": "0ea541c57dee4cce1af85a4b65e52a021a4b6c167b793464af296e707deba524",
+          "ours": "49c0cc5fdb73292736c217e7d8847b00ccdd88b59b6c83992dc45dd1fc9da36c",
+          "legacy": "928835696f89f0c82865a116a17423d47a9e2c3397d2bc6b921eda2455bfe8cf"
+        }
+      }
+    },
+    "jean_zay_environment": {
+      "path": "configs/conv/perfectdiode_successor_jeanzay_umg_v100_environment_v1.json",
+      "sha256": "4d25217ee63fae7f92d1139c8f4f26188cfd95d15d5a862d6728993cb9d311ab"
+    }
+  },
+  "execution": {
+    "target": "jean-zay",
+    "account": "umg@v100",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100-32g",
+    "canary_array": "0-0",
+    "production_array": "0-2%3",
+    "logical_case_count": 6,
+    "pack_count": 3,
+    "runs_per_gpu": 2,
+    "cpus_per_task": 16,
+    "canary_walltime": "02:00:00",
+    "production_walltime": "08:00:00",
+    "expected_duration_after_allocation": "approximately 5 hours",
+    "packs": [
+      [
+        0,
+        1
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        4,
+        5
+      ]
+    ],
+    "pack_labels": [
+      "conv1_baseline__conv3_baseline",
+      "conv1_ours__conv3_ours",
+      "conv1_legacy__conv3_legacy"
+    ],
+    "remote_stage_root": "/lustre/fswork/projects/rech/umg/ucy17uy/server_code/experiments/perfectdiode-conv13-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-10-30ep-seed0-20260817-v1",
+    "remote_result_root": "/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode-conv13-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-10-30ep-seed0-20260817-v1"
+  }
+}

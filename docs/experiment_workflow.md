@@ -18,12 +18,19 @@ is an observability step, not a separate approval gate.
 
 ## Scientific Paths
 
-There are two distinct training paths:
+There are two distinct evidence paths on ordinary MNIST:
 
-1. Ordinary MNIST selects `T/K`, optimizer-specific rho targets, raw
-   parameter-specific LR vectors, and the bounded initializer.
-2. Deterministic medium-affine MNIST runs the paper configs with those
-   handoffs unchanged.
+1. The deterministic 55,000/5,000 training/validation split selects `T/K`,
+   optimizer-specific rho targets, raw parameter-specific LR vectors, bounded
+   initializer, EqProp beta, and checkpoints. It never reads the official test
+   split.
+2. After the complete paper contract, inclusion set, and checkpoint identities
+   are sealed, a paper evaluation reads the official 10,000-example MNIST test
+   split exactly once per eligible run. Existing checkpoints may enter this
+   path only through the reuse gate in the paper experiment definition.
+
+Deterministic medium-affine MNIST is historical or optional robustness work,
+not the active paper path.
 
 When Filip supplies complete configs with exact LR vectors, use the exact-run
 path directly. Do not run a rho search or calibration first:

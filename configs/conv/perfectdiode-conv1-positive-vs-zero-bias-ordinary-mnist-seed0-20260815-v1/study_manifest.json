@@ -1,0 +1,53 @@
+{
+  "evidence_class": "ordinary_mnist_bias_ablation",
+  "expected_run_count": 2,
+  "paper_facing": false,
+  "runs": [
+    {
+      "arm_id": "conv1_baseline_sgd_positive_only_bias_seed0",
+      "bias_learning_rate": 0.142696,
+      "config": "configs/conv/perfectdiode-conv1-positive-vs-zero-bias-ordinary-mnist-seed0-20260815-v1/00_baseline_sgd_positive_bias_seed0.json",
+      "config_sha256": "366054ee036a65675b7b076b90dd32d7ac99c4db9fc3081cbb487d00199caf8f",
+      "role": "positive_only_bias"
+    },
+    {
+      "arm_id": "conv1_baseline_sgd_zero_bias_seed0",
+      "bias_learning_rate": 0.0,
+      "config": "configs/conv/perfectdiode-conv1-positive-vs-zero-bias-ordinary-mnist-seed0-20260815-v1/01_baseline_sgd_zero_bias_seed0.json",
+      "config_sha256": "4f17359f32e41f1f50c14668babef41d65c79e607277b02bfebdf10de51317dc",
+      "role": "zero_bias"
+    }
+  ],
+  "schema_version": "conv1-positive-vs-zero-bias-study/v1",
+  "scientific_contract": {
+    "architecture": "conv1",
+    "current_amp": 1.0,
+    "dataset": "ordinary_mnist_55000_train_5000_validation",
+    "epochs": 10,
+    "inference_iterations": 4,
+    "input_gain": 40.0,
+    "official_test_policy": "disabled",
+    "optimizer": "SGD",
+    "parameter_order": [
+      "ConvWeight_0",
+      "DenseWeight_0",
+      "Bias_0"
+    ],
+    "practical_similarity_threshold_pp": 0.5,
+    "scheme": "baseline",
+    "seed": 0,
+    "training_iterations": 4,
+    "voltage_amp": 1.0,
+    "weight_interval": [
+      0.0,
+      100.0
+    ],
+    "weight_learning_rates": {
+      "ConvWeight_0": 0.142696,
+      "DenseWeight_0": 0.0120238
+    }
+  },
+  "source_config": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/00_baseline_sgd_bias_zero_seed0.json",
+  "source_config_sha256": "d20dac2f0bcffb2c4a2e2869f2fdcbe8847f3826d556e6fde8f3930fca507b96",
+  "study_id": "perfectdiode-conv1-positive-vs-zero-bias-ordinary-mnist-seed0-20260815-v1"
+}

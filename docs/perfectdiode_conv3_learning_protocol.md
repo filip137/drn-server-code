@@ -1,6 +1,6 @@
 # Perfect-Diode Conv3 Wide-Range T/K And Rho Protocol
 
-Updated: 2026-07-29
+Updated: 2026-08-17
 
 Status: scientific design approved. The user-fixed `T=K=8` six-surface rho
 study completed on 2026-07-29 with 91 trained cells and all search bounds
@@ -15,6 +15,13 @@ published in
 [`perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json`](../configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json).
 Long-confirmation evidence remains pending. The frozen scientific gates,
 ceilings, routing, and scope below remain binding for successor work.
+
+For the seed-0 paper-ready BPTT--EqProp extension, this protocol supplies the
+accepted Conv3 **weight** rates and `T=K=8`. The downstream
+[matching protocol](conv_paper_one_seed_bptt_eqprop_protocol.md) copies those
+weight rates unchanged, replaces all bias rates with zero, and requires the
+same complete vector and `T/K` in BPTT and EqProp. This does not alter the
+historical handoff artifacts or their learned-bias provenance.
 
 ## Completed unbounded LR handoff
 
@@ -57,11 +64,12 @@ namespace is `mnist-conv-perfectdiode-hparam-study/v2`; v1 Conv1/Conv2 study
 and run identities remain immutable.
 
 This ordinary-MNIST study selects `T/K` and the wide-range
-parameter-specific LR vector for each matching deterministic medium-affine
-paper surface. Its validation accuracy and checkpoints are diagnostics, not
-paper-facing evidence. A handoff remains valid only while architecture,
-scheme, optimizer, initialization, input gain, `T/K`, and weight contract
-match the paper config.
+parameter-specific LR vector for each matching ordinary-MNIST paper surface.
+Its validation accuracy is diagnostic, not paper-facing evidence. A handoff
+remains valid only while architecture, scheme, optimizer, initialization,
+input gain, `T/K`, and weight contract match the paper config. An existing
+checkpoint is eligible for one sealed official-test evaluation only after the
+paper reuse gate passes.
 
 ## Frozen ordinary-MNIST contract
 
@@ -460,8 +468,9 @@ study-analysis layout in
 [`experiment_reporting.md`](experiment_reporting.md). After review, add the
 supported conclusion to the manual experimental manifest. Existing
 result-registry cards remain historical evidence. A successful handoff freezes
-the LR vector for its matching medium-affine wide-range row, but no
-ordinary-MNIST accuracy or checkpoint is a paper result.
+the LR vector for its matching ordinary-MNIST wide-range paper row. Validation
+accuracy remains non-paper-facing; checkpoint promotion requires the explicit
+reuse audit and a once-only official-test evaluation.
 
 ## Execution Contract
 

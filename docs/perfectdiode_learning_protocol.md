@@ -1,6 +1,6 @@
 # Perfect-Diode Conv1/Conv2 Wide-Range Rho Protocol
 
-Updated: 2026-07-29
+Updated: 2026-08-17
 
 Status: protocol and implementation frozen and tested. Fixed-`T/K` security
 checks, probes, canaries, and promoted core candidates are measured. All 12
@@ -9,6 +9,13 @@ Conv1's ten-epoch confirmations are complete and await final review; Conv2
 still has three-epoch evidence only. Selector publication and terminal
 evidence remain incomplete. The gains and Conv1/Conv2 `T/K` values below are
 user-fixed diagnostic choices, not calibration measurements.
+
+For the seed-0 paper-ready BPTT--EqProp extension, this protocol supplies the
+accepted Conv1/Conv2 **weight** rates and `T/K`. The downstream
+[matching protocol](conv_paper_one_seed_bptt_eqprop_protocol.md) copies those
+weight rates unchanged, replaces all bias rates with zero, and requires the
+same complete vector and `T/K` in BPTT and EqProp. This does not alter the
+historical handoff artifacts or their learned-bias provenance.
 
 ## Scope
 
@@ -27,10 +34,12 @@ with content-derived study identity
 Existing LR study and run identities v1-v7 remain immutable.
 
 This ordinary-MNIST study selects the wide-range parameter-specific LR vector
-for each matching deterministic medium-affine paper surface. Its validation
-accuracy is an optimization diagnostic, not paper-facing evidence. The
-handoff is valid only when architecture, scheme, optimizer, initialization,
-input gain, `T/K`, and weight contract match the paper config exactly.
+for each matching ordinary-MNIST paper surface. Its validation accuracy is an
+optimization diagnostic, not paper-facing evidence. The handoff is valid only
+when architecture, scheme, optimizer, initialization, input gain, `T/K`, and
+weight contract match the paper config exactly. Paper-facing accuracy comes
+only from the once-read official test split after the final contract is
+sealed.
 
 ## Frozen ordinary-MNIST contract
 
@@ -278,11 +287,10 @@ The full-precision reconstructed table is
 Its SHA-256 is
 `cd8228bcc1096b733ef7c729622fc5e9f53911489767822a9ca6fb84012da870`.
 These measurements remain ordinary-MNIST optimization diagnostics. They do
-not resolve deterministic-medium-affine perfect-diode gain calibration,
-operational `T/K`, optimizer choice, or final paper performance. The incomplete
-core screen also does not yet freeze a terminal learning-rate handoff; a vector
-becomes authoritative only after the selection and confirmation stages below
-resolve its full parameter-specific surface.
+not resolve final paper performance on the untouched official test split. The
+incomplete core screen also does not yet freeze a terminal learning-rate
+handoff; a vector becomes authoritative only after the selection and
+confirmation stages below resolve its full parameter-specific surface.
 
 ## Current fixed unbounded-result LR vectors
 
@@ -320,8 +328,9 @@ All six Conv1 vectors completed ten-epoch ordinary-MNIST confirmations and
 reached `95.60%` to `96.48%` validation accuracy. Those confirmation results
 still await final review. The six Conv2 vectors remain supported by
 three-epoch best-observed evidence only, reaching `95.96%` to `97.78%`
-validation accuracy; no Conv2 long confirmation is implied. These accuracies
-are selection and confirmation diagnostics, never paper-facing measurements.
+validation accuracy; no Conv2 long confirmation is implied. These validation
+accuracies are selection and confirmation diagnostics, never paper-facing
+measurements.
 
 ## Stages, resume, and output
 
@@ -355,8 +364,9 @@ diagnostics, and all provenance hashes. Successful rows use
 and `unresolved_fixed_tk_gradient_mismatch`.
 
 Every handoff records `official_test_read=false`. A successful handoff freezes
-the LR vector for its matching medium-affine wide-range row, but no
-ordinary-MNIST accuracy or checkpoint is a paper result.
+the LR vector for its matching ordinary-MNIST wide-range paper row. Validation
+accuracy is never a paper metric; an existing checkpoint becomes eligible for
+one sealed official-test evaluation only after passing the paper reuse gate.
 
 ## Long confirmations
 

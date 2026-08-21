@@ -1,6 +1,6 @@
 # Experiment Result Reporting
 
-Updated: 2026-07-29
+Updated: 2026-08-17
 
 This is the reporting contract for new active experiments. It records evidence
 produced by scientific runners; it is not a launcher, scheduler, experiment
@@ -52,12 +52,19 @@ python -m experiments.reporting validate-run RESULTS/STUDY/RUN
 
 Ordinary-MNIST selection runs use
 `evidence_class=ordinary_mnist_selection`, call the held-out 5,000 examples
-`validation`, and record `official_test_read=false`. Their accuracy is never a
-paper result.
+`validation`, and record `official_test_read=false`. Their validation accuracy
+is never a paper result.
 
-Deterministic medium-affine runs use an explicit medium-affine evidence class
-and report the actual evaluated split. Current Conv1/Conv2 unbounded rows
-additionally record the exact fixed handoff ID
+An active paper result uses `evidence_class=ordinary_mnist_paper`, identifies
+the sealed source checkpoint and reuse-or-fresh-run audit receipt, reports the
+evaluated split as `test`, and records exactly one authorized official-test
+evaluation. It must not overwrite or relabel the source selection bundle.
+Repeated test access, a post-test config change, or a missing sealed inclusion
+set makes the result ineligible for the paper table.
+
+Historical deterministic medium-affine runs retain their explicit
+medium-affine evidence classes and report the actual evaluated split. Current
+Conv1/Conv2 handoffs additionally record the exact fixed handoff ID
 `perfectdiode-conv12-unbounded-fixed-lr-20260729-v1` and preserve its
 architecture-specific evidence status.
 

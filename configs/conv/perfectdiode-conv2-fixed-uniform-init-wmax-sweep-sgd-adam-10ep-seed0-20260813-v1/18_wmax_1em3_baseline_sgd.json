@@ -1,0 +1,225 @@
+{
+  "arm_id": "conv2_wmax_1em3_baseline_sgd_fixed_uniform_init_seed0",
+  "batch_state_policy": "reset_each_batch",
+  "beta": 1.0,
+  "bias_contract": {
+    "conductance_projection": false,
+    "initialization": "default_zero",
+    "learning_rate": 0.0
+  },
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "params": {
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "root": "/home/filiposana/data",
+        "shuffle_seed": 0,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "official_test": {
+      "policy": "disabled"
+    }
+  },
+  "init_checkpoint_path": "results/perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1/assets/bounded_uniform/conv2/final_model.pt",
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 10,
+    "model_key": "mnist_bp_conv_amp",
+    "plots_dir": "plots/perfectdiode_conv3_bounded_rho"
+  },
+  "learning_rates_by_parameter": {
+    "Bias_0": 0.0,
+    "Bias_1": 0.0,
+    "ConvWeight_0": 7.758687523956016e-08,
+    "ConvWeight_1": 3.11171011067116e-06,
+    "DenseWeight_0": 8.590900207684691e-07
+  },
+  "log_interval": 500,
+  "lr": [
+    7.758687523956016e-08,
+    3.11171011067116e-06,
+    8.590900207684691e-07,
+    0.0,
+    0.0
+  ],
+  "lr_decay": 1.0,
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 100.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 6,
+    "num_iterations_training": 6,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 1.0,
+    "weight_init_mode": "bounded_uniform",
+    "weight_max": 0.001,
+    "weight_min": 1e-05
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          128,
+          7,
+          7
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "learning_rate": [
+      7.758687523956016e-08,
+      3.11171011067116e-06,
+      8.590900207684691e-07,
+      0.0,
+      0.0
+    ],
+    "lr_decay": 1.0,
+    "momentum": 0.0,
+    "name": "SGD",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "DenseWeight_0",
+    "Bias_0",
+    "Bias_1"
+  ],
+  "reporting": {
+    "arm_id": "conv2_wmax_1em3_baseline_sgd_fixed_uniform_init_seed0",
+    "evidence_class": "ordinary_mnist_weight_ceiling_sensitivity_exploratory",
+    "paper_facing": false,
+    "study_id": "perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1"
+  },
+  "seed": 0,
+  "study_id": "perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1",
+  "training_algorithm": "BP",
+  "weight_ceiling_sweep": {
+    "canonical_lr_handoff": false,
+    "changed_scientific_fields": [
+      "model_base.weight_max"
+    ],
+    "fixed_initial_parameter_states": true,
+    "fixed_raw_learning_rates": true,
+    "initializer": "bounded_uniform",
+    "initializer_checkpoint_path": "results/perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1/assets/bounded_uniform/conv2/final_model.pt",
+    "initializer_checkpoint_sha256": "6469bc8f465e9abd2b4720231ad03d0116fc176ef4e437dc005027204c4d88d2",
+    "initializer_support": [
+      1e-05,
+      0.0001
+    ],
+    "rho_conv_provenance": 3.7037037037037037e-05,
+    "rho_dense_provenance": 4.11522633744856e-05,
+    "scientific_gate_policy": "user-waived repeated security and post-training T/K checks; reuse accepted Conv2 T=K=6",
+    "source_config": "results/perfectdiode-conv12-directed-exploratory-lr-search-seed0-20260812-v1/shards/akib-task_6/surfaces/bounded_uniform__conv2__baseline__sgd/rho/cells/006_rc_3p7037037037em05_rd_4p11522633745em05/config.used.json",
+    "source_config_sha256": "a29d5a3210578cb70c77fcbcab671c6c54a2c393503a5c0b40e00a39f632c608",
+    "source_final_validation_accuracy_percent": 82.84,
+    "source_range_status": "bracketed",
+    "training_projection_interval": [
+      1e-05,
+      0.001
+    ]
+  }
+}

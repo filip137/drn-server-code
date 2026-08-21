@@ -1,0 +1,189 @@
+{
+  "schema_version": "perfectdiode-conv123-zero-bias-eqprop-bptt-gradient-gate/v1",
+  "study_id": "perfectdiode-conv3-zero-bias-adam-centered-float64-eqprop-bptt-gradient-beta-sweep-above-max-to-10xmax-sigma-5em4-seed0-20260817-v1",
+  "scientific_question": "For every Conv3 amplification scheme and weight layer, how does centered EqProp versus BPTT cosine continue to change when injected beta rises from just above the original maximum through ten times that maximum under endpoint-voltage read noise sigma 5e-4?",
+  "evidence_class": "ordinary_mnist_learning_algorithm_read_noise_gradient_diagnostic",
+  "paper_facing": false,
+  "lineage": {
+    "clean_gradient_gate_config": "configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_bptt_gradient_gate_tk4_6_8_seed0_20260816_v1.json",
+    "clean_gradient_gate_config_sha256": "8d1f41dfa019e36cfc6d6708821ed5cad4b73518e9828116052a8dc9b4f22122",
+    "beta_tier": "one_decade_lower_anchor_with_execution_scaling_above_original_maximum_to_10x_maximum",
+    "only_scientific_change": "independent Gaussian read noise is added to every negative and positive free-layer endpoint voltage after equilibrium and before the local energy-gradient readout; the declared execution extension scales base and injected beta together above the original maximum"
+  },
+  "sweep_contract": {
+    "axis": "multiplicative beta scale relative to the one-decade-lower anchor",
+    "spacing": "eight points continuing the parent's 1/8-decade log10 spacing from just above scale 10 through scale 100 inclusive",
+    "parent_study_id": "perfectdiode-conv3-zero-bias-adam-centered-float64-eqprop-bptt-gradient-beta-sweep-one-decade-to-max-sigma-5em4-seed0-20260817-v1",
+    "parent_config": "configs/conv/perfectdiode_conv3_zero_bias_adam_eqprop_bptt_gradient_beta_sweep_one_decade_to_max_sigma_5em4_seed0_20260817_v1.json",
+    "parent_config_sha256": "6e836b7315598ec544e613abbea852491e55e2a65f88c5df99debb391895d52b",
+    "parent_result_root": "results/perfectdiode-conv3-zero-bias-adam-centered-float64-eqprop-bptt-gradient-beta-sweep-one-decade-to-max-sigma-5em4-seed0-20260817-v1",
+    "parent_beta_scale_maximum": 10.0,
+    "beta_scale_points": [
+      {"index": 9, "run_id": "beta-scale-13p335214", "beta_scale": 13.33521432163324},
+      {"index": 10, "run_id": "beta-scale-17p782794", "beta_scale": 17.78279410038923},
+      {"index": 11, "run_id": "beta-scale-23p713737", "beta_scale": 23.71373705661655},
+      {"index": 12, "run_id": "beta-scale-31p622777", "beta_scale": 31.622776601683793},
+      {"index": 13, "run_id": "beta-scale-42p169650", "beta_scale": 42.169650342858226},
+      {"index": 14, "run_id": "beta-scale-56p234133", "beta_scale": 56.23413251903491},
+      {"index": 15, "run_id": "beta-scale-74p989421", "beta_scale": 74.98942093324558},
+      {"index": 16, "run_id": "beta-scale-100p000000", "beta_scale": 100.0}
+    ],
+    "injected_beta_anchors": {
+      "baseline": 100.0,
+      "ours": 3.0,
+      "legacy": 0.001
+    },
+    "extension_injected_beta_minima": {
+      "baseline": 1333.521432163324,
+      "ours": 40.00564296489972,
+      "legacy": 0.01333521432163324
+    },
+    "extension_injected_beta_maxima": {
+      "baseline": 10000.0,
+      "ours": 300.0,
+      "legacy": 0.1
+    },
+    "combined_beta_scale_minimum": 1.0,
+    "combined_beta_scale_maximum": 100.0,
+    "matched_batches_across_points": true,
+    "matched_endpoint_noise_draws_across_points": true
+  },
+  "source_contract": {
+    "source_study_root": "results/perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1",
+    "runtime_source_root": "/tmp/bounded-rho-voltage-ac941dff",
+    "runtime_source_expected_head": "ac941dffa75ad142be3703c43134813168ac6f11",
+    "production_source_commit": "ac941dffa75ad142be3703c43134813168ac6f11",
+    "production_source_archive_sha256": "382df19e2baaea3b5d544a9e38fc5a348c7e1f8d6868254fcb2176d8c7ad213b",
+    "required_source_files": [
+      "manifest.json",
+      "result.json",
+      "status.json",
+      "metrics.json",
+      "config.used.json",
+      "best_model.pt",
+      "weights_best.npz"
+    ],
+    "runtime_code_files": [
+      "labs/custom_classes.py",
+      "labs/mnist_train.py",
+      "model/function/interaction.py",
+      "model/variable/layer.py",
+      "training/sgd.py"
+    ]
+  },
+  "dataset": {
+    "name": "ordinary_mnist",
+    "root": "/home/filip/datasets/mnist",
+    "source_split": "deterministic validation partition of the MNIST training split",
+    "official_test_read": false,
+    "split_seed": 0,
+    "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+    "batch_size": 16,
+    "example_count": 64,
+    "batch_count": 4,
+    "expected_batch_guards": [
+      {
+        "batch_index": 0,
+        "source_indices_sha256": "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010",
+        "payload_sha256": "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11"
+      },
+      {
+        "batch_index": 1,
+        "source_indices_sha256": "62199f32b30361a5c645abcb3cb7b4854e0de382cb450c3896cf1580bbd6c8b1",
+        "payload_sha256": "0568e4501f7fe477bce026aeef8a516914e0d623b679bfc8d597928067f09b2b"
+      },
+      {
+        "batch_index": 2,
+        "source_indices_sha256": "97ff1acbaa2419d6218e55752bc9745d07cca8818a4378bd4c511973ed22bc02",
+        "payload_sha256": "5235bd2cfcf0f4a775c629b0f37a94517218ff4dab447c0ed617d32c8b0aafc6"
+      },
+      {
+        "batch_index": 3,
+        "source_indices_sha256": "12740560eb236b3c6c227fa9d8267a9f1d3dab382401fe4a9a2152191c0b3d38",
+        "payload_sha256": "e0b8fc20cecfd748d04b2bed794f72167bdb7663522823620f374b4b11b1d095"
+      }
+    ]
+  },
+  "gradient_contract": {
+    "runtime_dtype": "float64",
+    "eqprop_variant": "centered",
+    "nudging_mode": "current",
+    "current_scale": "auto",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization_and_best_checkpoint",
+    "cosine_minimum": 0.99,
+    "symmetric_norm_delta_maximum": 0.1,
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "residual_policy": "report_separately_from_gradient_fidelity_and_require_both_for_an_unqualified_launch_gate",
+    "optimizer_steps_applied": false
+  },
+  "read_noise_contract": {
+    "endpoint_read_noise_std": 0.0005,
+    "endpoint_read_noise_seed": 2026081601,
+    "input_read_noise": false,
+    "acquisition_model": "independent_gaussian_free_layer_endpoint_voltage",
+    "independent_negative_positive_reads": true,
+    "matched_standard_normal_draws_across_schemes": true,
+    "noise_draw_rule": "seed + 1000*batch_index + 100*phase_index + state_layer_index"
+  },
+  "checkpoint_roles": [
+    "reconstructed_initialization",
+    "best_validation"
+  ],
+  "cases": [
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_id": "013_01_baseline_adam_bias_zero_seed0_0f0a2169",
+      "T": 8,
+      "K": 8,
+      "output_row_exponent_L": 3,
+      "base_beta": 100.0,
+      "injected_beta": 100.0
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_id": "015_03_ours_adam_bias_zero_seed0_4d28abea",
+      "T": 8,
+      "K": 8,
+      "output_row_exponent_L": 3,
+      "base_beta": 0.046875,
+      "injected_beta": 3.0
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_id": "017_05_legacy_adam_bias_zero_seed0_06f658e1",
+      "T": 8,
+      "K": 8,
+      "output_row_exponent_L": 3,
+      "base_beta": 2.44140625e-7,
+      "injected_beta": 0.001
+    }
+  ],
+  "completion": {
+    "production_replay_count": 24,
+    "production_layer_comparison_count": 96,
+    "production_noise_draw_count": 192,
+    "require_all_source_bundles_valid": true,
+    "require_all_source_bytes_unchanged": true,
+    "require_all_bias_tensors_exact_zero": true,
+    "require_all_parameter_tensors_unchanged": true,
+    "require_all_frozen_force_guards": true,
+    "require_all_expected_batches": true,
+    "require_matched_noise_draws_across_schemes": true,
+    "official_test_read": false,
+    "optimizer_steps_applied": false
+  }
+}

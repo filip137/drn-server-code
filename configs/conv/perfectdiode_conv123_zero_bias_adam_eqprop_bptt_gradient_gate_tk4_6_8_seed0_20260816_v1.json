@@ -1,0 +1,194 @@
+{
+  "schema_version": "perfectdiode-conv123-zero-bias-eqprop-bptt-gradient-gate/v1",
+  "study_id": "perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1",
+  "scientific_question": "At the shared paper T/K and one-decade safe beta, do centered frozen-current EqProp weight gradients match BPTT at zero-bias Adam initialization and best-validation checkpoints?",
+  "evidence_class": "ordinary_mnist_learning_algorithm_gradient_qualification",
+  "paper_facing": false,
+  "source_contract": {
+    "source_study_root": "results/perfectdiode-conv123-zero-bias-ordinary-mnist-seed0-20260805-v1",
+    "runtime_source_root": "/tmp/bounded-rho-voltage-ac941dff",
+    "runtime_source_expected_head": "ac941dffa75ad142be3703c43134813168ac6f11",
+    "production_source_commit": "ac941dffa75ad142be3703c43134813168ac6f11",
+    "production_source_archive_sha256": "382df19e2baaea3b5d544a9e38fc5a348c7e1f8d6868254fcb2176d8c7ad213b",
+    "required_source_files": [
+      "manifest.json",
+      "result.json",
+      "status.json",
+      "metrics.json",
+      "config.used.json",
+      "best_model.pt",
+      "weights_best.npz"
+    ],
+    "runtime_code_files": [
+      "labs/custom_classes.py",
+      "labs/mnist_train.py",
+      "model/function/interaction.py",
+      "model/variable/layer.py",
+      "training/sgd.py"
+    ]
+  },
+  "dataset": {
+    "name": "ordinary_mnist",
+    "root": "/home/filip/datasets/mnist",
+    "source_split": "deterministic validation partition of the MNIST training split",
+    "official_test_read": false,
+    "split_seed": 0,
+    "validation_indices_sha256": "4801b7805d54dbe2197b98320cfe8a34d5d853c4ab568bcf1d7f69e136c94bb4",
+    "batch_size": 16,
+    "example_count": 64,
+    "batch_count": 4,
+    "expected_batch_guards": [
+      {
+        "batch_index": 0,
+        "source_indices_sha256": "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010",
+        "payload_sha256": "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11"
+      },
+      {
+        "batch_index": 1,
+        "source_indices_sha256": "62199f32b30361a5c645abcb3cb7b4854e0de382cb450c3896cf1580bbd6c8b1",
+        "payload_sha256": "0568e4501f7fe477bce026aeef8a516914e0d623b679bfc8d597928067f09b2b"
+      },
+      {
+        "batch_index": 2,
+        "source_indices_sha256": "97ff1acbaa2419d6218e55752bc9745d07cca8818a4378bd4c511973ed22bc02",
+        "payload_sha256": "5235bd2cfcf0f4a775c629b0f37a94517218ff4dab447c0ed617d32c8b0aafc6"
+      },
+      {
+        "batch_index": 3,
+        "source_indices_sha256": "12740560eb236b3c6c227fa9d8267a9f1d3dab382401fe4a9a2152191c0b3d38",
+        "payload_sha256": "e0b8fc20cecfd748d04b2bed794f72167bdb7663522823620f374b4b11b1d095"
+      }
+    ]
+  },
+  "gradient_contract": {
+    "runtime_dtype": "float64",
+    "eqprop_variant": "centered",
+    "nudging_mode": "current",
+    "current_scale": "auto",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization_and_best_checkpoint",
+    "cosine_minimum": 0.99,
+    "symmetric_norm_delta_maximum": 0.1,
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "residual_policy": "report_separately_from_gradient_fidelity_and_require_both_for_an_unqualified_launch_gate",
+    "optimizer_steps_applied": false
+  },
+  "checkpoint_roles": [
+    "reconstructed_initialization",
+    "best_validation"
+  ],
+  "cases": [
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "run_id": "001_01_baseline_adam_bias_zero_seed0_40538811",
+      "T": 4,
+      "K": 4,
+      "output_row_exponent_L": 1,
+      "base_beta": 100.0,
+      "injected_beta": 100.0
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "run_id": "003_03_ours_adam_bias_zero_seed0_26fe23f0",
+      "T": 4,
+      "K": 4,
+      "output_row_exponent_L": 1,
+      "base_beta": 7.5,
+      "injected_beta": 30.0
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "run_id": "005_05_legacy_adam_bias_zero_seed0_4469a635",
+      "T": 4,
+      "K": 4,
+      "output_row_exponent_L": 1,
+      "base_beta": 0.1875,
+      "injected_beta": 3.0
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "run_id": "007_01_baseline_adam_bias_zero_seed0_9aac6b7d",
+      "T": 6,
+      "K": 6,
+      "output_row_exponent_L": 2,
+      "base_beta": 100.0,
+      "injected_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "ours",
+      "run_id": "009_03_ours_adam_bias_zero_seed0_e175c959",
+      "T": 6,
+      "K": 6,
+      "output_row_exponent_L": 2,
+      "base_beta": 0.625,
+      "injected_beta": 10.0
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "run_id": "011_05_legacy_adam_bias_zero_seed0_6db2f139",
+      "T": 6,
+      "K": 6,
+      "output_row_exponent_L": 2,
+      "base_beta": 0.0001171875,
+      "injected_beta": 0.03
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_id": "013_01_baseline_adam_bias_zero_seed0_0f0a2169",
+      "T": 8,
+      "K": 8,
+      "output_row_exponent_L": 3,
+      "base_beta": 100.0,
+      "injected_beta": 100.0
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_id": "015_03_ours_adam_bias_zero_seed0_4d28abea",
+      "T": 8,
+      "K": 8,
+      "output_row_exponent_L": 3,
+      "base_beta": 0.046875,
+      "injected_beta": 3.0
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_id": "017_05_legacy_adam_bias_zero_seed0_06f658e1",
+      "T": 8,
+      "K": 8,
+      "output_row_exponent_L": 3,
+      "base_beta": 2.44140625e-7,
+      "injected_beta": 0.001
+    }
+  ],
+  "completion": {
+    "production_replay_count": 72,
+    "production_layer_comparison_count": 216,
+    "require_all_source_bundles_valid": true,
+    "require_all_source_bytes_unchanged": true,
+    "require_all_bias_tensors_exact_zero": true,
+    "require_all_parameter_tensors_unchanged": true,
+    "require_all_frozen_force_guards": true,
+    "require_all_expected_batches": true,
+    "official_test_read": false,
+    "optimizer_steps_applied": false
+  }
+}

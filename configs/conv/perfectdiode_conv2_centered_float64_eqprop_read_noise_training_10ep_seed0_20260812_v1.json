@@ -1,0 +1,132 @@
+{
+  "schema_version": "perfectdiode-conv2-centered-float64-eqprop-read-noise-training-study/v1",
+  "study_id": "perfectdiode-conv2-centered-float64-eqprop-read-noise-training-10ep-seed0-20260812-v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "evidence_class": "ordinary_mnist_eqprop_read_noise_training_diagnostic",
+  "question": "Across the three Conv2 amplification schemes, how much do large endpoint-voltage read-noise levels degrade ten epochs of centered float64 frozen-current EqProp training when each scheme uses its current fixed Adam learning-rate vector and clean selected beta?",
+  "source": {
+    "learning_rate_handoff": "configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json",
+    "learning_rate_handoff_sha256": "be353c88ec924206e2adf5b960e77ea914dc67800841e6e00534c859f709ac14",
+    "scheme_configs": {
+      "baseline": {
+        "path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/01_baseline_adam_seed0.json",
+        "sha256": "4c36eafa73df02fa162cb85e3f7cd0972639ca57af2864d2fcd85ec0ce1b5626"
+      },
+      "ours": {
+        "path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/03_ours_adam_seed0.json",
+        "sha256": "fbd062a5900fdb6ef70032e98fb2624fcb456f75ba9e35e17935d0709c786417"
+      },
+      "legacy": {
+        "path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/05_legacy_adam_seed0.json",
+        "sha256": "2231111fd1a8a5c6962025da0a1480654305dc1a4ccf0de3cd675e8f0afeffcb"
+      }
+    },
+    "beta_evidence": {
+      "baseline_ours": "results/perfectdiode-conv123-baseline-ours-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/analysis/curve_summary.csv",
+      "legacy": "results/perfectdiode-conv123-legacy-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/analysis/curve_summary.csv"
+    }
+  },
+  "scientific_contract": {
+    "architecture": "conv2",
+    "dataset": "ordinary_mnist_deterministic_55000_train_5000_validation",
+    "official_test_read": false,
+    "model_seed": 0,
+    "shuffle_seed": 0,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "epochs": 10,
+    "T": 8,
+    "K": 8,
+    "runtime_dtype": "float64",
+    "training_algorithm": "centered_frozen_current_eqprop",
+    "optimizer": "Adam",
+    "endpoint_read_noise_model": "independent_additive_zero_mean_gaussian_on_negative_and_positive_free_layer_endpoint_states_after_equilibrium_before_local_energy_gradient_evaluation",
+    "input_read_noise": false,
+    "noise_units": "normalized_model_voltage",
+    "noise_sigmas": [
+      0.0,
+      1e-6,
+      1e-5,
+      1e-4
+    ],
+    "endpoint_read_noise_seed": 2026081201,
+    "matched_standard_normal_draws_across_schemes_and_noise_levels": true,
+    "phase_correlation": "independent",
+    "layer_correlation": "independent",
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "weight_min": 0.0,
+    "weight_max": 100.0,
+    "weight_initialization": "kaiming_uniform",
+    "input_gain": 100.0,
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {
+      "I_s": 1e-6,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    }
+  },
+  "schemes": {
+    "baseline": {
+      "voltage_amp": 1.0,
+      "current_amp": 1.0,
+      "injected_beta_B": 1000.0,
+      "amplification_factor": 1.0,
+      "base_beta": 1000.0,
+      "beta_status": "largest_tested_clean_open_upper_grid_edge_at_trained_checkpoint",
+      "learning_rate_handoff_entry": "conv2_baseline_adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.00260078,
+        "ConvWeight_1": 0.000459053,
+        "DenseWeight_0": 0.00046766,
+        "Bias_0": 0.00260078,
+        "Bias_1": 0.000459053
+      }
+    },
+    "ours": {
+      "voltage_amp": 4.0,
+      "current_amp": 1.0,
+      "injected_beta_B": 100.0,
+      "amplification_factor": 16.0,
+      "base_beta": 6.25,
+      "beta_status": "largest_tested_clean_bracketed_by_next_beta_at_trained_checkpoint",
+      "learning_rate_handoff_entry": "conv2_ours_adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.00260036,
+        "ConvWeight_1": 0.000458651,
+        "DenseWeight_0": 0.000155136,
+        "Bias_0": 0.00260036,
+        "Bias_1": 0.000458651
+      }
+    },
+    "legacy": {
+      "voltage_amp": 4.0,
+      "current_amp": 0.25,
+      "injected_beta_B": 0.3,
+      "amplification_factor": 256.0,
+      "base_beta": 0.001171875,
+      "beta_status": "largest_tested_clean_bracketed_by_next_beta_at_trained_checkpoint",
+      "learning_rate_handoff_entry": "conv2_legacy_adam",
+      "learning_rates_by_parameter": {
+        "ConvWeight_0": 0.00086675,
+        "ConvWeight_1": 0.000152841,
+        "DenseWeight_0": 0.0000516982,
+        "Bias_0": 0.00086675,
+        "Bias_1": 0.000152841
+      }
+    }
+  },
+  "execution": {
+    "target": "trex",
+    "device": "cuda",
+    "worker_count": 1,
+    "case_count": 12,
+    "output_root": "results/perfectdiode-conv2-centered-float64-eqprop-read-noise-training-10ep-seed0-20260812-v1",
+    "remote_output_root": "/home/filip/experiments/perfectdiode-conv2-centered-float64-eqprop-read-noise-training-10ep-seed0-20260812-v1/results",
+    "monitor_interval_minutes": 30
+  }
+}

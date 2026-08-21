@@ -1,0 +1,117 @@
+{
+  "canonical_lr_handoff": false,
+  "evidence_class": "ordinary_mnist_initializer_transfer_exploratory",
+  "execution": {
+    "array": "0-5%6",
+    "dataset": "ordinary_mnist_train_validation",
+    "epochs": 3,
+    "official_test_read": false,
+    "optimizer": "Adam",
+    "seed": 0,
+    "target": "jean-zay"
+  },
+  "initializer": {
+    "checkpoint_sha256_by_architecture": {
+      "conv1": "d603b26c86a622263572705dd693987e5af24da78e38e629256097d603c2a646",
+      "conv2": "8ecf6240d572619308203301f7c4b462f7224fa7b9913778588fdadd2594d21b"
+    },
+    "gain": 1.0,
+    "midpoint": 5.5e-05,
+    "mode": "bounded_kaiming_uniform",
+    "weight_max": 0.0001,
+    "weight_min": 1e-05
+  },
+  "ordered_config_set_sha256": "5423c375eed96cb6321d9a545ad475c5bd812faa0570463fa81eff3eed0029a0",
+  "paper_facing": false,
+  "protocol_override": "user-authorized exploratory cross-initializer raw-LR transfer",
+  "run_count": 6,
+  "runs": [
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_adam_bounded_kaiming_raw_lr_transfer_seed0",
+      "config": "conv1_baseline_adam.json",
+      "config_sha256": "df8b5b8fac8b519efb7497a5085e79b0db1a189551d53a0ab546bc8bf02bd1b7",
+      "index": 0,
+      "initializer_checkpoint_sha256": "d603b26c86a622263572705dd693987e5af24da78e38e629256097d603c2a646",
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.003,
+      "rho_dense_provenance": 0.03,
+      "scheme": "baseline",
+      "source_final_validation_accuracy_percent": 88.84,
+      "source_range_status": "bracketed"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_adam_bounded_kaiming_raw_lr_transfer_seed0",
+      "config": "conv1_ours_adam.json",
+      "config_sha256": "381887c4c269d8e9ea9c6f19b271dbfbb9862c86dd4649a81b6de681414f9182",
+      "index": 1,
+      "initializer_checkpoint_sha256": "d603b26c86a622263572705dd693987e5af24da78e38e629256097d603c2a646",
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.001,
+      "rho_dense_provenance": 0.01,
+      "scheme": "ours",
+      "source_final_validation_accuracy_percent": 91.6,
+      "source_range_status": "bracketed"
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_adam_bounded_kaiming_raw_lr_transfer_seed0",
+      "config": "conv1_legacy_adam.json",
+      "config_sha256": "c3f4a910ee96e07c9232ae5455ddd96b8d640f9e11b06a96f9031c0e07e5bca4",
+      "index": 2,
+      "initializer_checkpoint_sha256": "d603b26c86a622263572705dd693987e5af24da78e38e629256097d603c2a646",
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.009,
+      "rho_dense_provenance": 0.01,
+      "scheme": "legacy",
+      "source_final_validation_accuracy_percent": 95.42,
+      "source_range_status": "bracketed"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_baseline_adam_bounded_kaiming_raw_lr_transfer_seed0",
+      "config": "conv2_baseline_adam.json",
+      "config_sha256": "640726294770daa6ad4e74d2bf3eb3d4aa45b73979e180924f18e05871350f0a",
+      "index": 3,
+      "initializer_checkpoint_sha256": "8ecf6240d572619308203301f7c4b462f7224fa7b9913778588fdadd2594d21b",
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.243,
+      "rho_dense_provenance": 0.0033333333333333335,
+      "scheme": "baseline",
+      "source_final_validation_accuracy_percent": 84.54,
+      "source_range_status": "open_upper_rho_conv"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_ours_adam_bounded_kaiming_raw_lr_transfer_seed0",
+      "config": "conv2_ours_adam.json",
+      "config_sha256": "04da6587d4bfaa933e6d6a519d7426d443d69efddcbae6cdcf52c40b5a26e8cd",
+      "index": 4,
+      "initializer_checkpoint_sha256": "8ecf6240d572619308203301f7c4b462f7224fa7b9913778588fdadd2594d21b",
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.027,
+      "rho_dense_provenance": 0.01,
+      "scheme": "ours",
+      "source_final_validation_accuracy_percent": 87.7,
+      "source_range_status": "bracketed"
+    },
+    {
+      "architecture": "conv2",
+      "arm_id": "conv2_legacy_adam_bounded_kaiming_raw_lr_transfer_seed0",
+      "config": "conv2_legacy_adam.json",
+      "config_sha256": "95b33c3ea0fd60b21db13353796c1bf2ff87acef1f722f40eab962e9bdfad5a9",
+      "index": 5,
+      "initializer_checkpoint_sha256": "8ecf6240d572619308203301f7c4b462f7224fa7b9913778588fdadd2594d21b",
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.009,
+      "rho_dense_provenance": 0.01,
+      "scheme": "legacy",
+      "source_final_validation_accuracy_percent": 95.42,
+      "source_range_status": "bracketed"
+    }
+  ],
+  "schema": "perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-study/v1",
+  "selection_rule": "highest observed final validation accuracy in the combined parent-plus-directed bounded-uniform Adam surface",
+  "study_id": "perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-3ep-seed0-20260813-v1"
+}

@@ -1,0 +1,102 @@
+{
+  "canonical_lr_handoff": false,
+  "evidence_class": "ordinary_mnist_absolute_weight_scale_exploratory",
+  "execution": {
+    "architecture": "conv1",
+    "dataset": "ordinary_mnist_train_validation",
+    "epochs": 3,
+    "launcher": "local_tmux",
+    "num_iterations_inference": 4,
+    "num_iterations_training": 4,
+    "official_test_read": false,
+    "optimizer": "Adam",
+    "schemes": [
+      "baseline",
+      "ours",
+      "legacy"
+    ],
+    "seed": 0,
+    "target": "main"
+  },
+  "initializer": {
+    "checkpoint_audit": {
+      "bias_count": 12544,
+      "biases_remain_exact_zero": true,
+      "scale_factor": 10000.0,
+      "scaled_observed_weight_max": 0.9999937415122986,
+      "scaled_observed_weight_min": 0.10000138729810715,
+      "source_checkpoint": "results/perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1/shards/main-r1/assets/bounded_uniform/conv1/final_model.pt",
+      "source_checkpoint_sha256": "235d7ae56a277e097e840a4eb11cf16e325ed2d3eb80c9055f7903493cb1f16e",
+      "source_observed_weight_max": 9.99993717414327e-05,
+      "source_observed_weight_min": 1.0000138900068123e-05,
+      "weight_count": 252032
+    },
+    "mode": "bounded_uniform",
+    "quantile_mapping": "exact source checkpoint tensors multiplied by 1e4",
+    "scale_factor": 10000.0,
+    "scaled_checkpoint_sha256": "01cd6f9f959cc8ccb9e256f29921904a7d4d0195d0550dad75ede0030299d06a",
+    "scaled_interval": [
+      0.1,
+      1.0
+    ],
+    "source_checkpoint_sha256": "235d7ae56a277e097e840a4eb11cf16e325ed2d3eb80c9055f7903493cb1f16e",
+    "source_interval": [
+      1e-05,
+      0.0001
+    ]
+  },
+  "ordered_config_set_sha256": "ada7b01294a4324ca7219452e37cf9a01183e99e62f496380aade88c65d1ae92",
+  "paper_facing": false,
+  "protocol_override": "user-authorized exploratory absolute-weight-scale repeat",
+  "run_count": 3,
+  "runs": [
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_baseline_adam_bounded_uniform_scale1e4_seed0",
+      "config": "conv1_baseline_adam.json",
+      "config_sha256": "521dc6ac243d6edbfc5d60ce18a945f4c628ffae3983ba789a6d7c5c67643181",
+      "index": 0,
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.003,
+      "rho_dense_provenance": 0.03,
+      "scaled_initializer_checkpoint_sha256": "01cd6f9f959cc8ccb9e256f29921904a7d4d0195d0550dad75ede0030299d06a",
+      "scheme": "baseline",
+      "source_config": "results/perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1/shards/main-r1/surfaces/bounded_uniform__conv1__baseline__adam/rho/cells/078_rc_0p003_rd_0p03/config.used.json",
+      "source_config_sha256": "b26f6bc99e6abb6fe521f4b22546d6ec87fd86ffb5a3f6a878fe86c3e3a925d1",
+      "source_final_validation_accuracy_percent": 88.84
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_ours_adam_bounded_uniform_scale1e4_seed0",
+      "config": "conv1_ours_adam.json",
+      "config_sha256": "96248c6f7e442e3b2efb1de6981020a830abcecc0125e2920d028ca186a9a724",
+      "index": 1,
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.001,
+      "rho_dense_provenance": 0.01,
+      "scaled_initializer_checkpoint_sha256": "01cd6f9f959cc8ccb9e256f29921904a7d4d0195d0550dad75ede0030299d06a",
+      "scheme": "ours",
+      "source_config": "results/perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1/shards/main-r1/surfaces/bounded_uniform__conv1__ours__adam/rho/cells/067_rc_0p001_rd_0p01/config.used.json",
+      "source_config_sha256": "2ab0708e0c700dde9af600c411e7d3bd540790f0674dfae618d61d4ea01e7108",
+      "source_final_validation_accuracy_percent": 91.6
+    },
+    {
+      "architecture": "conv1",
+      "arm_id": "conv1_legacy_adam_bounded_uniform_scale1e4_seed0",
+      "config": "conv1_legacy_adam.json",
+      "config_sha256": "cb5425f433470bee02f54e654b5166bb9b4adfee06b6fc6480037c2e8946da96",
+      "index": 2,
+      "optimizer": "Adam",
+      "rho_conv_provenance": 0.009,
+      "rho_dense_provenance": 0.01,
+      "scaled_initializer_checkpoint_sha256": "01cd6f9f959cc8ccb9e256f29921904a7d4d0195d0550dad75ede0030299d06a",
+      "scheme": "legacy",
+      "source_config": "results/perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1/shards/main-r1/surfaces/bounded_uniform__conv1__legacy__adam/rho/cells/087_rc_0p009_rd_0p01/config.used.json",
+      "source_config_sha256": "c18431d9b92317ece9c3f510bd63ac8a9c464215343aff16ba92d232821bf10b",
+      "source_final_validation_accuracy_percent": 95.42
+    }
+  ],
+  "schema": "perfectdiode-conv1-bounded-uniform-absolute-scale-study/v1",
+  "scientific_question": "Does increasing the Conv1 bounded-uniform absolute conductance scale by 1e4, at fixed dynamic range and proportionally scaled raw Adam LRs, recover performance lost under the [1e-5,1e-4] contract?",
+  "study_id": "perfectdiode-conv1-bounded-uniform-scale1e4-adam-3ep-seed0-20260813-v1"
+}

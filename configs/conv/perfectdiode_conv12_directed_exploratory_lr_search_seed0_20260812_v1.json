@@ -1,0 +1,262 @@
+{
+  "schema_version": "perfectdiode-conv12-directed-exploratory-lr-study/v1",
+  "study_id": "perfectdiode-conv12-directed-exploratory-lr-search-seed0-20260812-v1",
+  "parent": {
+    "study_config": "configs/conv/perfectdiode_bounded_uniform_zero_bias_lr_search_conv123_seed0_20260810_v1.json",
+    "study_id": "perfectdiode-bounded-uniform-zero-bias-lr-search-conv123-seed0-20260810-v1",
+    "study_config_sha256": "ee8688a13470016d2cbb05561d2aa6d78d603f33f1c4b269252c3069bfac6a05",
+    "initializer_checkpoint_sha256_by_architecture": {
+      "conv1": "235d7ae56a277e097e840a4eb11cf16e325ed2d3eb80c9055f7903493cb1f16e",
+      "conv2": "6469bc8f465e9abd2b4720231ad03d0116fc176ef4e437dc005027204c4d88d2"
+    }
+  },
+  "scientific_change": "Directed non-duplicate Conv1/Conv2 low-to-high LR exploration. Every cell restarts from the exact architecture-shared bounded-uniform initializer; bias LRs remain exactly zero. Canaries, scientific safety rejection, and post-candidate T/K are disabled for this exploratory map.",
+  "evidence_class": "ordinary_mnist_exploratory",
+  "scope": {
+    "architectures": ["conv1", "conv2"],
+    "schemes": ["baseline", "ours", "legacy"],
+    "optimizers": ["SGD", "Adam"],
+    "initializers": ["bounded_uniform"],
+    "excluded": ["conv3"]
+  },
+  "split_seed": 0,
+  "shuffle_seed": 0,
+  "validation_batch_size": 64,
+  "rho_search": {
+    "rho_conv_ladder": [
+      4.11522633744856e-6,
+      1.2345679012345678e-5,
+      3.7037037037037037e-5,
+      0.00011111111111111112,
+      0.0003333333333333333,
+      0.001,
+      0.003,
+      0.009,
+      0.027,
+      0.081,
+      0.243
+    ],
+    "rho_dense_ladder": [
+      1.3717421124828531e-5,
+      4.11522633744856e-5,
+      0.0001234567901234568,
+      0.00037037037037037035,
+      0.0011111111111111111,
+      0.0033333333333333335,
+      0.01,
+      0.03,
+      0.09,
+      0.27
+    ],
+    "probe_batches": [128],
+    "probe_stability_tolerance": 0.5,
+    "bias_policy": "zero",
+    "candidate_epochs": 3,
+    "expected_candidate_steps": 10314,
+    "minimum_validation_accuracy": 0.0,
+    "skip_canary": true,
+    "canary_steps": 0,
+    "disable_safety_rejections": true,
+    "post_candidate_tk": false,
+    "safety": {
+      "warmup_steps": 32,
+      "loss_ema_decay": 0.98,
+      "loss_ema_factor": 4.0,
+      "gradient_rms_factor": 100.0,
+      "persistence_steps": 8,
+      "bound_occupancy_increase_maximum": null,
+      "projection_efficiency_minimum": null,
+      "zero_proposal_epsilon": 1e-12,
+      "boundary_persistence_steps": 16
+    }
+  },
+  "prior_numeric_blocks": {
+    "conv1__baseline__sgd": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv1__baseline__adam": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv1__ours__sgd": [
+      {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]},
+      {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [4]}
+    ],
+    "conv1__ours__adam": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv1__legacy__sgd": [
+      {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]},
+      {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [4]}
+    ],
+    "conv1__legacy__adam": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv2__baseline__sgd": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv2__baseline__adam": [{"rho_conv_indices": [6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv2__ours__sgd": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv2__ours__adam": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv2__legacy__sgd": [{"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]}],
+    "conv2__legacy__adam": [
+      {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [5, 6, 7]},
+      {"rho_conv_indices": [8], "rho_dense_indices": [5, 6, 7]}
+    ]
+  },
+  "retry_non_numeric_coordinates": {
+    "conv2__baseline__adam": [[5, 5], [5, 6], [5, 7]]
+  },
+  "surfaces": [
+    {
+      "index": 0,
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "target": "main",
+      "rationale": "The old maximum was open toward lower Dense rho; Conv3 baseline-SGD also favored low/low rates.",
+      "blocks": [
+        {"rho_conv_indices": [1, 2, 3, 4], "rho_dense_indices": [0, 1, 2, 3, 4, 5]},
+        {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [0, 1, 2, 3, 4]}
+      ],
+      "expected_cells": 39
+    },
+    {
+      "index": 1,
+      "architecture": "conv1",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "target": "main",
+      "rationale": "The old local basin was good, but Conv3 ours-SGD found a much lower low/low basin.",
+      "blocks": [
+        {"rho_conv_indices": [0, 1, 2, 3, 4], "rho_dense_indices": [0, 1, 2, 3, 4, 5]}
+      ],
+      "expected_cells": 30
+    },
+    {
+      "index": 2,
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "optimizer": "SGD",
+      "target": "main",
+      "rationale": "A smaller low-rate control extension around an already strong surface.",
+      "blocks": [
+        {"rho_conv_indices": [2, 3, 4], "rho_dense_indices": [2, 3, 4, 5]},
+        {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [2, 3]}
+      ],
+      "expected_cells": 18
+    },
+    {
+      "index": 3,
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "target": "jean-zay-dev",
+      "rationale": "The old maximum was at the upper Dense-rho edge; test that direction and its lower-Conv interaction.",
+      "blocks": [
+        {"rho_conv_indices": [3, 4], "rho_dense_indices": [5, 6, 7, 8, 9]},
+        {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [8, 9]}
+      ],
+      "expected_cells": 16
+    },
+    {
+      "index": 4,
+      "architecture": "conv1",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "target": "jean-zay-dev",
+      "rationale": "The old maximum lay on the lower Conv-rho edge while Dense rho was already localized.",
+      "blocks": [
+        {"rho_conv_indices": [0, 1, 2, 3, 4], "rho_dense_indices": [4, 5, 6, 7]}
+      ],
+      "expected_cells": 20
+    },
+    {
+      "index": 5,
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "optimizer": "Adam",
+      "target": "jean-zay-dev",
+      "rationale": "Sparse upper-Conv sentinels close the remaining boundary of a strong surface.",
+      "blocks": [
+        {"rho_conv_indices": [8, 9], "rho_dense_indices": [5, 6, 7]}
+      ],
+      "expected_cells": 6
+    },
+    {
+      "index": 6,
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "optimizer": "SGD",
+      "target": "akib",
+      "rationale": "Dense rho was clearly too large; the prior biased study and Conv3 both point lower.",
+      "blocks": [
+        {"rho_conv_indices": [1, 2, 3, 4, 5, 6], "rho_dense_indices": [0, 1, 2, 3, 4]}
+      ],
+      "expected_cells": 30
+    },
+    {
+      "index": 7,
+      "architecture": "conv2",
+      "scheme": "ours",
+      "optimizer": "SGD",
+      "target": "akib",
+      "rationale": "This is the strongest low/low hypothesis: earlier evidence favored about (3.3e-4,1.2e-4), and Conv3 favored still lower rates.",
+      "blocks": [
+        {"rho_conv_indices": [0, 1, 2, 3, 4], "rho_dense_indices": [0, 1, 2, 3, 4, 5, 6]},
+        {"rho_conv_indices": [5], "rho_dense_indices": [0, 1, 2, 3, 4]}
+      ],
+      "expected_cells": 40
+    },
+    {
+      "index": 8,
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "optimizer": "SGD",
+      "target": "akib",
+      "rationale": "Lower-Dense matched control around the strong existing basin.",
+      "blocks": [
+        {"rho_conv_indices": [3, 4], "rho_dense_indices": [2, 3, 4, 5]},
+        {"rho_conv_indices": [5, 6, 7], "rho_dense_indices": [2, 3, 4]}
+      ],
+      "expected_cells": 17
+    },
+    {
+      "index": 9,
+      "architecture": "conv2",
+      "scheme": "baseline",
+      "optimizer": "Adam",
+      "target": "jean-zay-t3",
+      "rationale": "Earlier broader evidence points near Conv rho 0.081; retry the three previously safety-rejected cells with exploratory rejection disabled.",
+      "blocks": [
+        {"rho_conv_indices": [8, 9, 10], "rho_dense_indices": [4, 5, 6, 7]},
+        {"rho_conv_indices": [5], "rho_dense_indices": [5, 6, 7]},
+        {"rho_conv_indices": [6, 7], "rho_dense_indices": [4]}
+      ],
+      "expected_cells": 17
+    },
+    {
+      "index": 10,
+      "architecture": "conv2",
+      "scheme": "ours",
+      "optimizer": "Adam",
+      "target": "jean-zay-t3",
+      "rationale": "The old maximum was upper-Conv open and the prior broader study favored Conv rho 0.027.",
+      "blocks": [
+        {"rho_conv_indices": [8, 9, 10], "rho_dense_indices": [4, 5, 6, 7]},
+        {"rho_conv_indices": [6, 7], "rho_dense_indices": [4]}
+      ],
+      "expected_cells": 14
+    },
+    {
+      "index": 11,
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "optimizer": "Adam",
+      "target": "jean-zay-t3",
+      "rationale": "The old Conv-rho 0.027 expansion was bracketed; add sparse outer sentinels and a lower-Dense strip.",
+      "blocks": [
+        {"rho_conv_indices": [9, 10], "rho_dense_indices": [5, 6, 7]},
+        {"rho_conv_indices": [5, 6, 7, 8], "rho_dense_indices": [4]}
+      ],
+      "expected_cells": 10
+    }
+  ],
+  "execution": {
+    "device": "cuda",
+    "result_root": "results/perfectdiode-conv12-directed-exploratory-lr-search-seed0-20260812-v1",
+    "total_surfaces": 12,
+    "total_new_cells": 257,
+    "candidate_epoch_budget": 771,
+    "expected_optimizer_steps": 2650698
+  }
+}

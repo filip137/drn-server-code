@@ -91,6 +91,21 @@ def _param_schema(params):
     return schema
 
 
+def _parameter_state_sha256(param_schema):
+    digest = hashlib.sha256()
+    digest.update(b"mnist-train-ordered-parameter-state/v1\0")
+    for name, param in param_schema:
+        tensor = param.state.detach().cpu().contiguous()
+        digest.update(str(name).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(tensor.dtype).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(json.dumps(list(tensor.shape)).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(tensor.numpy().tobytes(order="C"))
+    return digest.hexdigest()
+
+
 def _checkpoint_to_npz(checkpoint_path, npz_path, param_schema, metadata):
     params = [param for _, param in param_schema]
     tensors, checkpoint_source_format = load_function_checkpoint_states(
@@ -162,6 +177,80 @@ def _normalize_training_algorithm(training_algorithm):
     if value not in ("EP", "BP"):
         raise ValueError(f"training_algorithm must be 'EP' or 'BP'. Got {training_algorithm!r}.")
     return value
+
+
+def _runtime_dtype_from_config(config):
+    value = str(config.get("runtime_dtype", "float32")).lower()
+    options = {"float32": torch.float32, "float64": torch.float64}
+    if value not in options:
+        raise ValueError(
+            "runtime_dtype must be 'float32' or 'float64'. "
+            f"Provided value: {config.get('runtime_dtype')!r}."
+        )
+    return value, options[value]
+
+
+def _convert_energy_runtime_dtype(energy_fn, dtype):
+    values = [*energy_fn.layers(), *getattr(energy_fn, "_all_params", energy_fn.params())]
+    seen = set()
+    for variable in values:
+        if id(variable) in seen:
+            continue
+        seen.add(id(variable))
+        requires_grad = bool(variable.state.requires_grad)
+        variable.state = variable.state.detach().to(dtype=dtype).clone()
+        variable.state.requires_grad_(requires_grad)
+    if any(variable.state.dtype != dtype for variable in values):
+        raise RuntimeError(f"Failed to convert every model variable to {dtype}.")
+
+
+def _eqprop_contract_from_config(config, training_algorithm):
+    raw = config.get("eqprop", {})
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Expected config['eqprop'] to be an object, got {raw!r}.")
+    if training_algorithm != "EP":
+        return {
+            "variant": "centered",
+            "nudging_mode": "cost",
+            "current_scale": 1.0,
+            "normalize_current_scale": False,
+            "endpoint_read_noise_std": 0.0,
+            "endpoint_read_noise_seed": None,
+            "input_read_noise": False,
+        }
+    contract = {
+        "variant": str(raw.get("variant", "centered")),
+        "nudging_mode": str(raw.get("nudging_mode", "cost")),
+        "current_scale": raw.get("current_scale", "auto"),
+        "normalize_current_scale": bool(raw.get("normalize_current_scale", False)),
+        "endpoint_read_noise_std": _require_finite_scalar(
+            raw.get("endpoint_read_noise_std", 0.0),
+            "EqProp endpoint_read_noise_std",
+        ),
+        "endpoint_read_noise_seed": raw.get("endpoint_read_noise_seed"),
+        "input_read_noise": bool(raw.get("input_read_noise", False)),
+    }
+    if contract["variant"] not in {"positive", "negative", "centered"}:
+        raise ValueError(f"Unsupported EqProp variant: {contract['variant']!r}.")
+    if contract["nudging_mode"] not in {"cost", "current"}:
+        raise ValueError(
+            f"Unsupported EqProp nudging_mode: {contract['nudging_mode']!r}."
+        )
+    if contract["endpoint_read_noise_std"] < 0.0:
+        raise ValueError("EqProp endpoint_read_noise_std must be non-negative.")
+    if contract["endpoint_read_noise_std"] > 0.0 and contract[
+        "endpoint_read_noise_seed"
+    ] is None:
+        raise ValueError(
+            "EqProp endpoint_read_noise_seed is required for nonzero read noise."
+        )
+    if contract["input_read_noise"]:
+        raise ValueError("This trainer does not support input read noise.")
+    if contract["normalize_current_scale"] and contract["nudging_mode"] != "current":
+        raise ValueError("normalize_current_scale requires current-mode nudging.")
+    return contract
 
 
 def _json_sanitize(value):
@@ -633,6 +722,7 @@ def _evaluate_image_loader(
     epoch,
     epochs,
     log_interval,
+    input_dtype,
 ):
     running_loss = 0.0
     running_correct = 0
@@ -646,7 +736,7 @@ def _evaluate_image_loader(
     for batch_idx, (images, labels) in enumerate(loader):
         if max_batches is not None and batch_idx >= max_batches:
             break
-        images = images.to(device)
+        images = images.to(device=device, dtype=input_dtype)
         labels = labels.to(device)
         _require_finite_tensor(
             images,
@@ -1186,6 +1276,8 @@ def _train_image_task(
     training_algorithm = _normalize_training_algorithm(
         training_algorithm if training_algorithm is not None else config.get("training_algorithm")
     )
+    runtime_dtype_name, runtime_dtype = _runtime_dtype_from_config(config)
+    eqprop_contract = _eqprop_contract_from_config(config, training_algorithm)
     optimizer_name_value, momentum_value, weight_decay_value = _resolve_optimizer_settings(
         config,
         optimizer_name=optimizer_name,
@@ -1352,8 +1444,10 @@ def _train_image_task(
         print(f"[mnist_train] Initialized model from checkpoint {init_checkpoint_path}")
     else:
         init_checkpoint_path = None
+    _convert_energy_runtime_dtype(energy_fn, runtime_dtype)
     checkpoint_params = getattr(energy_fn, "_params", energy_fn.params())
     param_schema = _param_schema(checkpoint_params)
+    initial_parameter_state_sha256 = _parameter_state_sha256(param_schema)
     configured_parameter_order = config.get("parameter_order")
     if configured_parameter_order is not None:
         actual_parameter_order = [name for name, _parameter in param_schema]
@@ -1384,7 +1478,12 @@ def _train_image_task(
             f"Unsupported output_dim={output_dim}; expected {num_classes} or {2 * num_classes}."
         )
     
-    augmented_fn = AugmentedFunction(energy_fn, cost_fn)
+    augmented_fn = AugmentedFunction(
+        energy_fn,
+        cost_fn,
+        nudging_mode=eqprop_contract["nudging_mode"],
+        current_scale=eqprop_contract["current_scale"],
+    )
     training_fn = augmented_fn if training_algorithm == "EP" else energy_fn
 
     training_iterations = int(
@@ -1478,8 +1577,11 @@ def _train_image_task(
             augmented_fn,
             cost_fn,
             minimizer_training,
-            variant="centered",
+            variant=eqprop_contract["variant"],
             nudging=beta_value,
+            normalize_current_scale=eqprop_contract["normalize_current_scale"],
+            endpoint_read_noise_std=eqprop_contract["endpoint_read_noise_std"],
+            endpoint_read_noise_seed=eqprop_contract["endpoint_read_noise_seed"],
         )
     else:
         params = energy_fn.params()
@@ -1575,6 +1677,7 @@ def _train_image_task(
             "non_linearity": model_cfg["non_linearity"],
             "output_dim": output_dim,
             "num_classes": num_classes,
+            "initial_parameter_state_sha256": initial_parameter_state_sha256,
         },
         "optimizer": {
             **optimizer_details,
@@ -1590,6 +1693,8 @@ def _train_image_task(
             "optimizer_steps_applied": bool(apply_optimizer_steps),
             "num_iterations_training": training_iterations,
             "num_iterations_inference": inference_iterations,
+            "runtime_dtype": runtime_dtype_name,
+            "eqprop": _json_sanitize(eqprop_contract),
             "beta": beta_value,
         },
         "diagnostics": {
@@ -1672,7 +1777,7 @@ def _train_image_task(
             if max_batches is not None and batch_idx >= max_batches:
                 break
             optimizer.zero_grad()
-            images = images.to(device)
+            images = images.to(device=device, dtype=runtime_dtype)
             labels = labels.to(device)
             _require_finite_tensor(
                 images,
@@ -1874,6 +1979,7 @@ def _train_image_task(
                 epoch=epoch + 1,
                 epochs=epochs,
                 log_interval=log_interval,
+                input_dtype=runtime_dtype,
             )
             history["test_loss"].append(epoch_test_loss)
             history["test_accuracy"].append(epoch_test_acc)
@@ -1991,6 +2097,7 @@ def _train_image_task(
                 epoch=best_epoch,
                 epochs=epochs,
                 log_interval=log_interval,
+                input_dtype=runtime_dtype,
             )
         )
         official_test_evaluations = 1
@@ -2007,9 +2114,12 @@ def _train_image_task(
         "voltage_amp": float(model_cfg["voltage_amp"]),
         "current_amp": float(model_cfg["current_amp"]),
         "seed": seed_value,
+        "initial_parameter_state_sha256": initial_parameter_state_sha256,
         "layer_shapes": [list(shape) for shape in layer_shapes],
         "non_linearity": model_cfg["non_linearity"],
         "training_algorithm": training_algorithm,
+        "runtime_dtype": runtime_dtype_name,
+        "eqprop": _json_sanitize(eqprop_contract),
         "checkpoint_format": "versioned DRN function checkpoint with exact ordered parameter schema",
         "batch_state_policy": batch_state_policy,
     }
@@ -2028,6 +2138,14 @@ def _train_image_task(
     metrics = {
         "run_dir": str(run_dir),
         "training_algorithm": training_algorithm,
+        "runtime_dtype": runtime_dtype_name,
+        "initial_parameter_state_sha256": initial_parameter_state_sha256,
+        "eqprop": _json_sanitize(eqprop_contract),
+        "eqprop_endpoint_read_noise_draw_count": (
+            int(estimator.endpoint_read_noise_draw_count)
+            if training_algorithm == "EP"
+            else 0
+        ),
         "seed": seed_value,
         "batch_state_policy": batch_state_policy,
         "voltage_amp": float(model_cfg["voltage_amp"]),

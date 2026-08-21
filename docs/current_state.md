@@ -1,13 +1,584 @@
 # Current Perfect-Diode Conv State
 
-Updated: 2026-08-12
+Updated: 2026-08-17
 
 This is a dashboard, not a second protocol. Selection rules remain in the
 [active protocol index](conv_paper_hyperparameter_protocol.md). Live running
 state is generated separately in
 [`current_simulations.md`](current_simulations.md).
 
+## Findings From 2026-08-17
+
+### The user-selected one-decade beta is training-stable in all nine zero-bias Adam cases
+
+The matched ordinary-MNIST qualification is complete for Conv1/Conv2/Conv3 x
+baseline/ours/legacy.  It uses the exact inherited BPTT Adam learning-rate
+vectors with every `Bias_*` rate fixed at zero, shared
+`T/K=4/4,6/6,8/8`, centered frozen-current true-float64 EqProp, injected beta
+Conv1 `100/30/3`, Conv2 `100/10/.03`, and Conv3 `100/3/.001`, seed 0,
+10/30/30 epochs, zero endpoint read noise, and no official-test read.
+
+| Architecture | Scheme | Best validation | Final validation | Final drop from best |
+|---|---|---:|---:|---:|
+| Conv1 | baseline | `96.18%` | `96.04%` | `.14 pp` |
+| Conv1 | ours | `96.42%` | `96.34%` | `.08 pp` |
+| Conv1 | legacy | `96.44%` | `96.42%` | `.02 pp` |
+| Conv2 | baseline | `97.22%` | `97.22%` | `0 pp` |
+| Conv2 | ours | `98.10%` | `98.02%` | `.08 pp` |
+| Conv2 | legacy | `98.44%` | `98.42%` | `.02 pp` |
+| Conv3 | baseline | `97.76%` | `97.68%` | `.08 pp` |
+| Conv3 | ours | `98.72%` | `98.64%` | `.08 pp` |
+| Conv3 | legacy | `99.08%` | `99.02%` | `.06 pp` |
+
+All `9/9` runs complete their full epoch budget with finite metrics and finish
+well inside the frozen `<5 pp` stability rule.  This is therefore positive
+evidence that the one-decade tier is training-stable under this exact Adam,
+zero-bias, shared-`T/K` contract.  The within-architecture final ordering is
+legacy > ours > baseline, but these are one-seed selection-dataset
+measurements and are not paper accuracy or yet a controlled BPTT--EqProp
+comparison.
+
+Jean Zay UMG array `1030857_[0-4]` completed all five V100 tasks with exit
+`0:0` in `02:17:19`--`05:02:24`.  The authoritative local copy is
+checksum-identical to the 106 MB remote tree.  All nine canonical bundles,
+five pack summaries and receipts, nine run receipts, exact-zero checkpoint
+biases, architecture-matched initialization, common split, matched common
+ten-epoch minibatch prefix, full Conv2/Conv3 30-epoch order, zero-noise, and
+zero-official-test guards pass.
+
+This result does **not** reclassify the one-decade gradient tier: the earlier
+gate remains `213/216`, with three Conv3-initialization C0 failures, while the
+two-decade tier remains `216/216`.  The trained Conv3-baseline `T=8`
+free-state residual caveat also remains.  Thus the evidence now separates the
+decision cleanly: one decade is demonstrated training-stable and retains the
+larger phase signal; two decades is the fully direct-gradient-qualified tier
+but still lacks this matched long stability qualification.  No paper beta is
+frozen by the present study alone.  See the [beta decision
+record](beta_study.md), [analysis report](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1/analysis/report.md),
+[summary table](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1/analysis/summary.csv),
+[trajectories](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1/analysis/validation_accuracy_trajectories.png),
+and [verification](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1/analysis/verification.json).
+
+## Findings From 2026-08-16
+
+### Conv2 one-decade beta remains stable at sigma `5e-4` with SGD
+
+The matched SGD repeat keeps the same Conv2 one-decade injected betas
+`100/10/.03` for baseline/ours/legacy, centered float64 EqProp, `T=K=8`,
+seed-0 ordinary MNIST, initialization, split, minibatch order, and endpoint
+noise seed as the Adam study, while using the historical scheme-specific SGD
+learning-rate vectors. All three Jean Zay `fmu@v100` runs completed ten finite
+epochs and passed their canonical, source/config, optimizer, noise-draw,
+cohort, and zero-official-test-read guards.
+
+| Scheme | SGD clean -> sigma `5e-4` final | SGD change | Adam clean -> sigma `5e-4` final | Adam change |
+|---|---:|---:|---:|---:|
+| baseline | `96.52 -> 96.34%` | `-.18 pp` | `96.88 -> 96.78%` | `-.10 pp` |
+| ours | `97.80 -> 97.46%` | `-.34 pp` | `97.92 -> 97.44%` | `-.48 pp` |
+| legacy | `97.52 -> 96.72%` | `-.80 pp` | `98.40 -> 96.90%` | `-1.50 pp` |
+
+There is no observed sigma-`5e-4` instability under either optimizer
+contract. Ours has the highest noisy final validation accuracy with both, and
+legacy has the largest clean-relative penalty with both. The magnitude does
+depend on the optimizer/LR contract, most visibly for legacy, but this study
+does not isolate optimizer algorithm effects because SGD and Adam use their
+own historical LR vectors. The Adam deltas here use the later paired boundary
+study controls; the original higher-noise report's `-.22/-.42/-1.44 pp`
+deltas remain the correct values against its original clean parent.
+
+Production array `1029094_[0-2]` and canary `1029073_0` completed `0:0`; the
+authoritative local collection has zero checksum differences from Jean Zay,
+and the final focused suite passes `29/29`. See the [beta decision
+record](beta_study.md), [comparison report](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-one-decade-sigma-5em4-sgd-10ep-seed0-20260816-v1/analysis/report.md),
+[table](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-one-decade-sigma-5em4-sgd-10ep-seed0-20260816-v1/analysis/terminal_summary.csv),
+and [trajectories](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-one-decade-sigma-5em4-sgd-10ep-seed0-20260816-v1/analysis/validation_accuracy_trajectories.png).
+
+### Paper-ready seed-0 BPTT--EqProp pairs now use one exact zero-bias contract
+
+The active
+[one-seed matching protocol](conv_paper_one_seed_bptt_eqprop_protocol.md)
+defines a paper comparison unit as one BPTT and one EqProp run with the same
+architecture, amplification scheme, optimizer, weight contract, and seed.
+Within each pair, the named and ordered learning-rate vector must be exactly
+identical: accepted weight rates are retained unchanged and every `Bias_*`
+rate is `0`. Bias tensors initialize and remain exact zero.
+
+Both algorithms also use the same accepted operating point: Conv1 `T/K=4/4`,
+Conv2 `6/6`, and Conv3 `8/8`, with seed `0` and `10/30/30` epochs. The prior
+EqProp beta studies used learned biases, and their Conv1/Conv2 cases used
+`8/8`; they remain exploratory candidate evidence and cannot be promoted
+unchanged. EqProp beta must be requalified on ordinary MNIST under the new
+zero-bias/shared-`T/K` contract before the long deterministic medium-affine
+paper runs are launched.
+
+### The two-decade beta passes the zero-bias/shared-T/K Adam gradient gate; the maximum and one-decade betas do not
+
+The new read-only qualification compares centered frozen-current EqProp with
+BPTT on the accepted zero-bias Adam checkpoints at reconstructed
+initialization and best validation. It covers all nine Conv1/Conv2/Conv3 x
+baseline/ours/legacy contexts, four fixed 16-example ordinary-MNIST validation
+batches, true-float64 dynamics, and exact shared `T/K=4/4,6/6,8/8`. Every
+phase starts from the same hashed post-`T` state, BPTT and EqProp both use
+exactly `K` further iterations, every bias LR/tensor is exact zero, and no
+optimizer step or official-test read occurs. The gate requires every weight
+layer and batch to have cosine `>=.99` and symmetric norm delta `<=.10`.
+
+At the original maximum tier—Conv1 `1000/300/30`, Conv2 `1000/100/.3`,
+Conv3 `1000/30/.01`—only `159/216` comparisons and `9/18` checkpoint
+contexts pass. There are `10/16/31` failing rows in Conv1/Conv2/Conv3; the
+global worst cosine is `.801608` and maximum norm delta `.533422`. The
+Conv3-legacy best-checkpoint smoke illustrates the finite-beta scale error:
+its first-convolution EqProp norm is `.884682x` BPTT despite cosine `.997944`,
+while the output-state RMS displacement is `4.5935x` its free-state norm. The
+same row one decade lower has norm ratio `.998242`. Thus the original maximum
+is outside the local gradient regime and is not a paper-beta candidate.
+
+At the one-decade injected-beta tier—Conv1 `100/30/3`, Conv2
+`100/10/.03`, Conv3 `100/3/.001`—`213/216` comparisons pass. All Conv1,
+Conv2, and best-checkpoint rows pass. The only failures are Conv3
+initialization `ConvWeight_0`: baseline beta `100` fails one batch with worst
+cosine `.987983`, while ours beta `3` fails two batches with worst cosine
+`.939168`, norm ratio `1.32312`, and symmetric norm delta `.278178`.
+
+One further decade lower—Conv1 `10/3/.3`, Conv2 `10/1/.003`, Conv3
+`10/.3/1e-4`—all `216/216` comparisons pass. The global worst cosine is
+`.998877` and the maximum symmetric norm delta is `.039421`; every
+best-checkpoint context passes. Thus the one-decade tier is not a universal
+gradient-faithful point under the paper matching contract, while the
+two-decade tier is the supported Adam-first candidate.
+
+The full unqualified launch gate remains false only because trained Conv3
+baseline is under-relaxed after free `T=8`: its post-`T` residual fails in
+Layer_1 and Layer_3 on all four batches, independently of beta. This is the
+existing Conv3-baseline residual caveat, not an EqProp--BPTT direction
+mismatch. On gradient evidence alone, the one-decade tier is not a universal
+matched beta. The later user-directed one-decade training qualification is
+stable in all nine cases but retains this `213/216` classification. A matched
+two-decade ordinary-MNIST Adam stability qualification remains the supported
+way to complete the gradient-qualified branch before freezing a paper beta;
+deterministic medium-affine paper runs also require the Conv3 residual caveat
+to be explicitly accepted or shared BPTT/EqProp T/K to be requalified. See the
+[review](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/review.md),
+[maximum-beta table](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/production-max-beta/case_summary.csv),
+[one-decade table](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/production/case_summary.csv),
+and [two-decade table](../results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/production-two-decades/case_summary.csv).
+
+### Tripling the Conv1 legacy Conv LR is worse for SGD and neutral for Adam
+
+The bounded-weight recollection was only partly correct.  In the zero-bias
+`[1e-5,1e-4]` study, Conv1 legacy-SGD tied at `94.50%` when `rho_conv` moved
+from `.003` to `.009` at fixed `rho_dense=.0033333`, so the factor-three
+upper-Conv edge remained open.  Legacy-Adam was already bracketed: its
+selected `(.009,.01)` point reached `95.42%`, while the factor-three neighbor
+`(.027,.01)` reached `95.14%` (`-.28 pp`).  Thus the prior evidence motivated
+an SGD sentinel, not a general factor-three learning-rate change.
+
+The new wide `[0,100]`, zero-bias Conv1 legacy BPTT runs keep Dense LR fixed,
+multiply only `ConvWeight_0` LR by exactly three, and run seed 0 for ten
+ordinary-MNIST epochs:
+
+| Optimizer | Conv LR, original / times three | Best validation, original / times three | Final validation, original / times three |
+|---|---:|---:|---:|
+| SGD | `2.05753e-4 / 6.17259e-4` | `95.92 / 95.52%` (`-.40 pp`) | `95.60 / 95.52%` (`-.08 pp`) |
+| Adam | `2.88917e-4 / 8.66751e-4` | `96.44 / 96.46%` (`+.02 pp`) | `96.38 / 96.46%` (`+.08 pp`) |
+
+SGD times three is below the historical control at all ten epochs, with mean
+epochwise difference `-.548 pp`.  Adam is mixed (`4/1/5` epochs
+higher/tied/lower) and its best change is only one validation example out of
+5,000, so there is no meaningful improvement.  Both new bundles complete and
+validate; initial states match across the two new arms, all new/historical
+runs share the split and ten minibatch orders, all checkpoint arrays are
+finite, Bias_0 stays exact zero, and the official test is not read.
+
+Decision: **retain the original Conv1 legacy SGD and Adam Conv learning
+rates**.  The bounded rho edge should not be transferred as a new wide-range
+handoff.  This is one-seed diagnostic evidence and the historical/new runs use
+different host/code-state provenance, so a future formal re-selection would
+need fresh same-runtime controls.  See the
+[review](../results/perfectdiode-conv1-legacy-zero-bias-conv-lr-times3-bptt-sgd-adam-10ep-seed0-20260816-v1/analysis/report.md),
+[comparison table](../results/perfectdiode-conv1-legacy-zero-bias-conv-lr-times3-bptt-sgd-adam-10ep-seed0-20260816-v1/analysis/comparison.csv),
+and [trajectory plot](../results/perfectdiode-conv1-legacy-zero-bias-conv-lr-times3-bptt-sgd-adam-10ep-seed0-20260816-v1/analysis/plots/validation_accuracy_by_epoch.png).
+
+## Findings From 2026-08-15
+
+### Original EqProp beta boundaries are optimizer-dependent; every one-decade-lower control is stable
+
+The direct boundary study covers all 36 Conv1/Conv2/Conv3 x
+baseline/ours/legacy x SGD/Adam x candidate/one-decade-lower cases. It uses
+seed-0 ordinary MNIST, fixed learning-rate vectors, centered frozen-current
+EqProp, true float64, `T=K=8`, `[0,100]` Kaiming initialization, ten epochs,
+zero read noise, and no official-test read. Collapse was frozen as an explicit
+non-finite endpoint or a final-validation drop of at least `5.00 pp` from the
+run's best epoch.
+
+| Architecture | Scheme | Candidate / control injected beta | SGD at candidate | Adam at candidate |
+|---|---|---:|---|---|
+| Conv1 | baseline | `1000 / 100` | finite and stable | non-finite |
+| Conv1 | ours | `300 / 30` | finite and stable | non-finite |
+| Conv1 | legacy | `30 / 3` | finite but flat at chance | non-finite |
+| Conv2 | baseline | `1000 / 100` | finite and stable | non-finite |
+| Conv2 | ours | `100 / 10` | finite and stable | non-finite |
+| Conv2 | legacy | `.3 / .03` | finite and stable | finite, `13.00 pp` late collapse |
+| Conv3 | baseline | `1000 / 100` | finite and stable | finite and stable |
+| Conv3 | ours | `30 / 3` | non-finite | finite and stable |
+| Conv3 | legacy | `.01 / .001` | finite and stable | finite and stable |
+
+Thus `7/18` matched pairs confirm candidate-beta collapse and Conv1-legacy
+SGD supplies an eighth practically unusable candidate despite missing the
+within-run drop criterion. The other `10/18` candidate pairs do not confirm a
+training boundary. In contrast, all `18/18` one-decade-lower controls complete
+ten finite epochs and finish within `.28 pp` of their own best validation.
+This confirms a clean MNIST safety margin but does not prove transfer to a
+harder dataset or select the final EqProp beta. In particular, the strong
+optimizer interaction prevents treating a cosine-boundary beta as a universal
+scheme/depth constant. Conv3 baseline retains its `T=K=8` residual caveat.
+
+Jean Zay UMG array `1017012_[0-17]` ran two cases per V100-32GB; all 18
+allocations exited `0:0`. The authoritative 36-bundle local copy has zero
+itemized differences under a checksum dry-run against Jean Zay, and all
+canonical bundles, 36 run receipts, 18 pack receipts, initialization hashes,
+split/order hashes, and official-test guards validate. See the
+[beta-study decision record](beta_study.md),
+[analysis report](../results/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1/analysis/report.md),
+[pair table](../results/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1/analysis/pairs.csv),
+[collection receipt](../results/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1/analysis/collection_validation_receipt.json), and
+[trajectory plot](../results/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1/analysis/validation_accuracy_trajectories.png).
+
+### Learned positive-only bias and fixed-zero bias are indistinguishable in the matched Conv1 diagnostic
+
+The current worktree still carries the historical bias implementation: hidden
+biases initialize at zero, inherit the nonnegative parameter projection, and
+are clamped after every optimizer step; their linear energy term is unscaled
+with depth. The proposed signed, amplification-scaled replacement remains a
+separate contract on `codex/signed-scaled-bias` and requires its own bias-LR
+selection.
+
+A new matched baseline Conv1 BPTT/SGD diagnostic changes only Bias_0 LR from
+`.142696` to `0`, while preserving the exact initialization, ordinary-MNIST
+split, all ten minibatch orders, weight rates, seed, `T=K=4`, and ten-epoch
+budget. Both arms reach `96.28%` best validation at epoch 7 and `96.00%`
+final validation. Accuracy is identical in 7/10 epochs and differs by at most
+`.02 pp`, well inside the predeclared `.5 pp` practical-similarity threshold.
+The comparison is active: `94.85%/96.76%` of Bias_0 entries are positive at
+best/final in the learned arm, while every saved control bias is exact zero.
+
+This supports the narrow conclusion that biases do not materially affect this
+retrained seed-0 Conv1 diagnostic. For paper runs using Bias LR `0`, state the
+model contract explicitly as **bias-free / biases fixed at zero**. That is a
+coherent way to avoid the historical positive-only and unscaled-bias confound,
+but it is not evidence for a trainable-bias implementation. Do not pool those
+runs with historical learned-bias or corrected signed/scaled-bias rows. The
+result is ordinary-MNIST diagnostic evidence, not paper-facing accuracy or a
+statistical equivalence test. See the [review](../results/perfectdiode-conv1-positive-vs-zero-bias-ordinary-mnist-seed0-20260815-v1/bias_state_review.md),
+[table](../results/perfectdiode-conv1-positive-vs-zero-bias-ordinary-mnist-seed0-20260815-v1/analysis/summary.csv),
+and [trajectory plot](../results/perfectdiode-conv1-positive-vs-zero-bias-ordinary-mnist-seed0-20260815-v1/analysis/accuracy_loss_trajectories.png).
+
+## Findings From 2026-08-14
+
+### Both tested Conv1/Conv3 beta margins are clean-stable; clean accuracy does not select between them
+
+The completed exploratory qualification tests baseline, ours, and legacy in
+Conv1 and Conv3 at one and two decades below each scheme/depth's independently
+measured worst-layer cosine-`.99` injected-beta boundary. All twelve cases use
+seed-0 ordinary MNIST, the exact fixed Adam vectors, centered frozen-current
+EqProp, true float64, `T=K=8`, ten epochs, Kaiming initialization in `[0,100]`,
+zero endpoint read noise, and no official-test read.
+
+| Architecture | Scheme | Injected beta, one/two decades | Base beta, one/two decades | Best validation, one/two decades | Final validation, one/two decades |
+|---|---|---:|---:|---:|---:|
+| Conv1 | baseline | `100 / 10` | `100 / 10` | `96.24 / 96.22%` | `96.12 / 96.10%` |
+| Conv1 | ours | `30 / 3` | `7.5 / .75` | `96.44 / 96.42%` | `96.34 / 96.32%` |
+| Conv1 | legacy | `3 / .3` | `.1875 / .01875` | `96.64 / 96.62%` | `96.58 / 96.52%` |
+| Conv3 | baseline | `100 / 10` | `100 / 10` | `97.02 / 97.06%` | `97.02 / 97.06%` |
+| Conv3 | ours | `3 / .3` | `.046875 / .0046875` | `98.40 / 98.44%` | `98.40 / 98.44%` |
+| Conv3 | legacy | `.001 / 1e-4` | `2.4414e-7 / 2.4414e-8` | `98.46 / 98.42%` | `98.44 / 98.42%` |
+
+All `12/12` trajectories complete with finite ten-epoch histories. Moving one
+additional decade lower changes best validation accuracy by only
+`-.02/-.02/-.02 pp` for Conv1 baseline/ours/legacy and
+`+.04/+.04/-.04 pp` for Conv3. The maximum absolute best-accuracy difference
+is therefore `.04 pp`, too small for this single-seed clean study to
+distinguish the tiers. Initialization is exactly matched within architecture,
+and all cases share the train split, validation split, and ten minibatch-order
+hashes.
+
+Both margins are thus clean-qualified for a subsequent read-noise comparison;
+there is no observed instability at the one-decade tier or one tier below it.
+No beta has been selected automatically. The choice remains a robustness
+tradeoff for review: the one-decade tier retains a tenfold larger phase signal,
+whereas the two-decade tier retains the larger small-perturbation margin and
+matches the rule previously studied in Conv2. Clean accuracy alone supplies no
+basis for preferring either. Conv3 baseline retains its declared caveat: its
+source cosine boundary at `T=K=8` is residual-unqualified because the shared
+free state was under-relaxed, even though both training trajectories here are
+finite and accurate.
+
+The open selection question, the rejected original Conv2 boundary tier,
+complete per-layer one-/two-decade displacement tables, and the alternatives
+of maximum clean-stable beta versus matched output-layer displacement are
+recorded in the dedicated [EqProp beta study](beta_study.md).
+
+Jean Zay UMG production array `980913_[0-5]` ran two logical cases concurrently
+per V100-32GB and completed all tasks with exit `0:0` in `2:11:35--2:14:58`.
+The authoritative local copy matches all remote relative-path content
+manifests. Canary `980540` is retained and excluded as an operational
+post-run-validator failure after both GPU smokes succeeded; the tested fix and
+replacement canary `980865` passed before production. See the
+[analysis report](../results/perfectdiode-conv13-centered-float64-eqprop-beta-qualification-1to2decades-10ep-seed0-20260814-v1/analysis/report.md),
+[summary table](../results/perfectdiode-conv13-centered-float64-eqprop-beta-qualification-1to2decades-10ep-seed0-20260814-v1/analysis/summary.csv),
+[trajectory plot](../results/perfectdiode-conv13-centered-float64-eqprop-beta-qualification-1to2decades-10ep-seed0-20260814-v1/analysis/validation_accuracy_trajectories.png),
+and [verification](../results/perfectdiode-conv13-centered-float64-eqprop-beta-qualification-1to2decades-10ep-seed0-20260814-v1/analysis/verification.json).
+
+## Findings From 2026-08-13
+
+### A four-decade absolute scale-up leaves Conv1 bounded-Adam performance unchanged
+
+The matched exploratory repeat scales the exact shared bounded-uniform Conv1
+initializer and projection interval from `[1e-5,1e-4]` to `[.1,1]`, multiplies
+every nonzero raw Adam LR by `1e4`, and changes nothing else in the three
+baseline/ours/legacy source cells. It preserves the 10:1 dynamic range, exact
+initializer quantiles, zero biases, seed-0 ordinary-MNIST split/order, accepted
+`T=K=4`, and three-epoch budget.
+
+Final small/scaled validation accuracies are baseline `88.84/88.84%`, ours
+`91.60/91.60%`, and legacy `95.42/95.40%`. The largest absolute difference
+across all nine epoch accuracies is only `.04 pp`; final exact-bound occupancy
+also changes by at most `.0234 pp`. All three production bundles and CUDA
+smokes validate and record no official-test read.
+
+The absolute scale-up therefore recovers no Conv1 performance and provides no
+evidence that weights of order `1e-5` to `1e-4` materially hurt these Adam cells
+through numerical imprecision. The bounded dynamic range, projection behavior,
+or another scale-invariant contract feature remains more plausible. This is a
+single-seed, three-epoch Conv1/Adam diagnostic, not an SGD, deeper-network,
+long-convergence, or paper-facing result. See the
+[review](../results/perfectdiode-conv1-bounded-uniform-scale1e4-adam-3ep-seed0-20260813-v1/review.md),
+[summary](../results/perfectdiode-conv1-bounded-uniform-scale1e4-adam-3ep-seed0-20260813-v1/analysis/summary.csv),
+and [accuracy comparison](../results/perfectdiode-conv1-bounded-uniform-scale1e4-adam-3ep-seed0-20260813-v1/analysis/accuracy_comparison.png).
+
+### The directed bounded-uniform search locates the missing Conv2 SGD basins
+
+The completed extension adds 257 numeric Conv1/Conv2 cells to the 114 prior
+same-contract cells: shared `Uniform[1e-5,1e-4)` initialization, projection to
+that interval, exact-zero bias rates, seed 0, three epochs, Conv1 `T=K=4`, and
+Conv2 `T=K=6`. The 371-coordinate combined map has no numeric duplicate. All
+12 directed shards and receipts are local; 257/257 bundles are complete with
+zero nonfinite result.
+
+The important correction is Conv2 SGD. Lowering both rates raises baseline
+from `49.34%` to a bracketed `82.84%` at
+`(rho_conv,rho_dense)=(3.70370e-5,4.11523e-5)` and raises ours from `69.50%`
+to a bracketed `85.72%` at `(3.33333e-4,1.23457e-4)`. Final exact clipping at
+those maxima is `20.28%` and `8.77%`. The earlier rates were therefore too
+high for Conv2 SGD under this fixed weight range. Ours-Adam improves only
+`+.32 pp` to a bracketed `87.70%`; baseline-Adam improves only `+.18 pp` to
+`84.54%` at the maximum tested Conv rho and remains formally open with
+`46.83%` clipping. Legacy remains strongest at `95.42%` with Adam in both
+architectures.
+
+Ten of twelve combined surfaces are bracketed. Conv1 legacy-SGD retains a
+tied upper-Conv plateau, and Conv2 baseline-Adam remains open upward. Clipping
+still does not identify LR quality on its own: combined within-surface Pearson
+coefficients span `-.744` to `+.449` and Spearman coefficients span `-.645`
+to `+.623`. This is ordinary-MNIST exploratory evidence with safety and
+post-training T/K rejection disabled, not an LR handoff. See the
+[review](../results/perfectdiode-conv12-directed-exploratory-lr-search-seed0-20260812-v1/review.md),
+[combined table](../results/perfectdiode-conv12-directed-exploratory-lr-search-seed0-20260812-v1/analysis/combined/combined_surface_summary.csv),
+and [accuracy/clipping plot](../results/perfectdiode-conv12-directed-exploratory-lr-search-seed0-20260812-v1/analysis/combined/accuracy_vs_final_clipping_combined.png).
+
+### Conv2 ceiling relaxation favors Adam for baseline and ours, but not legacy
+
+The downstream matched 24-run Conv2 sweep uses the optimizer-specific rates
+above, one exact shared `Uniform[1e-5,1e-4)` checkpoint, exact-zero biases,
+seed 0, `T=K=6`, and ten ordinary-MNIST epochs. Within each
+scheme/optimizer surface, only the training ceiling changes across
+`wmax={1e-4,2e-4,5e-4,1e-3}`. Best validation accuracies are:
+
+| `wmax` | Baseline SGD / Adam | Ours SGD / Adam | Legacy SGD / Adam |
+|---:|---:|---:|---:|
+| `1e-4` | `84.22 / 85.60%` | `86.78 / 88.96%` | `94.56 / 96.44%` |
+| `2e-4` | `87.40 / 87.84%` | `91.40 / 93.08%` | `96.84 / 97.44%` |
+| `5e-4` | `87.78 / 90.52%` | `93.68 / 96.18%` | `97.46 / 97.74%` |
+| `1e-3` | `87.88 / 91.14%` | `94.20 / 96.74%` | `97.44 / 97.78%` |
+
+Adam is better in all 12 matched optimizer comparisons, but the interaction
+is scheme-dependent. At `wmax=1e-3`, Adam exceeds SGD by `3.26 pp` for
+baseline and `2.54 pp` for ours, versus only `.34 pp` for legacy. The closest
+zero-bias wide Conv2 controls have much smaller Adam-minus-SGD gaps: using
+their first ten epochs gives `.20/.14/.68 pp` for baseline/ours/legacy, and
+their full 30-epoch best checkpoints give `.14/.12/.50 pp`. Thus the large
+optimizer separation under the relaxed bounded contract is specific to
+baseline and ours; legacy is nearly optimizer-insensitive there.
+Correspondingly, the legacy-minus-ours gap at `wmax=1e-3` is `3.24 pp` with
+SGD but only `1.04 pp` with Adam.
+
+All 24 bundles validate and share the initialization, split, minibatch order,
+and epoch budget. This remains one-seed exploratory evidence. The rates were
+selected under the tight `wmax=1e-4` contract and transferred unchanged to
+larger ceilings, so the growing Adam advantage can also reflect poorer SGD-LR
+transfer rather than an intrinsic optimizer effect. The wide comparison is
+cross-contract because its initializer and LR vectors differ. See the
+[analysis report](../results/perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1/analysis/report.md),
+[full table](../results/perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1/analysis/summary.csv),
+and [curated manifest entry](experimental_manifest.md#perfectdiode-conv2-fixed-uniform-init-wmax-sweep-sgd-adam-10ep-seed0-20260813-v1--conv2-upper-weight-limit-sensitivity).
+
+### A common relative beta rule exposes Conv2 legacy read-noise sensitivity without a clean-control collapse
+
+The completed exploratory Conv2 training study compares two beta rules derived
+from the independent worst-layer cosine-`.99` boundaries rather than from
+training accuracy. One decade below the boundary uses injected beta
+`100/10/.03`; two decades below uses `10/1/.003` for
+baseline/ours/legacy. Each tier covers clean, endpoint read-noise sigma
+`1e-5`, and sigma `1e-4`, with ten epochs, current selected Adam LR vectors,
+true float64 centered EqProp, `T=K=8`, and matched initialization, data order,
+and noise draws.
+
+This lower-beta study replaced the original boundary-tier training at injected
+beta `1000/100/.3`. At that tier, all eight baseline/ours cases became
+non-finite, including both clean controls; legacy remained finite but its
+clean validation accuracy collapsed from `97.82%` best to `89.34%` final.
+Those original beta candidates were therefore rejected for Conv2 training.
+
+Here sigma is the standard deviation of zero-mean Gaussian noise added
+independently to every non-input equilibrium endpoint voltage read used by the
+local EqProp gradient: `V_read = V_equilibrium + Normal(0,sigma^2)`. The two
+centered phases, layers, elements, minibatches, and updates receive independent
+draws. Noise changes only the copied endpoint readings after equilibrium; it
+does not perturb relaxation, input voltages, or validation. Sigma is in the
+simulator's voltage units and is not yet a hardware-calibrated voltage or ADC
+specification.
+
+Final epoch-10 validation accuracies are:
+
+| Beta margin and injected baseline/ours/legacy beta | Read-noise sigma | Baseline | Ours | Legacy |
+|---|---:|---:|---:|---:|
+| one decade: `100/10/.03` | `0` | `97.00%` | `97.86%` | `98.34%` |
+| one decade: `100/10/.03` | `1e-5` | `96.96%` | `97.88%` | `98.16%` |
+| one decade: `100/10/.03` | `1e-4` | `96.86%` | `97.80%` | `97.52%` |
+| one decade: `100/10/.03` | `3e-4` | `96.76%` | `97.60%` | `97.14%` |
+| one decade: `100/10/.03` | `5e-4` | `96.78%` | `97.44%` | `96.90%` |
+| two decades: `10/1/.003` | `0` | `96.96%` | `97.84%` | `98.38%` |
+| two decades: `10/1/.003` | `1e-5` | `96.90%` | `97.70%` | `97.44%` |
+| two decades: `10/1/.003` | `1e-4` | `96.84%` | `97.08%` | `96.46%` |
+
+All `18/18` retained runs complete. The two-decade rule gives the clearer
+separation. At sigma `1e-5`, final validation changes by baseline `-.06 pp`,
+ours `-.14 pp`, and legacy `-.94 pp` relative to matched clean controls. At
+sigma `1e-4`, the changes are `-.12/-.76/-1.92 pp`. Clean legacy leads ours
+by `.54 pp`; under noise, ours leads legacy by `.26 pp` at `1e-5` and
+`.62 pp` at `1e-4`. The one-decade rule produces smaller legacy excess
+penalties of `.20 pp` and `.76 pp` at those noise levels.
+
+The Jean Zay higher-noise extension adds sigma `3e-4` and `5e-4` at the
+one-decade rule. All `6/6` runs remain finite and complete ten epochs, so
+there is still no observed instability. At sigma `5e-4`, clean-relative final
+penalties are baseline/ours/legacy `-.22/-.42/-1.44 pp`; ours retains the
+highest final validation accuracy (`97.44%`) and legacy is the most
+noise-sensitive. This is a single-seed descriptive extension, and the small
+baseline non-monotonicity between `3e-4` and `5e-4` is not evidence of a
+trend. See the [higher-noise report](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-one-decade-sigma-3em4-5em4-10ep-seed0-20260813-v1/analysis/report.md),
+[table](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-one-decade-sigma-3em4-5em4-10ep-seed0-20260813-v1/analysis/terminal_summary.csv),
+and [noise curve](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-one-decade-sigma-3em4-5em4-10ep-seed0-20260813-v1/analysis/final_validation_vs_noise.png).
+
+This study initially motivated a two-decade safety-margin candidate rather
+than one shared numerical beta. The later clean Conv1/Conv3 qualification,
+direct boundary-collapse study, and displacement replays leave the final beta
+selection open: one decade retains more read-noise signal and is clean-stable
+in every tested control, while two decades provides a larger
+small-perturbation margin. Any paper choice still requires a frozen
+confirmatory repeat on deterministic medium-affine MNIST. The current decision
+record is the [EqProp beta study](beta_study.md). See also the historical
+[review](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-beta-down-1to2decades-10ep-seed0-20260812-v1/review.md),
+[penalty plot](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-beta-down-1to2decades-10ep-seed0-20260812-v1/analysis/noise_penalty_by_beta_tier.png),
+and [full table](../results/perfectdiode-conv2-centered-float64-eqprop-read-noise-beta-down-1to2decades-10ep-seed0-20260812-v1/analysis/terminal_summary.csv).
+
 ## Findings From 2026-08-12
+
+### Exploratory Conv3 ladder improves the baseline/ours frontier without selecting learning rates
+
+The completed seed-0 grid is an **EXPLORATORY / NONCANONICAL
+ordinary-MNIST diagnostic**. It compares baseline and ours with SGD and Adam
+over the same ordered `8x8` `(rho_conv,rho_dense)` grid. Every cell restarts
+from the same hash-verified `Uniform[1e-5,1e-4)` initializer, projects to
+`[1e-5,1e-4]`, keeps all bias LRs at zero, uses `T=K=8`, and trains for three
+epochs. No official-test examples were read.
+
+| Scheme / optimizer | Highest observed `(rho_conv,rho_dense)` | Accuracy | Exact final either-bound occupancy | Range status |
+|---|---:|---:|---:|---|
+| baseline / SGD | `(3.7037e-5,1.3717e-5)` | `72.64%` | `60.79%` | open toward lower dense rho |
+| ours / SGD | `(1.2346e-5,4.1152e-5)` | **`76.84%`** | `18.97%` | locally bracketed |
+| baseline / Adam | `(1e-3,3.3333e-3)` | `76.16%` | `69.75%` | locally bracketed |
+| ours / Adam | `(9e-3,3.3333e-3)` | **`80.90%`** | `38.55%` | open toward higher Conv rho |
+
+Ours raises the observed frontier by `4.20 pp` with SGD and `4.74 pp` with
+Adam. This is not only a different-maxima effect. At each baseline optimum,
+the same-coordinate ours cell is better by `3.20 pp` for SGD and `3.32 pp`
+for Adam while placing `42.16 pp` and `31.93 pp` fewer weights exactly at a
+bound. At each ours optimum, the matched gain is `7.58 pp` and `5.36 pp`, with
+`37.96 pp` and `32.45 pp` lower endpoint occupancy. Across all 64 matched
+coordinates, ours is better/tied/worse in `42/13/9` SGD cells and `53/0/11`
+Adam cells. Baseline and ours share the host/runtime contract within each
+optimizer; SGD-versus-Adam is confounded because SGD ran on Akib and Adam on
+Trex.
+
+Final-checkpoint occupancy does not by itself identify a good LR. Accuracy
+versus exact either-bound occupancy has Pearson/Spearman correlation
+`+.381/+.386` for baseline-SGD, `-.098/-.171` for ours-SGD,
+`+.914/+.928` for baseline-Adam, and `+.774/+.610` for ours-Adam. The Adam
+surfaces therefore improve across much of this deliberately broad grid while
+occupancy rises, consistent with low-LR undertraining; yet ours reaches its
+higher maxima with substantially less endpoint pinning than baseline.
+Descriptive and noncausal: `rho_conv` and `rho_dense` jointly vary, so the
+correlations do not isolate an effect of clipping on accuracy. Exact endpoint
+occupancy is also not clipping history.
+
+The ours-Adam maximum on the highest tested Conv-rho edge supports extending
+that direction in a subsequent controlled search. Baseline-Adam and ours-SGD
+are locally bracketed; baseline-SGD remains open toward a still lower dense
+rho. These are highest observed accuracies, not selected learning rates. This
+study creates neither a canonical LR handoff nor paper-facing evidence.
+
+All `256/256` canonical cells, four receipts, nine exact Akib/Trex evidence
+roots, source hashes, plots, and analysis tables validate with zero nonfinite
+cells. Jean Zay jobs `844032` and `844396` were canceled before allocation at
+zero elapsed time and produced no scientific artifacts; the Akib/Trex shards
+are the sole authority. See the [report](../results/perfectdiode-conv3-exploratory-lr-ladder-seed0-20260811-v1/analysis/exploratory_lr_ladder/report.md),
+[surface table](../results/perfectdiode-conv3-exploratory-lr-ladder-seed0-20260811-v1/analysis/exploratory_lr_ladder/surfaces.csv),
+[accuracy heatmaps](../results/perfectdiode-conv3-exploratory-lr-ladder-seed0-20260811-v1/analysis/exploratory_lr_ladder/plots/final_validation_accuracy_heatmaps.png),
+and [curated manifest entry](experimental_manifest.md#perfectdiode-conv3-exploratory-lr-ladder-seed0-20260811-v1--conv3-baseline-and-ours-exploratory-lr-ladder).
+
+### A matched T=K=8 float64 surface now covers Conv1/Conv2/Conv3 through beta 1000
+
+The completed checkpoint-gradient diagnostic uses the same trained
+best-validation baseline/ours/legacy checkpoints, fixed 16-example
+ordinary-MNIST batch, centered frozen-current estimator, and common 13-point
+injected-beta grid `B=.001--1000` for all three Conv architectures. All 117
+production bundles across the companion baseline/ours and legacy studies
+validate. Their analyses contain 351 per-layer true-float64 cosine rows
+against same-T/K BPTT and 351 corresponding signed-displacement rows.
+
+| Architecture | Scheme | max B at cosine >= .90 | max B at cosine >= .95 | max B at cosine >= .99 |
+|---|---|---:|---:|---:|
+| Conv1 | baseline | `>=1000` | `>=1000` | `>=1000` |
+| Conv1 | ours | `>=1000` | `>=1000` | `300` |
+| Conv1 | legacy | `300` | `100` | `30` |
+| Conv2 | baseline | `>=1000` | `>=1000` | `>=1000` |
+| Conv2 | ours | `>=1000` | `300` | `100` |
+| Conv2 | legacy | `3` | `1` | `.3` |
+| Conv3 | baseline | `>=1000`* | `>=1000`* | `>=1000`* |
+| Conv3 | ours | `100` | `100` | `30` |
+| Conv3 | legacy | `.1` | `.03` | `.01` |
+
+These are largest sampled injected betas, not interpolated crossings;
+`>=1000` is an open tested edge. Ours uses actual base beta `B/4`, `B/16`,
+and `B/64` in Conv1/2/3; legacy uses `B/16`, `B/256`, and `B/4096`. The
+Conv3-baseline entries marked `*` are cosine-only because its shared T8 free
+state is under-relaxed (limiting float64 residual p90 `1.75151`, hard
+failure); no Conv3-baseline beta is residual-qualified at T8. All other
+displayed boundaries pass the float64 residual contract. See the
+[baseline/ours review](../results/perfectdiode-conv123-baseline-ours-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/review.md),
+[legacy review](../results/perfectdiode-conv123-legacy-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/review.md), and
+[legacy cosine/displacement figure](../results/perfectdiode-conv123-legacy-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/analysis/float64_cosine_and_displacement_vs_beta.png).
 
 ### Higher beta confirms a depth-dependent centered-EqProp boundary for ours
 
@@ -717,6 +1288,19 @@ handoff, and the
 
 ## Bounded Hardware Status
 
+The results on training with bounded weights give a clear picture: the legacy
+amplification scheme retains a large advantage over baseline and ours in the
+presence of bounded weights. There are individual runs—for example Conv1
+legacy at `wmax=5e-4` and `wmax=1e-3`—where bounded weights give better
+validation accuracy than the closest available zero-bias wide-range control.
+This probably means that the learning-rate vector for the corresponding
+wide-range legacy run was suboptimal and that the run needs to be redone with
+a matched initializer, data order, bias contract, and epoch budget. The
+measurements, comparison limits, and exact rerun motivation are recorded in
+the [bounded-weight study](bound_weights_study.md). The matched Conv2
+SGD/Adam interaction is summarized in the
+[ten-epoch ceiling sweep](#conv2-ceiling-relaxation-favors-adam-for-baseline-and-ours-but-not-legacy).
+
 The bounded condition projects `ConvWeight_*` and `DenseWeight_*` to
 `[1e-5,1e-4]`. It independently screens:
 
@@ -836,3 +1420,9 @@ biases are absent. Biases therefore do not significantly alter retrained
 performance and do not explain the aggregate `legacy > ours > baseline`
 ordering. Remaining bias-contract questions are lower priority than resolving
 the weight-bound dependence.
+
+The 2026-08-15 matched Conv1 baseline-SGD check strengthens this conclusion:
+active positive-only learning and exact-zero bias have identical best/final
+validation accuracy and differ by at most `.02 pp` at any epoch. Paper runs
+with bias LR `0` should be labeled bias-free/fixed-zero; they do not validate
+the separate corrected learned-bias contract.

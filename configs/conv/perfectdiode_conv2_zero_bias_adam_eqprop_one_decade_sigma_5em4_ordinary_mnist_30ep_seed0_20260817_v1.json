@@ -1,0 +1,129 @@
+{
+  "schema_version": "perfectdiode-conv2-zero-bias-adam-eqprop-one-decade-read-noise-study/v1",
+  "study_id": "perfectdiode-conv2-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-30ep-seed0-20260817-v1",
+  "scientific_question": "Under the current exact-zero-bias shared-T/K contract, does Conv2 Adam EqProp remain stable at the one-decade beta with endpoint read-noise sigma 5e-4?",
+  "evidence_class": "ordinary_mnist_eqprop_zero_bias_read_noise_training_diagnostic",
+  "evidence_tier": "protocol_matched_read_noise_robustness",
+  "paper_facing": false,
+  "scientific_contract": {
+    "architectures": ["conv2"],
+    "schemes": ["baseline", "ours", "legacy"],
+    "optimizer": "Adam",
+    "dataset": "ordinary_mnist_deterministic_55000_train_5000_validation",
+    "official_test_read": false,
+    "model_seed": 0,
+    "split_seed": 0,
+    "shuffle_seed": 0,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "epochs": {"conv2": 30},
+    "T": {"conv2": 6},
+    "K": {"conv2": 6},
+    "output_row_exponent_L": {"conv2": 2},
+    "injected_beta_B": {
+      "conv2": {"baseline": 100.0, "ours": 10.0, "legacy": 0.03}
+    },
+    "base_beta": {
+      "conv2": {"baseline": 100.0, "ours": 0.625, "legacy": 0.0001171875}
+    },
+    "runtime_dtype": "float64",
+    "training_algorithm": "centered_frozen_current_eqprop",
+    "current_scale": "auto",
+    "normalize_current_scale": true,
+    "endpoint_read_noise_std": 0.0005,
+    "endpoint_read_noise_seed": 2026081601,
+    "input_read_noise": false,
+    "noise_applied_after_equilibrium_before_local_energy_gradient": true,
+    "phase_noise_correlation": "independent",
+    "layer_noise_correlation": "independent",
+    "matched_standard_normal_draws_across_cases": true,
+    "expected_endpoint_read_noise_draws": {
+      "smoke": {"conv2": 6},
+      "production": {"conv2": 618840}
+    },
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "stable_definition": {
+      "finite_full_epoch_completion": true,
+      "final_validation_drop_from_best_pp_strictly_less_than": 5.0
+    },
+    "retain_all_scientific_terminal_outcomes": true,
+    "clean_control_study_id": "perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1",
+    "bias_learning_rate": 0.0,
+    "weight_min": 0.0,
+    "weight_max": 100.0,
+    "weight_initialization": "kaiming_uniform",
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {"I_s": 1e-6, "V_off": 0.0, "V_t": 0.025},
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    }
+  },
+  "protocol_deviations": {
+    "one_decade_gradient_gate": {
+      "source": "results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/production/layer_metrics.csv",
+      "scope": "Conv2 baseline/ours/legacy at initialization and best-validation checkpoints over four fixed batches and every weight layer",
+      "passing_layer_batch_rows": 72,
+      "total_layer_batch_rows": 72,
+      "all_rows_passed": true
+    },
+    "paper_ready": false
+  },
+  "source": {
+    "parent_clean_study_config": {
+      "path": "configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json",
+      "sha256": "adeec73eca2a2182912668a583855b24f4900c0c76a78e53cef6e33de91ee990"
+    },
+    "configs": {
+      "conv2": {
+        "baseline": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/01_baseline_adam_bias_zero_seed0.json",
+          "sha256": "9aac6b7dbfcc48a8b31e2b900b873decd296034ab37d4f73e26ae837a4e05759"
+        },
+        "ours": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/03_ours_adam_bias_zero_seed0.json",
+          "sha256": "e175c95944d2c5a23c54d68bb6f70343339725d612810031d7bd400aba7e7fb2"
+        },
+        "legacy": {
+          "path": "configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json",
+          "sha256": "6db2f139cfa023d9af6f83b4dea91dfa615b99ecf5a11bb959a063cef5180540"
+        }
+      }
+    },
+    "clean_controls": {
+      "result_root": "results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-one-decade-ordinary-mnist-10-30-30ep-seed0-20260816-v1",
+      "result_sha256": {
+        "conv2": {
+          "baseline": "c29341c871d37483dfcb74a9a4a7bc670ff2a97628461fd8c25e9ed3ae9aa55a",
+          "ours": "54303db54628d4c8fc97dd0dc53e6e00ab8cca09559b1e28b883dcc3654cedd6",
+          "legacy": "a6b550ff1a9460ece378fec815fc82ddf4a1d47324f4acbcf5b7654233c5dd01"
+        }
+      }
+    },
+    "jean_zay_environment": {
+      "path": "configs/conv/perfectdiode_successor_jeanzay_umg_v100_environment_v1.json",
+      "sha256": "4d25217ee63fae7f92d1139c8f4f26188cfd95d15d5a862d6728993cb9d311ab"
+    }
+  },
+  "execution": {
+    "target": "jean-zay",
+    "account": "umg@v100",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100-32g",
+    "canary_array": "0-0",
+    "production_array": "0-1%2",
+    "logical_case_count": 3,
+    "pack_count": 2,
+    "runs_per_gpu": 2,
+    "cpus_per_task": 16,
+    "canary_walltime": "02:00:00",
+    "production_walltime": "08:00:00",
+    "expected_duration_after_allocation": "approximately 4 to 6 hours",
+    "packs": [[0, 1], [2]],
+    "pack_labels": ["conv2_baseline__conv2_ours", "conv2_legacy"],
+    "remote_stage_root": "/lustre/fswork/projects/rech/umg/ucy17uy/server_code/experiments/perfectdiode-conv2-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-30ep-seed0-20260817-v1",
+    "remote_result_root": "/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode-conv2-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-30ep-seed0-20260817-v1"
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "schema_version": "perfectdiode-conv123-centered-float64-eqprop-beta-collapse-study/v1",
+  "study_id": "perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "evidence_class": "ordinary_mnist_eqprop_beta_collapse_diagnostic",
+  "question": "For Conv1, Conv2, and Conv3, do the original maximum-beta candidates collapse during ten-epoch centered-float64 EqProp training while the matched one-decade-lower controls remain stable, and is that conclusion consistent for the fixed SGD and Adam learning-rate vectors?",
+  "source": {
+    "learning_rate_handoffs": {
+      "conv12": {
+        "path": "configs/conv/perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json",
+        "sha256": "be353c88ec924206e2adf5b960e77ea914dc67800841e6e00534c859f709ac14"
+      },
+      "conv3": {
+        "path": "configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json",
+        "sha256": "47c88be060efbbff49708d3ed9ef94f38c0bc4955858e7f0ea9cf648aecc70bb"
+      }
+    },
+    "config_root": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1",
+    "scheme_configs": {
+      "conv1": {
+        "baseline": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/00_baseline_sgd_seed0.json", "sha256": "dd3f1323415ba04b02f16a6c5ee26edb409c4a670413d30d5f8fc132b247c36e"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/01_baseline_adam_seed0.json", "sha256": "2e28fb6fbe7611028f21c28a6a93fef49e4a4e5a0e782a111bb9fa9b9930abff"}
+        },
+        "ours": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/02_ours_sgd_seed0.json", "sha256": "33eb477a2379418e2e3f07ce619807ed28013f5bb49adbf64065df59e635c5ab"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/03_ours_adam_seed0.json", "sha256": "4ed3869403856a5a8d5035fc72b7d2b45749ae75dfbee2a2f1cf2a0cfaa3762b"}
+        },
+        "legacy": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/04_legacy_sgd_seed0.json", "sha256": "04d5731127afc0d0b9b13fb90331b7dbdcc48c759dfbfdf14d426d1d285bd3fc"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv1/05_legacy_adam_seed0.json", "sha256": "d65c9e2b94d85e41daebef40279726f065e302fd77f04edf28099264527b6d68"}
+        }
+      },
+      "conv2": {
+        "baseline": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/00_baseline_sgd_seed0.json", "sha256": "579f9486c3f97d4cbd392cade6c043326dee30f96110b3da547aba938a9011ae"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/01_baseline_adam_seed0.json", "sha256": "4c36eafa73df02fa162cb85e3f7cd0972639ca57af2864d2fcd85ec0ce1b5626"}
+        },
+        "ours": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/02_ours_sgd_seed0.json", "sha256": "b06574ba1bf83c936425ba90acad962261b947edcc3a704190637b4ca2bc6b1b"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/03_ours_adam_seed0.json", "sha256": "fbd062a5900fdb6ef70032e98fb2624fcb456f75ba9e35e17935d0709c786417"}
+        },
+        "legacy": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/04_legacy_sgd_seed0.json", "sha256": "9611ec0e12ee148c1841071859df407785eed022cc8d7161ead208fc7acea4bd"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv2/05_legacy_adam_seed0.json", "sha256": "2231111fd1a8a5c6962025da0a1480654305dc1a4ccf0de3cd675e8f0afeffcb"}
+        }
+      },
+      "conv3": {
+        "baseline": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/00_baseline_sgd_seed0.json", "sha256": "c1e10a701a9b42cb75787e905b94b70d0de964cfdfefb7f411d64ea61fdb2fb7"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/01_baseline_adam_seed0.json", "sha256": "34b39f744da3988ada60c8a928e9675430709548f37cf75d2e271ebd5fd73b4e"}
+        },
+        "ours": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/02_ours_sgd_seed0.json", "sha256": "c512c41f541edbbd65b2778bbd339ca90ba22260372d467f1b7df883b30b1644"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/03_ours_adam_seed0.json", "sha256": "86040da0d9a5d7b65ce5444fe88fe1cc962579e451979856a2a3b37702b1887f"}
+        },
+        "legacy": {
+          "SGD": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/04_legacy_sgd_seed0.json", "sha256": "9f294d3e956e68e1bf2e70d6e3e39fad1185c65a50497cafbd76989764d7ea84"},
+          "Adam": {"path": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/05_legacy_adam_seed0.json", "sha256": "6b1341fa23243ec63cc415a84731868ec7e1ba2bbbd919a4f73d193c290fa290"}
+        }
+      }
+    },
+    "beta_evidence": {
+      "baseline_ours": "results/perfectdiode-conv123-baseline-ours-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/analysis/max_beta_by_cosine_threshold.csv",
+      "legacy": "results/perfectdiode-conv123-legacy-centered-float64-beta-1em3-to-1e3-tk8-seed0-20260812-v1/analysis/max_beta_by_cosine_threshold.csv",
+      "conv2_training_boundary": "results/perfectdiode-conv2-centered-float64-eqprop-read-noise-training-10ep-seed0-20260812-v1"
+    },
+    "jean_zay_environment": {
+      "path": "configs/conv/perfectdiode_successor_jeanzay_umg_v100_environment_v1.json",
+      "sha256": "4d25217ee63fae7f92d1139c8f4f26188cfd95d15d5a862d6728993cb9d311ab"
+    }
+  },
+  "scientific_contract": {
+    "architectures": ["conv1", "conv2", "conv3"],
+    "schemes": ["baseline", "ours", "legacy"],
+    "optimizers": ["SGD", "Adam"],
+    "beta_tiers": ["boundary", "one_decade_lower"],
+    "dataset": "ordinary_mnist_deterministic_55000_train_5000_validation",
+    "official_test_read": false,
+    "model_seed": 0,
+    "shuffle_seed": 0,
+    "batch_size": 16,
+    "validation_batch_size": 64,
+    "epochs": 10,
+    "T": 8,
+    "K": 8,
+    "runtime_dtype": "float64",
+    "training_algorithm": "centered_frozen_current_eqprop",
+    "endpoint_read_noise_std": 0.0,
+    "endpoint_read_noise_seed": 2026081501,
+    "input_read_noise": false,
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "collapse_definition": {
+      "nonfinite_training": true,
+      "final_validation_drop_from_best_pp_at_least": 5.0
+    },
+    "weight_min": 0.0,
+    "weight_max": 100.0,
+    "weight_initialization": "kaiming_uniform",
+    "non_linearity": "perfect_diode",
+    "exponential_diode_param": {"I_s": 0.000001, "V_off": 0.0, "V_t": 0.025},
+    "quadratic_diode_param": {"diode_conductance": 1.0, "v_max": 1000000.0, "v_min": -1000000.0},
+    "conv3_tk8_residual_deviation": "The Conv3 baseline maximum-beta candidate is cosine-only at T=K=8 because its shared free state was under-relaxed; retain T=K=8 as a user-selected exploratory limitation."
+  },
+  "architectures": {
+    "conv1": {
+      "depth": 1,
+      "parameter_order": ["ConvWeight_0", "DenseWeight_0", "Bias_0"],
+      "injected_beta": {
+        "boundary": {"baseline": 1000.0, "ours": 300.0, "legacy": 30.0},
+        "one_decade_lower": {"baseline": 100.0, "ours": 30.0, "legacy": 3.0}
+      },
+      "boundary_status": {"baseline": "open_tested_upper_edge", "ours": "bracketed", "legacy": "bracketed"}
+    },
+    "conv2": {
+      "depth": 2,
+      "parameter_order": ["ConvWeight_0", "ConvWeight_1", "DenseWeight_0", "Bias_0", "Bias_1"],
+      "injected_beta": {
+        "boundary": {"baseline": 1000.0, "ours": 100.0, "legacy": 0.3},
+        "one_decade_lower": {"baseline": 100.0, "ours": 10.0, "legacy": 0.03}
+      },
+      "boundary_status": {"baseline": "training_nonfinite", "ours": "training_nonfinite", "legacy": "finite_with_large_late_accuracy_drop"}
+    },
+    "conv3": {
+      "depth": 3,
+      "parameter_order": ["ConvWeight_0", "ConvWeight_1", "ConvWeight_2", "DenseWeight_0", "Bias_0", "Bias_1", "Bias_2"],
+      "injected_beta": {
+        "boundary": {"baseline": 1000.0, "ours": 30.0, "legacy": 0.01},
+        "one_decade_lower": {"baseline": 100.0, "ours": 3.0, "legacy": 0.001}
+      },
+      "boundary_status": {"baseline": "open_tested_upper_edge_cosine_only_residual_unqualified", "ours": "bracketed_residual_qualified", "legacy": "bracketed_residual_qualified"}
+    }
+  },
+  "execution": {
+    "target": "jean-zay",
+    "account": "umg@v100",
+    "partition": "gpu_p13",
+    "qos": "qos_gpu-t3",
+    "constraint": "v100-32g",
+    "module": "pytorch-gpu/py3/2.5.0",
+    "array": "0-17%18",
+    "logical_case_count": 36,
+    "pack_count": 18,
+    "runs_per_gpu": 2,
+    "cpus_per_task": 16,
+    "walltime": "04:00:00",
+    "monitor_interval_minutes": 30,
+    "output_root": "results/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1",
+    "remote_source_root": "/lustre/fswork/projects/rech/umg/ucy17uy/server_code/experiments/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1/source",
+    "remote_dataset_root": "/lustre/fsn1/projects/rech/umg/ucy17uy/datasets/mnist",
+    "remote_output_root": "/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode-conv123-centered-float64-eqprop-beta-collapse-boundary-vs-1decade-sgd-adam-10ep-seed0-20260815-v1"
+  }
+}
