@@ -883,6 +883,34 @@ evidence available today, not pass/fail gates.
 - **Workflow summary:** `results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
 
+<!-- BEGIN EBL STUDY ibm-reram-program-verify-noise-20260821-v2 -->
+### ibm-reram-program-verify-noise-20260821-v2
+
+**Short IBM ReRAM pulse-count program-and-verify endpoint model**
+
+- **Finished:** 2026-08-21
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** mixed
+- **Initial hypothesis:** At the primary half-step acceptance tolerance, an adaptive fixed-amplitude pulse-count controller reduces verify reads relative to one-pulse verify without materially increasing held-out endpoint error or failure probability, and a target-dependent Gaussian is adequate only when its predeclared coverage and Wasserstein gates pass.
+- **Completion criteria:**
+  - All four declared arms complete the 41-target, half-step-tolerance, two-start, two-controller design on 1024 device identities with four repeats: exactly 671744 trajectories per arm and 2686976 trajectories in total.
+  - The complete four-arm local campaign reaches terminal artifacts within 24 elapsed hours of the first production-arm launch, with exact launcher handles, logs, and start/finish timestamps retained.
+  - Each arm records CUDA pulse-plant execution, a pinned AIHWKit-1.1.0 population-sampling receipt, the sampled population hash, and exact per-trajectory conditioning and programming seeds.
+  - Trajectory and verify-event artifacts preserve accepted, failed, saturated, non-finite, and corrupt outcomes; every persisted ledger passes the exact integrity contract.
+  - Gaussian adequacy is decided only by the predeclared coverage and normalized Wasserstein gates on the 204 held-out validation identities and their four repeats at every target.
+  - Wan-2022 raw and explicitly clipped one-second comparisons are present with the normalization and timing limitations stated.
+  - No tolerance-sensitivity, HWA, Tiki-Taka, LoRA, or network-accuracy conclusion is drawn from this device-characterization study.
+- **Coverage:** 4 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis has a mixed outcome. Across the two IBM AIHWKit presets, corruption settings, and SET/RESET start directions, adaptive pulse-count batching reduced held-out verify reads by 9.85% to 85.63% relative to one-pulse verify. Success-conditioned endpoint RMSE changed by only -0.43% to +0.05%, so batching did not materially degrade the accepted endpoint distribution. The savings were not free, however: adaptive batching increased mean target pulses by 53.70% to 210.51% and reduced held-out programming success by 0.96 to 5.31 percentage points. The claim that verify savings occur without a material failure penalty is therefore not supported by these settings. The target-dependent Gaussian surrogate was rejected in all 16 preset/corruption/controller/start conditions: absolute 90% or 95% coverage errors were 0.0452 to 0.0551 against the 0.03 gate, and median target-binned Wasserstein distance normalized by residual standard deviation was 0.1543 to 0.1731 against the 0.10 gate. Downstream deployment simulation should use the empirical endpoint kernel together with separate target-conditioned failure, saturation, corrupt-device, and pulse/verify-cost models. In the operational normalized Wan-2022 comparison, optimized-material IBM accepted-endpoint standard deviation was about 0.0136 versus Wan's 0.0424, whereas baseline-HfO2 was about 0.0668 to 0.0670; this is not a physical-equivalence claim. No HWA, Tiki-Taka, LoRA, or network-accuracy conclusion follows from this characterization.
+- **Main limitations:** This is model-based evidence generated from AIHWKit 1.1.0 fitted IBM ReRAM presets, not replay of raw measured IBM programming trajectories. The shortened design retains all 41 targets, both programming directions, both controllers, identity-held-out validation, 1024 sampled identities, and four repeats, but evaluates only the half-step tolerance and therefore provides no tolerance-sensitivity result. It uses fixed normalized pulse amplitude, one preselected adaptive-controller setting, target-independent blocked boundary conditioning, and a 512-pulse programming budget; the study did not predeclare a numerical threshold for what constitutes a material success-rate penalty. Published corrupt identities are discrete modeled outcomes rather than new measured devices. The IBM coordinate has no unique mapping to Wan's 0-40 microSiemens range, IBM endpoint timing is unspecified while Wan is evaluated at one second, and Wan supplies no matched pulse trajectory, failure, or cost model. The four arms share construction and analysis seeds and are not independent fabricated arrays. This milestone does not exercise HWA training or post-deployment updates.
+- **Next steps:**
+  - Integrate the authoritative empirical endpoint kernel and its separate target-conditioned failure, corruption, saturation, and cost models into a deployment backend, preserving each sampled programmed endpoint for the later matched HWA-only versus on-chip-recovery comparison.
+  - Run a small predeclared controller-tuning study over adaptive batch size and eta with an explicit maximum acceptable success-rate loss, while retaining the half-step primary tolerance and identity-held-out evaluation.
+  - Repeat the comparison with raw IBM pulse trajectories and a defensible physical conductance/time mapping if those data become available; until then, keep the Wan-2022 comparison operational and normalized only.
+- **Raw artifacts:** `results/ibm-reram-program-verify-noise-20260821-v2/`
+- **Workflow summary:** `results/ibm-reram-program-verify-noise-20260821-v2/analysis/summary.json`
+<!-- END EBL STUDY ibm-reram-program-verify-noise-20260821-v2 -->
+
 ## Shared validity notes
 
 - These studies are exploratory rather than final paper-facing evidence.

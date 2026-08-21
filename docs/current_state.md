@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Purpose
 
@@ -44,6 +44,13 @@ The strongest current interpretation is:
   four-device recovery in the endpoint-projection simulator: balanced
   signSGD reached `95.77%` test accuracy from a `61.48%` initialization, but
   remained `1.69` points behind ordinary SGD and had `3.50x` its test KL.
+- The model-based IBM ReRAM pulse-count reconstruction does not support using
+  adaptive batching as an unconditional replacement for one-pulse verify. It
+  saves `9.85–85.63%` of verify reads with essentially unchanged accepted-
+  endpoint RMSE, but uses `53.70–210.51%` more pulses and loses `0.96–5.31`
+  percentage points of programming success. Its Gaussian endpoint surrogate
+  failed every predeclared adequacy gate, so the empirical kernel and separate
+  failure/cost models are the authoritative outputs.
 - Most conclusions remain exploratory: the key studies use one base-training
   seed, and endpoint program-and-verify models are not substitutes for
   measured incremental pulse dynamics.
@@ -353,6 +360,22 @@ and fine-tuning updates must remain separately measurable.
   interval is a target-mapping range rather than a hard upper bound on every
   noisy sample. The exploratory CMO/PCM screen used those models' own
   conductance ranges.
+- **IBM ReRAM fixed-amplitude program-and-verify reconstruction:** a shortened
+  four-arm CUDA study sampled the AIHWKit 1.1.0 optimized-material and
+  baseline-HfO2 fitted populations, with and without their published corrupt-
+  device mixture. It retained all 41 targets, lower and upper boundary starts,
+  one-pulse and adaptive controllers, 1024 identities, four repeats, and 204
+  held-out validation identities at the primary half-step tolerance. The
+  campaign completed `2,686,976` trajectories in `1,546.18 s`. Adaptive
+  batching reduced verify reads by `9.85–85.63%`, but increased pulses by
+  `53.70–210.51%` and reduced success by `0.96–5.31` points; accepted-endpoint
+  RMSE changed by only `-0.43%` to `+0.05%`. All 16 Gaussian conditions failed
+  both the predeclared coverage and normalized-Wasserstein gates. The
+  empirical endpoint kernel, target-conditioned failure/corruption/saturation
+  model, and pulse/verify-cost model must therefore travel together. This is
+  reconstruction from fitted preset dynamics, not replay of raw IBM pulse
+  traces, and the normalized Wan-2022 comparison is operational rather than a
+  physical calibration.
 - **Historical Wan noise model:** HWA training used temporary additive
   Gaussian parameter noise (`std_dev=0.0025` in the completed Wan studies).
   Deployment then used IBM AIHWKit's phenomenological Wan-2022 model:
@@ -582,10 +605,13 @@ and fine-tuning updates must remain separately measurable.
   testing absolute scaling and hard clipping. Nominally zero LoRA factors
   also retain the floor unless a cancellation or open-circuit mechanism is
   part of the experiment.
-- Program-and-verify measurements cannot be substituted directly for a
-  Tiki-Taka pulsed-device model. A distribution of final programming errors
+- Program-and-verify endpoint measurements cannot be substituted directly for
+  a Tiki-Taka pulsed-device model. A distribution of final programming errors
   around a requested target conductance does not determine the trajectory or
-  noise of individual potentiation and depression pulses.
+  noise of individual potentiation and depression pulses. The new IBM ReRAM
+  study reconstructs such trajectories from fitted AIHWKit incremental-device
+  equations, but this remains model-based evidence rather than measured pulse
+  replay.
 - The smaller digits studies are mixed: hard-sigmoid recovery was positive,
   while the perfect-diode comparison left little recovery headroom.
 - PCM and HERMES screens did not materially enlarge the deployment gap under
@@ -631,28 +657,33 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Start a separate Tiki-Taka pulsed-device study using measured incremental
+1. Integrate the finalized IBM ReRAM empirical endpoint kernel with its
+   separate target-conditioned failure, corruption, saturation, and cost
+   models as a deployment backend. Preserve each sampled programmed endpoint
+   and use it as the common starting state for a predeclared HWA-only versus
+   on-chip-recovery comparison; do not redraw endpoints between arms.
+2. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify
    HWA models as pulse-update models unless their source papers provide the
    required per-pulse trajectories. Measure write count, update noise, energy,
    and endurance alongside accuracy.
-2. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
+3. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
    seeds and add a direct ideal-map-to-device-to-BPTT arm. This separates
    whether HWA is necessary for recovery from whether it merely improves the
    first write. Then compare the generic 3% modifier with device-matched HWA,
    without tuning either choice on the final test set.
-3. Compare three targeted post-HWA interventions on the same deployment:
+4. Compare three targeted post-HWA interventions on the same deployment:
    rank-4 LoRA, W2-plus-bias fine-tuning, and full-model fine-tuning. This
    tests whether the full rewrite is actually needed.
-4. Train a perfect-diode DRN from initialization through the affine CMO
+5. Train a perfect-diode DRN from initialization through the affine CMO
    mapping and endpoint noise. Track voltage/noise margin and conductance
    loading as well as accuracy.
-5. Test the current passive LoRA branch on conductance-loss errors such as
+6. Test the current passive LoRA branch on conductance-loss errors such as
    drift or stuck-low devices, where an added conductance path can compensate
    the failure direction.
-6. Design a differential physical LoRA branch and compare it with the
+7. Design a differential physical LoRA branch and compare it with the
    positive-only branch on identical signed perturbations.
-7. Compare active denominator calibration, full rank-one KCL cancellation,
+8. Compare active denominator calibration, full rank-one KCL cancellation,
    and a validation-trained selector mask under matched mismatch and read
    noise. Ordinary numerator-only crossbar subtraction is not an exact DRN
    control.
