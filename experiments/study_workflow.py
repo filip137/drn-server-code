@@ -25,7 +25,7 @@ STUDY_SCHEMA_VERSION = 1
 SUMMARY_SCHEMA = "ebl.study.summary"
 FINAL_SCHEMA = "ebl.study.final"
 RUN_SCHEMA = "ebl.run"
-_MODES = {"train", "linspace", "validate"}
+_MODES = {"train", "linspace", "validate", "characterize"}
 _OUTCOMES = {"supported", "refuted", "mixed", "inconclusive"}
 _IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -251,8 +251,8 @@ def load_study_plan(path: Path | str) -> dict[str, Any]:
         mode = item["mode"]
         if mode not in _MODES:
             raise StudyWorkflowError(
-                "Expected study plan arm mode to be 'train', 'linspace', or "
-                f"'validate'. Provided value: {mode!r}."
+                "Expected study plan arm mode to be 'train', 'linspace', "
+                f"'validate', or 'characterize'. Provided value: {mode!r}."
             )
         configs = item["configs"]
         if not isinstance(configs, list) or not configs:

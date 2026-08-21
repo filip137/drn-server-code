@@ -24,6 +24,7 @@ class RunMode(str, Enum):
     TRAIN = "train"
     LINSPACE = "linspace"
     VALIDATE = "validate"
+    CHARACTERIZE = "characterize"
 
 
 def config_error(path: str, expected: str, provided: Any) -> ConfigError:

@@ -1,6 +1,6 @@
 # IBM ReRAM pulse-count program-and-verify noise model
 
-- Status: pre-implementation research contract
+- Status: short CUDA production protocol reviewed and sized; production evidence pending
 - First milestone: device characterization and Wan-2022 comparison
 - Reference runtime: AIHWKit 1.1.0
 
@@ -119,17 +119,26 @@ overshoot. The directional control is `upper_to_target`, starting at the
 upper saturation region. The final model remains conditioned on the declared
 start protocol rather than averaging the two histories silently.
 
-Boundary conditioning uses repeated same-direction pulses. It stops after
-eight successive persistent-state changes smaller than `1e-6` of the nominal
-span or after 4,096 conditioning pulses. Conditioning pulses and their seed
-are recorded but excluded from the target-programming pulse budget. Failure
-to establish the declared boundary is an initialization failure, not a
-programming residual.
+Boundary conditioning uses repeated same-direction pulses. The exhaustive v1
+contract stops after eight successive persistent-state changes smaller than
+`1e-6` of the nominal span or after 4,096 conditioning pulses. The short v2
+contract uses four successive quiet pulses after an operational 1,280-case
+pilot reduced median conditioning from 1,798 to 138 pulses, removed the 23.1%
+cap-failure rate, and left successful endpoints at the sampled boundary. The
+short study clones one independently conditioned state per
+device/repeat/start across targets, controllers, and tolerances. This is a
+blocked simulated comparison: it isolates target-programming dynamics while
+the four repeats still sample conditioning variability. Conditioning pulses
+and their seed are recorded but excluded from the target-programming pulse
+budget. Failure to establish the declared boundary is an initialization
+failure, not a programming residual.
 
 Every stochastic repeat reuses the sampled device parameters but uses a new
 cycle-to-cycle pulse stream and reconditions the device to its declared start
 state. Device-construction and pulse-stream seeds must be distinct and
-recorded.
+recorded. The strict configuration uses separate base seeds for construction,
+repeat identity, conditioning, target programming, partitioning, analysis,
+and Wan sampling; duplicate base seeds are rejected.
 
 ## Program-and-verify controllers
 
@@ -210,14 +219,21 @@ Characterize `tau / delta_x_nominal` values of `0.25`, `0.5`, and `1.0`; use
 tolerance lies below the practical pulse resolution instead of silently
 forcing convergence.
 
-For each preset, start protocol, controller, tolerance, and target:
+The exhaustive v1 contract samples 4,096 identities with eight repeats over
+three tolerances. The short v2 contract samples 1,024 identities with four
+repeats at the primary `tau/step=0.5` tolerance. Both contracts:
 
-- sample at least 4,096 independent device identities;
-- perform eight independent cycle-to-cycle repeats per device;
+- retain all 41 targets and both lower/SET and upper/RESET starts;
 - partition identities, not individual trajectories, into 20% controller
   calibration, 60% noise-model fitting, and 20% final validation; and
-- use the same partition and target grid for the one-pulse and adaptive
+- use the same identities, repeats, partition, target grid, conditioning
+  state, and programming stream for the matched one-pulse and adaptive
   controllers.
+
+The short design supplies 2,464 fit and 816 held-out validation trajectories
+per target/condition from 616 and 204 independent device identities,
+respectively. Its endpoint model is conditional on the primary tolerance; it
+cannot support a tolerance-sensitivity claim.
 
 The population-corruption arm uses the same design with the published corrupt
 probability enabled. Corrupt trajectories are classified by behavior and
@@ -226,7 +242,9 @@ failure, not discarded after observation.
 Record at least:
 
 - preset name, AIHWKit version, full preset parameters, and source reference;
-- construction, pulse, controller, and repeat seeds;
+- construction, conditioning, pulse, and repeat seeds, plus a nullable
+  controller-seed field. It is explicitly null for the deterministic
+  one-pulse and adaptive controllers in this version;
 - device identity, data partition, start protocol, target, and tolerance;
 - apparent and persistent state before and after programming;
 - every verify value and the signed batch length between verifies;
@@ -234,6 +252,11 @@ Record at least:
 - accepted, saturated, corrupt, non-finite, and budget-exhausted
   flags; and
 - endpoint residuals relative to the continuous target.
+
+SQLite stores a non-finite apparent terminal value as `NULL`; the accompanying
+`nonfinite=1` flag is mandatory, while the last persistent state, pulse
+accounting, and terminal verify event remain present. A `NULL` apparent value
+on any trajectory not classified non-finite fails the integrity contract.
 
 ## Derived endpoint model
 
@@ -329,6 +352,9 @@ characterization configuration. Raw results belong under one
 The completed characterization must produce:
 
 - a machine-readable trajectory artifact with the recorded fields above;
+- a fail-closed integrity report covering trajectory/event counts, pulse and
+  reversal accounting, acceptance semantics, identity partitions, and matched
+  controller/tolerance random streams;
 - an empirical-kernel artifact with target bins and validation partitions;
 - a versioned fit artifact containing normalization, polynomial
   coefficients, controller settings, failure model, source versions, seeds,
@@ -342,6 +368,53 @@ Deterministic replay must reproduce device parameters, pulse trajectories,
 partitions, fitted coefficients, and summary metrics from the recorded
 configuration. Construction order must not change device identities or
 results.
+
+### Implemented execution surface
+
+The strict experiment ID is `ibm_reram_program_verify.v1`, exposed through:
+
+```bash
+python -m ebl characterize \
+  --config examples/reram_program_verify/smoke_om.json \
+  --output-dir /tmp/ibm-reram-program-verify-smoke
+```
+
+Configurations declare a `smoke` profile (reported as operational evidence),
+the immutable exhaustive `production` profile, or the immutable
+`production_short` profile. The short profile requires 1,024 identities,
+four repeats, 41 targets, the half-step tolerance, both starts and
+controllers, the four-quiet-pulse boundary rule, target-independent blocked
+conditioning, the 512-pulse programming budget, and the unchanged adaptive
+and Wan settings. Smoke artifacts cannot satisfy either production plan.
+
+AIHWKit samples each identity's fitted device-to-device parameters with an
+identity-derived construction seed. The pulse transition is then evaluated by
+`training/ibm_reram_program_verify.py` with explicit per-trajectory PyTorch
+streams. CPU execution retains scalar per-trajectory generators. CUDA
+execution generates each independently seeded stream in buffered CPU blocks
+and stages those immutable draws on the GPU; exact replay uses recorded seeds,
+draw positions, execution backend, and the sampled population. The local CUDA
+environment does not contain AIHWKit, so population construction and Wan
+sampling run through the pinned AIHWKit 1.1.0 interpreter and emit hashed
+receipts. This split is required because AIHWKit 1.1.0 does not expose or
+serialize the native cycle-to-cycle generator. Focused tests cover native
+noiseless pulse parity, CPU/CUDA equation parity, buffered-normal moments,
+CUDA continuation replay, and byte-identical end-to-end CUDA ledgers.
+
+The runtime writes the full trajectory and verify-event stream to SQLite,
+validates that persisted ledger before fitting, preserves the sampled
+population in NPZ, emits integrity/calibration/empirical/Gaussian/Wan JSON
+artifacts, creates dependency-free SVG plots (including target-binned
+quantiles, tail exceedance, and saturation/clamp mass), and writes a Markdown
+report. The exhaustive plan remains
+`studies/ibm-reram-program-verify-noise-20260821-v1.json`; the reviewed local
+plan is `studies/ibm-reram-program-verify-noise-20260821-v2.json`. The latter
+contains 671,744 trajectories per arm and 2,686,976 total. An exact-width
+five-target CUDA sizing gate completed 81,920 trajectories and 2,863,651
+verify events in 61.6 seconds on the local RTX 3090, projecting 8.4 minutes
+per arm before a 10x operational safety factor. Neither plan is implied by a
+successful smoke run: the declared arms must be prepared and launched through
+the study workflow before headline results are claimed.
 
 ## Completion criteria
 

@@ -81,6 +81,25 @@ def test_campaign_accepts_generic_external_input_paths(tmp_path: Path) -> None:
     ).resolve()
 
 
+def test_campaign_schema_accepts_device_characterization_stages(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest(tmp_path)
+    manifest["stages"] = [
+        {
+            "id": "characterize",
+            "case_id": "ibm-reram",
+            "target": "base",
+            "command": "characterize",
+            "config": "production.json",
+        }
+    ]
+
+    parsed = CampaignSpec.parse(manifest, base_dir=tmp_path)
+
+    assert parsed.stages[0].command == "characterize"
+
+
 def test_campaign_rejects_unknown_external_input_key(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     manifest["stages"][0]["inputs"] = {

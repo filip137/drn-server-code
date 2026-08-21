@@ -57,6 +57,12 @@ from experiments.mnist_relu_drn_reset.config import (
     parse_reset_student_config,
     resolve_reset_student_spec,
 )
+from experiments.reram_program_verify.config import (
+    EXPERIMENT_ID as RERAM_PROGRAM_VERIFY_EXPERIMENT_ID,
+    SCHEMA_VERSION as RERAM_PROGRAM_VERIFY_SCHEMA_VERSION,
+    parse_reram_program_verify_config,
+    resolve_reram_program_verify_spec,
+)
 
 
 _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
@@ -274,6 +280,19 @@ MNIST_RELU_V1 = ExperimentDefinition(
             "Bias-free digital teacher selected by validation cross-entropy.",
         ),
     ),
+)
+
+
+RERAM_PROGRAM_VERIFY_V1 = ExperimentDefinition(
+    experiment_id=RERAM_PROGRAM_VERIFY_EXPERIMENT_ID,
+    schema_version=RERAM_PROGRAM_VERIFY_SCHEMA_VERSION,
+    description=(
+        "Pulse-resolved characterization of IBM ReRAM array presets with "
+        "one-pulse and adaptive program-and-verify controllers."
+    ),
+    supported_modes=(RunMode.CHARACTERIZE,),
+    parser=parse_reram_program_verify_config,
+    resolver=resolve_reram_program_verify_spec,
 )
 
 
@@ -757,6 +776,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     MNIST_RELU_DRN_RESET_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_BIAS_V1,
     MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1,
     MNIST_RELU_DRN_RESET_FACTORIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_FACTORIAL_V1,
+    RERAM_PROGRAM_VERIFY_V1.experiment_id: RERAM_PROGRAM_VERIFY_V1,
 }
 
 

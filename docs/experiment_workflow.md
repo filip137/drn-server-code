@@ -78,6 +78,15 @@ python -m ebl train \
   --output-dir results/<study-id>/runs/<arm-id>
 ```
 
+Device-characterization studies use the same lifecycle with the dedicated
+mode:
+
+```bash
+python -m ebl characterize \
+  --config examples/reram_program_verify/production_om_continuous.json \
+  --output-dir results/<study-id>/runs/<arm-id>
+```
+
 The numerical runtime still creates one exclusive native run directory. When
 the output path has the canonical study shape, `manifest.json` automatically
 records the study ID, arm ID, evidence class, study hash, plan hash, and source

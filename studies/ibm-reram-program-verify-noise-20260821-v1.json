@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "study_id": "ibm-reram-program-verify-noise-20260821-v1",
+  "title": "IBM ReRAM pulse-count program-and-verify endpoint model",
+  "hypothesis": "An adaptive fixed-amplitude pulse-count controller reduces verify reads relative to one-pulse verify without materially increasing held-out endpoint error or failure probability, and a target-dependent Gaussian is adequate only when its predeclared coverage and Wasserstein gates pass.",
+  "motivation": "Establish the programming boundary needed to compare HWA-only deployment with later matched Tiki-Taka or LoRA recovery, without assuming that on-chip training is required.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "om-continuous",
+      "description": "Optimized-material IBM array fit with corruption disabled for continuous endpoint modeling.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_om_continuous.json"]
+    },
+    {
+      "arm_id": "om-corrupt",
+      "description": "Optimized-material population with the published corrupt-device probability enabled.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_om_corrupt.json"]
+    },
+    {
+      "arm_id": "hfo2-continuous",
+      "description": "Baseline-HfO2 stress control with corruption disabled.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_hfo2_continuous.json"]
+    },
+    {
+      "arm_id": "hfo2-corrupt",
+      "description": "Baseline-HfO2 population with the published corrupt-device probability enabled.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_hfo2_corrupt.json"]
+    }
+  ],
+  "completion_criteria": [
+    "All four declared arms complete the 41-target, three-tolerance, two-start, two-controller design on 4096 device identities with eight repeats.",
+    "Trajectory and verify-event artifacts preserve accepted, failed, saturated, non-finite, and corrupt outcomes with exact seeds and sampled device state.",
+    "Gaussian adequacy is decided only by the predeclared coverage and normalized Wasserstein gates on held-out device identities.",
+    "Wan-2022 raw and explicitly clipped one-second comparisons are present with the normalization and timing limitations stated.",
+    "No HWA, Tiki-Taka, LoRA, or network-accuracy conclusion is drawn from this device-characterization study."
+  ],
+  "analysis_plan": [
+    "Compare adaptive and one-pulse controllers within each matched preset, start protocol, target, and tolerance using success, endpoint residual, pulses, verifies, and reversals.",
+    "Fit fourth-order target-dependent mean and log-standard-deviation models on fit identities and validate coverage and target-binned Wasserstein distance on held-out validation identities.",
+    "Keep corrupt and failed trajectories in separate target-conditioned failure models rather than absorbing them into continuous Gaussian variance.",
+    "Compare IBM apparent endpoints with Wan-2022 at one second in the common normalized coordinate, reporting both native raw and explicit [0,1]-clipped Wan views."
+  ]
+}
