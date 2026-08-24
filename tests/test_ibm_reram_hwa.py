@@ -16,6 +16,7 @@ from training.ibm_reram_hwa import (
     IbmReramArrayPopulation,
     IbmReramHwaConfig,
     IbmReramHwaParameterModifier,
+    _map_cell_aware_exact_bounds_quad,
     build_ibm_reram_cell_aware_exact_bounds_codebook,
     load_om_array_population,
     map_ibm_reram_array_targets,
@@ -596,6 +597,62 @@ def test_cell_aware_continuous_mapper_does_not_quantize_or_compensate_baselines(
     validate_ibm_reram_target_mapping_preflight(report)
 
 
+@pytest.mark.parametrize("mode", ["continuous", "quantized_9_level"])
+def test_cell_aware_training_mapper_defers_evidence_without_changing_targets(
+    mode: str,
+) -> None:
+    binding = _binding((2, 4))
+    lower = torch.tensor(
+        [[0.10, 0.20, 0.30, 0.40], [0.50, 0.60, 0.70, 0.80]]
+    )
+    upper = torch.tensor(
+        [[0.90, 0.85, 0.80, 0.75], [0.70, 0.75, 0.90, 0.95]]
+    )
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    source = torch.tensor(
+        [[0.625, 0.125, 0.25, 0.75], [0.125, 0.5, 0.625, 0.25]]
+    ).reshape(-1)
+    layouts = ((binding.key, "paired"),)
+
+    detailed, detailed_report, artifact = _map_cell_aware_exact_bounds_quad(
+        source,
+        population,
+        layouts=layouts,
+        mode=mode,
+        signed_levels=9,
+    )
+    deferred, deferred_report, deferred_artifact = (
+        _map_cell_aware_exact_bounds_quad(
+            source,
+            population,
+            layouts=layouts,
+            mode=mode,
+            signed_levels=9,
+            materialize_evidence=False,
+        )
+    )
+
+    assert torch.equal(deferred, detailed)
+    assert artifact is not None
+    assert deferred_artifact is None
+    assert deferred_report["mapped_target_support"] == detailed_report[
+        "mapped_target_support"
+    ]
+    assert deferred_report["evidence_materialization"] == (
+        "deferred_to_evaluation_stream"
+    )
+    if mode == "quantized_9_level":
+        assert deferred_report["code_index_counts"] == detailed_report[
+            "code_index_counts"
+        ]
+    validate_ibm_reram_target_mapping_preflight(deferred_report)
+
+
 def test_cell_aware_config_is_strict_and_records_separate_forward_gain() -> None:
     config = _config(
         execution="compact_endpoint",
@@ -1015,7 +1072,7 @@ def test_cell_aware_compact_context_has_no_fallback_and_restores_fp32_shadow(
         _config(
             execution="compact_endpoint",
             corruption_policy="counterfactual_repaired",
-            noisy_evaluation=False,
+            noisy_evaluation=True,
             target_mapping="cell_aware_exact_bounds_quad",
             dual_rail_layout_by_parameter={binding.key: "halves"},
             cell_aware_mode="quantized_9_level",
@@ -1048,12 +1105,23 @@ def test_cell_aware_compact_context_has_no_fallback_and_restores_fp32_shadow(
     )
     assert not bool(torch.any(deployment["pulse_resolved_fallback_mask"]))
     torch.testing.assert_close(deployment["requested_target"], expected)
-    codebook = deployment["oracle_codebook"]
+    assert deployment["oracle_codebook"] is None
+    assert deployment["target_mapping_report"]["evidence_materialization"] == (
+        "deferred_to_evaluation_stream"
+    )
+
+    with modifier.evaluation_context():
+        assert not torch.equal(binding.state, clean)
+    assert torch.equal(binding.state, clean)
+    evaluation = modifier.last_deployment_bundle
+    assert evaluation is not None
+    codebook = evaluation["oracle_codebook"]
     assert codebook["schema"] == (
         "ebl.ibm_reram.om_cell_aware_exact_bounds_codebook"
     )
     assert codebook["signed_code"].tolist() == [4]
     assert codebook["code_index"].tolist() == [8]
+    assert "hashes" in evaluation["target_mapping_report"]
 
     first = deployment["apparent_endpoint"].clone()
     modifier.load_state_dict(snapshot)
@@ -1063,6 +1131,7 @@ def test_cell_aware_compact_context_has_no_fallback_and_restores_fp32_shadow(
     assert replay is not None
     assert torch.equal(replay["requested_target"], expected)
     assert torch.equal(replay["apparent_endpoint"], first)
+    assert replay["oracle_codebook"] is None
     assert torch.equal(binding.state, clean)
 
 

@@ -590,7 +590,8 @@ def _map_cell_aware_exact_bounds_quad(
     layouts: tuple[tuple[str, str], ...],
     mode: str,
     signed_levels: int,
-) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any]]:
+    materialize_evidence: bool = True,
+) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any] | None]:
     """Apply the declared per-cell affine exact-bounds oracle codebook."""
 
     device = global_targets.device
@@ -677,8 +678,14 @@ def _map_cell_aware_exact_bounds_quad(
             fraction = (float(sign) * code).clamp_min(0.0) / 4.0
             cell_target = cell_lower + fraction * cell_span
             target[rows[:, None], columns] = cell_target
-            lower_quad.append(cell_lower)
-            target_quad.append(cell_target)
+            if materialize_evidence:
+                lower_quad.append(cell_lower)
+                target_quad.append(cell_target)
+        if not materialize_evidence:
+            if mode == "quantized_9_level":
+                code_indices.append(indices.reshape(-1))
+            offset += count
+            continue
         lower_quad_tensor = torch.stack(lower_quad)
         target_quad_tensor = torch.stack(target_quad)
         baseline_contrast = (
@@ -745,6 +752,48 @@ def _map_cell_aware_exact_bounds_quad(
         offset += count
     if offset != population.size:  # pragma: no cover - population validates it
         raise RuntimeError("Expected cell-aware mapping to cover every cell.")
+
+    if not materialize_evidence:
+        support = {
+            "below_lower_bound": int((mapped < usable_lower).sum().item()),
+            "above_upper_bound": int((mapped > usable_upper).sum().item()),
+            "inside_bounds": int(
+                ((mapped >= usable_lower) & (mapped <= usable_upper)).sum().item()
+            ),
+        }
+        report: dict[str, Any] = {
+            "target_mapping": "cell_aware_exact_bounds_quad",
+            "cell_aware_mode": mode,
+            "cell_aware_signed_levels": signed_levels,
+            "rounding": (
+                "round_half_away_from_zero"
+                if mode == "quantized_9_level"
+                else None
+            ),
+            "oracle": True,
+            "hidden_device_bounds_consumed_by_target_mapper": True,
+            "post_mapping_clipping": False,
+            "post_programming_rounding": False,
+            "population_fingerprint": population.fingerprint,
+            "assignment_seed": population.assignment_seed,
+            "devices": population.size,
+            "quad_count": sum(
+                math.prod(shape) // 4 for shape in population.binding_shapes
+            ),
+            "mapped_target_support": support,
+            "mapped_target_outside_0_1": int(
+                ((mapped < 0.0) | (mapped > 1.0)).sum().item()
+            ),
+            "evidence_materialization": "deferred_to_evaluation_stream",
+        }
+        if mode == "quantized_9_level":
+            code_index_all = torch.cat(code_indices)
+            counts = torch.bincount(code_index_all.to(torch.int64), minlength=9)
+            report["code_index_counts"] = {
+                str(index): int(value)
+                for index, value in enumerate(counts.tolist())
+            }
+        return mapped, report, None
 
     shadow_all = torch.cat(shadow_values)
     code_all = torch.cat(code_coordinates)
@@ -1821,6 +1870,8 @@ def build_ibm_reram_cell_aware_exact_bounds_codebook(
             "Expected immutable cell-aware codebook reconstruction to match "
             "the authoritative target mapper exactly."
         )
+    if artifact is None:  # pragma: no cover - evidence is requested above
+        raise RuntimeError("Expected an immutable cell-aware codebook artifact.")
     return artifact
 
 
@@ -2759,6 +2810,8 @@ class IbmReramHwaParameterModifier:
 
     def _targets(
         self,
+        *,
+        materialize_evidence: bool = True,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -2781,6 +2834,7 @@ class IbmReramHwaParameterModifier:
                     layouts=layouts,
                     mode=mode,
                     signed_levels=levels,
+                    materialize_evidence=materialize_evidence,
                 )
             )
         else:
@@ -3362,7 +3416,9 @@ class IbmReramHwaParameterModifier:
                         layout,
                         mapping_report,
                         oracle_codebook,
-                    ) = self._targets()
+                    ) = self._targets(
+                        materialize_evidence=stream != "train"
+                    )
                     generator = self._generator(stream, targets.device)
                     if self._config.execution == "compact_endpoint":
                         endpoint, report, deployment = self._compact(
