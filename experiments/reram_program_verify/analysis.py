@@ -19,6 +19,14 @@ from experiments.artifacts import atomic_write_json
 
 _QUANTILES = (0.01, 0.05, 0.5, 0.95, 0.99)
 _EXCEEDANCE_THRESHOLDS = (0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2)
+_OUTCOME_QUANTILES = (0.0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0)
+_BOUNDED_UNIFORM_BINS = 8
+_BOUNDED_UNIFORM_PSEUDOCOUNT = 0.5
+_REACHABILITY_CLASSES = (
+    "target_below_lower_bound",
+    "target_inside_bounds",
+    "target_above_upper_bound",
+)
 
 
 def _condition_key(
@@ -107,6 +115,129 @@ def _wasserstein_equal_weight(first: np.ndarray, second: np.ndarray) -> float:
     return float(np.mean(np.abs(first_q - second_q)))
 
 
+def _quantile_table(values: Sequence[float] | np.ndarray) -> dict[str, Any]:
+    array = np.asarray(values, dtype=np.float64)
+    array = array[np.isfinite(array)]
+    return {
+        "count": int(array.size),
+        "probabilities": list(_OUTCOME_QUANTILES),
+        "values": (
+            [float(value) for value in np.quantile(array, _OUTCOME_QUANTILES)]
+            if array.size
+            else None
+        ),
+    }
+
+
+def _bounded_histogram(
+    values: Sequence[float] | np.ndarray,
+    *,
+    lower: float,
+    upper: float,
+    bins: int,
+    pseudocount: float,
+) -> dict[str, Any]:
+    array = np.asarray(values, dtype=np.float64)
+    array = array[np.isfinite(array)]
+    if not lower < upper:
+        raise ValueError(
+            "Expected bounded histogram lower support to be below upper "
+            f"support. Provided value: lower={lower!r}, upper={upper!r}."
+        )
+    if bins < 1 or pseudocount <= 0.0:
+        raise ValueError(
+            "Expected a positive histogram bin count and pseudocount. "
+            f"Provided value: bins={bins!r}, pseudocount={pseudocount!r}."
+        )
+    slack = max(1e-12, (upper - lower) * 1e-6)
+    if array.size and (
+        float(np.min(array)) < lower - slack
+        or float(np.max(array)) > upper + slack
+    ):
+        raise RuntimeError(
+            "Expected accepted residuals to remain inside the declared "
+            f"verify window [{lower}, {upper}]. Provided extrema: "
+            f"minimum={float(np.min(array))}, maximum={float(np.max(array))}."
+        )
+    edges = np.linspace(lower, upper, bins + 1, dtype=np.float64)
+    counts, _ = np.histogram(np.clip(array, lower, upper), bins=edges)
+    probabilities = (counts.astype(np.float64) + pseudocount) / (
+        int(np.sum(counts)) + pseudocount * bins
+    )
+    return {
+        "fit_count": int(array.size),
+        "bin_edges": [float(value) for value in edges],
+        "bin_counts": [int(value) for value in counts],
+        "bin_probabilities": [float(value) for value in probabilities],
+    }
+
+
+def _bounded_histogram_quantiles(
+    histogram: Mapping[str, Any],
+    probabilities: Sequence[float] | np.ndarray,
+) -> np.ndarray:
+    edges = np.asarray(histogram["bin_edges"], dtype=np.float64)
+    masses = np.asarray(histogram["bin_probabilities"], dtype=np.float64)
+    requested = np.asarray(probabilities, dtype=np.float64)
+    if (
+        edges.size != masses.size + 1
+        or masses.size == 0
+        or np.any(masses <= 0.0)
+        or not math.isclose(float(np.sum(masses)), 1.0, abs_tol=1e-9)
+    ):
+        raise ValueError(
+            "Expected a normalized positive piecewise-uniform histogram. "
+            f"Provided value: {histogram!r}."
+        )
+    if np.any(requested < 0.0) or np.any(requested > 1.0):
+        raise ValueError(
+            "Expected quantile probabilities in [0,1]. Provided value: "
+            f"{requested.tolist()!r}."
+        )
+    cumulative = np.cumsum(masses)
+    indices = np.searchsorted(cumulative, requested, side="right")
+    indices = np.minimum(indices, masses.size - 1)
+    previous = np.where(indices == 0, 0.0, cumulative[indices - 1])
+    within = np.clip((requested - previous) / masses[indices], 0.0, 1.0)
+    return edges[indices] + within * (edges[indices + 1] - edges[indices])
+
+
+def _quantile_model_validation(
+    residuals: Sequence[float] | np.ndarray,
+    quantile,
+) -> dict[str, Any]:
+    array = np.asarray(residuals, dtype=np.float64)
+    array = array[np.isfinite(array)]
+    if array.size == 0:
+        return {
+            "count": 0,
+            "coverage_90": None,
+            "coverage_95": None,
+            "coverage_90_hits": 0,
+            "coverage_95_hits": 0,
+            "wasserstein_distance": None,
+            "central_interval_90": None,
+            "central_interval_95": None,
+        }
+    probabilities = (np.arange(array.size, dtype=np.float64) + 0.5) / array.size
+    modeled = np.asarray(quantile(probabilities), dtype=np.float64)
+    interval = np.asarray(quantile((0.025, 0.05, 0.95, 0.975)))
+    hits90 = int(np.count_nonzero((array >= interval[1]) & (array <= interval[2])))
+    hits95 = int(np.count_nonzero((array >= interval[0]) & (array <= interval[3])))
+    return {
+        "count": int(array.size),
+        "coverage_90": hits90 / array.size,
+        "coverage_95": hits95 / array.size,
+        "coverage_90_hits": hits90,
+        "coverage_95_hits": hits95,
+        "wasserstein_distance": float(
+            np.mean(np.abs(np.sort(array) - modeled))
+        ),
+        "central_interval_90": [float(interval[1]), float(interval[2])],
+        "central_interval_95": [float(interval[0]), float(interval[3])],
+    }
+
+
 def _seed(base_seed: int, key: str, target_index: int) -> int:
     digest = sha256(f"{base_seed}\x1f{key}\x1f{target_index}".encode()).digest()
     return int.from_bytes(digest[:8], "little")
@@ -144,6 +275,166 @@ def _target_rows(
         values.append(partition)
     query += " ORDER BY device_id, repeat_id"
     return list(connection.execute(query, values))
+
+
+def _paired_persistent_boundaries(
+    connection: sqlite3.Connection,
+    *,
+    target_index: int,
+    partition: str,
+) -> dict[tuple[int, int], tuple[float, float]]:
+    """Return analysis-only lower/upper persistent saturation pairs.
+
+    The controller never receives these values. Production-short runs reuse
+    one conditioned state across targets, while smoke/per-target runs pair the
+    two independently conditioned states at the requested target index.
+    """
+
+    rows = connection.execute(
+        """
+        SELECT device_id, repeat_id, start_protocol, corrupt,
+               MIN(conditioning_success) AS minimum_success,
+               MAX(conditioning_success) AS maximum_success,
+               COUNT(DISTINCT conditioned_persistent) AS distinct_values,
+               MIN(conditioned_persistent) AS minimum_value,
+               MAX(conditioned_persistent) AS maximum_value
+        FROM trajectories
+        WHERE target_index=? AND partition_name=?
+        GROUP BY device_id, repeat_id, start_protocol, corrupt
+        ORDER BY device_id, repeat_id, start_protocol
+        """,
+        (target_index, partition),
+    )
+    staged: dict[tuple[int, int], dict[str, float]] = {}
+    for row in rows:
+        if bool(row["corrupt"]):
+            continue
+        if int(row["minimum_success"]) != 1 or int(row["maximum_success"]) != 1:
+            # Initialization failures have no valid conditioned boundary and
+            # remain a separate outcome rather than a reachability class.
+            continue
+        if (
+            int(row["distinct_values"]) != 1
+            or float(row["minimum_value"]) != float(row["maximum_value"])
+        ):
+            raise RuntimeError(
+                "Expected each non-corrupt identity/start boundary to be "
+                "identical across matched controller streams. "
+                f"Provided value: target_index={target_index}, "
+                f"partition={partition!r}, device_id={int(row['device_id'])}, "
+                f"repeat_id={int(row['repeat_id'])}."
+            )
+        staged.setdefault(
+            (int(row["device_id"]), int(row["repeat_id"])), {}
+        )[str(row["start_protocol"])] = float(row["minimum_value"])
+
+    paired: dict[tuple[int, int], tuple[float, float]] = {}
+    for identity, values in staged.items():
+        if set(values) != {"lower_to_target", "upper_to_target"}:
+            continue
+        lower = values["lower_to_target"]
+        upper = values["upper_to_target"]
+        if lower > upper:
+            raise RuntimeError(
+                "Expected the paired conditioned persistent lower state not "
+                "to exceed the upper state. Provided value: "
+                f"target_index={target_index}, partition={partition!r}, "
+                f"identity={identity!r}, lower={lower}, upper={upper}."
+            )
+        paired[identity] = (lower, upper)
+    return paired
+
+
+def _persistent_reachability(
+    row: sqlite3.Row,
+    boundaries: Mapping[tuple[int, int], tuple[float, float]],
+) -> tuple[str, bool] | None:
+    pair = boundaries.get((int(row["device_id"]), int(row["repeat_id"])))
+    if pair is None or bool(row["corrupt"]) or not bool(row["conditioning_success"]):
+        return None
+    lower, upper = pair
+    target = float(row["target"])
+    tolerance = float(row["tolerance"])
+    if target < lower:
+        reachability_class = "target_below_lower_bound"
+    elif target > upper:
+        reachability_class = "target_above_upper_bound"
+    else:
+        reachability_class = "target_inside_bounds"
+    acceptance_window_reachable = (
+        target + tolerance >= lower and target - tolerance <= upper
+    )
+    return reachability_class, acceptance_window_reachable
+
+
+def _reachability_outcome_model(
+    rows: Sequence[sqlite3.Row],
+    boundaries: Mapping[tuple[int, int], tuple[float, float]],
+) -> dict[str, Any]:
+    classified: dict[str, list[tuple[sqlite3.Row, bool]]] = {
+        name: [] for name in _REACHABILITY_CLASSES
+    }
+    missing = 0
+    for row in rows:
+        if bool(row["corrupt"]):
+            continue
+        result = _persistent_reachability(row, boundaries)
+        if result is None:
+            missing += 1
+            continue
+        reachability_class, window_reachable = result
+        classified[reachability_class].append((row, window_reachable))
+
+    total = sum(len(items) for items in classified.values())
+
+    def endpoints(
+        selected: Sequence[tuple[sqlite3.Row, bool]],
+        *,
+        accepted: bool,
+    ) -> dict[str, Any]:
+        selected_rows = [row for row, _ in selected if bool(row["accepted"]) == accepted]
+        return {
+            "count": len(selected_rows),
+            "apparent_endpoint": _quantile_table(
+                [
+                    float(row["endpoint_apparent"])
+                    for row in selected_rows
+                    if row["endpoint_apparent"] is not None
+                ]
+            ),
+            "persistent_endpoint": _quantile_table(
+                [
+                    float(row["endpoint_persistent"])
+                    for row in selected_rows
+                    if row["endpoint_persistent"] is not None
+                ]
+            ),
+        }
+
+    class_models: dict[str, Any] = {}
+    for name, items in classified.items():
+        success_count = sum(bool(row["accepted"]) for row, _ in items)
+        class_models[name] = {
+            "count": len(items),
+            "probability": len(items) / total if total else None,
+            "acceptance_window_reachable_probability": (
+                sum(window_reachable for _, window_reachable in items) / len(items)
+                if items
+                else None
+            ),
+            "success_count": success_count,
+            "success_probability": (
+                success_count / len(items) if items else None
+            ),
+            "accepted_terminal": endpoints(items, accepted=True),
+            "failed_terminal": endpoints(items, accepted=False),
+        }
+    return {
+        "available": total > 0,
+        "classified_noncorrupt_count": total,
+        "missing_paired_boundary_count": missing,
+        "classes": class_models,
+    }
 
 
 def _failure_class(row: sqlite3.Row) -> str | None:
@@ -530,6 +821,459 @@ def fit_gaussian_surrogates(
             "deployment_view": "clip raw endpoint to [0,1] only when explicitly requested",
             "fit_partition": "fit device identities; accepted non-corrupt trajectories only",
             "validation_partition": "held-out validation device identities",
+            "metadata": dict(metadata),
+            "conditions": condition_models,
+        }
+        atomic_write_json(output_path, artifact)
+        return artifact
+    finally:
+        connection.close()
+
+
+def fit_bounded_uniform_models(
+    database_path: Path,
+    *,
+    output_path: Path,
+    metadata: Mapping[str, Any],
+    histogram_bins: int = _BOUNDED_UNIFORM_BINS,
+    pseudocount: float = _BOUNDED_UNIFORM_PSEUDOCOUNT,
+) -> dict[str, Any]:
+    """Fit a bounded piecewise-uniform endpoint and explicit outcome model.
+
+    Successful non-corrupt residuals are constrained by construction to the
+    verify window.  Failed non-corrupt and corrupt trajectories are not made
+    into heavy residual tails: their terminal apparent and persistent states
+    are retained as separate empirical inverse-CDF tables.
+    """
+
+    connection = sqlite3.connect(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        targets = [
+            (int(row[0]), float(row[1]))
+            for row in connection.execute(
+                "SELECT DISTINCT target_index, target FROM trajectories "
+                "ORDER BY target_index"
+            )
+        ]
+        boundary_cache: dict[
+            tuple[int, str], dict[tuple[int, int], tuple[float, float]]
+        ] = {}
+
+        def paired_boundaries(
+            target_index: int,
+            partition: str,
+        ) -> dict[tuple[int, int], tuple[float, float]]:
+            cache_key = (target_index, partition)
+            if cache_key not in boundary_cache:
+                boundary_cache[cache_key] = _paired_persistent_boundaries(
+                    connection,
+                    target_index=target_index,
+                    partition=partition,
+                )
+            return boundary_cache[cache_key]
+
+        condition_models: dict[str, Any] = {}
+        for condition in _distinct_conditions(connection):
+            key = _condition_key(*condition)
+            per_target = []
+            fitted_target_bins = 0
+            all_validation_residuals: list[float] = []
+            validations: dict[str, list[dict[str, Any]]] = {
+                "piecewise_uniform": [],
+                "acceptance_uniform": [],
+            }
+            reachability_target_bins = 0
+            reachability_probability_errors: list[float] = []
+            for target_index, target in targets:
+                fit_rows = _target_rows(
+                    connection, condition, target_index, partition="fit"
+                )
+                validation_rows = _target_rows(
+                    connection, condition, target_index, partition="validation"
+                )
+                source_rows = fit_rows or validation_rows or _target_rows(
+                    connection, condition, target_index
+                )
+                if not source_rows:
+                    continue
+                tolerance = float(source_rows[0]["tolerance"])
+                lower = -tolerance
+                upper = tolerance
+                fit_accepted = [
+                    row
+                    for row in fit_rows
+                    if bool(row["accepted"])
+                    and not bool(row["corrupt"])
+                    and row["residual_apparent"] is not None
+                ]
+                fit_residuals = np.asarray(
+                    [float(row["residual_apparent"]) for row in fit_accepted],
+                    dtype=np.float64,
+                )
+                if fit_residuals.size:
+                    fitted_target_bins += 1
+                histogram = _bounded_histogram(
+                    fit_residuals,
+                    lower=lower,
+                    upper=upper,
+                    bins=histogram_bins,
+                    pseudocount=pseudocount,
+                )
+                validation_accepted = [
+                    row
+                    for row in validation_rows
+                    if bool(row["accepted"])
+                    and not bool(row["corrupt"])
+                    and row["residual_apparent"] is not None
+                ]
+                validation_residuals = np.asarray(
+                    [
+                        float(row["residual_apparent"])
+                        for row in validation_accepted
+                    ],
+                    dtype=np.float64,
+                )
+                all_validation_residuals.extend(validation_residuals.tolist())
+                piecewise_validation = _quantile_model_validation(
+                    validation_residuals,
+                    lambda probabilities, fitted=histogram: (
+                        _bounded_histogram_quantiles(fitted, probabilities)
+                    ),
+                )
+                acceptance_uniform_validation = _quantile_model_validation(
+                    validation_residuals,
+                    lambda probabilities, low=lower, high=upper: (
+                        low
+                        + (high - low)
+                        * np.asarray(probabilities, dtype=np.float64)
+                    ),
+                )
+                validations["piecewise_uniform"].append(piecewise_validation)
+                validations["acceptance_uniform"].append(
+                    acceptance_uniform_validation
+                )
+
+                fit_noncorrupt = [row for row in fit_rows if not bool(row["corrupt"])]
+                fit_corrupt = [row for row in fit_rows if bool(row["corrupt"])]
+                fit_failed_noncorrupt = [
+                    row for row in fit_noncorrupt if not bool(row["accepted"])
+                ]
+                fit_noncorrupt_successes = sum(
+                    bool(row["accepted"]) for row in fit_noncorrupt
+                )
+                fit_corrupt_successes = sum(bool(row["accepted"]) for row in fit_corrupt)
+                fit_reachability = _reachability_outcome_model(
+                    fit_rows,
+                    paired_boundaries(target_index, "fit"),
+                )
+                validation_reachability = _reachability_outcome_model(
+                    validation_rows,
+                    paired_boundaries(target_index, "validation"),
+                )
+                if bool(fit_reachability["available"]):
+                    reachability_target_bins += 1
+                class_probability_errors: dict[str, float | None] = {}
+                for reachability_class in _REACHABILITY_CLASSES:
+                    fit_probability = fit_reachability["classes"][
+                        reachability_class
+                    ]["probability"]
+                    validation_probability = validation_reachability["classes"][
+                        reachability_class
+                    ]["probability"]
+                    if fit_probability is None or validation_probability is None:
+                        error = None
+                    else:
+                        error = abs(
+                            float(fit_probability) - float(validation_probability)
+                        )
+                        reachability_probability_errors.append(error)
+                    class_probability_errors[reachability_class] = error
+
+                def terminal_quantiles(
+                    rows: Sequence[sqlite3.Row], column: str
+                ) -> dict[str, Any]:
+                    return _quantile_table(
+                        [
+                            float(row[column])
+                            for row in rows
+                            if row[column] is not None
+                        ]
+                    )
+
+                per_target.append(
+                    {
+                        "target_index": target_index,
+                        "target": target,
+                        "tolerance": tolerance,
+                        "accepted_noncorrupt_residual": {
+                            "support": [lower, upper],
+                            "density": "constant within each histogram bin",
+                            **histogram,
+                        },
+                        "outcome_model": {
+                            "fit_trajectory_count": len(fit_rows),
+                            "corrupt_identity_fraction": (
+                                len(fit_corrupt) / len(fit_rows)
+                                if fit_rows
+                                else None
+                            ),
+                            "noncorrupt_success_probability": (
+                                fit_noncorrupt_successes / len(fit_noncorrupt)
+                                if fit_noncorrupt
+                                else None
+                            ),
+                            "noncorrupt_failure_probability": (
+                                1.0
+                                - fit_noncorrupt_successes / len(fit_noncorrupt)
+                                if fit_noncorrupt
+                                else None
+                            ),
+                            "corrupt_acceptance_probability": (
+                                fit_corrupt_successes / len(fit_corrupt)
+                                if fit_corrupt
+                                else None
+                            ),
+                            "noncorrupt_reachability": fit_reachability,
+                            "failed_noncorrupt_terminal": {
+                                "count": len(fit_failed_noncorrupt),
+                                "apparent_endpoint": terminal_quantiles(
+                                    fit_failed_noncorrupt, "endpoint_apparent"
+                                ),
+                                "persistent_endpoint": terminal_quantiles(
+                                    fit_failed_noncorrupt, "endpoint_persistent"
+                                ),
+                            },
+                            "corrupt_terminal": {
+                                "count": len(fit_corrupt),
+                                "apparent_endpoint": terminal_quantiles(
+                                    fit_corrupt, "endpoint_apparent"
+                                ),
+                                "persistent_endpoint": terminal_quantiles(
+                                    fit_corrupt, "endpoint_persistent"
+                                ),
+                            },
+                        },
+                        "validation": {
+                            "held_out_residual": _moments(validation_residuals),
+                            "piecewise_uniform": piecewise_validation,
+                            "acceptance_uniform_baseline": (
+                                acceptance_uniform_validation
+                            ),
+                            "population_breakdown": {
+                                "all": _outcome_summary(validation_rows),
+                                "noncorrupt": _outcome_summary(
+                                    [
+                                        row
+                                        for row in validation_rows
+                                        if not bool(row["corrupt"])
+                                    ]
+                                ),
+                                "corrupt": _outcome_summary(
+                                    [
+                                        row
+                                        for row in validation_rows
+                                        if bool(row["corrupt"])
+                                    ]
+                                ),
+                            },
+                            "noncorrupt_reachability": {
+                                **validation_reachability,
+                                "absolute_class_probability_error": (
+                                    class_probability_errors
+                                ),
+                            },
+                        },
+                    }
+                )
+
+            pooled_std = (
+                float(np.std(np.asarray(all_validation_residuals)))
+                if all_validation_residuals
+                else None
+            )
+
+            def aggregate_validation(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+                count = sum(int(record["count"]) for record in records)
+                coverage90_hits = sum(
+                    int(record["coverage_90_hits"]) for record in records
+                )
+                coverage95_hits = sum(
+                    int(record["coverage_95_hits"]) for record in records
+                )
+                distances = [
+                    float(record["wasserstein_distance"])
+                    for record in records
+                    if record["wasserstein_distance"] is not None
+                ]
+                coverage90 = coverage90_hits / count if count else None
+                coverage95 = coverage95_hits / count if count else None
+                median_distance = (
+                    float(np.median(distances)) if distances else None
+                )
+                normalized_distance = (
+                    median_distance / pooled_std
+                    if median_distance is not None
+                    and pooled_std is not None
+                    and pooled_std > 0.0
+                    else None
+                )
+                coverage_ok = (
+                    coverage90 is not None
+                    and coverage95 is not None
+                    and abs(coverage90 - 0.90) <= 0.03
+                    and abs(coverage95 - 0.95) <= 0.03
+                )
+                wasserstein_ok = (
+                    normalized_distance is not None
+                    and normalized_distance <= 0.1
+                )
+                return {
+                    "accepted_noncorrupt_count": count,
+                    "coverage_90": coverage90,
+                    "coverage_95": coverage95,
+                    "coverage_90_error": (
+                        abs(coverage90 - 0.90)
+                        if coverage90 is not None
+                        else None
+                    ),
+                    "coverage_95_error": (
+                        abs(coverage95 - 0.95)
+                        if coverage95 is not None
+                        else None
+                    ),
+                    "median_target_binned_wasserstein": median_distance,
+                    "median_wasserstein_over_residual_std": normalized_distance,
+                    "adequate": bool(coverage_ok and wasserstein_ok),
+                }
+
+            piecewise_aggregate = aggregate_validation(
+                validations["piecewise_uniform"]
+            )
+            uniform_aggregate = aggregate_validation(
+                validations["acceptance_uniform"]
+            )
+            reachability_complete = reachability_target_bins == len(targets)
+            condition_models[key] = {
+                "controller": condition[0],
+                "start_protocol": condition[1],
+                "tolerance_ratio": condition[2],
+                "fit_status": (
+                    "fit"
+                    if fitted_target_bins == len(targets)
+                    else "incomplete_accepted_target_bins"
+                ),
+                "fit_target_bins": fitted_target_bins,
+                "required_target_bins": len(targets),
+                "reachability_target_bins": reachability_target_bins,
+                "reachability_fit_status": (
+                    "fit" if reachability_complete else "incomplete_paired_boundaries"
+                ),
+                "histogram_bins": histogram_bins,
+                "pseudocount_per_bin": pseudocount,
+                "validation": {
+                    "held_out_residual": _moments(all_validation_residuals),
+                    "piecewise_uniform": piecewise_aggregate,
+                    "acceptance_uniform_baseline": uniform_aggregate,
+                    "reachability_probability": {
+                        "comparison_count": len(reachability_probability_errors),
+                        "mean_absolute_error": (
+                            float(np.mean(reachability_probability_errors))
+                            if reachability_probability_errors
+                            else None
+                        ),
+                        "maximum_absolute_error": (
+                            float(np.max(reachability_probability_errors))
+                            if reachability_probability_errors
+                            else None
+                        ),
+                    },
+                    "per_target": per_target,
+                },
+                "adequate": bool(
+                    fitted_target_bins == len(targets)
+                    and piecewise_aggregate["adequate"]
+                    and reachability_complete
+                ),
+            }
+
+        artifact = {
+            "schema": "ebl.ibm_reram.bounded_piecewise_uniform_endpoint_model",
+            "schema_version": 2,
+            "coordinate": "x=(w+1)/2",
+            "success_equation": (
+                "x_programmed=x_target+e; e is sampled from a target-conditioned "
+                "piecewise-uniform density supported on the verify window"
+            ),
+            "fit_partition": (
+                "fit device identities; accepted non-corrupt trajectories for "
+                "the residual density and all successfully conditioned "
+                "non-corrupt trajectories for reachability/outcome branches"
+            ),
+            "validation_partition": "held-out validation device identities",
+            "target_support": {
+                "minimum": min((target for _, target in targets), default=None),
+                "maximum": max((target for _, target in targets), default=None),
+                "inside_support": (
+                    "linearly interpolate adjacent target-bin probability masses "
+                    "and outcome probabilities"
+                ),
+                "outside_support": (
+                    "reject; rescaling, clamping, or device reassignment must be "
+                    "an explicit caller policy"
+                ),
+            },
+            "outcome_semantics": {
+                "accepted_noncorrupt": (
+                    "sample the bounded piecewise-uniform residual"
+                ),
+                "failed_noncorrupt": (
+                    "sample the separate target-conditioned terminal endpoint "
+                    "inverse-CDF table; do not widen the success residual"
+                ),
+                "corrupt": (
+                    "sample and preserve an identity-level corrupt mask; draw the "
+                    "one-shot target-conditioned terminal endpoint from its "
+                    "separate branch"
+                ),
+                "repeated_writes": (
+                    "preserve the explicit pulse-plant state; this marginal "
+                    "endpoint model does not reproduce identity-correlated "
+                    "incremental dynamics"
+                ),
+                "noncorrupt_bound_variation": (
+                    "sample target_below_lower_bound, target_inside_bounds, or "
+                    "target_above_upper_bound independently of apparent verify "
+                    "acceptance; endpoint outcomes remain conditional on that class"
+                ),
+                "endpoint_outside_nominal_0_1": (
+                    "preserve the raw endpoint unless the caller explicitly "
+                    "selects clipping"
+                ),
+            },
+            "reachability_definition": {
+                "lower_bound": (
+                    "paired persistent endpoint after lower_to_target boundary "
+                    "conditioning"
+                ),
+                "upper_bound": (
+                    "paired persistent endpoint after upper_to_target boundary "
+                    "conditioning"
+                ),
+                "exact_target_reachable": "lower_bound <= target <= upper_bound",
+                "acceptance_window_reachable": (
+                    "target+tolerance >= lower_bound and "
+                    "target-tolerance <= upper_bound"
+                ),
+                "visibility": (
+                    "analysis-only latent classification; neither bound is exposed "
+                    "to the program-and-verify controller"
+                ),
+            },
+            "adequacy_thresholds": {
+                "maximum_absolute_coverage_error": 0.03,
+                "maximum_median_wasserstein_over_residual_std": 0.1,
+            },
             "metadata": dict(metadata),
             "conditions": condition_models,
         }
@@ -1032,6 +1776,7 @@ def write_report(
     execution_profile: str,
     trajectory_count: int,
     fit_artifact: Mapping[str, Any],
+    bounded_uniform_artifact: Mapping[str, Any] | None = None,
     wan_artifact: Mapping[str, Any],
 ) -> None:
     def formatted(value: Any, digits: int = 6) -> str:
@@ -1050,8 +1795,21 @@ def write_report(
         return numerator / denominator if denominator else None
 
     rows = []
+    reachability_rows = []
     for key, condition in fit_artifact["conditions"].items():
         validation = condition.get("validation")
+        bounded_condition = (
+            bounded_uniform_artifact.get("conditions", {}).get(key)
+            if bounded_uniform_artifact is not None
+            else None
+        )
+        bounded_adequate = (
+            "yes"
+            if bounded_condition and bool(bounded_condition.get("adequate"))
+            else "no"
+            if bounded_condition
+            else "n/a"
+        )
         if validation:
             per_target = validation["per_target"]
             total = sum(item["trajectory_count"] for item in per_target)
@@ -1064,13 +1822,83 @@ def write_report(
                 f"{formatted(pooled_cost(per_target, 'verify_reads'), 5)} | "
                 f"{formatted(validation['coverage_90'], 4)} | "
                 f"{formatted(validation['coverage_95'], 4)} | "
-                f"{'yes' if condition['adequate'] else 'no'} |"
+                f"{'yes' if condition['adequate'] else 'no'} | "
+                f"{bounded_adequate} |"
             )
         else:
             rows.append(
                 f"| `{key}` | n/a | n/a | n/a | n/a | n/a | n/a | "
-                "no (insufficient fit bins) |"
+                f"no (insufficient fit bins) | {bounded_adequate} |"
             )
+
+        if bounded_condition and float(condition["tolerance_ratio"]) == 0.5:
+            bounded_validation = bounded_condition.get("validation")
+            bounded_targets = (
+                bounded_validation.get("per_target")
+                if isinstance(bounded_validation, Mapping)
+                else None
+            )
+            if isinstance(bounded_targets, Sequence) and bounded_targets:
+                lower_target = min(bounded_targets, key=lambda item: item["target"])
+                upper_target = max(bounded_targets, key=lambda item: item["target"])
+
+                def reachability_values(
+                    record: Mapping[str, Any],
+                    reachability_class: str,
+                ) -> tuple[float | None, float | None, float | None]:
+                    validation = record.get("validation")
+                    reachability = (
+                        validation.get("noncorrupt_reachability")
+                        if isinstance(validation, Mapping)
+                        else None
+                    )
+                    classes = (
+                        reachability.get("classes")
+                        if isinstance(reachability, Mapping)
+                        else None
+                    )
+                    selected = (
+                        classes.get(reachability_class)
+                        if isinstance(classes, Mapping)
+                        else None
+                    )
+                    if not isinstance(selected, Mapping):
+                        return None, None, None
+                    exact_unreachable = selected.get("probability")
+                    window_reachable = selected.get(
+                        "acceptance_window_reachable_probability"
+                    )
+                    success = selected.get("success_probability")
+                    window_unreachable = (
+                        float(exact_unreachable) * (1.0 - float(window_reachable))
+                        if exact_unreachable is not None
+                        and window_reachable is not None
+                        else None
+                    )
+                    return (
+                        float(exact_unreachable)
+                        if exact_unreachable is not None
+                        else None,
+                        window_unreachable,
+                        float(success) if success is not None else None,
+                    )
+
+                lower_values = reachability_values(
+                    lower_target, "target_below_lower_bound"
+                )
+                upper_values = reachability_values(
+                    upper_target, "target_above_upper_bound"
+                )
+                if lower_values[0] is not None and upper_values[0] is not None:
+                    reachability_rows.append(
+                        f"| `{key}` | "
+                        f"{formatted(lower_values[0], 5)} | "
+                        f"{formatted(lower_values[1], 5)} | "
+                        f"{formatted(lower_values[2], 5)} | "
+                        f"{formatted(upper_values[0], 5)} | "
+                        f"{formatted(upper_values[1], 5)} | "
+                        f"{formatted(upper_values[2], 5)} |"
+                    )
 
     corrupt_rows = []
     if corrupt_population:
@@ -1151,6 +1979,21 @@ continuous Gaussian variance.
 | --- | ---: | ---: | ---: | ---: |
 {chr(10).join(corrupt_rows)}
 """
+    reachability_section = ""
+    if reachability_rows:
+        reachability_section = f"""
+## Persistent bound reachability at nominal endpoints
+
+The paired persistent RESET/SET states are analysis-only latent bounds. Exact
+unreachability is independent of apparent verify acceptance. `Window
+unreachable` is the full non-corrupt population mass whose verify window does
+not intersect the paired persistent interval; `apparent success` is conditional
+on belonging to the exact-unreachable class.
+
+| Condition | x=0 exact below lower | x=0 window unreachable | x=0 apparent success if below | x=1 exact above upper | x=1 window unreachable | x=1 apparent success if above |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+{chr(10).join(reachability_rows)}
+"""
     text = f"""# IBM ReRAM program-and-verify characterization
 
 ## Result boundary
@@ -1171,14 +2014,18 @@ any endpoint fit were emitted.
 
 ## Held-out model results
 
-| Condition | success | residual RMSE | mean pulses | mean verifies | 90% coverage | 95% coverage | Gaussian adequate |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Condition | success | residual RMSE | mean pulses | mean verifies | 90% coverage | 95% coverage | Gaussian adequate | bounded uniform adequate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 {chr(10).join(rows)}
 
-An inadequate Gaussian fit remains a documented approximation; the empirical
-kernel and trajectory database are authoritative.
+The bounded-uniform column refers to the target-conditioned eight-bin
+piecewise-uniform density, not one global uniform draw. An inadequate compact
+fit remains a documented approximation; the empirical kernel and trajectory
+database are authoritative.
 
 {corrupt_section}
+
+{reachability_section}
 
 ## Wan-2022 comparison boundary
 
@@ -1209,9 +2056,11 @@ model, so no corresponding cost or convergence number is invented.
 
 ## Interpretation
 
-Use the success-conditioned empirical endpoint kernel together with its
-separate failure and cost models. A later matched HWA/on-chip study must begin
-from preserved programmed device states; it must not redraw these endpoints.
+Use an adequate bounded piecewise-uniform model, or otherwise the
+success-conditioned empirical endpoint kernel, together with the separate
+failure, corrupt/stuck, saturation, and cost branches. A later matched
+HWA/on-chip study must begin from preserved programmed device states; it must
+not redraw these endpoints or the corrupt-device mask.
 """
     path.write_text(text, encoding="utf-8")
 
@@ -1219,6 +2068,7 @@ from preserved programmed device states; it must not redraw these endpoints.
 __all__ = [
     "build_empirical_kernel",
     "build_wan_comparison",
+    "fit_bounded_uniform_models",
     "fit_gaussian_surrogates",
     "sample_wan_reference",
     "write_plots",

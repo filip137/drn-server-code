@@ -195,11 +195,15 @@ must not enter the derived model or headline comparison.
 
 ### Stopping and failure
 
-A trajectory terminates when:
+A v1 or v2 trajectory terminates when:
 
 - the apparent verify state enters `[x* - tau, x* + tau]`;
 - 512 target-programming pulses have been applied; or
 - a non-finite state is observed.
+
+The separately versioned v3 successor changes only the target-programming
+cap from 512 to 128 pulses. It does not modify the immutable v1/v2 stopping
+contract or their recorded evidence.
 
 Only accepted trajectories enter the success-conditioned continuous residual
 kernel. Each other outcome contributes to a separate target-conditioned
@@ -276,7 +280,15 @@ Keep the target-binned samples or quantiles together with a separate
 `p_failure` and cost model. Do not replace failed or corrupt devices with a
 large continuous error.
 
-Also fit the compact surrogate
+Accepted residuals are bounded by the verify stopping rule. The primary
+compact candidate is therefore a target-conditioned eight-bin
+piecewise-uniform density on `[-tau,+tau]`. Add a fixed `0.5` pseudocount to
+each bin on the fitting identities. For a target between two characterized
+grid locations, linearly interpolate the adjacent probability masses and then
+sample uniformly inside the selected bin. Also retain one global
+`Uniform(-tau,+tau)` density as a deliberately simpler baseline.
+
+Fit the fourth-order Gaussian surrogate as a diagnostic comparator:
 
 ```text
 x_programmed_raw = x* + mu(x*) + sigma(x*) * Normal(0, 1),
@@ -290,7 +302,7 @@ non-corrupt trajectories; report clipping only as an explicit deployment
 view. Publish coefficients for each preset, controller, tolerance, and start
 protocol rather than pooling incompatible conditions.
 
-Validate the surrogate on held-out device identities using:
+Validate every compact surrogate on held-out device identities using:
 
 - conditional bias, standard deviation, MAE, and RMSE;
 - 1%, 5%, 50%, 95%, and 99% residual quantiles;
@@ -300,11 +312,110 @@ Validate the surrogate on held-out device identities using:
 - failure probability and failure class; and
 - pulse, verify, and reversal distributions.
 
-Call the Gaussian surrogate adequate only if both 90% and 95% held-out
+Call a compact surrogate adequate only if both 90% and 95% held-out
 coverage errors are at most three percentage points and the median
 target-binned Wasserstein distance is at most `0.1` held-out residual standard
-deviations. If it fails, retain it as a documented approximation and use the
-empirical kernel as the noise model.
+deviations. If a compact model fails, retain it only as a documented
+approximation and use the empirical kernel.
+
+For each non-corrupt identity/repeat, pair the analysis-only persistent
+boundary states
+
+```text
+L_i = persistent endpoint after lower_to_target conditioning,
+U_i = persistent endpoint after upper_to_target conditioning.
+```
+
+Classify the exact target independently of controller acceptance:
+
+```text
+z_i(x*) = below  if x* < L_i,
+          inside if L_i <= x* <= U_i,
+          above  if x* > U_i.
+```
+
+The wider verify window is structurally reachable only when
+
+```text
+x* + tau >= L_i  and  x* - tau <= U_i.
+```
+
+This distinction matters because apparent write variation can satisfy the
+verify stopping rule even when the exact target—or the entire verify
+window—is outside the persistent interval. The compact outcome model is
+therefore the mixture
+
+```text
+sum_z p(z | x*) p(success | z, x*, controller, start)
+      p(endpoint | z, success, x*, controller, start).
+```
+
+It is not one residual distribution:
+
+1. sample the corrupt-device identity mask once and preserve it for the life
+   of the physical assignment;
+2. for a non-corrupt identity, sample `below`, `inside`, or `above` from the
+   fit-partition paired-boundary probabilities;
+3. sample verify-window reachability and apparent programming success
+   conditionally on that persistent class;
+4. sample accepted apparent residuals from the bounded density while sampling
+   their persistent endpoints from the corresponding class; and
+5. sample failed non-corrupt and corrupt apparent/persistent terminal states
+   from their separate target- and class-conditioned empirical inverse-CDF
+   tables.
+
+IBM's preset implementation collapses a corrupt device's two bounds and sets
+both pulse scales to zero. No SET/RESET sequence repairs that persistent
+state. Apparent write variation can nevertheless place a verify observation
+inside the acceptance window; such a noisy admission must not be interpreted
+as persistent reachability. Do not redraw the corrupt mask on a later write.
+The compact endpoint sampler is a one-shot deployment marginal: reusing its
+mask preserves defect assignment but not a cell's latent stuck value or pulse
+history. Repeated fine-tuning writes must continue from the explicit
+`IbmReramPlant` state rather than calling the endpoint sampler again.
+
+The characterized target support is `[0,1]`. The deployment sampler rejects an
+out-of-support target by default. A caller may request explicit target
+clamping, but the returned clamp mask must be retained. Raw terminal endpoints
+are likewise preserved unless the caller explicitly selects an analysis or
+deployment clipping policy.
+
+### Exploratory compact-model check on completed v2 data
+
+The bounded candidate was selected after v2 completed, so this check does not
+rewrite the v2 protocol and remains exploratory until the v3 rerun. Re-fitting
+the completed fit identities and evaluating the untouched validation
+identities gave:
+
+| Compact model | Adequate conditions |
+| --- | ---: |
+| Fourth-order Gaussian | 0 / 16 |
+| One global `Uniform(-tau,+tau)` | 7 / 16 |
+| Target-conditioned eight-bin piecewise uniform | 16 / 16 |
+
+For the piecewise-uniform model, pooled 90% coverage was `0.8978-0.9037`, 95%
+coverage was `0.9488-0.9511`, and normalized median target-binned Wasserstein
+distance was `0.0323-0.0479`. The single uniform principally failed the
+one-pulse conditions because it cannot represent target-dependent mass within
+the verify window.
+
+The same post-completion check validates the paired-bound reachability
+probabilities. Mean absolute fit-versus-held-out class-probability error was
+`0.0088-0.0153` across the four populations; the largest individual
+target/class difference was `0.0531`. At the nominal endpoints, the held-out
+non-corrupt populations were:
+
+| Population | x=0 exact below lower | x=0 full window unreachable | x=1 exact above upper | x=1 full window unreachable |
+| --- | ---: | ---: | ---: | ---: |
+| OM continuous | 51.5% | 47.1% | 52.9% | 47.5% |
+| OM corruption arm, non-corrupt subset | 52.8% | 48.3% | 51.7% | 47.8% |
+| HfO2 continuous | 52.5% | 31.9% | 52.5% | 29.9% |
+| HfO2 corruption arm, non-corrupt subset | 52.6% | 30.9% | 53.1% | 29.7% |
+
+These are structural bound events, not corrupt devices. In particular, the
+HfO2 one-pulse controller apparently accepted about 98-100% of the exact-
+unreachable endpoint cases because of its large apparent write variation;
+their persistent endpoints did not become equal to the targets.
 
 ## Wan-2022 comparison
 
@@ -356,6 +467,8 @@ The completed characterization must produce:
   reversal accounting, acceptance semantics, identity partitions, and matched
   controller/tolerance random streams;
 - an empirical-kernel artifact with target bins and validation partitions;
+- a bounded piecewise-uniform endpoint artifact containing the global-uniform
+  baseline, held-out adequacy results, and separate terminal-outcome tables;
 - a versioned fit artifact containing normalization, polynomial
   coefficients, controller settings, failure model, source versions, seeds,
   and input hashes;
@@ -380,12 +493,14 @@ python -m ebl characterize \
 ```
 
 Configurations declare a `smoke` profile (reported as operational evidence),
-the immutable exhaustive `production` profile, or the immutable
-`production_short` profile. The short profile requires 1,024 identities,
-four repeats, 41 targets, the half-step tolerance, both starts and
-controllers, the four-quiet-pulse boundary rule, target-independent blocked
-conditioning, the 512-pulse programming budget, and the unchanged adaptive
-and Wan settings. Smoke artifacts cannot satisfy either production plan.
+the immutable exhaustive `production` profile, the immutable 512-pulse
+`production_short` profile, or the immutable 128-pulse
+`production_short_cap128` successor profile. Both short profiles require
+1,024 identities, four repeats, 41 targets, the half-step tolerance, both
+starts and controllers, the four-quiet-pulse boundary rule, target-independent
+blocked conditioning, and unchanged adaptive and Wan settings. The pulse cap
+is the only difference between the two short profiles. Smoke artifacts cannot
+satisfy a production plan.
 
 AIHWKit samples each identity's fitted device-to-device parameters with an
 identity-derived construction seed. The pulse transition is then evaluated by
@@ -403,12 +518,14 @@ CUDA continuation replay, and byte-identical end-to-end CUDA ledgers.
 
 The runtime writes the full trajectory and verify-event stream to SQLite,
 validates that persisted ledger before fitting, preserves the sampled
-population in NPZ, emits integrity/calibration/empirical/Gaussian/Wan JSON
-artifacts, creates dependency-free SVG plots (including target-binned
+population in NPZ, emits integrity/calibration/empirical/bounded-uniform/
+Gaussian/Wan JSON artifacts, creates dependency-free SVG plots (including target-binned
 quantiles, tail exceedance, and saturation/clamp mass), and writes a Markdown
 report. The exhaustive plan remains
 `studies/ibm-reram-program-verify-noise-20260821-v1.json`; the reviewed local
-plan is `studies/ibm-reram-program-verify-noise-20260821-v2.json`. The latter
+plan is `studies/ibm-reram-program-verify-noise-20260821-v2.json`; its
+128-pulse matched successor is
+`studies/ibm-reram-program-verify-noise-20260822-v3.json`. Each short plan
 contains 671,744 trajectories per arm and 2,686,976 total. An exact-width
 five-target CUDA sizing gate completed 81,920 trajectories and 2,863,651
 verify events in 61.6 seconds on the local RTX 3090, projecting 8.4 minutes
@@ -428,8 +545,9 @@ The first milestone is complete when:
 3. OM primary and HfO2 stress-control characterization is complete on the
    declared grid and partitions, including the separate corrupt-population
    arms.
-4. Empirical kernels, Gaussian surrogates, adequacy results, failure models,
-   and cost models are generated from held-out device identities.
+4. Empirical kernels, bounded piecewise-uniform and Gaussian surrogates,
+   adequacy results, failure/corrupt models, and cost models are generated from
+   held-out device identities.
 5. The one-second Wan comparison is generated with raw and explicitly clipped
    views and with the normalization and time limitations stated.
 6. No HWA or Tiki-Taka result is claimed from this milestone.

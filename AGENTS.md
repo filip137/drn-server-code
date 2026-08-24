@@ -33,6 +33,9 @@ of this worktree.
 - `training/ibm_reram_program_verify.py`: explicit-RNG transcription of the
   AIHWKit 1.1.0 `SoftBoundsReferenceDevice` pulse equation, capability-limited
   controller port, one-pulse/adaptive controllers, and identity partitions.
+- `training/ibm_reram_endpoint_model.py`: deployment sampler for the fitted
+  target-conditioned bounded endpoint density with explicit non-corrupt
+  failure, persistent corrupt-device, target-support, and clipping outcomes.
 - `experiments/reram_program_verify/`: strict `characterize` composition root,
   streaming trajectory/event store, held-out endpoint fitting, Wan comparison,
   plots, and report generation.
@@ -52,8 +55,9 @@ of this worktree.
   references exact config files; configs do not choose input checkpoints or
   output locations.
 - `examples/reram_program_verify/`: one operational smoke config and the four
-  exhaustive v1 production configs, CUDA smoke/sizing gates, and four immutable
-  short-production configs declared by the v2 IBM ReRAM endpoint study.
+  exhaustive v1 production configs, CUDA smoke/sizing gates, four immutable
+  512-pulse short-production configs declared by the v2 IBM ReRAM endpoint
+  study, and four matched 128-pulse successor configs declared by v3.
 - `studies/`: tracked, predeclared study plans containing hypotheses, arms,
   completion criteria, and analysis plans.
 - `campaigns/`: subprocess-only orchestration of exact configs and explicit
@@ -83,6 +87,10 @@ of this worktree.
   normalized verify values, its own history, and calibration-partition
   population estimates. Keep persistent states and hidden device parameters
   on the logging side of the controller port.
+- Treat exact persistent target reachability, verify-window intersection, and
+  apparent acceptance as three different facts. Bound classification may pair
+  conditioned RESET/SET states only on the analysis side; an apparent noisy
+  admission must not be relabelled as a persistently reachable target.
 - Preserve per-identity AIHWKit construction seeds and explicit per-trajectory
   conditioning/programming seeds. Do not replace the explicit pulse plant with
   a native CPU tile unless its cycle-to-cycle RNG becomes serializable and an

@@ -36,6 +36,18 @@ _PRODUCTION_SHORT = tuple(
 _SHORT_STUDY = (
     _ROOT / "studies" / "ibm-reram-program-verify-noise-20260821-v2.json"
 )
+_PRODUCTION_SHORT_CAP128 = tuple(
+    _ROOT / "examples" / "reram_program_verify" / name
+    for name in (
+        "production_short_cap128_om_continuous.json",
+        "production_short_cap128_om_corrupt.json",
+        "production_short_cap128_hfo2_continuous.json",
+        "production_short_cap128_hfo2_corrupt.json",
+    )
+)
+_CAP128_STUDY = (
+    _ROOT / "studies" / "ibm-reram-program-verify-noise-20260822-v3.json"
+)
 
 
 def test_reram_characterization_config_resolves_strictly() -> None:
@@ -82,6 +94,28 @@ def test_every_short_production_arm_has_the_exact_frozen_geometry(path: Path) ->
     assert trajectories == 671_744
 
 
+@pytest.mark.parametrize("path", _PRODUCTION_SHORT_CAP128)
+def test_every_cap128_production_arm_has_the_exact_frozen_geometry(
+    path: Path,
+) -> None:
+    _, spec = resolve_experiment_config(path, RunMode.CHARACTERIZE)
+    settings = spec.settings
+    trajectories = (
+        settings.num_devices
+        * settings.repeats_per_device
+        * settings.target_points
+        * len(settings.tolerance_step_ratios)
+        * len(settings.start_protocols)
+        * len(settings.controllers)
+    )
+
+    assert spec.runtime.device == "cuda"
+    assert settings.profile == "production_short_cap128"
+    assert settings.maximum_program_pulses == 128
+    assert settings.conditioning.quiet_steps == 4
+    assert trajectories == 671_744
+
+
 def test_declared_study_prepares_and_remains_planned_without_native_runs(
     tmp_path: Path,
 ) -> None:
@@ -105,6 +139,22 @@ def test_short_study_prepares_and_remains_planned_without_native_runs(
     summary = summarize_study(study_dir)
 
     assert summary["study_id"] == "ibm-reram-program-verify-noise-20260821-v2"
+    assert summary["state"] == "planned"
+    assert {arm["arm_id"] for arm in summary["arms"]} == {
+        "om-continuous",
+        "om-corrupt",
+        "hfo2-continuous",
+        "hfo2-corrupt",
+    }
+
+
+def test_cap128_study_prepares_and_remains_planned_without_native_runs(
+    tmp_path: Path,
+) -> None:
+    study_dir = prepare_study(_CAP128_STUDY, tmp_path)
+    summary = summarize_study(study_dir)
+
+    assert summary["study_id"] == "ibm-reram-program-verify-noise-20260822-v3"
     assert summary["state"] == "planned"
     assert {arm["arm_id"] for arm in summary["arms"]} == {
         "om-continuous",
@@ -143,6 +193,29 @@ def test_short_production_profile_rejects_an_unreviewed_geometry(
         ConfigError, match="immutable short-production characterization contract"
     ):
         resolve_experiment_config(path, RunMode.CHARACTERIZE)
+
+
+def test_short_production_profiles_reject_each_others_pulse_caps(
+    tmp_path: Path,
+) -> None:
+    legacy = json.loads(_PRODUCTION_SHORT[0].read_text(encoding="utf-8"))
+    legacy["modes"]["characterize"]["maximum_program_pulses"] = 128
+    legacy_path = tmp_path / "legacy-with-cap128.json"
+    legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    successor = json.loads(
+        _PRODUCTION_SHORT_CAP128[0].read_text(encoding="utf-8")
+    )
+    successor["modes"]["characterize"]["maximum_program_pulses"] = 512
+    successor_path = tmp_path / "cap128-with-legacy-cap.json"
+    successor_path.write_text(json.dumps(successor), encoding="utf-8")
+
+    for path in (legacy_path, successor_path):
+        with pytest.raises(
+            ConfigError,
+            match="immutable short-production characterization contract",
+        ):
+            resolve_experiment_config(path, RunMode.CHARACTERIZE)
 
 
 def test_controller_calibration_order_is_immutable(tmp_path: Path) -> None:

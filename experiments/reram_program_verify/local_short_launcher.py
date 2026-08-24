@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
@@ -25,8 +26,28 @@ ARM_CONFIGS = {
     "hfo2-continuous": "production_short_hfo2_continuous.json",
     "hfo2-corrupt": "production_short_hfo2_corrupt.json",
 }
+CAP128_STUDY_ID = "ibm-reram-program-verify-noise-20260822-v3"
+CAP128_ARM_CONFIGS = {
+    "om-continuous": "production_short_cap128_om_continuous.json",
+    "om-corrupt": "production_short_cap128_om_corrupt.json",
+    "hfo2-continuous": "production_short_cap128_hfo2_continuous.json",
+    "hfo2-corrupt": "production_short_cap128_hfo2_corrupt.json",
+}
 EXPECTED_TRAJECTORIES_PER_ARM = 671_744
 HEARTBEAT_SECONDS = 15.0
+
+
+@dataclass(frozen=True)
+class LaunchPlan:
+    study_id: str
+    arm_configs: Mapping[str, str]
+    maximum_program_pulses: int
+
+
+LAUNCH_PLANS = {
+    "v2": LaunchPlan(STUDY_ID, ARM_CONFIGS, 512),
+    "v3-cap128": LaunchPlan(CAP128_STUDY_ID, CAP128_ARM_CONFIGS, 128),
+}
 
 
 def _utc_now() -> str:
@@ -40,9 +61,13 @@ def _attempt_id() -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--study-profile",
+        choices=tuple(LAUNCH_PLANS),
+        default="v2",
+    )
+    parser.add_argument(
         "--study-dir",
         type=Path,
-        default=_ROOT / "results" / STUDY_ID,
     )
     parser.add_argument(
         "--aihwkit-python",
@@ -101,23 +126,28 @@ def _arm_snapshot(
     }
 
 
-def _validate_prepared_study(study_dir: Path) -> None:
+def _validate_prepared_study(
+    study_dir: Path,
+    *,
+    study_id: str = STUDY_ID,
+    arm_configs: Mapping[str, str] = ARM_CONFIGS,
+) -> None:
     study = _read_json(study_dir / "study.json")
-    if study is None or study.get("study_id") != STUDY_ID:
+    if study is None or study.get("study_id") != study_id:
         raise RuntimeError(
-            f"Expected --study-dir to be the prepared {STUDY_ID!r} study."
+            f"Expected --study-dir to be the prepared {study_id!r} study."
         )
     declared = {
         str(arm.get("arm_id"))
         for arm in study.get("arms", [])
         if isinstance(arm, Mapping)
     }
-    if declared != set(ARM_CONFIGS):
+    if declared != set(arm_configs):
         raise RuntimeError(
             "Expected the prepared short study to declare exactly the four reviewed arms."
         )
     existing = []
-    for arm in ARM_CONFIGS:
+    for arm in arm_configs:
         run_dir = _latest_native_run(study_dir / "runs" / arm)
         if run_dir is not None:
             existing.append(str(run_dir))
@@ -133,6 +163,7 @@ def _commands(
     *,
     python: Path,
     study_dir: Path,
+    arm_configs: Mapping[str, str] = ARM_CONFIGS,
 ) -> dict[str, list[str]]:
     config_root = _ROOT / "examples" / "reram_program_verify"
     return {
@@ -146,33 +177,45 @@ def _commands(
             "--output-dir",
             str(study_dir / "runs" / arm),
         ]
-        for arm, config_name in ARM_CONFIGS.items()
+        for arm, config_name in arm_configs.items()
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    study_dir = args.study_dir.expanduser().resolve()
+    launch_plan = LAUNCH_PLANS[args.study_profile]
+    raw_study_dir = args.study_dir or _ROOT / "results" / launch_plan.study_id
+    study_dir = raw_study_dir.expanduser().resolve()
     aihwkit_python = args.aihwkit_python.expanduser().resolve()
     if not aihwkit_python.is_file() or not os.access(aihwkit_python, os.X_OK):
         raise RuntimeError("Expected --aihwkit-python to be executable.")
-    _validate_prepared_study(study_dir)
+    _validate_prepared_study(
+        study_dir,
+        study_id=launch_plan.study_id,
+        arm_configs=launch_plan.arm_configs,
+    )
 
     attempt_dir = study_dir / "launch" / _attempt_id()
     attempt_dir.mkdir(parents=True, exist_ok=False)
-    commands = _commands(python=Path(sys.executable).resolve(), study_dir=study_dir)
+    commands = _commands(
+        python=Path(sys.executable).resolve(),
+        study_dir=study_dir,
+        arm_configs=launch_plan.arm_configs,
+    )
     contract = {
         "schema": "ebl.ibm_reram.local_short_launcher",
         "schema_version": 1,
-        "study_id": STUDY_ID,
+        "study_id": launch_plan.study_id,
+        "launch_profile": args.study_profile,
+        "maximum_program_pulses": launch_plan.maximum_program_pulses,
         "formal_evidence": True,
         "launcher_python": str(Path(sys.executable).resolve()),
         "aihwkit_python": str(aihwkit_python),
         "cuda_visible_devices": args.cuda_visible_devices,
-        "expected_arms": list(ARM_CONFIGS),
+        "expected_arms": list(launch_plan.arm_configs),
         "expected_trajectories_per_arm": EXPECTED_TRAJECTORIES_PER_ARM,
         "expected_total_trajectories": (
-            EXPECTED_TRAJECTORIES_PER_ARM * len(ARM_CONFIGS)
+            EXPECTED_TRAJECTORIES_PER_ARM * len(launch_plan.arm_configs)
         ),
         "heartbeat_seconds": HEARTBEAT_SECONDS,
         "sizing_evidence": {
@@ -255,17 +298,21 @@ def main(argv: list[str] | None = None) -> int:
                             study_dir=study_dir,
                             process=processes[arm],
                         )
-                        for arm in ARM_CONFIGS
+                        for arm in launch_plan.arm_configs
                     ],
                 },
             )
             if all(
                 _latest_native_run(study_dir / "runs" / arm) is not None
-                for arm in ARM_CONFIGS
+                for arm in launch_plan.arm_configs
             ):
                 refresh_current_simulations_for_run(
                     repo_root=_ROOT,
-                    run_dir=study_dir / "runs" / next(iter(ARM_CONFIGS)),
+                    run_dir=(
+                        study_dir
+                        / "runs"
+                        / next(iter(launch_plan.arm_configs))
+                    ),
                 )
             time.sleep(HEARTBEAT_SECONDS)
 
@@ -307,13 +354,15 @@ def main(argv: list[str] | None = None) -> int:
                         study_dir=study_dir,
                         process=processes[arm],
                     )
-                    for arm in ARM_CONFIGS
+                    for arm in launch_plan.arm_configs
                 ],
             },
         )
         refresh_current_simulations_for_run(
             repo_root=_ROOT,
-            run_dir=study_dir / "runs" / next(iter(ARM_CONFIGS)),
+            run_dir=(
+                study_dir / "runs" / next(iter(launch_plan.arm_configs))
+            ),
         )
         return 0 if success else 1
     except BaseException as error:
@@ -344,7 +393,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         refresh_current_simulations_for_run(
             repo_root=_ROOT,
-            run_dir=study_dir / "runs" / next(iter(ARM_CONFIGS)),
+            run_dir=(
+                study_dir / "runs" / next(iter(launch_plan.arm_configs))
+            ),
         )
         raise
     finally:

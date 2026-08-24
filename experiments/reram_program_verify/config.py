@@ -13,6 +13,17 @@ from experiments.schema import RunMode, config_error
 EXPERIMENT_ID = "ibm_reram_program_verify.v1"
 SCHEMA_VERSION = 1
 SUPPORTED_PRESETS = ("reram_array_om", "reram_array_hfo2")
+SHORT_PRODUCTION_PULSE_CAPS = MappingProxyType(
+    {
+        "production_short": 512,
+        "production_short_cap128": 128,
+    }
+)
+SUPPORTED_PROFILES = (
+    "smoke",
+    "production",
+    *SHORT_PRODUCTION_PULSE_CAPS,
+)
 
 
 def _object(value: Any, path: str) -> Mapping[str, Any]:
@@ -281,10 +292,10 @@ def _parse_characterize(value: Any) -> CharacterizeSettings:
     }
     _keys(raw, path, required, {"conditioning_scope"})
     profile = raw["profile"]
-    if profile not in {"smoke", "production", "production_short"}:
+    if profile not in SUPPORTED_PROFILES:
         raise config_error(
             f"{path}.profile",
-            "to be 'smoke', 'production', or 'production_short'",
+            f"to be one of {SUPPORTED_PROFILES!r}",
             profile,
         )
     target = _object(raw["target_grid"], f"{path}.target_grid")
@@ -374,7 +385,7 @@ def _parse_characterize(value: Any) -> CharacterizeSettings:
                 "to satisfy the immutable production characterization contract",
                 violations,
             )
-    if result.profile == "production_short":
+    if result.profile in SHORT_PRODUCTION_PULSE_CAPS:
         violations = []
         if result.num_devices != 1024:
             violations.append("num_devices must equal 1024")
@@ -384,8 +395,12 @@ def _parse_characterize(value: Any) -> CharacterizeSettings:
             violations.append("target_grid.points must equal 41")
         if result.tolerance_step_ratios != (0.5,):
             violations.append("tolerance_step_ratios must equal [0.5]")
-        if result.maximum_program_pulses != 512:
-            violations.append("maximum_program_pulses must equal 512")
+        expected_pulse_cap = SHORT_PRODUCTION_PULSE_CAPS[result.profile]
+        if result.maximum_program_pulses != expected_pulse_cap:
+            violations.append(
+                "maximum_program_pulses must equal "
+                f"{expected_pulse_cap} for profile {result.profile!r}"
+            )
         if result.partitions != PartitionSettings(0.2, 0.6, 0.2):
             violations.append("partitions must equal 0.2/0.6/0.2")
         if result.conditioning != ConditioningSettings(4, 1e-6, 4096):

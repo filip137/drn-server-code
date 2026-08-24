@@ -20,6 +20,7 @@ from experiments.artifacts import RunStore, atomic_write_json, sha256_file
 from experiments.reram_program_verify.analysis import (
     build_empirical_kernel,
     build_wan_comparison,
+    fit_bounded_uniform_models,
     fit_gaussian_surrogates,
     write_plots,
     write_report,
@@ -825,6 +826,9 @@ def run_characterize(request: "CharacterizeRequest") -> int:
         }
         kernel_path = store.run_dir / "artifacts" / "empirical_kernel.json"
         fit_path = store.run_dir / "artifacts" / "gaussian_surrogate.json"
+        bounded_uniform_path = (
+            store.run_dir / "artifacts" / "bounded_uniform_model.json"
+        )
         wan_path = store.run_dir / "artifacts" / "wan2022_comparison.json"
         report_path = store.run_dir / "artifacts" / "report.md"
         build_empirical_kernel(
@@ -836,6 +840,11 @@ def run_characterize(request: "CharacterizeRequest") -> int:
             polynomial_order=settings.polynomial_order,
             standard_deviation_floor=settings.standard_deviation_floor,
             analysis_seed=spec.runtime.analysis_seed,
+            metadata=analysis_metadata,
+        )
+        bounded_uniform = fit_bounded_uniform_models(
+            database_path,
+            output_path=bounded_uniform_path,
             metadata=analysis_metadata,
         )
         validation_devices = sum(label == "validation" for label in partitions)
@@ -870,6 +879,7 @@ def run_characterize(request: "CharacterizeRequest") -> int:
             execution_profile=settings.profile,
             trajectory_count=trajectory_count,
             fit_artifact=fit,
+            bounded_uniform_artifact=bounded_uniform,
             wan_artifact=wan,
         )
 
@@ -883,6 +893,10 @@ def run_characterize(request: "CharacterizeRequest") -> int:
             store.artifact_record(integrity_path, kind="trajectory_integrity_report"),
             store.artifact_record(kernel_path, kind="empirical_endpoint_kernel"),
             store.artifact_record(fit_path, kind="gaussian_endpoint_model"),
+            store.artifact_record(
+                bounded_uniform_path,
+                kind="bounded_piecewise_uniform_endpoint_model",
+            ),
             store.artifact_record(wan_path, kind="wan2022_comparison"),
             *(
                 [
@@ -900,6 +914,14 @@ def run_characterize(request: "CharacterizeRequest") -> int:
         adequate = {
             key: bool(value.get("adequate", False))
             for key, value in fit["conditions"].items()
+        }
+        bounded_uniform_adequate = {
+            key: bool(value.get("adequate", False))
+            for key, value in bounded_uniform["conditions"].items()
+        }
+        reachability_probability_validation = {
+            key: value.get("validation", {}).get("reachability_probability")
+            for key, value in bounded_uniform["conditions"].items()
         }
         store.complete(
             metrics={
@@ -919,6 +941,10 @@ def run_characterize(request: "CharacterizeRequest") -> int:
                 "budget_exhausted": totals["budget_exhausted"],
                 "nonfinite": totals["nonfinite"],
                 "gaussian_adequacy": adequate,
+                "bounded_uniform_adequacy": bounded_uniform_adequate,
+                "reachability_probability_validation": (
+                    reachability_probability_validation
+                ),
                 "wan_programming_time_seconds": 1.0,
                 "hwa_or_on_chip_training_performed": False,
             },

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "study_id": "ibm-reram-program-verify-noise-20260822-v3",
+  "title": "IBM ReRAM endpoint model with a 128-pulse write-verify cap",
+  "hypothesis": "Reducing the maximum target-programming budget from 512 to 128 pulses removes long soft-bound chases and noise-selected late admissions while retaining the endpoint distribution of persistently reachable targets well enough to fit the deployment noise, failure, saturation, and cost models.",
+  "motivation": "The completed v2 study showed that essentially every 512-pulse failure was outside the sampled device's persistent reachable window. A post-completion prefix analysis selected 128, rather than 64, as the first successor cap: 64 discarded a substantial reachable adaptive-controller tail, whereas 128 reduces the worst-case pulse/read loop by four while retaining most observed accepted prefixes. This successor is a new declared study and does not rewrite the immutable v2 evidence.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "om-continuous",
+      "description": "Optimized-material IBM array fit with corruption disabled and a 128-pulse cap.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_short_cap128_om_continuous.json"]
+    },
+    {
+      "arm_id": "om-corrupt",
+      "description": "Optimized-material population with published corruption and a 128-pulse cap.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_short_cap128_om_corrupt.json"]
+    },
+    {
+      "arm_id": "hfo2-continuous",
+      "description": "Baseline-HfO2 stress control with corruption disabled and a 128-pulse cap.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_short_cap128_hfo2_continuous.json"]
+    },
+    {
+      "arm_id": "hfo2-corrupt",
+      "description": "Baseline-HfO2 population with published corruption and a 128-pulse cap.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/production_short_cap128_hfo2_corrupt.json"]
+    }
+  ],
+  "completion_criteria": [
+    "All four arms complete the matched 41-target, half-step-tolerance, two-start, two-controller design on 1024 device identities with four repeats and a strict 128-target-pulse cap: exactly 671744 trajectories per arm and 2686976 trajectories total.",
+    "Every run records the production_short_cap128 execution profile, maximum_program_pulses=128, the unchanged construction/conditioning/programming seeds, and the same identity partitions as v2.",
+    "Trajectory and verify-event ledgers pass the exact integrity contract and preserve accepted, failed, saturated, non-finite, corrupt, apparent-endpoint, and persistent-endpoint outcomes.",
+    "The cap comparison reports success-rate change, accepted-prefix retention, pulse and verify savings, and endpoint-residual change separately for controller, preset, corruption mode, start, target, and persistent-reachability class.",
+    "The 128-pulse empirical kernel and separate failure, corruption, saturation, and cost models are emitted and compared with both the immutable 512-pulse v2 model and Wan-2022.",
+    "For every preset, corruption mode, controller, and start condition, the runtime fits a target-conditioned eight-bin piecewise-uniform accepted-residual density with a 0.5 pseudocount per bin and reports the same held-out coverage and normalized target-binned Wasserstein adequacy gates as the Gaussian model.",
+    "For every target and condition, paired persistent lower/upper boundary states classify each non-corrupt fit and validation trajectory as target-below-lower, target-inside-bounds, or target-above-upper; the report keeps exact reachability, verify-window intersection, and apparent acceptance separate and publishes fit-versus-validation class-probability error.",
+    "No HWA, Tiki-Taka, LoRA, or network-accuracy conclusion is drawn from this device-characterization study."
+  ],
+  "analysis_plan": [
+    "Use the same seeds and device identities as v2 so the pulse cap is the only declared intervention; compare exact rerun outcomes rather than treating the stored v2 prefix calculation as a counterfactual replay.",
+    "Classify persistent reachability only on the diagnostic analysis side from paired conditioned lower/upper states; the controller remains unable to observe persistent state or hidden bounds.",
+    "Report overall success changes and changes restricted to target windows intersecting the paired persistent reachable interval. Do not count a noisy apparent admission outside that interval as evidence that the persistent target became reachable.",
+    "Compare one-pulse and adaptive controllers using total pulses, verify reads, reversals, apparent and persistent residuals, and target-conditioned failure probabilities.",
+    "Fit and validate the empirical kernel, the fourth-order Gaussian diagnostic, one global Uniform(-tau,+tau) baseline, and the predeclared target-conditioned eight-bin piecewise-uniform density. Use fit identities only, add a 0.5 pseudocount to each uniform bin, and apply the same held-out coverage and normalized target-binned Wasserstein gates to all compact candidates.",
+    "Linearly interpolate adjacent target-bin probability masses only for targets inside the characterized [0,1] grid. Reject targets outside that support by default; any target clamping and any endpoint clipping must be explicit and reported.",
+    "Sample corruption as an identity-level persistent mask and keep corrupt/stuck apparent and persistent terminal endpoints in a separate empirical inverse-CDF branch. For non-corrupt devices, first sample the paired-bound reachability class, then sample apparent success and apparent/persistent endpoints conditional on that class. Keep unreachable or budget-exhausted terminals out of the accepted-residual tail.",
+    "Compare the accepted 128-pulse apparent endpoints with Wan-2022 at one second in the common normalized coordinate and preserve the existing conductance-normalization and timing limitations."
+  ]
+}

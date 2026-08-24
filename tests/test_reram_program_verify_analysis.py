@@ -12,6 +12,7 @@ import torch
 from experiments.reram_program_verify.analysis import (
     build_empirical_kernel,
     build_wan_comparison,
+    fit_bounded_uniform_models,
     fit_gaussian_surrogates,
 )
 from experiments.reram_program_verify.integrity import validate_trajectory_database
@@ -382,6 +383,160 @@ def test_gaussian_fit_and_validation_use_disjoint_identity_partitions(
         for record in condition["validation"]["per_target"]
     ] == [1, 1, 1, 1, 1]
     assert condition["validation"]["residual"]["bias"] == pytest.approx(0.002)
+
+
+def test_bounded_uniform_model_fits_successes_and_separates_outcomes(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "trajectories.sqlite3"
+    output = tmp_path / "bounded-uniform.json"
+    fit_residuals = [-0.01 + (index + 0.5) * 0.02 / 80 for index in range(80)]
+    validation_residuals = [
+        -0.01 + (index + 0.5) * 0.02 / 100 for index in range(100)
+    ]
+    descriptors: list[tuple[float, bool]] = []
+    with TrajectoryStore(database) as store:
+        begin_rows = []
+        for device_id, residual in enumerate(fit_residuals):
+            begin_rows.append(_begin_row(device_id=device_id, partition="fit"))
+            descriptors.append((0.5 + residual, False))
+        for offset, residual in enumerate(validation_residuals, start=100):
+            begin_rows.append(_begin_row(device_id=offset, partition="validation"))
+            descriptors.append((0.5 + residual, False))
+        begin_rows.append(_begin_row(device_id=300, partition="fit"))
+        descriptors.append((0.8, False))
+        begin_rows.append(
+            _begin_row(device_id=301, partition="fit", corrupt=True)
+        )
+        descriptors.append((0.503, True))
+        # The structural reachability model pairs the independently
+        # conditioned persistent RESET and SET states for each identity.
+        lower_rows = list(begin_rows)
+        lower_descriptors = list(descriptors)
+        for row, descriptor in zip(lower_rows, lower_descriptors):
+            begin_rows.append(
+                {
+                    **row,
+                    "start_protocol": "upper_to_target",
+                    "conditioned_apparent": 0.9,
+                    "conditioned_persistent": 0.9,
+                }
+            )
+            descriptors.append(descriptor)
+        ids = store.begin_trajectories(begin_rows)
+        store.finish_trajectories(
+            [
+                _finish_row(trajectory_id, endpoint=endpoint)
+                for trajectory_id, (endpoint, _) in zip(ids, descriptors)
+            ]
+        )
+
+    artifact = fit_bounded_uniform_models(
+        database,
+        output_path=output,
+        metadata={"evidence_class": "test"},
+    )
+    condition = next(iter(artifact["conditions"].values()))
+    target = condition["validation"]["per_target"][0]
+    histogram = target["accepted_noncorrupt_residual"]
+    outcomes = target["outcome_model"]
+
+    assert artifact["target_support"]["outside_support"].startswith("reject")
+    assert histogram["support"] == [-0.01, 0.01]
+    assert histogram["fit_count"] == 80
+    assert sum(histogram["bin_probabilities"]) == pytest.approx(1.0)
+    assert histogram["bin_probabilities"] == pytest.approx([0.125] * 8)
+    assert outcomes["failed_noncorrupt_terminal"]["count"] == 1
+    assert outcomes["failed_noncorrupt_terminal"]["apparent_endpoint"][
+        "values"
+    ] == pytest.approx([0.8] * 11)
+    assert outcomes["corrupt_terminal"]["count"] == 1
+    assert outcomes["noncorrupt_reachability"]["available"] is True
+    assert outcomes["noncorrupt_reachability"]["classes"][
+        "target_inside_bounds"
+    ]["probability"] == 1.0
+    assert condition["reachability_fit_status"] == "fit"
+    assert condition["validation"]["piecewise_uniform"]["adequate"] is True
+    assert condition["validation"]["acceptance_uniform_baseline"][
+        "adequate"
+    ] is True
+    assert condition["adequate"] is True
+    assert json.loads(output.read_text(encoding="utf-8")) == artifact
+
+
+def test_bounded_model_separates_lower_inside_and_upper_reachability(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "reachability.sqlite3"
+    output = tmp_path / "reachability.json"
+    # target=0.5 is respectively below, inside, and above these paired
+    # persistent boundary intervals.
+    intervals = ((0.6, 0.9, 0.6), (0.1, 0.9, 0.5), (0.1, 0.4, 0.4))
+    with TrajectoryStore(database) as store:
+        begin_rows = []
+        endpoints = []
+        for partition, offset in (("fit", 0), ("validation", 10)):
+            for index, (lower, upper, endpoint) in enumerate(intervals):
+                device_id = offset + index
+                begin_rows.extend(
+                    [
+                        _begin_row(
+                            device_id=device_id,
+                            partition=partition,
+                            conditioned=lower,
+                        ),
+                        {
+                            **_begin_row(
+                                device_id=device_id,
+                                partition=partition,
+                                conditioned=upper,
+                            ),
+                            "start_protocol": "upper_to_target",
+                        },
+                    ]
+                )
+                endpoints.extend((endpoint, endpoint))
+        ids = store.begin_trajectories(begin_rows)
+        store.finish_trajectories(
+            [
+                _finish_row(trajectory_id, endpoint=endpoint)
+                for trajectory_id, endpoint in zip(ids, endpoints)
+            ]
+        )
+
+    artifact = fit_bounded_uniform_models(
+        database,
+        output_path=output,
+        metadata={"evidence_class": "test"},
+    )
+    condition = artifact["conditions"][
+        "one_pulse__lower_to_target__tau_step_0.5"
+    ]
+    reachability = condition["validation"]["per_target"][0]["outcome_model"][
+        "noncorrupt_reachability"
+    ]
+    classes = reachability["classes"]
+
+    assert reachability["classified_noncorrupt_count"] == 3
+    assert reachability["missing_paired_boundary_count"] == 0
+    for reachability_class in (
+        "target_below_lower_bound",
+        "target_inside_bounds",
+        "target_above_upper_bound",
+    ):
+        assert classes[reachability_class]["probability"] == pytest.approx(1 / 3)
+    assert classes["target_below_lower_bound"]["success_probability"] == 0.0
+    assert classes["target_inside_bounds"]["success_probability"] == 1.0
+    assert classes["target_above_upper_bound"]["success_probability"] == 0.0
+    assert classes["target_below_lower_bound"][
+        "acceptance_window_reachable_probability"
+    ] == 0.0
+    assert classes["target_inside_bounds"][
+        "acceptance_window_reachable_probability"
+    ] == 1.0
+    assert classes["target_above_upper_bound"][
+        "acceptance_window_reachable_probability"
+    ] == 0.0
 
 
 def test_wan_comparison_records_full_statistics_cost_and_conditioning_boundary(

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ## Purpose
 
@@ -49,8 +49,21 @@ The strongest current interpretation is:
   saves `9.85–85.63%` of verify reads with essentially unchanged accepted-
   endpoint RMSE, but uses `53.70–210.51%` more pulses and loses `0.96–5.31`
   percentage points of programming success. Its Gaussian endpoint surrogate
-  failed every predeclared adequacy gate, so the empirical kernel and separate
-  failure/cost models are the authoritative outputs.
+  failed every predeclared adequacy gate. A post-completion v2 check found that
+  one global verify-window uniform passed only 7 of 16 conditions, whereas a
+  target-conditioned eight-bin piecewise-uniform density passed all 16
+  held-out gates. This compact result is exploratory until the v3 rerun; the
+  empirical kernel and separate failure/corrupt/cost models remain the
+  authoritative v2 outputs. A paired persistent-bound extension further
+  separates non-corrupt targets below RESET, inside the reachable interval,
+  and above SET. Its fit-to-validation class-probability MAE is `0.88-1.53`
+  points. Roughly half the devices cannot reach the exact nominal endpoint;
+  HfO2 nevertheless often passes apparent verification because its apparent
+  write variation is large.
+- A declared 128-pulse successor now tests whether the 512-pulse tail is useful
+  programming or mostly unreachable-bound chasing and noisy late admission.
+  The completed v2 configurations remain immutable; the new cap is isolated in
+  the `production_short_cap128` profile and the 2026-08-22 v3 study.
 - Most conclusions remain exploratory: the key studies use one base-training
   seed, and endpoint program-and-verify models are not substitutes for
   measured incremental pulse dynamics.
@@ -376,6 +389,10 @@ and fine-tuning updates must remain separately measurable.
   reconstruction from fitted preset dynamics, not replay of raw IBM pulse
   traces, and the normalized Wan-2022 comparison is operational rather than a
   physical calibration.
+  A matched v3 successor is planned with a 128-pulse cap. Retrospective v2
+  prefix counts estimate a 21.97–59.33% pulse-work reduction across all eight
+  population/controller conditions, but the new cap must be rerun because
+  adaptive batch truncation changes the final verify opportunity.
 - **Historical Wan noise model:** HWA training used temporary additive
   Gaussian parameter noise (`std_dev=0.0025` in the completed Wan studies).
   Deployment then used IBM AIHWKit's phenomenological Wan-2022 model:
@@ -657,11 +674,13 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Integrate the finalized IBM ReRAM empirical endpoint kernel with its
-   separate target-conditioned failure, corruption, saturation, and cost
-   models as a deployment backend. Preserve each sampled programmed endpoint
-   and use it as the common starting state for a predeclared HWA-only versus
-   on-chip-recovery comparison; do not redraw endpoints between arms.
+1. Run the declared 128-pulse IBM ReRAM successor and compare it with the
+   immutable 512-pulse endpoint model. Select the deployment cap explicitly,
+   then integrate that empirical endpoint kernel with its separate
+   target-conditioned failure, corruption, saturation, and cost models.
+   Preserve each sampled programmed endpoint as the common starting state for
+   a predeclared HWA-only versus on-chip-recovery comparison; do not redraw
+   endpoints between arms.
 2. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify
    HWA models as pulse-update models unless their source papers provide the

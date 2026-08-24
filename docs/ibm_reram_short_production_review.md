@@ -158,3 +158,89 @@ attempt is retained and may be retried only as a new native run under the same
 arm after the cause is understood and the unchanged config/source guards pass.
 No tolerance, seed, controller, pulse budget, or population setting may change
 during recovery.
+
+## Post-completion compact endpoint-model check
+
+This analysis was added after v2 reached completion. It therefore does not
+change the immutable v2 hypothesis or promote a post-hoc choice to
+confirmatory evidence; the 128-pulse v3 successor predeclares the selected
+candidate.
+
+The accepted apparent residual is forced by verification into
+`[-tau,+tau]`. A single uniform density over that window reproduced central
+coverage but missed systematic target-conditioned mass. It passed 7 of 16
+preset/corruption/controller/start conditions. The previously declared
+fourth-order Gaussian passed none. An eight-bin piecewise-uniform density fit
+separately at each target, with a `0.5` pseudocount per bin, passed all 16:
+
+| Compact model | Adequate conditions | Normalized median target-binned Wasserstein |
+| --- | ---: | ---: |
+| Fourth-order Gaussian | 0 / 16 | failed gate in every condition |
+| Global `Uniform(-tau,+tau)` | 7 / 16 | up to `0.1359` |
+| Target-conditioned eight-bin uniform | 16 / 16 | `0.0323-0.0479` |
+
+The selected model's pooled 90% coverage was `0.8978-0.9037` and its 95%
+coverage was `0.9488-0.9511`. Failed non-corrupt endpoints and corrupt/stuck
+endpoints remain separate empirical branches; neither is used to broaden the
+accepted uniform density. Targets outside `[0,1]` are rejected by default,
+and corruption is an identity-level mask that must persist across writes.
+
+Non-corrupt bound variation is a second, distinct mixture. Pairing each
+identity/repeat's persistent lower- and upper-conditioned states yields three
+exact-target classes: below the lower bound, inside the interval, and above
+the upper bound. Their fit-to-validation probability MAE was `0.88-1.53`
+percentage points across populations, with a worst target/class error of
+`5.31` points. At `x=0` and `x=1`, approximately half the devices cannot reach
+the exact target. The half-step verify window reduces the structurally
+unreachable mass to roughly `47-48%` for OM and `30-32%` for HfO2. Apparent
+acceptance is modeled conditionally and does not change that latent class.
+
+## Post-completion 128-pulse successor decision
+
+This decision was made after v2 completed and therefore does not change the
+v2 protocol, configurations, or interpretation. The completed validation
+ledger showed that all one-pulse failures and 99.96% of adaptive failures at
+the 512-pulse cap had target windows outside the paired persistent reachable
+interval. Failed trajectories averaged only 0.03 reversals for one-pulse and
+0.12 for adaptive control, so repeated overshoot correction was not the
+dominant source of the long tail.
+
+The table below is a retrospective prefix calculation on the v2 held-out
+validation trajectories. `Success @128` counts endpoints first accepted by
+pulse 128; pulse-work reduction replaces every observed count above 128 by
+128. It is not an exact counterfactual adaptive replay because truncating an
+adaptive batch at the new cap can add a final verify that was absent from the
+512-pulse trajectory.
+
+| Population | Controller | Success @128 | Success @512 | Estimated pulse-work reduction |
+|---|---:|---:|---:|---:|
+| OM continuous | adaptive | 87.03% | 91.54% | 48.68% |
+| OM continuous | one-pulse | 93.85% | 95.44% | 46.46% |
+| OM corrupt | adaptive | 79.27% | 84.03% | 58.65% |
+| OM corrupt | one-pulse | 87.10% | 89.25% | 59.33% |
+| HfO2 continuous | adaptive | 96.80% | 98.73% | 39.07% |
+| HfO2 continuous | one-pulse | 99.16% | 99.74% | 21.97% |
+| HfO2 corrupt | adaptive | 91.86% | 95.24% | 56.51% |
+| HfO2 corrupt | one-pulse | 97.70% | 99.34% | 34.38% |
+
+A 64-pulse cap was rejected as the first successor because it reduced OM
+adaptive success to 77.83% without corruption and 70.78% with corruption.
+Among validation endpoints accepted only after pulse 128, 7,021 of 9,746
+adaptive cases and 3,315 of 3,989 one-pulse cases were outside the diagnostic
+persistent reachable interval. The remaining reachable tail is why 128 is a
+new comparison rather than being declared equivalent to 512 from prefix data.
+
+The successor contract is
+`studies/ibm-reram-program-verify-noise-20260822-v3.json`. It preserves the v2
+population, seeds, partitions, targets, tolerance, starts, controllers,
+conditioning, and analysis, while selecting the strict
+`production_short_cap128` profile. Only an exact v3 rerun may provide the
+128-pulse endpoint and failure models used for deployment.
+
+After preparing that study, the reviewed launcher selects it explicitly:
+
+```bash
+python -m experiments.reram_program_verify.local_short_launcher \
+  --study-profile v3-cap128 \
+  --aihwkit-python /home/filip/miniconda3/envs/aihwkit/bin/python
+```
