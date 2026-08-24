@@ -38,6 +38,12 @@ MEASURED_COHORT_A_BACKENDS = frozenset(
 )
 MEASURED_COHORT_B_BACKENDS = frozenset({"measured_cohort_b"})
 MEASURED_BACKENDS = MEASURED_COHORT_A_BACKENDS | MEASURED_COHORT_B_BACKENDS
+_IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS = frozenset(
+    {
+        "dual_rail_quad_common_window",
+        "differential_pair_common_window",
+    }
+)
 _MEASURED_KEYS = {
     "curve_preprocessing",
     "split_seed",
@@ -125,6 +131,7 @@ class StudentTrainSettings:
     selection_evaluation: str
     selection_noise_repeats: int
     weight_modifier: UpdateBackendSettings
+    selection_weight_modifier: UpdateBackendSettings
     update_backend: UpdateBackendSettings
 
 
@@ -132,6 +139,8 @@ class StudentTrainSettings:
 class StudentValidateSettings:
     split: str
     sample_limit: int | None
+    weight_modifier: UpdateBackendSettings
+    noise_repeats: int
 
 
 @dataclass(frozen=True)
@@ -603,10 +612,165 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             type="none",
             parameters=_empty_object(parameters, parameters_path),
         )
+    if modifier_type == "ibm_reram_om_program_verify":
+        required = {
+            "execution",
+            "assignment_seed",
+            "endpoint_seed",
+            "corruption_policy",
+            "noisy_evaluation",
+            "endpoint_policy",
+            "target_out_of_support",
+            "preset",
+            "controller",
+            "start_protocol",
+            "tolerance_step_ratio",
+            "maximum_program_pulses",
+        }
+        mapping_fields = {
+            "target_mapping",
+            "dual_rail_layout_by_parameter",
+            "common_window_margin_fraction",
+        }
+        _keys(parameters, parameters_path, required, mapping_fields)
+        provided_mapping_fields = mapping_fields & set(parameters)
+        if provided_mapping_fields and provided_mapping_fields != mapping_fields:
+            raise config_error(
+                parameters_path,
+                "to provide all three target-mapping fields together: "
+                "target_mapping, dual_rail_layout_by_parameter, and "
+                "common_window_margin_fraction",
+                dict(parameters),
+            )
+        normalized_parameters = dict(parameters)
+        if not provided_mapping_fields:
+            # Legacy pilot configs retain their literal global-coordinate path.
+            normalized_parameters.update(
+                {
+                    "target_mapping": "literal_global",
+                    "dual_rail_layout_by_parameter": None,
+                    "common_window_margin_fraction": 0.0,
+                }
+            )
+        target_mapping = normalized_parameters["target_mapping"]
+        if target_mapping not in {
+            "literal_global",
+            "dual_rail_quad_common_window",
+            "differential_pair_common_window",
+        }:
+            raise config_error(
+                f"{parameters_path}.target_mapping",
+                "to be 'literal_global' or "
+                "an array-specific common-window mapping "
+                "('dual_rail_quad_common_window' or "
+                "'differential_pair_common_window')",
+                target_mapping,
+            )
+        margin = _number(
+            normalized_parameters["common_window_margin_fraction"],
+            f"{parameters_path}.common_window_margin_fraction",
+        )
+        if margin < 0.0 or margin >= 0.5:
+            raise config_error(
+                f"{parameters_path}.common_window_margin_fraction",
+                "to be a finite number in [0, 0.5)",
+                margin,
+            )
+        normalized_parameters["common_window_margin_fraction"] = margin
+        raw_layouts = normalized_parameters["dual_rail_layout_by_parameter"]
+        if target_mapping == "dual_rail_quad_common_window":
+            expected_layouts = {
+                "base.dense_weight.0": "halves",
+                "base.dense_weight.1": "paired",
+            }
+            if not isinstance(raw_layouts, Mapping) or dict(raw_layouts) != expected_layouts:
+                raise config_error(
+                    f"{parameters_path}.dual_rail_layout_by_parameter",
+                    "to equal the canonical W1/W2 layout "
+                    f"{expected_layouts!r}",
+                    raw_layouts,
+                )
+            normalized_parameters["dual_rail_layout_by_parameter"] = dict(
+                raw_layouts
+            )
+        elif target_mapping == "differential_pair_common_window":
+            if raw_layouts is not None:
+                raise config_error(
+                    f"{parameters_path}.dual_rail_layout_by_parameter",
+                    "to be null for differential_pair_common_window; the "
+                    "core mapper enforces the canonical adjacent plus/minus "
+                    "catalog",
+                    raw_layouts,
+                )
+        elif raw_layouts is not None or margin != 0.0:
+            raise config_error(
+                parameters_path,
+                "to use null dual_rail_layout_by_parameter and zero "
+                "common_window_margin_fraction for literal_global",
+                dict(normalized_parameters),
+            )
+        exact = {
+            "preset": "reram_array_om",
+            "controller": "adaptive",
+            "start_protocol": "lower_to_target",
+            "tolerance_step_ratio": 0.5,
+            "maximum_program_pulses": 128,
+            "endpoint_policy": "clip_0_1",
+            "target_out_of_support": "error",
+        }
+        for name, expected in exact.items():
+            if normalized_parameters[name] != expected:
+                raise config_error(
+                    f"{parameters_path}.{name}",
+                    f"to equal {expected!r}",
+                    normalized_parameters[name],
+                )
+        if normalized_parameters["execution"] not in {
+            "compact_endpoint",
+            "pulse_resolved",
+        }:
+            raise config_error(
+                f"{parameters_path}.execution",
+                "to be 'compact_endpoint' or 'pulse_resolved'",
+                normalized_parameters["execution"],
+            )
+        if normalized_parameters["corruption_policy"] not in {
+            "counterfactual_repaired",
+            "published",
+        }:
+            raise config_error(
+                f"{parameters_path}.corruption_policy",
+                "to be 'counterfactual_repaired' or 'published'",
+                normalized_parameters["corruption_policy"],
+            )
+        for name in ("assignment_seed", "endpoint_seed"):
+            seed = _integer(
+                normalized_parameters[name], f"{parameters_path}.{name}"
+            )
+            if seed >= 2**63:
+                raise config_error(
+                    f"{parameters_path}.{name}",
+                    "to be an integer in [0, 2**63)",
+                    seed,
+                )
+        if not isinstance(normalized_parameters["noisy_evaluation"], bool):
+            raise config_error(
+                f"{parameters_path}.noisy_evaluation",
+                "to be a boolean",
+                normalized_parameters["noisy_evaluation"],
+            )
+        return UpdateBackendSettings(
+            type=modifier_type,
+            parameters=freeze_json(
+                normalized_parameters,
+                path=parameters_path,
+            ),
+        )
     if modifier_type != "add_normal":
         raise config_error(
             f"{path}.type",
-            "to be 'none' or 'add_normal'",
+            "to be 'none', 'add_normal', or "
+            "'ibm_reram_om_program_verify'",
             modifier_type,
         )
     _keys(
@@ -697,6 +861,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         },
         {
             "weight_modifier",
+            "selection_weight_modifier",
             "selection_evaluation",
             "selection_noise_repeats",
         },
@@ -764,6 +929,13 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         ),
         f"{path}.weight_modifier",
     )
+    selection_weight_modifier = _parse_weight_modifier(
+        raw.get(
+            "selection_weight_modifier",
+            {"type": "none", "parameters": {}},
+        ),
+        f"{path}.selection_weight_modifier",
+    )
     selection_evaluation = raw.get("selection_evaluation", "clean")
     if selection_evaluation not in {"clean", "modifier"}:
         raise config_error(
@@ -777,16 +949,18 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         minimum=1,
     )
     if selection_evaluation == "modifier":
-        valid_modifier = (
-            weight_modifier.type == "add_normal"
-            and bool(
-                weight_modifier.parameters.get("noisy_evaluation", False)
-            )
+        selected_modifier = (
+            selection_weight_modifier
+            if selection_weight_modifier.type != "none"
+            else weight_modifier
+        )
+        valid_modifier = bool(
+            selected_modifier.parameters.get("noisy_evaluation", False)
         )
         if not valid_modifier:
             raise config_error(
                 f"{path}.selection_evaluation",
-                "to select an add_normal weight modifier with "
+                "to select a weight modifier with "
                 "noisy_evaluation=true when set to 'modifier'",
                 selection_evaluation,
             )
@@ -796,6 +970,85 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "to equal 1 when selection_evaluation is 'clean'",
             selection_noise_repeats,
         )
+    if (
+        selection_weight_modifier.type != "none"
+        and selection_evaluation != "modifier"
+    ):
+        raise config_error(
+            f"{path}.selection_weight_modifier",
+            "to be 'none' unless selection_evaluation is 'modifier'",
+            selection_weight_modifier.type,
+        )
+    if weight_modifier.type == "ibm_reram_om_program_verify" and (
+        weight_modifier.parameters["execution"] != "compact_endpoint"
+        or weight_modifier.parameters["noisy_evaluation"]
+    ):
+        raise config_error(
+            f"{path}.weight_modifier",
+            "to use compact_endpoint with noisy_evaluation=false for "
+            "off-chip HWA minibatches",
+            dict(weight_modifier.parameters),
+        )
+    if selection_weight_modifier.type == "ibm_reram_om_program_verify":
+        selection_parameters = selection_weight_modifier.parameters
+        selection_is_array_specific = (
+            selection_parameters["target_mapping"]
+            in _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS
+        )
+        expected_selection_corruption = (
+            "counterfactual_repaired"
+            if selection_is_array_specific
+            else "published"
+        )
+        if (
+            selection_parameters["execution"] != "pulse_resolved"
+            or selection_parameters["corruption_policy"]
+            != expected_selection_corruption
+            or not selection_parameters["noisy_evaluation"]
+        ):
+            raise config_error(
+                f"{path}.selection_weight_modifier",
+                "to use pulse_resolved, noisy_evaluation=true, and "
+                f"{expected_selection_corruption} corruption for its "
+                "declared target mapping",
+                dict(selection_parameters),
+            )
+    if (
+        weight_modifier.type == "ibm_reram_om_program_verify"
+        and weight_modifier.parameters["target_mapping"]
+        in _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS
+    ):
+        if selection_weight_modifier.type != "ibm_reram_om_program_verify":
+            raise config_error(
+                f"{path}.selection_weight_modifier",
+                "to be an IBM OM modifier matched to the array-specific "
+                "training modifier",
+                selection_weight_modifier.type,
+            )
+        matched_fields = (
+            "assignment_seed",
+            "corruption_policy",
+            "target_mapping",
+            "dual_rail_layout_by_parameter",
+            "common_window_margin_fraction",
+        )
+        mismatches = {
+            name: {
+                "training": weight_modifier.parameters[name],
+                "selection": selection_weight_modifier.parameters[name],
+            }
+            for name in matched_fields
+            if weight_modifier.parameters[name]
+            != selection_weight_modifier.parameters[name]
+        }
+        if mismatches:
+            raise config_error(
+                f"{path}.selection_weight_modifier",
+                "to match the array-specific training modifier's fixed "
+                "array, corruption policy, mapping, layout, and "
+                "inner-window margin",
+                mismatches,
+            )
     return StudentTrainSettings(
         num_epochs=_integer(raw["num_epochs"], f"{path}.num_epochs", minimum=0),
         learning_rates=(parsed_rates[0], parsed_rates[1]),
@@ -807,6 +1060,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         selection_evaluation=selection_evaluation,
         selection_noise_repeats=selection_noise_repeats,
         weight_modifier=weight_modifier,
+        selection_weight_modifier=selection_weight_modifier,
         update_backend=UpdateBackendSettings(type=backend["type"], parameters=parameters),
     )
 
@@ -814,10 +1068,58 @@ def _parse_train(value: Any) -> StudentTrainSettings:
 def _parse_validate(value: Any) -> StudentValidateSettings:
     path = "config.modes.validate"
     raw = _object(value, path)
-    _keys(raw, path, {"split", "sample_limit"})
+    _keys(raw, path, {"split", "sample_limit"}, {"weight_modifier", "noise_repeats"})
     if raw["split"] not in {"validation", "test"}:
         raise config_error(f"{path}.split", "to be 'validation' or 'test'", raw["split"])
-    return StudentValidateSettings(split=raw["split"], sample_limit=_optional_batches(raw["sample_limit"], f"{path}.sample_limit"))
+    modifier = _parse_weight_modifier(
+        raw.get("weight_modifier", {"type": "none", "parameters": {}}),
+        f"{path}.weight_modifier",
+    )
+    repeats = _integer(
+        raw.get("noise_repeats", 1),
+        f"{path}.noise_repeats",
+        minimum=1,
+    )
+    if modifier.type == "none" and repeats != 1:
+        raise config_error(
+            f"{path}.noise_repeats",
+            "to equal 1 when weight_modifier is 'none'",
+            repeats,
+        )
+    if modifier.type != "none" and not bool(
+        modifier.parameters.get("noisy_evaluation", False)
+    ):
+        raise config_error(
+            f"{path}.weight_modifier",
+            "to set noisy_evaluation=true for validation",
+            dict(modifier.parameters),
+        )
+    if modifier.type == "ibm_reram_om_program_verify":
+        array_specific = (
+            modifier.parameters["target_mapping"]
+            in _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS
+        )
+        expected_corruption = (
+            "counterfactual_repaired" if array_specific else "published"
+        )
+        if (
+            modifier.parameters["execution"] != "pulse_resolved"
+            or modifier.parameters["corruption_policy"]
+            != expected_corruption
+        ):
+            raise config_error(
+                f"{path}.weight_modifier",
+                "to use pulse_resolved with "
+                f"{expected_corruption} corruption for its declared target "
+                "mapping during physical deployment validation",
+                dict(modifier.parameters),
+            )
+    return StudentValidateSettings(
+        split=raw["split"],
+        sample_limit=_optional_batches(raw["sample_limit"], f"{path}.sample_limit"),
+        weight_modifier=modifier,
+        noise_repeats=repeats,
+    )
 
 
 def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
@@ -859,6 +1161,52 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
         )
     )
     model = _parse_model(raw["model"])
+    ibm_modifiers: list[tuple[str, UpdateBackendSettings]] = []
+    if isinstance(modes.get("train"), StudentTrainSettings):
+        train_settings = modes["train"]
+        ibm_modifiers.extend(
+            (
+                (
+                    "config.modes.train.weight_modifier",
+                    train_settings.weight_modifier,
+                ),
+                (
+                    "config.modes.train.selection_weight_modifier",
+                    train_settings.selection_weight_modifier,
+                ),
+            )
+        )
+    if isinstance(modes.get("validate"), StudentValidateSettings):
+        ibm_modifiers.append(
+            (
+                "config.modes.validate.weight_modifier",
+                modes["validate"].weight_modifier,
+            )
+        )
+    for modifier_path, modifier in ibm_modifiers:
+        if modifier.type != "ibm_reram_om_program_verify":
+            continue
+        target_mapping = modifier.parameters["target_mapping"]
+        if (
+            target_mapping == "dual_rail_quad_common_window"
+            and model.encoding != "single"
+        ):
+            raise config_error(
+                f"{modifier_path}.parameters.target_mapping",
+                "to select model.encoding='single' for "
+                "dual_rail_quad_common_window",
+                target_mapping,
+            )
+        if (
+            target_mapping == "differential_pair_common_window"
+            and model.encoding != "differential"
+        ):
+            raise config_error(
+                f"{modifier_path}.parameters.target_mapping",
+                "to select model.encoding='differential' for "
+                "differential_pair_common_window",
+                target_mapping,
+            )
     if teacher.type == "bounded_drn":
         teacher_bounds = teacher.conductance_bounds
         if teacher_bounds is None:  # pragma: no cover - parser guarantees it

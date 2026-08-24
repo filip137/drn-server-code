@@ -81,6 +81,23 @@ def test_campaign_accepts_generic_external_input_paths(tmp_path: Path) -> None:
     ).resolve()
 
 
+def test_campaign_accepts_characterization_and_device_model_inputs(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest(tmp_path)
+    manifest["stages"][0]["command"] = "characterize"
+    manifest["stages"][1]["inputs"]["device_model"] = {
+        "path": "om-device-model.json"
+    }
+
+    parsed = CampaignSpec.parse(manifest, base_dir=tmp_path)
+
+    assert parsed.stages[0].command == "characterize"
+    assert parsed.stages[1].inputs["device_model"].path == (
+        tmp_path / "om-device-model.json"
+    ).resolve()
+
+
 def test_campaign_rejects_unknown_external_input_key(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     manifest["stages"][0]["inputs"] = {

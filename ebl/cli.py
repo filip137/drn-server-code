@@ -64,6 +64,7 @@ class TrainRequest:
     resume: Optional[Path]
     command: Tuple[str, ...]
     device_data: Optional[Path] = None
+    device_model: Optional[Path] = None
     teacher_weights: Optional[Path] = None
 
 
@@ -86,6 +87,16 @@ class ValidateRequest:
     weights: Path
     command: Tuple[str, ...]
     teacher_weights: Optional[Path] = None
+    device_model: Optional[Path] = None
+
+
+@dataclass(frozen=True)
+class CharacterizeRequest:
+    definition: ExperimentDefinition
+    spec: Any
+    config_path: Path
+    output_dir: Path
+    command: Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -121,6 +132,7 @@ class CommandHandlers:
     train: Optional[Handler] = None
     linspace: Optional[Handler] = None
     validate: Optional[Handler] = None
+    characterize: Optional[Handler] = None
     checkpoint_import_legacy: Optional[Handler] = None
     campaign_run: Optional[Handler] = None
 
@@ -185,6 +197,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     train.add_argument(
+        "--device-model",
+        type=Path,
+        help=(
+            "explicit calibrated hardware-derived device-model JSON used by "
+            "IBM OM HWA modifiers"
+        ),
+    )
+    train.add_argument(
         "--teacher-weights",
         type=Path,
         help="explicit named ReLU teacher checkpoint for distillation",
@@ -218,6 +238,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="explicit named ReLU teacher checkpoint for KL evaluation",
     )
+    validate.add_argument(
+        "--device-model",
+        type=Path,
+        help=(
+            "explicit calibrated hardware-derived device-model JSON used by "
+            "physical deployment validation"
+        ),
+    )
+
+    characterize = commands.add_parser(
+        "characterize",
+        help="characterize a physical-device model selected by the config file",
+    )
+    _add_config_and_output(characterize)
 
     checkpoint = commands.add_parser(
         "checkpoint",
@@ -440,6 +474,10 @@ def _protocol_payload(
         for definition in definitions
         for combination in definition.combinations
     ]
+    supports_ibm_device_model = any(
+        definition.experiment_id == "mnist_relu_drn_kd.v1"
+        for definition in definitions
+    )
     return {
         "protocol_version": 1,
         "capabilities": {
@@ -448,6 +486,7 @@ def _protocol_payload(
                 "train",
                 "linspace",
                 "validate",
+                "characterize",
                 "checkpoint import-legacy",
                 "campaign run",
                 "study prepare",
@@ -527,7 +566,15 @@ def _protocol_payload(
                 "optional_input_options": (
                     []
                     if reset_only
-                    else ["--device-data", "--teacher-weights"]
+                    else [
+                        "--device-data",
+                        *(
+                            ["--device-model"]
+                            if supports_ibm_device_model
+                            else []
+                        ),
+                        "--teacher-weights",
+                    ]
                 ),
             },
             "linspace": {
@@ -553,8 +600,24 @@ def _protocol_payload(
                     *(["--teacher-weights"] if reset_only else []),
                 ],
                 "optional_input_options": (
-                    [] if reset_only else ["--teacher-weights"]
+                    []
+                    if reset_only
+                    else [
+                        "--teacher-weights",
+                        *(
+                            ["--device-model"]
+                            if supports_ibm_device_model
+                            else []
+                        ),
+                    ]
                 ),
+            },
+            "characterize": {
+                "available": any(
+                    RunMode.CHARACTERIZE in item.supported_modes
+                    for item in definitions
+                ),
+                "required_options": ["--config", "--output-dir"],
             },
             "checkpoint import-legacy": {
                 "available": True,
@@ -748,6 +811,20 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
     return run_validate(request)
 
 
+def _default_characterize_handler(
+    request: CharacterizeRequest,
+) -> Optional[int]:
+    if request.definition.experiment_id != "ibm_reram_program_verify.v1":
+        raise ConfigError(
+            "Expected characterize runtime dispatch only for "
+            "'ibm_reram_program_verify.v1'. Provided value: "
+            f"{request.definition.experiment_id!r}."
+        )
+    from experiments.reram_program_verify.runtime import run_characterize
+
+    return run_characterize(request)
+
+
 def _default_checkpoint_import_legacy_handler(
     request: ImportLegacyCheckpointRequest,
 ) -> Optional[int]:
@@ -768,6 +845,7 @@ def _default_command_handlers() -> CommandHandlers:
         train=_default_train_handler,
         linspace=_default_linspace_handler,
         validate=_default_validate_handler,
+        characterize=_default_characterize_handler,
         checkpoint_import_legacy=_default_checkpoint_import_legacy_handler,
     )
 
@@ -834,6 +912,7 @@ def _dispatch(
             resume=args.resume,
             command=command,
             device_data=args.device_data,
+            device_model=args.device_model,
             teacher_weights=args.teacher_weights,
         )
         return _handler_result(
@@ -872,9 +951,27 @@ def _dispatch(
             weights=args.weights,
             command=command,
             teacher_weights=args.teacher_weights,
+            device_model=args.device_model,
         )
         return _handler_result(
             _require_handler(handlers.validate, "validate"),
+            request,
+        )
+
+    if args.command_name == "characterize":
+        definition, spec = resolve_experiment_config(
+            args.config,
+            RunMode.CHARACTERIZE,
+        )
+        request = CharacterizeRequest(
+            definition=definition,
+            spec=spec,
+            config_path=args.config,
+            output_dir=args.output_dir,
+            command=command,
+        )
+        return _handler_result(
+            _require_handler(handlers.characterize, "characterize"),
             request,
         )
 

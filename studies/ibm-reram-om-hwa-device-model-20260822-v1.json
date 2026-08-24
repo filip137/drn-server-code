@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "study_id": "ibm-reram-om-hwa-device-model-20260822-v1",
+  "title": "Focused IBM OM cap-128 endpoint model for DRN HWA",
+  "hypothesis": "A lower-from-RESET, half-step-tolerance, 128-pulse adaptive program-and-verify characterization can retain the endpoint, failure, corruption, saturation, and cost information required by the DRN HWA pilot while avoiding full target sweeps for the one-pulse calibration controller, the unused upper-start direction, and the deferred HfO2 stress control.",
+  "motivation": "The earlier short-production matrix spends most of its runtime on two controllers, two start directions, and both OM and HfO2 populations. The network pilot consumes only the OM adaptive lower-from-RESET condition. This focused study therefore records one-pulse trajectories only for the 20% calibration identities, records adaptive trajectories for all identities, and uses each fixed identity's sampled persistent lower/upper bounds for analysis-only reachability classification. It does not replace or reinterpret the broader immutable cap-128 comparison study.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "om-continuous",
+      "description": "OM fixed-bound population with published corruption disabled; calibration-only one-pulse and full adaptive lower-from-RESET trajectories.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": [
+        "../examples/reram_program_verify/hwa_production_cap128_om_continuous.json"
+      ]
+    },
+    {
+      "arm_id": "om-published",
+      "description": "Matched OM population with the published corrupt/stuck probability enabled.",
+      "experiment_id": "ibm_reram_program_verify.v1",
+      "mode": "characterize",
+      "configs": [
+        "../examples/reram_program_verify/hwa_production_cap128_om_corrupt.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Both arms complete exactly 201392 trajectories: 816 calibration-identity one-pulse trajectories and 4096 all-identity adaptive trajectories at each of 41 targets, for 402784 total trajectories.",
+    "Both runs record profile hwa_production_cap128, OM preset, 1024 identities, four repeats, lower_to_target only, tau/step=0.5, maximum_program_pulses=128, and the unchanged 0.2/0.6/0.2 identity partition.",
+    "The one-pulse controller observes only calibration identities and initializes the adaptive population estimator; its endpoint condition is not used as a fitted HWA model.",
+    "The adaptive condition has 2464 fit and 816 held-out validation trajectories per target before corruption filtering and passes the predeclared piecewise-uniform coverage and normalized target-binned Wasserstein adequacy gates.",
+    "Every non-corrupt adaptive trajectory is classified against its fixed sampled persistent lower/upper bounds without exposing either bound to the controller.",
+    "Both ledgers pass exact controller-specific trajectory-count, pulse/event, seed, identity, conditioning, and endpoint integrity checks.",
+    "The immutable HWA device bundle is built only if both adaptive endpoint conditions are adequate and embeds the endpoint and step-estimator source hashes."
+  ],
+  "analysis_plan": [
+    "Fit the accepted non-corrupt residual density, failure terminals, corrupt/stuck terminals, saturation, and cost only from the adaptive lower-from-RESET condition; retain the one-pulse rows as controller-calibration evidence.",
+    "Use fit identities for model parameters and validation identities for coverage, target-binned Wasserstein distance, reachability-probability error, and all adequacy decisions.",
+    "Classify reachability with sampled fixed lower/upper persistent bounds. Keep exact target reachability, acceptance-window intersection, apparent acceptance, and persistent residual separate.",
+    "Report trajectory and verify-event reductions relative to the broader two-start, two-controller, four-preset cap-128 design, without treating omitted HfO2 or upper-start conditions as negative results.",
+    "Compare the adequate IBM OM apparent endpoint residual with Wan-2022 in the common normalized coordinate and preserve the distinct corruption, failure, pulse-cost, timing, and physical-calibration boundaries."
+  ]
+}

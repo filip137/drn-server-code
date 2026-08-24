@@ -68,6 +68,9 @@ remove the range and averaging supplied by the second device.
 
 This distinction is what the experiment tests:
 
+The canonical construction and programming rules for both schemes are in
+[`initialization_protocols.md`](initialization_protocols.md#four-device-and-eight-device-dual-rail-initialization).
+
 - The numerical equivalence tests use arbitrary `G+` and `G-` and require
   float64 agreement of input-edge energy, hidden-node quadratic and linear
   coefficients, hidden-node KCL, and the logical input derivative.

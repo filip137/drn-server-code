@@ -442,6 +442,7 @@ def test_optional_external_inputs_are_validated_and_forwarded(
         "train.json",
         "validate.json",
         "devices.hdf5",
+        "device-model.json",
         "teacher.pt",
         "weights.pt",
     ):
@@ -459,6 +460,7 @@ def test_optional_external_inputs_are_validated_and_forwarded(
                 "config": "train.json",
                 "inputs": {
                     "device_data": {"path": "devices.hdf5"},
+                    "device_model": {"path": "device-model.json"},
                     "teacher_weights": {"path": "teacher.pt"},
                 },
             },
@@ -482,6 +484,7 @@ def test_optional_external_inputs_are_validated_and_forwarded(
         commands = result["description"]["commands"]
         commands["train"]["optional_input_options"] = [
             "--device-data",
+            "--device-model",
             "--teacher-weights",
         ]
         commands["validate"]["optional_input_options"] = [
@@ -503,6 +506,9 @@ def test_optional_external_inputs_are_validated_and_forwarded(
     assert train_command[
         train_command.index("--teacher-weights") + 1
     ] == str((tmp_path / "teacher.pt").resolve())
+    assert train_command[
+        train_command.index("--device-model") + 1
+    ] == str((tmp_path / "device-model.json").resolve())
     assert "--device_data" not in train_command
     assert "--teacher_weights" not in train_command
 

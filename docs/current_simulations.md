@@ -18,7 +18,38 @@ Prepared workflow studies retain their hypothesis in
 <!-- BEGIN AUTOMATIC ACTIVE SIMULATIONS -->
 ## Active
 
-No simulations currently running.
+### `measured-cohort-b-lora-rank4-reset-20260815-v1`
+
+- **Status:** `running`
+- **Active native runs:** `1`
+- **Raw home:** `results/measured-cohort-b-lora-rank4-reset-20260815-v1/`
+- **Runs:**
+  - `measured-cohort-b-lora-rank4-reset-20260815-v1/20260815T171027.734599Z-89c7d36c-7c5ad177` — `train`, `small_drn.v1`, started `2026-08-15T17:10:27.734755+00:00`
+
+### `mnist-ibm-om-differential-pair-hwa-program-verify-pilot-20260824-v1`
+
+- **Status:** `running`
+- **Active native runs:** `1`
+- **Raw home:** `results/mnist-ibm-om-differential-pair-hwa-program-verify-pilot-20260824-v1/`
+- **Runs:**
+  - `mnist-ibm-om-differential-pair-hwa-program-verify-pilot-20260824-v1/runs/train-exact-bounds-pair-hwa/20260824T120938.532361Z-d9f199ff-39777998` — `train`, `mnist_relu_drn_kd.v1`, arm `train-exact-bounds-pair-hwa`, started `2026-08-24T12:09:38.533493+00:00`
+
+### `mnist-relu-drn-kd-exploratory-20260816`
+
+- **Status:** `running`
+- **Active native runs:** `2`
+- **Raw home:** `results/mnist-relu-drn-kd-exploratory-20260816/`
+- **Runs:**
+  - `mnist-relu-drn-kd-exploratory-20260816/teacher_lr3e4/20260816T132511.786114Z-224bcaf4-ba2076eb` — `train`, `mnist_relu.v1`, started `2026-08-16T13:25:11.786279+00:00`
+  - `mnist-relu-drn-kd-exploratory-20260816/teacher_lr5e4/20260816T132511.786248Z-e8c48023-c4551d53` — `train`, `mnist_relu.v1`, started `2026-08-16T13:25:11.786374+00:00`
+
+### `mnist-relu-drn-reset-factorial-20260817-v1`
+
+- **Status:** `running`
+- **Active native runs:** `1`
+- **Raw home:** `results/mnist-relu-drn-reset-factorial-20260817-v1/`
+- **Runs:**
+  - `mnist-relu-drn-reset-factorial-20260817-v1/stages/bias_free_logical_mse/local/bias_free_logical_mse_train/attempt-002/runs/20260817T052654.046087Z-9aae840c-4f019e33` — `train`, `mnist_relu_drn_reset_factorial.v1`, started `2026-08-17T05:26:54.046273+00:00`
 
 <!-- END AUTOMATIC ACTIVE SIMULATIONS -->
 

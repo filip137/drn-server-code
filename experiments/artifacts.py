@@ -201,6 +201,8 @@ class RunStore:
     def _refresh_current_simulations(self) -> None:
         """Refresh the optional live ledger without affecting the run."""
 
+        if os.environ.get("EBL_DEFER_CURRENT_SIMULATIONS") == "1":
+            return
         try:
             from experiments.current_simulations import (
                 refresh_current_simulations_for_run,

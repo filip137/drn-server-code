@@ -281,6 +281,12 @@ def _atomic_torch_save(payload: Any, path: Path | str) -> Path:
     return target
 
 
+def atomic_torch_save(payload: Any, path: Path | str) -> Path:
+    """Persist an arbitrary torch artifact with the checkpoint durability path."""
+
+    return _atomic_torch_save(payload, path)
+
+
 def _torch_load(path: Path | str) -> Any:
     source = Path(path).expanduser()
     if not source.is_file():
@@ -1170,6 +1176,7 @@ __all__ = [
     "NAMED_WEIGHTS_SCHEMA",
     "NAMED_WEIGHTS_SCHEMA_VERSION",
     "RESUME_CAPABILITIES",
+    "atomic_torch_save",
     "capture_rng_state",
     "encode_named_weights",
     "load_epoch_boundary_checkpoint",

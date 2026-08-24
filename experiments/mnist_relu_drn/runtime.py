@@ -10,7 +10,7 @@ from typing import Any, Iterable, TYPE_CHECKING
 import torch
 import torch.nn.functional as F
 
-from experiments.artifacts import RunStore, sha256_file
+from experiments.artifacts import RunStore, atomic_write_json, sha256_file
 from experiments.mnist_relu.model import BiasFreeReluTeacher
 from experiments.mnist_relu_drn.components import (
     BoundedDrnTeacher,
@@ -35,6 +35,7 @@ from model.resistive.interaction import DenseResistive, SignedDenseResistive
 from model.resistive.device_config import parse_device_programming_config
 from training.add_normal import AddNormalConfig, build_add_normal_modifier
 from training.checkpoint import (
+    atomic_torch_save,
     encode_named_weights,
     load_epoch_boundary_checkpoint,
     load_named_weights,
@@ -45,7 +46,12 @@ from training.measured_trace import (
     MeasuredCohortBOptimizer,
     MeasuredTraceOptimizer,
 )
-from training.modifier import modifier_or_default
+from training.ibm_reram_hwa import (
+    IbmReramHwaConfig,
+    IbmReramHwaParameterModifier,
+    build_ibm_reram_hwa_modifier,
+)
+from training.modifier import SplitParameterModifier, modifier_or_default
 from training.program_verify import ProgramVerifyOptimizer
 
 if TYPE_CHECKING:
@@ -53,12 +59,55 @@ if TYPE_CHECKING:
 
 
 _ROOT = Path(__file__).resolve().parents[2]
+_IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS = frozenset(
+    {
+        "dual_rail_quad_common_window",
+        "differential_pair_common_window",
+    }
+)
 
 
-def _build_weight_modifier(stack: StudentStack, spec: StudentTrainSpec):
-    settings = spec.settings.weight_modifier
+def _build_one_weight_modifier(
+    stack: StudentStack,
+    settings,
+    *,
+    spec: StudentTrainSpec | StudentValidateSpec,
+    device_model_path: Path | None,
+    population_artifact_dir: Path | None = None,
+    population_role: str | None = None,
+):
     if settings.type == "none":
         return None
+    if settings.type == "ibm_reram_om_program_verify":
+        if device_model_path is None:
+            raise ValueError(
+                "Expected IBM OM HWA to receive an explicit --device-model. "
+                "Provided value: None."
+            )
+        if (population_artifact_dir is None) != (population_role is None):
+            raise ValueError(
+                "Expected IBM OM population artifact directory and role together."
+            )
+        population_path = (
+            population_artifact_dir / f"ibm_om_population.{population_role}.npz"
+            if population_artifact_dir is not None
+            else None
+        )
+        receipt_path = (
+            population_artifact_dir
+            / f"ibm_om_population.{population_role}.receipt.json"
+            if population_artifact_dir is not None
+            else None
+        )
+        return build_ibm_reram_hwa_modifier(
+            stack.bundle.catalog.trainable,
+            IbmReramHwaConfig(**dict(settings.parameters)),
+            device_model_path=device_model_path,
+            conductance_min=spec.model.conductance_min,
+            conductance_max=spec.model.conductance_max,
+            population_path=population_path,
+            population_receipt_path=receipt_path,
+        )
     if settings.type != "add_normal":  # pragma: no cover - schema rejects it
         raise ValueError(
             "Expected a registered MNIST KD weight modifier. Provided value: "
@@ -75,6 +124,128 @@ def _build_weight_modifier(stack: StudentStack, spec: StudentTrainSpec):
         ),
         run_seed=spec.runtime.seed,
     )
+
+
+def _build_weight_modifier(
+    stack: StudentStack,
+    spec: StudentTrainSpec,
+    *,
+    device_model_path: Path | None = None,
+    population_artifact_dir: Path | None = None,
+):
+    training = _build_one_weight_modifier(
+        stack,
+        spec.settings.weight_modifier,
+        spec=spec,
+        device_model_path=device_model_path,
+        population_artifact_dir=population_artifact_dir,
+        population_role="training" if population_artifact_dir is not None else None,
+    )
+    selection = _build_one_weight_modifier(
+        stack,
+        spec.settings.selection_weight_modifier,
+        spec=spec,
+        device_model_path=device_model_path,
+        population_artifact_dir=population_artifact_dir,
+        population_role="selection" if population_artifact_dir is not None else None,
+    )
+    if selection is None:
+        return training
+    return SplitParameterModifier(training=training, evaluation=selection)
+
+
+def _evaluation_modifier(modifier):
+    return modifier.evaluation if isinstance(modifier, SplitParameterModifier) else modifier
+
+
+def _training_modifier(modifier):
+    return modifier.training if isinstance(modifier, SplitParameterModifier) else modifier
+
+
+def _ibm_population_fingerprints(modifier) -> dict[str, str | None]:
+    training = _training_modifier(modifier)
+    selection = _evaluation_modifier(modifier)
+    return {
+        "training": (
+            training.population_fingerprint
+            if isinstance(training, IbmReramHwaParameterModifier)
+            else None
+        ),
+        "selection": (
+            selection.population_fingerprint
+            if isinstance(selection, IbmReramHwaParameterModifier)
+            else None
+        ),
+    }
+
+
+def _validate_array_specific_modifier_population_parity(modifier) -> None:
+    training = _training_modifier(modifier)
+    if not isinstance(training, IbmReramHwaParameterModifier) or (
+        training.config.target_mapping
+        not in _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS
+    ):
+        return
+    selection = _evaluation_modifier(modifier)
+    if not isinstance(selection, IbmReramHwaParameterModifier):
+        raise RuntimeError(
+            "Expected array-specific IBM OM HWA to have an IBM OM "
+            "selection modifier on the same fixed array."
+        )
+    if training.population_fingerprint != selection.population_fingerprint:
+        raise RuntimeError(
+            "Expected array-specific IBM OM training and selection to use "
+            "the same fixed population fingerprint. Provided value: "
+            f"training={training.population_fingerprint!r}, "
+            f"selection={selection.population_fingerprint!r}."
+        )
+
+
+def _ibm_target_mapping_preflights(modifier) -> dict[str, dict[str, Any]]:
+    reports: dict[str, dict[str, Any]] = {}
+    for role, candidate in (
+        ("training", _training_modifier(modifier)),
+        ("selection", _evaluation_modifier(modifier)),
+    ):
+        if not isinstance(candidate, IbmReramHwaParameterModifier) or (
+            candidate.config.target_mapping
+            not in _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS
+        ):
+            continue
+        _targets, report = candidate.preflight_target_mapping()
+        reports[role] = report
+    return reports
+
+
+def _ibm_population_artifact_records(
+    store: RunStore,
+    modifier,
+) -> tuple:
+    candidates = (
+        (modifier.training, modifier.evaluation)
+        if isinstance(modifier, SplitParameterModifier)
+        else (modifier,)
+    )
+    records = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if not isinstance(candidate, IbmReramHwaParameterModifier):
+            continue
+        paths = candidate.population_artifact_paths
+        if paths is None or paths[0] in seen:
+            continue
+        seen.add(paths[0])
+        records.extend(
+            (
+                store.artifact_record(
+                    paths[0], kind="ibm_om_array_population"
+                ),
+                store.artifact_record(
+                    paths[1], kind="ibm_om_array_population_receipt"
+                ),
+            )
+        )
+    return tuple(records)
 
 
 def _wrap_program_verify(
@@ -208,6 +379,15 @@ def _single_topology_signature(
         return None
 
 
+def _weight_modifier_metadata(settings: Any) -> dict[str, Any]:
+    """Return a mutable JSON representation at the artifact boundary."""
+
+    return {
+        "type": settings.type,
+        "parameters": to_plain_data(settings.parameters),
+    }
+
+
 def _model_checkpoint_metadata(
     stack: StudentStack,
     *,
@@ -215,6 +395,7 @@ def _model_checkpoint_metadata(
     teacher_sha256: str,
     mapping: dict[str, Any] | None,
     deployment_source: dict[str, Any] | None = None,
+    device_model_sha256: str | None = None,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "experiment_id": spec.experiment_id,
@@ -242,13 +423,18 @@ def _model_checkpoint_metadata(
         ),
         "teacher_sha256": teacher_sha256,
         "mapping": mapping,
-        "weight_modifier": {
-            "type": spec.settings.weight_modifier.type,
-            "parameters": dict(spec.settings.weight_modifier.parameters),
-        },
+        "weight_modifier": _weight_modifier_metadata(
+            spec.settings.weight_modifier
+        ),
         "update_backend": spec.settings.update_backend.type,
         "deployment_source": deployment_source,
     }
+    if spec.settings.selection_weight_modifier.type != "none":
+        metadata["selection_weight_modifier"] = _weight_modifier_metadata(
+            spec.settings.selection_weight_modifier
+        )
+    if device_model_sha256 is not None:
+        metadata["device_model_sha256"] = device_model_sha256
     if isinstance(stack.optimizer, MeasuredTraceOptimizer):
         data_report = stack.optimizer.data_report
         metadata.update(
@@ -504,6 +690,7 @@ def _validate_resume_backend_metadata(
     *,
     spec: StudentTrainSpec,
     device_data_sha256: str | None,
+    device_model_sha256: str | None,
 ) -> None:
     provided = metadata if isinstance(metadata, dict) else {}
     backend = spec.settings.update_backend.type
@@ -552,10 +739,15 @@ def _validate_resume_backend_metadata(
                 ),
             }
         )
-    expected["weight_modifier"] = {
-        "type": spec.settings.weight_modifier.type,
-        "parameters": dict(spec.settings.weight_modifier.parameters),
-    }
+    expected["weight_modifier"] = _weight_modifier_metadata(
+        spec.settings.weight_modifier
+    )
+    if spec.settings.selection_weight_modifier.type != "none":
+        expected["selection_weight_modifier"] = _weight_modifier_metadata(
+            spec.settings.selection_weight_modifier
+        )
+    if device_model_sha256 is not None:
+        expected["device_model_sha256"] = device_model_sha256
     if spec.teacher.type == "bounded_drn":
         expected.update(
             {
@@ -631,6 +823,25 @@ def _validate_train_request(request: Any, spec: StudentTrainSpec) -> None:
         raise ValueError(
             f"Expected update backend {spec.settings.update_backend.type!r} to use {expected}. "
             f"Provided value: {request.device_data!r}."
+        )
+    modifiers = (
+        spec.settings.weight_modifier,
+        spec.settings.selection_weight_modifier,
+    )
+    uses_ibm_device_model = any(
+        modifier.type == "ibm_reram_om_program_verify"
+        for modifier in modifiers
+    )
+    requested_device_model = getattr(request, "device_model", None)
+    if uses_ibm_device_model != (requested_device_model is not None):
+        expected = (
+            "an explicit --device-model"
+            if uses_ibm_device_model
+            else "no --device-model"
+        )
+        raise ValueError(
+            "Expected IBM OM weight modifiers to use "
+            f"{expected}. Provided value: {requested_device_model!r}."
         )
     if (
         backend in MEASURED_COHORT_B_BACKENDS
@@ -953,6 +1164,7 @@ def _selection_evaluate(
         )
     snapshot = modifier.state_dict()
     reports = []
+    programming_reports = []
     try:
         for _repeat in range(spec.settings.selection_noise_repeats):
             reports.append(
@@ -966,6 +1178,9 @@ def _selection_evaluate(
                     modifier=modifier,
                 )
             )
+            evaluation = _evaluation_modifier(modifier)
+            if isinstance(evaluation, IbmReramHwaParameterModifier):
+                programming_reports.append(evaluation.programming_report)
     finally:
         modifier.load_state_dict(snapshot)
     scalar_keys = (
@@ -987,6 +1202,8 @@ def _selection_evaluate(
             report["kl_teacher_student"] for report in reports
         ],
     }
+    if programming_reports:
+        result["repeat_device_programming"] = programming_reports
     result.update(
         {
             key: sum(float(report[key]) for report in reports) / len(reports)
@@ -1073,6 +1290,7 @@ def _selected_payload(
     teacher_sha256: str,
     mapping: dict[str, Any] | None,
     deployment_source: dict[str, Any] | None,
+    device_model_sha256: str | None,
     epoch: int,
     validation: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1082,6 +1300,7 @@ def _selected_payload(
         teacher_sha256=teacher_sha256,
         mapping=mapping,
         deployment_source=deployment_source,
+        device_model_sha256=device_model_sha256,
     )
     metadata.update(
         {
@@ -1146,7 +1365,7 @@ def run_train(request: "TrainRequest") -> int:
         )
     _validate_train_request(request, spec)
     input_artifacts = [_input("teacher_weights", request.teacher_weights)]
-    for role in ("weights", "resume", "device_data"):
+    for role in ("weights", "resume", "device_data", "device_model"):
         value = getattr(request, role)
         if value is not None:
             input_artifacts.append(_input(role, value))
@@ -1187,14 +1406,29 @@ def run_train(request: "TrainRequest") -> int:
             if request.device_data is not None
             else None
         )
+        device_model_sha = (
+            sha256_file(request.device_model)
+            if request.device_model is not None
+            else None
+        )
         stack = build_student_stack(
             spec,
             device_data_path=request.device_data,
             enable_measured=request.resume is not None,
         )
-        modifier = _build_weight_modifier(stack, spec)
+        modifier = _build_weight_modifier(
+            stack,
+            spec,
+            device_model_path=request.device_model,
+            population_artifact_dir=store.run_dir / "artifacts",
+        )
+        _validate_array_specific_modifier_population_parity(modifier)
+        ibm_population_fingerprints = _ibm_population_fingerprints(modifier)
+        ibm_target_mapping_preflights: dict[str, dict[str, Any]] = {}
         weights_path = store.run_dir / "checkpoints" / "weights.pt"
         resume_path = store.run_dir / "checkpoints" / "resume.pt"
+        deployment_bundle_path: Path | None = None
+        training_programming_report_path: Path | None = None
         start_epoch = 0
         global_step = 0
         mapping_report: dict[str, Any] | None = None
@@ -1232,6 +1466,7 @@ def run_train(request: "TrainRequest") -> int:
                 resumed.metadata,
                 spec=spec,
                 device_data_sha256=device_data_sha,
+                device_model_sha256=device_model_sha,
             )
             start_epoch = resumed.epoch
             global_step = resumed.global_step
@@ -1642,6 +1877,7 @@ def run_train(request: "TrainRequest") -> int:
                 initial = dict(post_deployment_calibrated)
                 initial_conductances = post_deployment_conductances
 
+        ibm_target_mapping_preflights = _ibm_target_mapping_preflights(modifier)
         if initial_clean_validation is None:
             initial_clean_validation = _evaluate(
                 stack,
@@ -1698,6 +1934,7 @@ def run_train(request: "TrainRequest") -> int:
                 teacher_sha256=teacher_sha,
                 mapping=mapping_report,
                 deployment_source=deployment_source,
+                device_model_sha256=device_model_sha,
                 epoch=-1,
                 validation=initial,
             )
@@ -1751,6 +1988,7 @@ def run_train(request: "TrainRequest") -> int:
                     teacher_sha256=teacher_sha,
                     mapping=mapping_report,
                     deployment_source=deployment_source,
+                    device_model_sha256=device_model_sha,
                     epoch=epoch,
                     validation=last_validation,
                 )
@@ -1787,6 +2025,7 @@ def run_train(request: "TrainRequest") -> int:
                     teacher_sha256=teacher_sha,
                     mapping=mapping_report,
                     deployment_source=deployment_source,
+                    device_model_sha256=device_model_sha,
                 ),
             )
             if (epoch + 1) % spec.settings.log_every == 0 or epoch + 1 == spec.settings.num_epochs:
@@ -1847,8 +2086,26 @@ def run_train(request: "TrainRequest") -> int:
                     teacher_sha256=teacher_sha,
                     mapping=mapping_report,
                     deployment_source=deployment_source,
+                    device_model_sha256=device_model_sha,
                 ),
             )
+        evaluation_modifier = _evaluation_modifier(modifier)
+        if isinstance(evaluation_modifier, IbmReramHwaParameterModifier):
+            load_named_weights(weights_path, stack.bundle.catalog)
+            with evaluation_modifier.evaluation_context():
+                pass
+            deployment = evaluation_modifier.last_deployment_bundle
+            if deployment is None:
+                raise RuntimeError(
+                    "Expected pulse-resolved selection to produce a persistent "
+                    "deployment bundle."
+                )
+            deployment["selected_weights_sha256"] = sha256_file(weights_path)
+            deployment["selected_epoch"] = selected_epoch
+            deployment_bundle_path = (
+                store.run_dir / "artifacts" / "ibm_om_deployment.pt"
+            )
+            atomic_torch_save(deployment, deployment_bundle_path)
         relative_improvement = (
             initial["kl_teacher_student"] - selected_validation["kl_teacher_student"]
         ) / initial["kl_teacher_student"] if initial["kl_teacher_student"] > 0.0 else 0.0
@@ -1860,6 +2117,22 @@ def run_train(request: "TrainRequest") -> int:
             )
             else None
         )
+        training_modifier = _training_modifier(modifier)
+        training_device_programming = (
+            training_modifier.programming_report
+            if isinstance(training_modifier, IbmReramHwaParameterModifier)
+            else None
+        )
+        if training_device_programming is not None:
+            training_programming_report_path = (
+                store.run_dir
+                / "artifacts"
+                / "ibm_om_training_device_programming.json"
+            )
+            atomic_write_json(
+                training_programming_report_path,
+                training_device_programming,
+            )
         adaptation = (
             _adaptation_summary(
                 initial,
@@ -1879,12 +2152,17 @@ def run_train(request: "TrainRequest") -> int:
                 "amplification_indices": _amplification_index_report(stack),
                 "objective": "teacher_kl",
                 "initialization": "teacher_mapped",
-                "weight_modifier": {
-                    "type": spec.settings.weight_modifier.type,
-                    "parameters": dict(
-                        spec.settings.weight_modifier.parameters
-                    ),
-                },
+                "weight_modifier": _weight_modifier_metadata(
+                    spec.settings.weight_modifier
+                ),
+                "selection_weight_modifier": _weight_modifier_metadata(
+                    spec.settings.selection_weight_modifier
+                ),
+                "device_model_sha256": device_model_sha,
+                "ibm_om_population_fingerprints": ibm_population_fingerprints,
+                "ibm_om_target_mapping_preflights": (
+                    ibm_target_mapping_preflights
+                ),
                 "fixed_logit_gain": stack.cost.gain,
                 "temperature": spec.settings.temperature,
                 "update_backend": spec.settings.update_backend.type,
@@ -1917,10 +2195,40 @@ def run_train(request: "TrainRequest") -> int:
                 "device_programming": (
                     final_programming if program_verify else None
                 ),
+                "selection_device_programming": (
+                    evaluation_modifier.programming_report
+                    if isinstance(
+                        evaluation_modifier,
+                        IbmReramHwaParameterModifier,
+                    )
+                    else None
+                ),
+                "training_device_programming": training_device_programming,
             },
             artifacts=(
                 store.artifact_record(weights_path, kind="selected_named_weights"),
                 store.artifact_record(resume_path, kind="epoch_boundary_resume"),
+                *_ibm_population_artifact_records(store, modifier),
+                *(
+                    (
+                        store.artifact_record(
+                            training_programming_report_path,
+                            kind="ibm_om_training_device_programming",
+                        ),
+                    )
+                    if training_programming_report_path is not None
+                    else ()
+                ),
+                *(
+                    (
+                        store.artifact_record(
+                            deployment_bundle_path,
+                            kind="ibm_om_persistent_deployment",
+                        ),
+                    )
+                    if deployment_bundle_path is not None
+                    else ()
+                ),
             ),
         )
         return 0
@@ -1941,19 +2249,38 @@ def run_validate(request: "ValidateRequest") -> int:
             "Expected mnist_relu_drn_kd.v1 validation to receive "
             "--teacher-weights. Provided value: None."
         )
+    uses_device_model = (
+        spec.settings.weight_modifier.type
+        == "ibm_reram_om_program_verify"
+    )
+    if uses_device_model != (request.device_model is not None):
+        expected = (
+            "an explicit --device-model"
+            if uses_device_model
+            else "no --device-model"
+        )
+        raise ValueError(
+            f"Expected validation modifier to use {expected}. "
+            f"Provided value: {request.device_model!r}."
+        )
+    validation_inputs = [
+        _input("weights", request.weights),
+        _input("teacher_weights", request.teacher_weights),
+    ]
+    if request.device_model is not None:
+        validation_inputs.append(_input("device_model", request.device_model))
     store = RunStore.create(
         output_root=request.output_dir,
         experiment_id=spec.experiment_id,
         resolved_config=to_plain_data(spec),
         command=request.command,
         repo_root=_ROOT,
-        input_artifacts=(
-            _input("weights", request.weights),
-            _input("teacher_weights", request.teacher_weights),
-        ),
+        input_artifacts=validation_inputs,
     )
     try:
         torch.manual_seed(spec.runtime.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(spec.runtime.seed)
         device = torch.device(spec.runtime.device)
         data = build_mnist_loaders(
             spec.data,
@@ -1977,12 +2304,70 @@ def run_validate(request: "ValidateRequest") -> int:
         )
         stack.cost.gain = float(loaded.metadata["fixed_logit_gain"])
         loader = data.validation if spec.settings.split == "validation" else data.test
-        metrics = _evaluate(
+        modifier = _build_one_weight_modifier(
             stack,
-            teacher,
-            loader,
-            sample_limit=spec.settings.sample_limit,
+            spec.settings.weight_modifier,
+            spec=spec,
+            device_model_path=request.device_model,
+            population_artifact_dir=store.run_dir / "artifacts",
+            population_role="validation",
         )
+        if modifier is None:
+            reports = [
+                _evaluate(
+                    stack,
+                    teacher,
+                    loader,
+                    sample_limit=spec.settings.sample_limit,
+                )
+            ]
+        else:
+            reports = [
+                _evaluate(
+                    stack,
+                    teacher,
+                    loader,
+                    sample_limit=spec.settings.sample_limit,
+                    modifier=modifier,
+                )
+                for _repeat in range(spec.settings.noise_repeats)
+            ]
+        scalar_keys = (
+            "kl_teacher_student",
+            "raw_kl_teacher_student",
+            "student_accuracy",
+            "teacher_accuracy",
+            "teacher_agreement",
+            "raw_score_rms",
+            "calibrated_score_rms",
+            "teacher_logit_rms",
+        )
+        metrics = dict(reports[0])
+        if len(reports) > 1:
+            metrics.update(
+                {
+                    key: sum(float(report[key]) for report in reports)
+                    / len(reports)
+                    for key in scalar_keys
+                }
+            )
+        metrics["noise_repeats"] = len(reports)
+        metrics["repeat_kl_teacher_student"] = [
+            report["kl_teacher_student"] for report in reports
+        ]
+        deployment_path = None
+        if isinstance(modifier, IbmReramHwaParameterModifier):
+            metrics["device_programming"] = modifier.programming_report
+            deployment = modifier.last_deployment_bundle
+            if deployment is None:
+                raise RuntimeError(
+                    "Expected physical validation to produce a deployment bundle."
+                )
+            deployment["source_weights_sha256"] = sha256_file(request.weights)
+            deployment_path = (
+                store.run_dir / "artifacts" / "ibm_om_deployment.pt"
+            )
+            atomic_torch_save(deployment, deployment_path)
         store.append_metric({"mode": "validate", "split": spec.settings.split, **metrics})
         store.complete(
             metrics={
@@ -1996,11 +2381,32 @@ def run_validate(request: "ValidateRequest") -> int:
                 "initialization": "teacher_mapped",
                 "teacher": {"sha256": teacher_sha, "metadata": teacher_metadata},
                 "checkpoint_metadata": loaded.metadata,
+                "weight_modifier": _weight_modifier_metadata(
+                    spec.settings.weight_modifier
+                ),
+                "device_model_sha256": (
+                    sha256_file(request.device_model)
+                    if request.device_model is not None
+                    else None
+                ),
                 "conductances": conductance_statistics(
                     stack.bundle.catalog,
                     encoding=spec.model.encoding,
                 ),
-            }
+            },
+            artifacts=(
+                *_ibm_population_artifact_records(store, modifier),
+                *(
+                    (
+                        store.artifact_record(
+                            deployment_path,
+                            kind="ibm_om_persistent_deployment",
+                        ),
+                    )
+                    if deployment_path is not None
+                    else ()
+                ),
+            ),
         )
         return 0
     except BaseException as error:

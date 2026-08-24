@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "experiment_id": "ibm_reram_program_verify.v1",
+  "runtime": {
+    "device": "cuda",
+    "dtype": "float32",
+    "required_aihwkit_version": "1.1.0",
+    "construction_seed": 72001,
+    "conditioning_seed": 72002,
+    "pulse_seed": 72003,
+    "repeat_seed": 72007,
+    "partition_seed": 72004,
+    "analysis_seed": 72005,
+    "wan_seed": 72006
+  },
+  "device": {
+    "preset": "reram_array_hfo2",
+    "enable_published_corruption": true
+  },
+  "modes": {
+    "characterize": {
+      "profile": "production_short_cap128",
+      "num_devices": 1024,
+      "repeats_per_device": 4,
+      "target_grid": {"minimum": 0.0, "maximum": 1.0, "points": 41},
+      "tolerance_step_ratios": [0.5],
+      "start_protocols": ["lower_to_target", "upper_to_target"],
+      "controllers": ["one_pulse", "adaptive"],
+      "maximum_program_pulses": 128,
+      "calibration_bins": 41,
+      "partitions": {"calibration": 0.2, "fit": 0.6, "validation": 0.2},
+      "conditioning": {
+        "quiet_steps": 4,
+        "persistent_change_threshold_span_fraction": 1e-6,
+        "maximum_pulses": 4096
+      },
+      "conditioning_scope": "per_start",
+      "adaptive": {
+        "eta": 0.75,
+        "maximum_batch": 32,
+        "epsilon": 1e-8,
+        "force_one_within_steps": 2.0
+      },
+      "surrogate": {
+        "polynomial_order": 4,
+        "standard_deviation_floor": 1e-8
+      },
+      "wan_comparison": {"g_max_us": 40.0, "noise_scale": 1.0}
+    }
+  }
+}

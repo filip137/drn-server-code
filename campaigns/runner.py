@@ -387,8 +387,6 @@ def _preflight(
             "-m",
             "ebl",
             "describe",
-            "--experiment",
-            "small_drn.v1",
             "--json",
         ),
         cwd=target.worktree,

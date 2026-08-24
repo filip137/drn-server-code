@@ -1,153 +1,106 @@
-# AGENTS
+# AGENTS — Tiki-Taka/LoRA integration
 
-## Purpose
-This repository contains code and tooling for coordinate-descent simulations of DRNs with dissipative non-linearities.
+## Worktree scope
 
-## Scope and Boundaries
-- In scope: Python source, configs, scripts, and documentation.
-- Out of scope: large generated outputs and datasets (see `.gitignore`).
+These instructions apply to the `codex/tiki-taka-lora-integration` worktree.
+Its primary research question is:
 
-## Repo Layout (key)
-- `model/`: model components and parameterized model adapters
-- `training/`: reusable engines, estimators, update backends, modifiers, probes,
-  and checkpoint codecs
-- `experiments/`: versioned experiment schemas and thin composition roots
-- `campaigns/`: subprocess-only orchestration across clean Git worktrees
-- `labs/`: specialized numerical and analysis utilities; experiment execution
-  belongs under `experiments/` and orchestration under `campaigns/`
-- `plotting_functions/`: analysis/plotting helpers
-- `playbooks/`: SOPs for repeatable tasks
-- `docs/`: lightweight state and notes
-- `results/`: ignored raw LoRA/HWA study output; only its root guide is
-  intended for Git
+> Under which measured-device conditions does hardware-aware (HWA) training
+> underperform, and does the remaining performance gap require additional
+> on-chip training?
 
-## Experiment Architecture
+Work in this tree must help separate the effects of initialization, HWA,
+physical-device programming or reassignment, and the post-deployment update
+rule. Compare HWA-only behavior with matched on-chip recovery controls such as
+Tiki-Taka or LoRA when the study plan calls for them. Do not assume that
+on-chip training is needed; require a predeclared matched comparison.
 
-- The stable public CLI is `python -m ebl`.
-- Config files select a registered versioned experiment ID. They contain
-  scientific settings only; input checkpoints and output paths are CLI
-  arguments.
-- Keep config parsing pure. It must not import datasets, initialize a GPU,
-  create directories, or discover modules dynamically.
-- Keep `model/` and `training/` independent of experiment-specific config
-  dataclasses. Adapt config into numerical objects in
-  `experiments/<experiment>/`.
-- Add an intervention at the narrowest extension boundary:
-  - structural parameterization: model adapter;
-  - free/nudged phase perturbation: parameter modifier;
-  - gradient application/accumulation: update backend;
-  - measurements: evaluation probe.
-- New combinations fail closed until listed in the experiment definition and
-  covered by a numerical parity or acceptance test.
-- Do not use module globals or monkey patches to compose experiments.
-- New exploratory studies start from a tracked strict plan under `studies/`.
-  The plan states the initial hypothesis, exact arm configs, completion
-  criteria, and analysis plan before native runs begin.
-- Materialize plans with `python -m ebl study prepare`; write native runs only
-  below their declared `results/<study-id>/runs/<arm-id>/` roots.
-- After exact coverage is present, run `python -m ebl study summarize`, write
-  a human review, and use `python -m ebl study finalize` so
-  `experimental_manifest.md` retains both the initial hypothesis and final
-  interpretation.
-- Keep `current_state.md` as the concise human-readable big picture and next
-  steps. Run status belongs in `current_simulations.md`; detailed final
-  evidence belongs in `experimental_manifest.md`.
+Keep unrelated repository maintenance and unrelated experiment families out
+of this worktree.
 
-## Model-Local Indexing and Construction Parity
+## Repository map
 
-- Never let process-global object counters, generated names such as
-  `Layer_3`, or model-construction order affect numerical equations. They may
-  be used as diagnostic identifiers only. Amplifier stages, energy scales,
-  nonlinearities, parameter roles, and connectivity must use explicit
-  model-local topology indices.
-- Treat repeated construction as a required lifecycle check. Learning-rate
-  selection, canaries, production training, resume, validation, and test may
-  build multiple models in one process or use fresh subprocesses. Deleting a
-  model or reseeding random-number generators does not reset Python class
-  counters.
-- For models with depth-dependent amplification or scaling, verify that a
-  model built second in the same process has the same resolved numerical
-  semantics as a model built first. Also verify train/resume/validate parity
-  from recorded metadata or numerical acceptance tests.
-- Record resolved topology indices or equivalent stage scales in checkpoints
-  and result artifacts whenever they can affect the equations. Fail closed on
-  a mismatch between the requested experiment and checkpoint provenance.
-- A deliberate replay of process-global indexing is allowed only as an
-  explicitly named historical-control adapter with a required schema marker,
-  capability-matrix entry, provenance metadata, and dedicated lifecycle test.
-  Never present such a replay as the intended physical circuit.
+- `ebl/`: public command-line entry point. Workflow-managed training,
+  validation, checkpoint handling, and study lifecycle commands enter through
+  `python -m ebl`.
+- `model/resistive/`: perfect-diode DRN construction and numerical equations,
+  including the passive and digital low-rank adapter structures used by LoRA
+  controls.
+- `training/`: reusable training mechanisms. The worktree-relevant modules
+  include HWA modifiers, measured-trace programming and update backends,
+  Tiki-Taka accumulation, parameter catalogs, probes, and checkpoint codecs.
+- `experiments/mnist_relu_drn/`: strict teacher-to-perfect-diode-DRN mapping,
+  HWA, measured-device deployment, training, validation, and provenance.
+- `experiments/mnist_relu_drn_reset/`: measured pulse-zero/RESET
+  initialization experiments and their learning-rate protocol.
+- `experiments/small_network/`: existing composition root for DRN HWA,
+  Tiki-Taka, and low-rank adapter controls when a declared study uses the
+  `small_drn.v1` experiment family.
+- `examples/mnist_relu_drn/`, `examples/mnist_relu_drn_reset/`, and
+  `examples/small_drn/`: strict versioned experiment configs. A study plan
+  references exact config files; configs do not choose input checkpoints or
+  output locations.
+- `studies/`: tracked, predeclared study plans containing hypotheses, arms,
+  completion criteria, and analysis plans.
+- `campaigns/`: subprocess-only orchestration of exact configs and explicit
+  input artifacts, including local and Akib campaign manifests.
+- `data/`: ignored staging area for measured synapse data. Its required file,
+  digest, and placement are defined in `docs/synapse_data.md`.
+- `results/`: ignored raw run directories and generated study analyses. One
+  prepared study owns one `results/<study-id>/` root.
+- `docs/`: scientific contracts, current synthesis, run ledger, and finalized
+  evidence. Protocol documents are authoritative over result summaries.
+- `tests/`: strict config, numerical parity, provenance, lifecycle, measured
+  update, and study-workflow tests.
+- `labs/`: focused reference harnesses for direct perfect-diode and AIHWKit
+  Tiki-Taka comparisons. Use them for reference/parity work; workflow-managed
+  evidence must use the public `python -m ebl` CLI.
 
-## Artifacts and Checkpoints
+## Architecture
 
-- A command owns exactly one run directory. Never append to a prior run.
-- `checkpoints/weights.pt` is the selected named-weights artifact.
-- `checkpoints/resume.pt` is the latest full epoch-boundary state and is not a
-  substitute for selected weights.
-- Load parameters by stable catalog key, not positional order.
-- Positional checkpoints are accepted only by
-  `ebl checkpoint import-legacy` with an explicit `--kind`.
-- Linspace and validation require an explicit `--weights` path. Never scan for
-  the newest model.
-- Campaigns invoke worktrees as subprocesses through the public CLI. Do not
-  import Python modules from another worktree into the controller process.
+- The evaluated student architecture is a dissipative resistive network (DRN)
+  using `perfect_diode` nonlinearities.
+- A conventional ReLU network may be used as a frozen teacher or reference,
+  but it is not a substitute for the evaluated perfect-diode DRN.
+- Matched arms must keep the DRN topology, solver, data split, teacher or base
+  checkpoint, and device assignment fixed unless one of them is the explicitly
+  declared intervention.
 
-## Change Checklist
+## Synapse data
 
-1. Update the strict schema and explicit experiment capability matrix.
-2. Implement against an existing extension protocol or add a focused one.
-3. Add unit tests for lifecycle/order and a numerical parity test where
-   behavior should remain unchanged. If a model uses layer-dependent scaling,
-   build it at least twice in one process and verify identical model-local
-   semantics; also check production versus fresh-process validation metadata.
-4. Audit numerical code for dependence on generated names, class counters, or
-   construction order, and make the relevant indices explicit and model-local.
-5. Add or update a nested example config.
-6. Run `python -m ebl describe --experiment small_drn.v1 --json`, the focused
-   tests, and the legacy `labs/tests` suite.
-7. Keep HWA and LoRA feature commits separate so each can be rebased onto the
-   same foundation and compared by a campaign.
+- Device-facing claims must use measured synaptic data. Synthetic noise models
+  and generic device presets may be included only as clearly labelled controls.
+- Use the dataset, placement, verification, cohort, and provenance rules in
+  [`docs/synapse_data.md`](docs/synapse_data.md).
+- Do not silently replace the measured dataset, alter its preprocessing, or
+  mix device cohorts between arms.
 
-## Playbooks
-- Optuna analysis SOP: `playbooks/optuna_analysis.md`
-- Task overrides: `playbooks/AGENTS.override.md`
+## Initialization
 
-## Timing Plot Script
-- Script: `labs/tools/plot_spice_vs_coordinate_descent_loglog.py`
-- Purpose: log-log plot with:
-- x-axis: hidden size
-- y-axis: time (seconds)
-- series: coordinate descent and SPICE for all hidden-layer counts in one figure
-- Input: `simulation_results/.../extracted_timings/combined_latest_by_hidden.csv` (or any CSV with equivalent columns)
-- Basic usage:
-- `python /home/filip/server_code/labs/tools/plot_spice_vs_coordinate_descent_loglog.py --combined-csv /home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/extracted_timings/combined_latest_by_hidden.csv --output /home/filip/server_code/labs/figures_for_paper_digits/timings/double_diode_exponential/extracted_timings/spice_vs_coordinate_descent_loglog.png`
-- Optional SPICE field selection:
-- `--spice-time-field total` (default), `--spice-time-field simulation`, or `--spice-time-field netlist`
+- Every study must predeclare its initialization path and follow
+  [`docs/initialization_protocols.md`](docs/initialization_protocols.md).
+- HWA and non-HWA arms must start from the same logical state. Recovery arms
+  must start from the same explicitly named deployed state unless
+  initialization itself is the intervention.
+- Never discover or substitute the newest checkpoint. Record explicit input
+  paths and content hashes.
 
-## Plotting Rule
-- Use `matplotlib` for every generated plot (PNG/SVG/PDF) unless the user explicitly requests a different plotting backend.
-- Prefer reusable plotting scripts under `labs/tools/` for plot generation commands.
+## Experimental workflow
 
-## Data and Artifacts
-New raw LoRA/HWA outputs live under `results/<study-id>/` and are ignored by
-Git. Existing generated outputs remain under legacy folders such as
-`simulation_results*`, `papers/`, and `labs/cases/`; do not move them solely
-to adopt the new index.
-
-The `Active` block in `docs/current_simulations.md` is generated from running
-native statuses below `results/`. Do not edit inside its automatic markers.
-The refresh is informational and must never block or fail a numerical run.
-Paused, analyzing, and queued sections remain human-maintained.
-
-## Error Messages
-- When validating inputs, state the expected format first, then echo the provided value on failure.
-
-## Config Rules
-- Do not silently default diode parameter dicts; require explicit `*_diode_param` dicts in config.
-- Reject unknown keys at every versioned experiment-config level.
-- Error messages state the expected format before the provided value.
-
-## Environment Issues
-- OpenMP SHM error (`OMP: Error #179: Function Can't open SHM2 failed: System error #13: Permission denied`) can occur when running Python (e.g., matplotlib/numpy) in the sandbox. Fix options:
-- Set env vars to disable shared memory: `KMP_DISABLE_SHM=1`, `KMP_SHM_DISABLE=1`, `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `NUMEXPR_NUM_THREADS=1`.
-- Run the command outside the sandbox (escalated) if SHM is blocked.
-- If you just need PNGs from existing SVGs, use `rsvg-convert` as a fallback.
+- Follow [`docs/experiment_workflow.md`](docs/experiment_workflow.md).
+- Declare the hypothesis, arms, completion criteria, and analysis before
+  launching native runs.
+- Keep workflow-managed raw runs under the prepared
+  `results/<study-id>/runs/<arm-id>/` roots and preserve failed attempts.
+- Separate measured results from interpretation. Claim that on-chip training
+  is needed only when the predeclared HWA-only control underperforms and a
+  matched on-chip arm closes the specified gap.
+- Do not stop at a result summary when a workflow-managed study reaches a
+  terminal scientific conclusion. Run the artifact-verified study summary and
+  follow the review/finalize procedure in `docs/experiment_workflow.md`; use
+  the `ebl-study-closeout` skill when it is available.
+- A concluded study must either be finalized into
+  `docs/experimental_manifest.md` or be handed off with the exact reason that
+  scientific review or finalization remains pending. The manifest contains
+  one entry per study, not one entry per seed, run, shard, or subprocess. Do
+  not finalize active, incomplete, or ad hoc smoke runs as finished evidence.

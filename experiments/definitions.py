@@ -57,6 +57,12 @@ from experiments.mnist_relu_drn_reset.config import (
     parse_reset_student_config,
     resolve_reset_student_spec,
 )
+from experiments.reram_program_verify.config import (
+    EXPERIMENT_ID as RERAM_PROGRAM_VERIFY_EXPERIMENT_ID,
+    SCHEMA_VERSION as RERAM_PROGRAM_VERIFY_SCHEMA_VERSION,
+    parse_reram_program_verify_config,
+    resolve_reram_program_verify_spec,
+)
 
 
 _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
@@ -277,6 +283,19 @@ MNIST_RELU_V1 = ExperimentDefinition(
 )
 
 
+RERAM_PROGRAM_VERIFY_V1 = ExperimentDefinition(
+    experiment_id=RERAM_PROGRAM_VERIFY_EXPERIMENT_ID,
+    schema_version=RERAM_PROGRAM_VERIFY_SCHEMA_VERSION,
+    description=(
+        "Pulse-resolved characterization of IBM ReRAM array presets with "
+        "one-pulse and adaptive program-and-verify controllers."
+    ),
+    supported_modes=(RunMode.CHARACTERIZE,),
+    parser=parse_reram_program_verify_config,
+    resolver=resolve_reram_program_verify_spec,
+)
+
+
 _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
     ValidatedCombination(
         ExtensionSelection(encoding, "none", backend, "teacher_kl"),
@@ -317,6 +336,35 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
             ),
         )
         for encoding in ("single", "differential")
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "ibm_reram_om_program_verify",
+            "ideal",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Off-chip BPTT with fixed IBM OM per-cell bounds and corruption "
+            "identity, using a fresh calibrated cap-128 programming endpoint "
+            "for each minibatch."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "differential",
+            "ibm_reram_om_program_verify",
+            "ideal",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Off-chip BPTT for the eight-device differential DRN using one "
+            "fixed IBM OM assignment, canonical adjacent G+/G- pair common "
+            "windows, and a fresh calibrated cap-128 programming endpoint "
+            "for each minibatch."
+        ),
     ),
     *(
         ValidatedCombination(
@@ -757,6 +805,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     MNIST_RELU_DRN_RESET_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_BIAS_V1,
     MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1,
     MNIST_RELU_DRN_RESET_FACTORIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_FACTORIAL_V1,
+    RERAM_PROGRAM_VERIFY_V1.experiment_id: RERAM_PROGRAM_VERIFY_V1,
 }
 
 

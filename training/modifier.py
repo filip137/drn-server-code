@@ -51,6 +51,53 @@ class NoOpParameterModifier:
 NO_OP_PARAMETER_MODIFIER = NoOpParameterModifier()
 
 
+class SplitParameterModifier:
+    """Use independent modifiers for minibatch training and evaluation.
+
+    This keeps a clean master parameter tensor while allowing, for example,
+    compact endpoint sampling during BPTT and a pulse-resolved deployment for
+    model selection. Both delegates are checkpointed as one modifier so an
+    epoch-boundary resume preserves their independent random streams.
+    """
+
+    def __init__(
+        self,
+        *,
+        training: Optional[ParameterModifier],
+        evaluation: Optional[ParameterModifier],
+    ) -> None:
+        self.training = modifier_or_default(training)
+        self.evaluation = modifier_or_default(evaluation)
+
+    def training_context(self) -> ContextManager[Any]:
+        return self.training.training_context()
+
+    def evaluation_context(self) -> ContextManager[Any]:
+        return self.evaluation.evaluation_context()
+
+    def state_dict(self) -> dict:
+        return {
+            "version": 1,
+            "training": self.training.state_dict(),
+            "evaluation": self.evaluation.state_dict(),
+        }
+
+    def load_state_dict(self, state_dict: Mapping) -> None:
+        expected = {"version", "training", "evaluation"}
+        if not isinstance(state_dict, Mapping) or set(state_dict) != expected:
+            raise ValueError(
+                "Expected split parameter-modifier state with exact keys "
+                f"{sorted(expected)!r}. Provided value: {state_dict!r}."
+            )
+        if state_dict["version"] != 1:
+            raise ValueError(
+                "Expected split parameter-modifier state version 1. "
+                f"Provided value: {state_dict['version']!r}."
+            )
+        self.training.load_state_dict(state_dict["training"])
+        self.evaluation.load_state_dict(state_dict["evaluation"])
+
+
 def modifier_or_default(
     modifier: Optional[ParameterModifier],
 ) -> ParameterModifier:
