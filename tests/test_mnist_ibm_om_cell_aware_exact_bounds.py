@@ -23,6 +23,7 @@ from experiments.mnist_relu_drn.ibm_om_cell_aware_launcher import (
     SCHEDULE_RECEIPT_SHA256,
     TEACHER,
     _command,
+    _completed_run,
     _task_environment,
     development_tasks,
     heldout_tasks,
@@ -309,6 +310,27 @@ def test_launcher_can_inherit_or_explicitly_pin_cuda_visibility() -> None:
             aihwkit_python="/pinned/aihwkit-python",
             cuda_visible_devices="",
         )
+
+
+def test_launcher_recognizes_native_complete_status(tmp_path: Path) -> None:
+    config = tmp_path / "config.json"
+    config.write_text("{}\n", encoding="utf-8")
+    run_dir = tmp_path / "arm" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "status.json").write_text(
+        json.dumps({"status": "complete"}), encoding="utf-8"
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "study": {
+                    "source_config_sha256": sha256_file(config),
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _completed_run(tmp_path / "arm", config) == run_dir
 
 
 def test_primary_paired_bootstrap_is_deterministic_and_endpoint_paired() -> None:

@@ -279,7 +279,7 @@ def _completed_run(arm_root: Path, config: Path) -> Path | None:
         study = manifest.get("study") if manifest is not None else None
         if (
             status is not None
-            and status.get("status") == "completed"
+            and status.get("status") == "complete"
             and isinstance(study, Mapping)
             and study.get("source_config_sha256") == expected_config_sha
         ):
@@ -314,7 +314,14 @@ def _development_freeze(study_dir: Path, *, source_commit: str) -> dict[str, Any
             )
         weights = run_dir / "checkpoints" / "weights.pt"
         result = _read_json(run_dir / "result.json")
-        if not weights.is_file() or result is None:
+        manifest = _read_json(run_dir / "manifest.json")
+        source = manifest.get("source") if manifest is not None else None
+        if (
+            not weights.is_file()
+            or result is None
+            or not isinstance(source, Mapping)
+            or not isinstance(source.get("commit"), str)
+        ):
             raise RuntimeError(
                 f"Expected completed development artifacts for {task.arm_id!r}."
             )
@@ -329,6 +336,7 @@ def _development_freeze(study_dir: Path, *, source_commit: str) -> dict[str, Any
             "config_sha256": sha256_file(task.config),
             "weights": str(weights),
             "weights_sha256": sha256_file(weights),
+            "run_source_commit": source["commit"],
             "selected_epoch": selected.get("epoch"),
             "selected_student_accuracy": selected.get("student_accuracy"),
         }
@@ -370,6 +378,7 @@ def _load_development_freeze(study_dir: Path, *, source_commit: str) -> Mapping[
                 "config_sha256",
                 "weights",
                 "weights_sha256",
+                "run_source_commit",
                 "selected_epoch",
             )
         ):
