@@ -37,6 +37,67 @@ def _dense_binding(
     return ParameterBinding(key, parameter, role=role)
 
 
+def test_evaluation_trace_uses_production_integer_accuracy_arithmetic() -> None:
+    labels = torch.tensor([0, 0, 0, 0, 0, 1, 1])
+    student_predictions = torch.tensor([0, 0, 0, 0, 0, 0, 0])
+    teacher_predictions = torch.tensor([0, 0, 0, 0, 1, 1, 1])
+    inputs = torch.arange(7, dtype=torch.float32).reshape(7, 1)
+    student_logits = torch.nn.functional.one_hot(
+        student_predictions,
+        num_classes=2,
+    ).to(torch.float32)
+    teacher_logits = torch.nn.functional.one_hot(
+        teacher_predictions,
+        num_classes=2,
+    ).to(torch.float32)
+
+    class Network:
+        def set_input(self, value, *, reset):
+            assert reset is True
+            self.inputs = value
+
+    class Cost:
+        gain = 1.0
+
+        def set_teacher(self, logits, batch_labels):
+            assert torch.equal(logits, teacher_logits)
+            assert torch.equal(batch_labels, labels)
+
+        def student_logits(self):
+            return student_logits
+
+    class Teacher:
+        def logits(self, value):
+            assert torch.equal(value, inputs)
+            return teacher_logits
+
+    class Minimizer:
+        @staticmethod
+        def compute_equilibrium():
+            return None
+
+    stack = type(
+        "Stack",
+        (),
+        {
+            "device": torch.device("cpu"),
+            "network": Network(),
+            "cost": Cost(),
+            "minimizer": Minimizer(),
+        },
+    )()
+    trace = decomposition.collect_evaluation_trace(
+        stack,
+        Teacher(),
+        [(inputs, labels)],
+        maximum_batches=None,
+    )
+
+    assert trace.metrics["student_accuracy"] == 5 / 7
+    assert trace.metrics["teacher_accuracy"] == 6 / 7
+    assert trace.metrics["teacher_agreement"] == 4 / 7
+
+
 def test_logical_contrast_matches_quad_and_differential_definitions() -> None:
     shapes = ((4, 4), (4, 4))
     single_slices = (slice(0, 16), slice(16, 32))

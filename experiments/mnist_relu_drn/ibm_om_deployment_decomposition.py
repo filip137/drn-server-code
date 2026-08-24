@@ -672,11 +672,18 @@ def collect_evaluation_trace(
                 * (teacher_log_prob - raw_student_log_prob)
             ).sum(dim=1).mean().item()
         ),
-        "student_accuracy": float(student_prediction.eq(labels).float().mean().item()),
-        "teacher_accuracy": float(teacher_prediction.eq(labels).float().mean().item()),
-        "teacher_agreement": float(
-            student_prediction.eq(teacher_prediction).float().mean().item()
-        ),
+        # Match the production evaluator's integer-count arithmetic exactly.
+        # A float32 mean can differ from count/examples by more than the
+        # bit-exact replay tolerance even when every prediction is identical.
+        "student_accuracy": int(
+            student_prediction.eq(labels).sum().item()
+        ) / examples,
+        "teacher_accuracy": int(
+            teacher_prediction.eq(labels).sum().item()
+        ) / examples,
+        "teacher_agreement": int(
+            student_prediction.eq(teacher_prediction).sum().item()
+        ) / examples,
         "raw_score_rms": float(raw_scores.square().mean().sqrt().item()),
         "calibrated_score_rms": float(
             student_logits.square().mean().sqrt().item()
