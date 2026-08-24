@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from experiments.reram_program_verify.local_short_launcher import (
     ARM_CONFIGS,
@@ -9,6 +12,7 @@ from experiments.reram_program_verify.local_short_launcher import (
     EXPECTED_TRAJECTORIES_PER_ARM,
     STUDY_ID,
     _commands,
+    _require_clean_source_commit,
     _validate_prepared_study,
 )
 from experiments.study_workflow import prepare_study
@@ -56,3 +60,20 @@ def test_short_launcher_supports_the_prepared_cap128_study(
     )
     assert set(commands) == set(CAP128_ARM_CONFIGS)
     assert all("cap128" in Path(command[5]).name for command in commands.values())
+
+
+def test_short_launcher_requires_a_clean_source_commit(monkeypatch) -> None:
+    def clean_output(command, **kwargs):
+        return b"abc123\n" if command[-2:] == ("rev-parse", "HEAD") else b""
+
+    monkeypatch.setattr(subprocess, "check_output", clean_output)
+    assert _require_clean_source_commit(Path("/repo")) == "abc123"
+
+    def dirty_output(command, **kwargs):
+        if command[-2:] == ("rev-parse", "HEAD"):
+            return b"abc123\n"
+        return b"?? uncommitted.py\0"
+
+    monkeypatch.setattr(subprocess, "check_output", dirty_output)
+    with pytest.raises(RuntimeError, match="clean worktree"):
+        _require_clean_source_commit(Path("/repo"))

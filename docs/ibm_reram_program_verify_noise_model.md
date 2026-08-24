@@ -378,7 +378,10 @@ The characterized target support is `[0,1]`. The deployment sampler rejects an
 out-of-support target by default. A caller may request explicit target
 clamping, but the returned clamp mask must be retained. Raw terminal endpoints
 are likewise preserved unless the caller explicitly selects an analysis or
-deployment clipping policy.
+deployment clipping policy. The deployment path also rejects incomplete fits,
+pseudocount-only target bins, and conditions that failed held-out adequacy.
+`allow_inadequate=True` is reserved for explicit analysis of a complete fit;
+it cannot override missing target or reachability fits.
 
 ### Exploratory compact-model check on completed v2 data
 

@@ -57,6 +57,7 @@ def _artifact(
                 "target": target,
                 "tolerance": 0.1,
                 "accepted_noncorrupt_residual": {
+                    "fit_count": 10,
                     "support": [-0.1, 0.1],
                     "bin_edges": [-0.1, 0.0, 0.1],
                     # The production fitter uses a positive Jeffreys
@@ -90,7 +91,12 @@ def _artifact(
         "schema": "ebl.ibm_reram.bounded_piecewise_uniform_endpoint_model",
         "schema_version": 2,
         "conditions": {
-            CONDITION_KEY: {"validation": {"per_target": records}},
+            CONDITION_KEY: {
+                "fit_status": "fit",
+                "reachability_fit_status": "fit",
+                "adequate": True,
+                "validation": {"per_target": records},
+            },
         },
     }
 
@@ -214,6 +220,53 @@ def test_endpoint_clipping_is_explicit_and_reported() -> None:
     assert sample.raw_endpoint.tolist() == [1.25]
     assert sample.endpoint.tolist() == [1.0]
     assert sample.endpoint_was_clipped.tolist() == [True]
+
+
+def test_endpoint_sampler_rejects_incomplete_or_inadequate_fits() -> None:
+    artifact = _artifact()
+    condition = artifact["conditions"][CONDITION_KEY]
+    condition["adequate"] = False
+
+    with pytest.raises(ValueError, match="held-out adequacy"):
+        sample_ibm_reram_endpoints(
+            torch.tensor([0.5]),
+            artifact,
+            condition_key=CONDITION_KEY,
+            generator=torch.Generator().manual_seed(50),
+        )
+
+    sample = sample_ibm_reram_endpoints(
+        torch.tensor([0.5]),
+        artifact,
+        condition_key=CONDITION_KEY,
+        generator=torch.Generator().manual_seed(50),
+        allow_inadequate=True,
+    )
+    assert bool(torch.all(torch.isfinite(sample.endpoint)))
+
+    condition["fit_status"] = "incomplete_accepted_target_bins"
+    with pytest.raises(ValueError, match="complete accepted-residual"):
+        sample_ibm_reram_endpoints(
+            torch.tensor([0.5]),
+            artifact,
+            condition_key=CONDITION_KEY,
+            generator=torch.Generator().manual_seed(51),
+            allow_inadequate=True,
+        )
+
+
+def test_endpoint_sampler_rejects_pseudocount_only_target_bins() -> None:
+    artifact = _artifact()
+    records = artifact["conditions"][CONDITION_KEY]["validation"]["per_target"]
+    records[0]["accepted_noncorrupt_residual"]["fit_count"] = 0
+
+    with pytest.raises(ValueError, match="fit observations"):
+        sample_ibm_reram_endpoints(
+            torch.tensor([0.0]),
+            artifact,
+            condition_key=CONDITION_KEY,
+            generator=torch.Generator().manual_seed(52),
+        )
 
 
 def test_bound_unreachable_targets_use_separate_lower_and_upper_branches() -> None:

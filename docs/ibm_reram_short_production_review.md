@@ -129,6 +129,8 @@ The formal launcher is
 `python -m experiments.reram_program_verify.local_short_launcher`. It starts
 the four independent direct `python -m ebl characterize` commands on
 `CUDA_VISIBLE_DEVICES=0` and does not replace the repository study lifecycle.
+It fails closed unless the worktree is clean and records the exact source
+commit in its launch contract before creating any native run.
 Child-side live-ledger writes are deferred until all four native manifests
 have captured the same frozen source identity; the launcher then refreshes the
 repository-native `current_simulations.md` view on every heartbeat and at
