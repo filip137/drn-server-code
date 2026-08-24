@@ -238,6 +238,27 @@ def test_run_store_refreshes_on_failure(
     assert "Keep this manual study." in terminal
 
 
+def test_run_store_can_defer_live_ledger_updates_for_atomic_multirun_launch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = _write_ledger(tmp_path)
+    original = ledger.read_text(encoding="utf-8")
+    monkeypatch.setenv("EBL_DEFER_CURRENT_SIMULATIONS", "1")
+    store = RunStore.create(
+        output_root=tmp_path / "results" / "study-a" / "runs" / "base",
+        experiment_id="small_drn.v1",
+        resolved_config={"schema_version": 1},
+        command=["ebl", "train", "--config", "config.json"],
+        repo_root=tmp_path,
+        run_id="run-001",
+    )
+
+    assert ledger.read_text(encoding="utf-8") == original
+    store.complete(metrics={})
+    assert ledger.read_text(encoding="utf-8") == original
+
+
 def test_refresh_failure_never_fails_the_native_run(
     tmp_path: Path,
     monkeypatch,

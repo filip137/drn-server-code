@@ -118,6 +118,39 @@ def _latest_native_run(arm_root: Path) -> Path | None:
     return max(candidates, key=lambda path: path.name) if candidates else None
 
 
+def _require_clean_source_commit(repo_root: Path = _ROOT) -> str:
+    """Return the launch commit after failing closed on local source changes."""
+
+    try:
+        commit = subprocess.check_output(
+            ("git", "-C", str(repo_root), "rev-parse", "HEAD"),
+            stderr=subprocess.PIPE,
+        ).decode("ascii").strip()
+        status = subprocess.check_output(
+            (
+                "git",
+                "-C",
+                str(repo_root),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "-z",
+            ),
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
+        raise RuntimeError(
+            "Expected the formal four-arm launcher to resolve a clean Git "
+            "source commit."
+        ) from error
+    if not commit or status:
+        raise RuntimeError(
+            "Expected the formal four-arm launcher to use a clean worktree. "
+            "Commit or otherwise preserve every source change before launch."
+        )
+    return commit
+
+
 def _arm_snapshot(
     arm: str,
     *,
@@ -212,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     aihwkit_python = args.aihwkit_python.expanduser().resolve()
     if not aihwkit_python.is_file() or not os.access(aihwkit_python, os.X_OK):
         raise RuntimeError("Expected --aihwkit-python to be executable.")
+    source_commit = _require_clean_source_commit()
     _validate_prepared_study(
         study_dir,
         study_id=launch_plan.study_id,
@@ -232,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         "launch_profile": args.study_profile,
         "maximum_program_pulses": launch_plan.maximum_program_pulses,
         "formal_evidence": True,
+        "source_commit": source_commit,
         "launcher_python": str(Path(sys.executable).resolve()),
         "aihwkit_python": str(aihwkit_python),
         "cuda_visible_devices": args.cuda_visible_devices,

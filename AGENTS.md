@@ -29,6 +29,19 @@ of this worktree.
 - `training/`: reusable training mechanisms. The worktree-relevant modules
   include HWA modifiers, measured-trace programming and update backends,
   Tiki-Taka accumulation, parameter catalogs, probes, and checkpoint codecs.
+- `training/ibm_reram_program_verify.py`: explicit-RNG transcription of the
+  AIHWKit 1.1.0 `SoftBoundsReferenceDevice` pulse equation, capability-limited
+  controller port, one-pulse/adaptive controllers, and identity partitions.
+- `training/ibm_reram_endpoint_model.py`: deployment sampler for the fitted
+  target-conditioned bounded endpoint density with explicit non-corrupt
+  failure, persistent corrupt-device, target-support, and clipping outcomes.
+- `experiments/reram_program_verify/`: strict `characterize` composition
+  root, streaming trajectory/event store, held-out endpoint fitting, Wan
+  comparison, plots, and report generation.
+- `experiments/reram_program_verify/local_short_launcher.py`: persistent local
+  CUDA launcher and heartbeat/receipt writer for reviewed production studies.
+  It invokes the public CLI for every arm; it is not an alternative numerical
+  execution surface.
 - `experiments/mnist_relu_drn/`: strict teacher-to-perfect-diode-DRN mapping,
   HWA, measured-device deployment, training, validation, and provenance.
 - `experiments/mnist_relu_drn_reset/`: measured pulse-zero/RESET
@@ -40,6 +53,8 @@ of this worktree.
   `examples/small_drn/`: strict versioned experiment configs. A study plan
   references exact config files; configs do not choose input checkpoints or
   output locations.
+- `examples/reram_program_verify/`: operational smoke, sizing, immutable
+  production, cap-128, and focused HWA-prerequisite characterization configs.
 - `studies/`: tracked, predeclared study plans containing hypotheses, arms,
   completion criteria, and analysis plans.
 - `campaigns/`: subprocess-only orchestration of exact configs and explicit
@@ -65,6 +80,18 @@ of this worktree.
 - Matched arms must keep the DRN topology, solver, data split, teacher or base
   checkpoint, and device assignment fixed unless one of them is the explicitly
   declared intervention.
+- The realistic P&V controller may receive only continuous targets, apparent
+  normalized verify values, its own history, and calibration-partition
+  population estimates. Keep persistent states and hidden device parameters
+  on the logging side of the controller port.
+- Treat exact persistent target reachability, verify-window intersection, and
+  apparent acceptance as three different facts. Bound classification may pair
+  conditioned RESET/SET states only on the analysis side; an apparent noisy
+  admission must not be relabelled as a persistently reachable target.
+- Preserve per-identity AIHWKit construction seeds and explicit per-trajectory
+  conditioning/programming seeds. Do not replace the explicit pulse plant with
+  a native CPU tile unless its cycle-to-cycle RNG becomes serializable and an
+  exact-replay test is added.
 
 ## Synapse data
 

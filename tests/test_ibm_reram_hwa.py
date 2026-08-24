@@ -151,6 +151,7 @@ def _endpoint_model(
                 "target": target,
                 "tolerance": 0.04745,
                 "accepted_noncorrupt_residual": {
+                    "fit_count": 10,
                     "bin_edges": [-0.04745, 0.0, 0.04745],
                     "bin_probabilities": [0.5, 0.5],
                 },
@@ -174,6 +175,8 @@ def _endpoint_model(
         },
         "conditions": {
             CONDITION_KEY: {
+                "fit_status": "fit",
+                "reachability_fit_status": "fit",
                 "adequate": True,
                 "validation": {"per_target": records},
             }

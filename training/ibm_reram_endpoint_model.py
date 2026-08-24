@@ -55,7 +55,10 @@ def _uniform_like(
 
 
 def _records(
-    artifact: Mapping[str, Any], condition_key: str
+    artifact: Mapping[str, Any],
+    condition_key: str,
+    *,
+    allow_inadequate: bool,
 ) -> tuple[Mapping[str, Any], Sequence[Mapping[str, Any]]]:
     if (
         artifact.get("schema") != _SCHEMA
@@ -79,12 +82,50 @@ def _records(
             "Expected the selected endpoint condition to be an object. "
             f"Provided value: {condition!r}."
         )
+    if (
+        condition.get("fit_status") != "fit"
+        or condition.get("reachability_fit_status") != "fit"
+    ):
+        raise ValueError(
+            "Expected the selected endpoint condition to contain complete "
+            "accepted-residual and reachability fits. Provided value: "
+            f"fit_status={condition.get('fit_status')!r}, "
+            "reachability_fit_status="
+            f"{condition.get('reachability_fit_status')!r}."
+        )
+    if condition.get("adequate") is not True and not allow_inadequate:
+        raise ValueError(
+            "Expected the selected endpoint condition to pass its held-out "
+            "adequacy gates. Set allow_inadequate=True only for an explicit "
+            "analysis of a complete but inadequate fit."
+        )
     validation = condition.get("validation")
     records = validation.get("per_target") if isinstance(validation, Mapping) else None
     if not isinstance(records, Sequence) or not records:
         raise ValueError(
             "Expected the selected endpoint condition to contain target-bin "
             f"models. Provided value: {records!r}."
+        )
+    empty_fit_targets = []
+    for record in records:
+        model = (
+            record.get("accepted_noncorrupt_residual")
+            if isinstance(record, Mapping)
+            else None
+        )
+        fit_count = model.get("fit_count") if isinstance(model, Mapping) else None
+        if (
+            isinstance(fit_count, bool)
+            or not isinstance(fit_count, int)
+            or fit_count < 1
+        ):
+            target = record.get("target") if isinstance(record, Mapping) else None
+            empty_fit_targets.append(target)
+    if empty_fit_targets:
+        raise ValueError(
+            "Expected every endpoint target bin to contain accepted "
+            "non-corrupt fit observations. Empty or invalid targets: "
+            f"{empty_fit_targets!r}."
         )
     return condition, records
 
@@ -380,6 +421,7 @@ def sample_ibm_reram_endpoints(
     corrupt_persistent_endpoint: torch.Tensor | None = None,
     target_out_of_support: str = "error",
     endpoint_policy: str = "preserve",
+    allow_inadequate: bool = False,
 ) -> IbmReramEndpointSample:
     """Sample normalized one-shot endpoints without widening write noise.
 
@@ -409,7 +451,16 @@ def sample_ibm_reram_endpoints(
             "Expected endpoint_policy to equal 'preserve' or 'clip_0_1'. "
             f"Provided value: {endpoint_policy!r}."
         )
-    _, records = _records(artifact, condition_key)
+    if not isinstance(allow_inadequate, bool):
+        raise ValueError(
+            "Expected allow_inadequate to be a boolean. "
+            f"Provided value: {allow_inadequate!r}."
+        )
+    _, records = _records(
+        artifact,
+        condition_key,
+        allow_inadequate=allow_inadequate,
+    )
     target_grid_values = [float(record["target"]) for record in records]
     if target_grid_values != sorted(target_grid_values) or len(
         set(target_grid_values)
