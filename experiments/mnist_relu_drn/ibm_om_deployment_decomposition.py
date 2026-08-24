@@ -135,6 +135,30 @@ def _tensor_sha256(value: torch.Tensor) -> str:
     return digest.hexdigest()
 
 
+def _exact_tree_equal(left: Any, right: Any) -> bool:
+    if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
+        return (
+            isinstance(left, torch.Tensor)
+            and isinstance(right, torch.Tensor)
+            and torch.equal(left, right)
+        )
+    if isinstance(left, Mapping) or isinstance(right, Mapping):
+        return (
+            isinstance(left, Mapping)
+            and isinstance(right, Mapping)
+            and set(left) == set(right)
+            and all(_exact_tree_equal(left[key], right[key]) for key in left)
+        )
+    if isinstance(left, (list, tuple)) or isinstance(right, (list, tuple)):
+        return (
+            isinstance(left, (list, tuple))
+            and isinstance(right, (list, tuple))
+            and len(left) == len(right)
+            and all(_exact_tree_equal(a, b) for a, b in zip(left, right))
+        )
+    return left == right
+
+
 def _summary(value: torch.Tensor) -> dict[str, float | int | None]:
     flattened = value.detach().to(device="cpu", dtype=torch.float64).reshape(-1)
     if flattened.numel() == 0:
@@ -1027,6 +1051,7 @@ def validate_deployment_contract(
 
     from training.ibm_reram_hwa import (
         IbmReramHwaConfig,
+        build_ibm_reram_cell_aware_exact_bounds_codebook,
         map_ibm_reram_array_targets,
         validate_ibm_reram_target_mapping_preflight,
     )
@@ -1185,34 +1210,69 @@ def validate_deployment_contract(
         common_window_margin_fraction=(
             deployment_config.common_window_margin_fraction
         ),
+        cell_aware_mode=deployment_config.cell_aware_mode,
+        cell_aware_signed_levels=(
+            deployment_config.cell_aware_signed_levels
+        ),
     )
     validate_ibm_reram_target_mapping_preflight(remapping_report)
     if not torch.equal(remapped, tensors["requested_target"]):
         raise ValueError(
             "Expected saved requested targets to equal read-only mapper replay."
         )
-    integer_fields = (
-        (
+    if deployment_config.target_mapping == "cell_aware_exact_bounds_quad":
+        expected_codebook = (
+            build_ibm_reram_cell_aware_exact_bounds_codebook(
+                tensors["global_requested_target"],
+                population,
+                dual_rail_layout_by_parameter=(
+                    deployment_config.dual_rail_layout_by_parameter or ()
+                ),
+                cell_aware_mode=deployment_config.cell_aware_mode or "",
+                cell_aware_signed_levels=(
+                    deployment_config.cell_aware_signed_levels or 0
+                ),
+            )
+        )
+        if not _exact_tree_equal(
+            deployment.get("oracle_codebook"),
+            expected_codebook,
+        ):
+            raise ValueError(
+                "Expected embedded cell-aware oracle codebook to equal exact "
+                "read-only reconstruction."
+            )
+        integer_fields = (
             "devices",
             "quad_count",
-            "common_window_empty_quad_count",
-            "mapped_target_below_lower_bound_nonempty_quad",
-            "mapped_target_above_upper_bound_nonempty_quad",
-            "mapped_target_below_lower_bound_empty_quad",
-            "mapped_target_above_upper_bound_empty_quad",
+            "zero_span_cell_count",
+            "nonzero_quad_count",
+            "logical_sign_flip_count",
+            "mapped_target_outside_0_1",
         )
-        if deployment_config.target_mapping
-        == "dual_rail_quad_common_window"
-        else (
-            "devices",
-            "pair_count",
-            "common_window_empty_pair_count",
-            "mapped_target_below_lower_bound_nonempty_pair",
-            "mapped_target_above_upper_bound_nonempty_pair",
-            "mapped_target_below_lower_bound_empty_pair",
-            "mapped_target_above_upper_bound_empty_pair",
+    else:
+        integer_fields = (
+            (
+                "devices",
+                "quad_count",
+                "common_window_empty_quad_count",
+                "mapped_target_below_lower_bound_nonempty_quad",
+                "mapped_target_above_upper_bound_nonempty_quad",
+                "mapped_target_below_lower_bound_empty_quad",
+                "mapped_target_above_upper_bound_empty_quad",
+            )
+            if deployment_config.target_mapping
+            == "dual_rail_quad_common_window"
+            else (
+                "devices",
+                "pair_count",
+                "common_window_empty_pair_count",
+                "mapped_target_below_lower_bound_nonempty_pair",
+                "mapped_target_above_upper_bound_nonempty_pair",
+                "mapped_target_below_lower_bound_empty_pair",
+                "mapped_target_above_upper_bound_empty_pair",
+            )
         )
-    )
     if any(
         mapping_report.get(name) != remapping_report.get(name)
         for name in integer_fields
@@ -1302,9 +1362,12 @@ def run_decomposition(
     definition, spec = resolve_experiment_config(config_path, RunMode.TRAIN)
     if definition.experiment_id != "mnist_relu_drn_kd.v1":
         raise ValueError("Expected the strict MNIST ReLU DRN KD experiment.")
-    expected_target_mapping = {
-        "single": "dual_rail_quad_common_window",
-        "differential": "differential_pair_common_window",
+    expected_target_mappings = {
+        "single": {
+            "dual_rail_quad_common_window",
+            "cell_aware_exact_bounds_quad",
+        },
+        "differential": {"differential_pair_common_window"},
     }.get(spec.model.encoding)
     modifiers = (
         spec.settings.weight_modifier,
@@ -1316,7 +1379,7 @@ def run_decomposition(
         if modifier.type == "ibm_reram_om_program_verify"
     )
     if not configured_ibm or any(
-        parameters.get("target_mapping") != expected_target_mapping
+        parameters.get("target_mapping") not in expected_target_mappings
         for parameters in configured_ibm
     ):
         raise ValueError(
@@ -1368,14 +1431,23 @@ def run_decomposition(
 
     bindings = tuple(stack.bundle.catalog.trainable)
     keys, shapes, sections = _binding_layout(bindings)
-    selected_flat = torch.cat(
-        tuple(binding.state.detach().cpu().reshape(-1) for binding in bindings)
-    )
     conductance_min = float(spec.model.conductance_min)
     conductance_max = float(spec.model.conductance_max)
-    selected_normalized = (
-        selected_flat - conductance_min
-    ) / (conductance_max - conductance_min)
+    conductance_span = conductance_max - conductance_min
+    # Normalize on the binding's native device, exactly as the modifier does,
+    # before transferring to CPU for read-only analysis. CPU-first arithmetic
+    # can differ by one float32 ULP and would break bit-exact target replay.
+    selected_normalized = torch.cat(
+        tuple(
+            (
+                (binding.state.detach() - conductance_min)
+                / conductance_span
+            )
+            .cpu()
+            .reshape(-1)
+            for binding in bindings
+        )
+    )
     selected_sha256 = sha256_file(weights_path)
     deployment = _strict_torch_load(deployment_path)
     tensors, deployment_config, contract = validate_deployment_contract(

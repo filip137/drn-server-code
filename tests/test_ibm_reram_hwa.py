@@ -16,6 +16,7 @@ from training.ibm_reram_hwa import (
     IbmReramArrayPopulation,
     IbmReramHwaConfig,
     IbmReramHwaParameterModifier,
+    build_ibm_reram_cell_aware_exact_bounds_codebook,
     load_om_array_population,
     map_ibm_reram_array_targets,
     sample_om_array_population,
@@ -238,6 +239,9 @@ def _config(
     target_mapping: str = "literal_global",
     dual_rail_layout_by_parameter: dict[str, str] | None = None,
     common_window_margin_fraction: float = 0.0,
+    cell_aware_mode: str | None = None,
+    cell_aware_signed_levels: int | None = None,
+    forward_logit_gain: float | None = None,
 ) -> IbmReramHwaConfig:
     return IbmReramHwaConfig(
         execution=execution,
@@ -248,6 +252,9 @@ def _config(
         target_mapping=target_mapping,
         dual_rail_layout_by_parameter=dual_rail_layout_by_parameter,
         common_window_margin_fraction=common_window_margin_fraction,
+        cell_aware_mode=cell_aware_mode,
+        cell_aware_signed_levels=cell_aware_signed_levels,
+        forward_logit_gain=forward_logit_gain,
     )
 
 
@@ -462,6 +469,158 @@ def test_quad_preflight_separates_empty_window_failures_and_caps_them() -> None:
     outside_nonempty["mapped_target_below_lower_bound_nonempty_quad"] = 1
     with pytest.raises(ValueError, match="zero mapped targets"):
         validate_ibm_reram_target_mapping_preflight(outside_nonempty)
+
+
+def test_cell_aware_quantized_mapper_uses_each_exact_bound_and_half_away_rounding() -> None:
+    binding = _binding((2, 4))
+    lower = torch.tensor(
+        [[-0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]],
+        dtype=torch.float32,
+    )
+    upper = torch.tensor(
+        [[1.1, 0.9, 0.8, 0.7], [0.6, 0.7, 0.9, 1.2]],
+        dtype=torch.float32,
+    )
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    # In paired layout these two quads have 4u = +0.5 and -0.5. Exact
+    # half-away rounding therefore selects signed codes +1 and -1.
+    source = torch.tensor(
+        [[0.25, 0.0, 0.0, 0.25], [0.0, 0.0, 0.0, 0.0]],
+        dtype=torch.float32,
+    )
+    mapped, report = map_ibm_reram_array_targets(
+        source.reshape(-1),
+        population,
+        target_mapping="cell_aware_exact_bounds_quad",
+        dual_rail_layout_by_parameter={binding.key: "paired"},
+        common_window_margin_fraction=0.0,
+        cell_aware_mode="quantized_9_level",
+        cell_aware_signed_levels=9,
+    )
+
+    expected = torch.tensor(
+        [[0.25, 0.2, 0.3, 0.475], [0.5, 0.625, 0.75, 0.8]],
+        dtype=torch.float32,
+    )
+    torch.testing.assert_close(mapped.reshape(2, 4), expected)
+    assert report["oracle"] is True
+    assert report["hidden_device_bounds_consumed_by_target_mapper"] is True
+    assert report["post_mapping_clipping"] is False
+    assert report["code_index_counts"] == {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 1,
+        "4": 0,
+        "5": 1,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+    }
+    assert report["mapped_target_support"] == {
+        "below_lower_bound": 0,
+        "above_upper_bound": 0,
+        "inside_bounds": 8,
+    }
+    assert report["hashes"]["mapped_target"] == (
+        "8a11647f50c2c96f8309a2db4d90415bbf35b6245ad0bff63e22f4513c37fbd6"
+    )
+    assert report["code_index_sha256"] == (
+        "aa7c9e574f8acc19902fa6abeab4256916695b58790de278f5fc70383a8fbb7b"
+    )
+    validate_ibm_reram_target_mapping_preflight(report)
+
+    artifact = build_ibm_reram_cell_aware_exact_bounds_codebook(
+        source.reshape(-1),
+        population,
+        dual_rail_layout_by_parameter={binding.key: "paired"},
+        cell_aware_mode="quantized_9_level",
+    )
+    torch.testing.assert_close(
+        artifact["cell_logical_min"].reshape(2, 4),
+        population.logical_min.reshape(2, 4),
+    )
+    torch.testing.assert_close(
+        artifact["cell_logical_max"].reshape(2, 4),
+        population.logical_max.reshape(2, 4),
+    )
+    torch.testing.assert_close(
+        artifact["normalized_exact_lower"].reshape(2, 4), lower
+    )
+    torch.testing.assert_close(
+        artifact["normalized_exact_upper"].reshape(2, 4), upper
+    )
+    torch.testing.assert_close(artifact["usable_lower"].reshape(2, 4), lower.clamp_min(0.0))
+    torch.testing.assert_close(artifact["usable_upper"].reshape(2, 4), upper.clamp_max(1.0))
+    torch.testing.assert_close(artifact["requested_target"], mapped)
+    assert artifact["signed_code"].tolist() == [1, -1]
+    assert artifact["code_index"].tolist() == [5, 3]
+    assert artifact["report"]["hashes"] == report["hashes"]
+
+
+def test_cell_aware_continuous_mapper_does_not_quantize_or_compensate_baselines() -> None:
+    binding = _binding((2, 2))
+    lower = torch.tensor([[0.1, 0.2], [0.3, 0.4]])
+    upper = torch.tensor([[0.9, 0.8], [0.7, 0.6]])
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    source = torch.tensor([[0.4, 0.0], [0.0, 0.0]])
+    mapped, report = map_ibm_reram_array_targets(
+        source.reshape(-1),
+        population,
+        target_mapping="cell_aware_exact_bounds_quad",
+        dual_rail_layout_by_parameter={binding.key: "halves"},
+        common_window_margin_fraction=0.0,
+        cell_aware_mode="continuous",
+        cell_aware_signed_levels=9,
+    )
+
+    # u=0.2 and n=0.8, so positive rails receive exactly 0.2 of their own
+    # spans. Unselected rails remain at their distinct per-cell floors.
+    torch.testing.assert_close(
+        mapped.reshape(2, 2),
+        torch.tensor([[0.26, 0.2], [0.3, 0.44]]),
+    )
+    assert report["rounding"] is None
+    assert "code_index_counts" not in report
+    assert report["cell_specific_baseline_contrast"]["mean"] == pytest.approx(0.0)
+    validate_ibm_reram_target_mapping_preflight(report)
+
+
+def test_cell_aware_config_is_strict_and_records_separate_forward_gain() -> None:
+    config = _config(
+        execution="compact_endpoint",
+        corruption_policy="counterfactual_repaired",
+        noisy_evaluation=False,
+        target_mapping="cell_aware_exact_bounds_quad",
+        dual_rail_layout_by_parameter={"base.dense_weight.0": "halves"},
+        cell_aware_mode="quantized_9_level",
+        cell_aware_signed_levels=9,
+        forward_logit_gain=2.75,
+    )
+    assert config.cell_aware_mode == "quantized_9_level"
+    assert config.cell_aware_signed_levels == 9
+    assert config.forward_logit_gain == 2.75
+
+    with pytest.raises(ValueError, match="cell_aware_signed_levels"):
+        _config(
+            execution="compact_endpoint",
+            corruption_policy="counterfactual_repaired",
+            noisy_evaluation=False,
+            target_mapping="cell_aware_exact_bounds_quad",
+            dual_rail_layout_by_parameter={"base.dense_weight.0": "halves"},
+            cell_aware_mode="quantized_9_level",
+            cell_aware_signed_levels=7,
+        )
 
 
 def test_differential_pair_config_requires_null_layout_and_allows_margin() -> None:
@@ -830,6 +989,81 @@ def test_modifier_preflight_and_compact_context_share_quad_mapping(
     assert report is not None
     assert report["target_mapping"] == "dual_rail_quad_common_window"
     assert report["target_mapping_report"] == preflight
+
+
+def test_cell_aware_compact_context_has_no_fallback_and_restores_fp32_shadow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binding = _binding((2, 2))
+    source = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    binding.state.copy_(0.1 + 0.9 * source)
+    lower = torch.tensor([[0.1, 0.2], [0.3, 0.4]])
+    upper = torch.tensor([[0.9, 0.8], [0.7, 0.6]])
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    monkeypatch.setattr(
+        "training.ibm_reram_hwa.sample_om_array_population",
+        lambda *args, **kwargs: population,
+    )
+    modifier = IbmReramHwaParameterModifier(
+        (binding,),
+        _config(
+            execution="compact_endpoint",
+            corruption_policy="counterfactual_repaired",
+            noisy_evaluation=False,
+            target_mapping="cell_aware_exact_bounds_quad",
+            dual_rail_layout_by_parameter={binding.key: "halves"},
+            cell_aware_mode="quantized_9_level",
+            cell_aware_signed_levels=9,
+            forward_logit_gain=2.75,
+        ),
+        device_model_path=_device_model(tmp_path / "device.json"),
+        conductance_min=0.1,
+        conductance_max=1.0,
+    )
+
+    expected, preflight = modifier.preflight_target_mapping()
+    torch.testing.assert_close(
+        expected.reshape(2, 2),
+        torch.tensor([[0.9, 0.2], [0.3, 0.6]]),
+    )
+    validate_ibm_reram_target_mapping_preflight(preflight)
+    clean = binding.state.clone()
+    snapshot = modifier.state_dict()
+    with modifier.training_context():
+        assert not torch.equal(binding.state, clean)
+    assert torch.equal(binding.state, clean)
+    report = modifier.programming_report
+    deployment = modifier.last_deployment_bundle
+    assert report is not None and deployment is not None
+    assert report["pulse_resolved_fallback_devices"] == 0
+    assert report["execution_detail"] == "compact_endpoint_exact_bounds_in_support"
+    assert deployment["endpoint_generation_policy"] == (
+        "compact_exact_bounds_in_support_only"
+    )
+    assert not bool(torch.any(deployment["pulse_resolved_fallback_mask"]))
+    torch.testing.assert_close(deployment["requested_target"], expected)
+    codebook = deployment["oracle_codebook"]
+    assert codebook["schema"] == (
+        "ebl.ibm_reram.om_cell_aware_exact_bounds_codebook"
+    )
+    assert codebook["signed_code"].tolist() == [4]
+    assert codebook["code_index"].tolist() == [8]
+
+    first = deployment["apparent_endpoint"].clone()
+    modifier.load_state_dict(snapshot)
+    with modifier.training_context():
+        pass
+    replay = modifier.last_deployment_bundle
+    assert replay is not None
+    assert torch.equal(replay["requested_target"], expected)
+    assert torch.equal(replay["apparent_endpoint"], first)
+    assert torch.equal(binding.state, clean)
 
 
 def test_compact_quad_mapping_uses_exact_fallback_for_unsupported_empty_window_cells(

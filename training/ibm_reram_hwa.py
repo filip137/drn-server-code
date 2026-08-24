@@ -53,7 +53,9 @@ _TARGET_MAPPINGS = (
     "literal_global",
     "dual_rail_quad_common_window",
     "differential_pair_common_window",
+    "cell_aware_exact_bounds_quad",
 )
+_CELL_AWARE_MODES = ("continuous", "quantized_9_level")
 _STREAMS = ("train", "evaluation")
 _EVALUATION_STREAM_XOR = 0x4F4D5F50565F4556
 _ROOT = Path(__file__).resolve().parents[1]
@@ -114,6 +116,9 @@ class IbmReramHwaConfig:
     target_mapping: str = "literal_global"
     dual_rail_layout_by_parameter: tuple[tuple[str, str], ...] | None = None
     common_window_margin_fraction: float = 0.0
+    cell_aware_mode: str | None = None
+    cell_aware_signed_levels: int | None = None
+    forward_logit_gain: float | None = None
 
     def __post_init__(self) -> None:
         if self.execution not in _EXECUTIONS:
@@ -175,12 +180,47 @@ class IbmReramHwaConfig:
                 f"[0, 0.5). Provided value: {margin!r}."
             )
         object.__setattr__(self, "common_window_margin_fraction", float(margin))
-        if self.target_mapping == "dual_rail_quad_common_window":
+        if self.forward_logit_gain is not None:
+            gain = self.forward_logit_gain
+            if (
+                isinstance(gain, bool)
+                or not isinstance(gain, (int, float))
+                or not math.isfinite(float(gain))
+                or float(gain) <= 0.0
+            ):
+                raise ValueError(
+                    "Expected forward_logit_gain to be null or a finite "
+                    f"positive number. Provided value: {gain!r}."
+                )
+            object.__setattr__(self, "forward_logit_gain", float(gain))
+        if self.target_mapping in {
+            "dual_rail_quad_common_window",
+            "cell_aware_exact_bounds_quad",
+        }:
             if layouts is None:
                 raise ValueError(
                     "Expected dual_rail_layout_by_parameter for "
-                    "dual_rail_quad_common_window."
+                    f"{self.target_mapping}."
                 )
+            if self.target_mapping == "cell_aware_exact_bounds_quad":
+                if float(margin) != 0.0:
+                    raise ValueError(
+                        "Expected cell_aware_exact_bounds_quad to use zero "
+                        "common_window_margin_fraction."
+                    )
+                if self.cell_aware_mode not in _CELL_AWARE_MODES:
+                    raise ValueError(
+                        "Expected cell_aware_mode to be 'continuous' or "
+                        "'quantized_9_level' for "
+                        "cell_aware_exact_bounds_quad. Provided value: "
+                        f"{self.cell_aware_mode!r}."
+                    )
+                if self.cell_aware_signed_levels != 9:
+                    raise ValueError(
+                        "Expected cell_aware_signed_levels to equal 9 for "
+                        "cell_aware_exact_bounds_quad. Provided value: "
+                        f"{self.cell_aware_signed_levels!r}."
+                    )
         elif self.target_mapping == "differential_pair_common_window":
             if layouts is not None:
                 raise ValueError(
@@ -193,6 +233,14 @@ class IbmReramHwaConfig:
                 "Expected literal_global target mapping to have null "
                 "dual_rail_layout_by_parameter and zero "
                 "common_window_margin_fraction."
+            )
+        if self.target_mapping != "cell_aware_exact_bounds_quad" and (
+            self.cell_aware_mode is not None
+            or self.cell_aware_signed_levels is not None
+        ):
+            raise ValueError(
+                "Expected cell-aware fields to be null unless target_mapping "
+                "is cell_aware_exact_bounds_quad."
             )
 
 
@@ -365,6 +413,59 @@ def _tensor_summary(value: torch.Tensor) -> dict[str, float]:
     }
 
 
+def _tensor_sha256(value: torch.Tensor) -> str:
+    """Hash tensor content together with its exact dtype and shape."""
+
+    cpu = value.detach().contiguous().cpu()
+    digest = sha256()
+    digest.update(str(cpu.dtype).encode("utf-8"))
+    digest.update(json.dumps(list(cpu.shape), separators=(",", ":")).encode("utf-8"))
+    digest.update(cpu.numpy().tobytes(order="C"))
+    return digest.hexdigest()
+
+
+def _cell_aware_tensor_summary(value: torch.Tensor) -> dict[str, float]:
+    """Return device-independent diagnostics for immutable oracle replay."""
+
+    flattened = value.detach().to(device="cpu", dtype=torch.float64).reshape(-1)
+    return {
+        "minimum": float(flattened.min().item()),
+        "maximum": float(flattened.max().item()),
+        "mean": float(flattened.mean().item()),
+    }
+
+
+def _quad_axes(
+    shape: tuple[int, ...],
+    layout: str,
+    *,
+    device: torch.device,
+) -> tuple[tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
+    """Return canonical source/destination rail axes for a four-cell quad."""
+
+    if len(shape) != 2 or shape[0] % 2 or shape[1] % 2:
+        raise ValueError(
+            "Expected four-cell dual-rail bindings to be even-by-even rank-2 "
+            f"tensors. Provided shape: {shape!r}."
+        )
+    if layout not in {"halves", "paired"}:
+        raise ValueError(
+            "Expected a canonical dual-rail layout ('halves' or 'paired'). "
+            f"Provided value: {layout!r}."
+        )
+    input_count = shape[0] // 2
+    output_count = shape[1] // 2
+    plus_rows = torch.arange(input_count, device=device)
+    minus_rows = plus_rows + input_count
+    if layout == "halves":
+        plus_columns = torch.arange(output_count, device=device)
+        minus_columns = plus_columns + output_count
+    else:
+        plus_columns = torch.arange(output_count, device=device) * 2
+        minus_columns = plus_columns + 1
+    return (plus_rows, minus_rows), (plus_columns, minus_columns)
+
+
 def _canonical_differential_pair_layout(
     binding_keys: Sequence[str],
     binding_shapes: Sequence[tuple[int, ...]],
@@ -482,6 +583,315 @@ def _validate_differential_pair_bindings(
     return pairs
 
 
+def _map_cell_aware_exact_bounds_quad(
+    global_targets: torch.Tensor,
+    population: IbmReramArrayPopulation,
+    *,
+    layouts: tuple[tuple[str, str], ...],
+    mode: str,
+    signed_levels: int,
+) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any]]:
+    """Apply the declared per-cell affine exact-bounds oracle codebook."""
+
+    device = global_targets.device
+    dtype = global_targets.dtype
+    cell_logical_min = population.logical_min.to(device=device, dtype=dtype)
+    cell_logical_max = population.logical_max.to(device=device, dtype=dtype)
+    raw_lower = (cell_logical_min + 1.0) / 2.0
+    raw_upper = (cell_logical_max + 1.0) / 2.0
+    usable_lower = raw_lower.clamp_min(0.0)
+    usable_upper = raw_upper.clamp_max(1.0)
+    if bool(torch.any(usable_upper < usable_lower)):
+        invalid = usable_upper < usable_lower
+        raise ValueError(
+            "Expected every exact-bound cell to intersect the DRN's global "
+            "normalized conductance coordinate. Provided invalid cells: "
+            f"{int(invalid.sum().item())}."
+        )
+    usable_span = usable_upper - usable_lower
+    layout_by_key = dict(layouts)
+    mapped = torch.empty_like(global_targets)
+    shadow_values: list[torch.Tensor] = []
+    code_coordinates: list[torch.Tensor] = []
+    code_indices: list[torch.Tensor] = []
+    baseline_contrasts: list[torch.Tensor] = []
+    mapped_contrasts: list[torch.Tensor] = []
+    requested_signs: list[torch.Tensor] = []
+    realized_signs: list[torch.Tensor] = []
+    parameter_reports: dict[str, Any] = {}
+    offset = 0
+    for key, shape in zip(population.binding_keys, population.binding_shapes):
+        count = math.prod(shape)
+        source = global_targets[offset : offset + count].reshape(shape)
+        target = mapped[offset : offset + count].reshape(shape)
+        lower = usable_lower[offset : offset + count].reshape(shape)
+        upper = usable_upper[offset : offset + count].reshape(shape)
+        span = usable_span[offset : offset + count].reshape(shape)
+        row_groups, column_groups = _quad_axes(
+            shape,
+            layout_by_key[key],
+            device=device,
+        )
+        source_quad = torch.stack(
+            tuple(
+                source[rows[:, None], columns]
+                for rows in row_groups
+                for columns in column_groups
+            )
+        )
+        shadow = (
+            source_quad[0]
+            - source_quad[1]
+            - source_quad[2]
+            + source_quad[3]
+        ) / 2.0
+        continuous_code = (4.0 * shadow).clamp(-4.0, 4.0)
+        if mode == "quantized_9_level":
+            code = torch.sign(continuous_code) * torch.floor(
+                torch.abs(continuous_code) + 0.5
+            )
+            code = code.clamp(-4.0, 4.0)
+            integer_code = code.to(dtype=torch.int8)
+            indices = (integer_code.to(torch.int16) + 4).to(torch.uint8)
+        else:
+            code = continuous_code
+            integer_code = torch.empty(0, dtype=torch.int8, device=device)
+            indices = torch.empty(0, dtype=torch.uint8, device=device)
+
+        signs = (1.0, -1.0, -1.0, 1.0)
+        lower_quad = []
+        target_quad = []
+        # Keep the order (++,+-,-+,--) identical to the logical reconstruction.
+        for sign, rows, columns in zip(
+            signs,
+            (row_groups[0], row_groups[0], row_groups[1], row_groups[1]),
+            (
+                column_groups[0],
+                column_groups[1],
+                column_groups[0],
+                column_groups[1],
+            ),
+        ):
+            cell_lower = lower[rows[:, None], columns]
+            cell_span = span[rows[:, None], columns]
+            fraction = (float(sign) * code).clamp_min(0.0) / 4.0
+            cell_target = cell_lower + fraction * cell_span
+            target[rows[:, None], columns] = cell_target
+            lower_quad.append(cell_lower)
+            target_quad.append(cell_target)
+        lower_quad_tensor = torch.stack(lower_quad)
+        target_quad_tensor = torch.stack(target_quad)
+        baseline_contrast = (
+            lower_quad_tensor[0]
+            - lower_quad_tensor[1]
+            - lower_quad_tensor[2]
+            + lower_quad_tensor[3]
+        ) / 2.0
+        mapped_contrast = (
+            target_quad_tensor[0]
+            - target_quad_tensor[1]
+            - target_quad_tensor[2]
+            + target_quad_tensor[3]
+        ) / 2.0
+        requested_sign = torch.sign(code)
+        realized_sign = torch.sign(mapped_contrast)
+        nonzero = requested_sign != 0
+        sign_flip = nonzero & (requested_sign != realized_sign)
+        parameter_report: dict[str, Any] = {
+            "dual_rail_layout": layout_by_key[key],
+            "devices": count,
+            "quad_count": int(shadow.numel()),
+            "usable_lower": _cell_aware_tensor_summary(lower),
+            "usable_upper": _cell_aware_tensor_summary(upper),
+            "usable_span": _cell_aware_tensor_summary(span),
+            "shadow_logical_weight": _cell_aware_tensor_summary(shadow),
+            "code_coordinate": _cell_aware_tensor_summary(code),
+            "cell_specific_baseline_contrast": _cell_aware_tensor_summary(
+                baseline_contrast
+            ),
+            "nominal_mapped_logical_contrast": _cell_aware_tensor_summary(
+                mapped_contrast
+            ),
+            "nonzero_quad_count": int(nonzero.sum().item()),
+            "logical_sign_flip_count": int(sign_flip.sum().item()),
+            "logical_sign_flip_fraction_nonzero": (
+                float(sign_flip.sum().item()) / int(nonzero.sum().item())
+                if bool(torch.any(nonzero))
+                else 0.0
+            ),
+            "shadow_logical_weight_sha256": _tensor_sha256(shadow),
+            "code_coordinate_sha256": _tensor_sha256(code),
+            "mapped_target_sha256": _tensor_sha256(target),
+        }
+        if mode == "quantized_9_level":
+            counts = torch.bincount(indices.reshape(-1).to(torch.int64), minlength=9)
+            parameter_report["signed_code_sha256"] = _tensor_sha256(
+                integer_code
+            )
+            parameter_report["code_index_sha256"] = _tensor_sha256(indices)
+            parameter_report["code_index_counts"] = {
+                str(index): int(value)
+                for index, value in enumerate(counts.tolist())
+            }
+        parameter_reports[key] = parameter_report
+        shadow_values.append(shadow.reshape(-1))
+        code_coordinates.append(code.reshape(-1))
+        if mode == "quantized_9_level":
+            code_indices.append(indices.reshape(-1))
+        baseline_contrasts.append(baseline_contrast.reshape(-1))
+        mapped_contrasts.append(mapped_contrast.reshape(-1))
+        requested_signs.append(requested_sign.reshape(-1))
+        realized_signs.append(realized_sign.reshape(-1))
+        offset += count
+    if offset != population.size:  # pragma: no cover - population validates it
+        raise RuntimeError("Expected cell-aware mapping to cover every cell.")
+
+    shadow_all = torch.cat(shadow_values)
+    code_all = torch.cat(code_coordinates)
+    baseline_contrast_all = torch.cat(baseline_contrasts)
+    mapped_contrast_all = torch.cat(mapped_contrasts)
+    requested_sign_all = torch.cat(requested_signs)
+    realized_sign_all = torch.cat(realized_signs)
+    nonzero_all = requested_sign_all != 0
+    sign_flip_all = nonzero_all & (requested_sign_all != realized_sign_all)
+    support = {
+        "below_lower_bound": int((mapped < usable_lower).sum().item()),
+        "above_upper_bound": int((mapped > usable_upper).sum().item()),
+        "inside_bounds": int(
+            ((mapped >= usable_lower) & (mapped <= usable_upper)).sum().item()
+        ),
+    }
+    report: dict[str, Any] = {
+        "target_mapping": "cell_aware_exact_bounds_quad",
+        "cell_aware_mode": mode,
+        "cell_aware_signed_levels": signed_levels,
+        "rounding": (
+            "round_half_away_from_zero"
+            if mode == "quantized_9_level"
+            else None
+        ),
+        "oracle": True,
+        "hidden_device_bounds_consumed_by_target_mapper": True,
+        "bound_coordinate": (
+            "intersection_of_exact_cell_logical_bounds_with_global_0_1"
+        ),
+        "target_rule": "per_cell_lower_plus_sign_selected_fraction_of_cell_span",
+        "post_mapping_clipping": False,
+        "post_programming_rounding": False,
+        "population_fingerprint": population.fingerprint,
+        "assignment_seed": population.assignment_seed,
+        "corruption_policy": population.corruption_policy,
+        "devices": population.size,
+        "quad_count": int(shadow_all.numel()),
+        "common_window_grouping": None,
+        "common_window_group_size": None,
+        "common_window_group_count": 0,
+        "common_window_empty_group_count": 0,
+        "common_window_empty_quad_count": 0,
+        "usable_lower": _cell_aware_tensor_summary(usable_lower),
+        "usable_upper": _cell_aware_tensor_summary(usable_upper),
+        "usable_span": _cell_aware_tensor_summary(usable_span),
+        "zero_span_cell_count": int((usable_span == 0.0).sum().item()),
+        "shadow_logical_weight": _cell_aware_tensor_summary(shadow_all),
+        "code_coordinate": _cell_aware_tensor_summary(code_all),
+        "cell_specific_baseline_contrast": _cell_aware_tensor_summary(
+            baseline_contrast_all
+        ),
+        "nominal_mapped_logical_contrast": _cell_aware_tensor_summary(
+            mapped_contrast_all
+        ),
+        "nonzero_quad_count": int(nonzero_all.sum().item()),
+        "logical_sign_flip_count": int(sign_flip_all.sum().item()),
+        "logical_sign_flip_fraction_nonzero": (
+            float(sign_flip_all.sum().item()) / int(nonzero_all.sum().item())
+            if bool(torch.any(nonzero_all))
+            else 0.0
+        ),
+        "mapped_target_support": support,
+        "global_target_outside_0_1": int(
+            ((global_targets < 0.0) | (global_targets > 1.0)).sum().item()
+        ),
+        "mapped_target_outside_0_1": int(
+            ((mapped < 0.0) | (mapped > 1.0)).sum().item()
+        ),
+        "hashes": {
+            "global_source_target": _tensor_sha256(global_targets),
+            "cell_logical_min": _tensor_sha256(cell_logical_min),
+            "cell_logical_max": _tensor_sha256(cell_logical_max),
+            "normalized_exact_lower": _tensor_sha256(raw_lower),
+            "normalized_exact_upper": _tensor_sha256(raw_upper),
+            "usable_lower": _tensor_sha256(usable_lower),
+            "usable_upper": _tensor_sha256(usable_upper),
+            "usable_span": _tensor_sha256(usable_span),
+            "shadow_logical_weight": _tensor_sha256(shadow_all),
+            "code_coordinate": _tensor_sha256(code_all),
+            "mapped_target": _tensor_sha256(mapped),
+        },
+        "parameters": parameter_reports,
+    }
+    signed_code_all: torch.Tensor | None = None
+    code_index_all: torch.Tensor | None = None
+    if mode == "quantized_9_level":
+        code_index_all = torch.cat(code_indices)
+        signed_code_all = (code_index_all.to(torch.int16) - 4).to(torch.int8)
+        counts = torch.bincount(code_index_all.to(torch.int64), minlength=9)
+        report["signed_code_sha256"] = _tensor_sha256(signed_code_all)
+        report["code_index_sha256"] = _tensor_sha256(code_index_all)
+        report["code_index_counts"] = {
+            str(index): int(value)
+            for index, value in enumerate(counts.tolist())
+        }
+        report["hashes"]["signed_code"] = report["signed_code_sha256"]
+        report["hashes"]["code_index"] = report["code_index_sha256"]
+
+    artifact = {
+        "schema": "ebl.ibm_reram.om_cell_aware_exact_bounds_codebook",
+        "schema_version": 1,
+        "target_mapping": "cell_aware_exact_bounds_quad",
+        "cell_aware_mode": mode,
+        "cell_aware_signed_levels": signed_levels,
+        "oracle": True,
+        "hidden_device_bounds_consumed_by_target_mapper": True,
+        "population_fingerprint": population.fingerprint,
+        "assignment_seed": population.assignment_seed,
+        "corruption_policy": population.corruption_policy,
+        "binding_keys": population.binding_keys,
+        "binding_shapes": population.binding_shapes,
+        "dual_rail_layout_by_parameter": layouts,
+        "cell_logical_min": cell_logical_min.detach().cpu().clone(),
+        "cell_logical_max": cell_logical_max.detach().cpu().clone(),
+        "normalized_exact_lower": raw_lower.detach().cpu().clone(),
+        "normalized_exact_upper": raw_upper.detach().cpu().clone(),
+        "usable_lower": usable_lower.detach().cpu().clone(),
+        "usable_upper": usable_upper.detach().cpu().clone(),
+        "usable_span": usable_span.detach().cpu().clone(),
+        "global_source_target": global_targets.detach().cpu().clone(),
+        "shadow_logical_weight": shadow_all.detach().cpu().clone(),
+        "code_coordinate": code_all.detach().cpu().clone(),
+        "signed_code": (
+            signed_code_all.detach().cpu().clone()
+            if signed_code_all is not None
+            else None
+        ),
+        "code_index": (
+            code_index_all.detach().cpu().clone()
+            if code_index_all is not None
+            else None
+        ),
+        "requested_target": mapped.detach().cpu().clone(),
+        "cell_specific_baseline_contrast": (
+            baseline_contrast_all.detach().cpu().clone()
+        ),
+        "nominal_mapped_logical_contrast": (
+            mapped_contrast_all.detach().cpu().clone()
+        ),
+        "requested_sign": requested_sign_all.detach().cpu().clone(),
+        "nominal_mapped_sign": realized_sign_all.detach().cpu().clone(),
+        "report": json.loads(json.dumps(report)),
+    }
+    return mapped, report, artifact
+
+
 def map_ibm_reram_array_targets(
     global_targets: torch.Tensor,
     population: IbmReramArrayPopulation,
@@ -491,6 +901,8 @@ def map_ibm_reram_array_targets(
         Mapping[str, str] | Sequence[Sequence[str]] | None
     ),
     common_window_margin_fraction: float,
+    cell_aware_mode: str | None = None,
+    cell_aware_signed_levels: int | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """Map clean global fractions onto one fixed IBM OM array assignment.
 
@@ -534,7 +946,10 @@ def map_ibm_reram_array_targets(
     differential_pairs: tuple[
         tuple[int, str, str, tuple[int, int]], ...
     ] = ()
-    if target_mapping == "dual_rail_quad_common_window":
+    if target_mapping in {
+        "dual_rail_quad_common_window",
+        "cell_aware_exact_bounds_quad",
+    }:
         expected_keys = set(population.binding_keys)
         provided_keys = set(dict(layouts or ()))
         if provided_keys != expected_keys:
@@ -553,6 +968,23 @@ def map_ibm_reram_array_targets(
                 f"minimum={float(offending.min().item())}, "
                 f"maximum={float(offending.max().item())}."
             )
+        if target_mapping == "cell_aware_exact_bounds_quad":
+            if margin != 0.0:
+                raise ValueError(
+                    "Expected cell_aware_exact_bounds_quad to use zero "
+                    "common-window margin."
+                )
+            if cell_aware_mode not in _CELL_AWARE_MODES:
+                raise ValueError(
+                    "Expected cell_aware_mode to be 'continuous' or "
+                    "'quantized_9_level'. Provided value: "
+                    f"{cell_aware_mode!r}."
+                )
+            if cell_aware_signed_levels != 9:
+                raise ValueError(
+                    "Expected cell_aware_signed_levels to equal 9. Provided "
+                    f"value: {cell_aware_signed_levels!r}."
+                )
     elif target_mapping == "differential_pair_common_window":
         if layouts is not None:
             raise ValueError(
@@ -578,6 +1010,26 @@ def map_ibm_reram_array_targets(
             "Expected literal_global target mapping to have null layouts and "
             "zero common-window margin."
         )
+    if target_mapping != "cell_aware_exact_bounds_quad" and (
+        cell_aware_mode is not None or cell_aware_signed_levels is not None
+    ):
+        raise ValueError(
+            "Expected cell-aware fields to be null unless target_mapping is "
+            "cell_aware_exact_bounds_quad."
+        )
+
+    if target_mapping == "cell_aware_exact_bounds_quad":
+        assert layouts is not None
+        assert cell_aware_mode is not None
+        assert cell_aware_signed_levels is not None
+        mapped, report, _artifact = _map_cell_aware_exact_bounds_quad(
+            global_targets,
+            population,
+            layouts=layouts,
+            mode=cell_aware_mode,
+            signed_levels=cell_aware_signed_levels,
+        )
+        return mapped, report
 
     device = global_targets.device
     dtype = global_targets.dtype
@@ -604,6 +1056,8 @@ def map_ibm_reram_array_targets(
     report: dict[str, Any] = {
         "target_mapping": target_mapping,
         "common_window_margin_fraction": margin,
+        "cell_aware_mode": cell_aware_mode,
+        "cell_aware_signed_levels": cell_aware_signed_levels,
         "population_fingerprint": population.fingerprint,
         "corruption_policy": population.corruption_policy,
         "devices": population.size,
@@ -1118,6 +1572,43 @@ def validate_ibm_reram_target_mapping_preflight(
     """Fail closed on unsupported nonempty common-window groups."""
 
     target_mapping = report.get("target_mapping")
+    if target_mapping == "cell_aware_exact_bounds_quad":
+        support = report.get("mapped_target_support")
+        devices = report.get("devices")
+        if (
+            report.get("oracle") is not True
+            or report.get("hidden_device_bounds_consumed_by_target_mapper")
+            is not True
+            or report.get("cell_aware_mode") not in _CELL_AWARE_MODES
+            or report.get("cell_aware_signed_levels") != 9
+            or report.get("post_mapping_clipping") is not False
+            or report.get("post_programming_rounding") is not False
+            or not isinstance(devices, int)
+            or devices < 1
+            or not isinstance(support, Mapping)
+            or support.get("below_lower_bound") != 0
+            or support.get("above_upper_bound") != 0
+            or support.get("inside_bounds") != devices
+            or report.get("mapped_target_outside_0_1") != 0
+        ):
+            raise ValueError(
+                "Expected a strict in-support cell-aware exact-bounds oracle "
+                "target-mapping preflight report."
+            )
+        if report.get("cell_aware_mode") == "quantized_9_level":
+            counts = report.get("code_index_counts")
+            quad_count = report.get("quad_count")
+            if (
+                not isinstance(counts, Mapping)
+                or set(counts) != {str(index) for index in range(9)}
+                or not all(isinstance(value, int) and value >= 0 for value in counts.values())
+                or sum(counts.values()) != quad_count
+            ):
+                raise ValueError(
+                    "Expected exact nine-level code-index coverage in the "
+                    "cell-aware preflight report."
+                )
+        return
     if target_mapping not in {
         "dual_rail_quad_common_window",
         "differential_pair_common_window",
@@ -1292,6 +1783,45 @@ def _artifact(path: Path) -> tuple[dict[str, Any], str]:
             )
         PopulationStepEstimator.from_mapping(estimators[branch])
     return value, sha256_file(resolved)
+
+
+def build_ibm_reram_cell_aware_exact_bounds_codebook(
+    global_targets: torch.Tensor,
+    population: IbmReramArrayPopulation,
+    *,
+    dual_rail_layout_by_parameter: (
+        Mapping[str, str] | Sequence[Sequence[str]]
+    ),
+    cell_aware_mode: str,
+    cell_aware_signed_levels: int = 9,
+) -> dict[str, Any]:
+    """Build the immutable tensor artifact for one exact-bounds mapping."""
+
+    mapped, report = map_ibm_reram_array_targets(
+        global_targets,
+        population,
+        target_mapping="cell_aware_exact_bounds_quad",
+        dual_rail_layout_by_parameter=dual_rail_layout_by_parameter,
+        common_window_margin_fraction=0.0,
+        cell_aware_mode=cell_aware_mode,
+        cell_aware_signed_levels=cell_aware_signed_levels,
+    )
+    validate_ibm_reram_target_mapping_preflight(report)
+    layouts = _normalize_dual_rail_layouts(dual_rail_layout_by_parameter)
+    assert layouts is not None
+    rebuilt, rebuilt_report, artifact = _map_cell_aware_exact_bounds_quad(
+        global_targets,
+        population,
+        layouts=layouts,
+        mode=cell_aware_mode,
+        signed_levels=cell_aware_signed_levels,
+    )
+    if not torch.equal(mapped, rebuilt) or report != rebuilt_report:
+        raise RuntimeError(
+            "Expected immutable cell-aware codebook reconstruction to match "
+            "the authoritative target mapper exactly."
+        )
+    return artifact
 
 
 def _native_seed(seed: int) -> int:
@@ -2093,7 +2623,10 @@ class IbmReramHwaParameterModifier:
                 f"sampling. Provided value: model={model_step}, "
                 f"sampled={self._population.nominal_dw_min}."
             )
-        if config.target_mapping == "dual_rail_quad_common_window":
+        if config.target_mapping in {
+            "dual_rail_quad_common_window",
+            "cell_aware_exact_bounds_quad",
+        }:
             expected_layout_keys = set(self._population.binding_keys)
             provided_layout_keys = set(
                 dict(config.dual_rail_layout_by_parameter or ())
@@ -2115,7 +2648,7 @@ class IbmReramHwaParameterModifier:
             }
             if invalid_shapes:
                 raise ValueError(
-                    "Expected dual-rail quad bindings to be even-by-even "
+                    "Expected four-cell dual-rail bindings to be even-by-even "
                     f"rank-2 tensors. Provided value: {invalid_shapes!r}."
                 )
         self._generators: dict[str, dict[str, torch.Generator]] = {
@@ -2216,6 +2749,10 @@ class IbmReramHwaParameterModifier:
             common_window_margin_fraction=(
                 self._config.common_window_margin_fraction
             ),
+            cell_aware_mode=self._config.cell_aware_mode,
+            cell_aware_signed_levels=(
+                self._config.cell_aware_signed_levels
+            ),
         )
         validate_ibm_reram_target_mapping_preflight(report)
         return mapped.detach().clone(), report
@@ -2227,22 +2764,43 @@ class IbmReramHwaParameterModifier:
         torch.Tensor,
         list[tuple[int, tuple[int, ...]]],
         dict[str, Any],
+        dict[str, Any] | None,
     ]:
         global_targets, layout = self._global_targets()
         population = self._population_on(global_targets.device)
-        targets, report = map_ibm_reram_array_targets(
-            global_targets,
-            population,
-            target_mapping=self._config.target_mapping,
-            dual_rail_layout_by_parameter=(
-                self._config.dual_rail_layout_by_parameter
-            ),
-            common_window_margin_fraction=(
-                self._config.common_window_margin_fraction
-            ),
-        )
+        oracle_codebook = None
+        if self._config.target_mapping == "cell_aware_exact_bounds_quad":
+            layouts = self._config.dual_rail_layout_by_parameter
+            mode = self._config.cell_aware_mode
+            levels = self._config.cell_aware_signed_levels
+            assert layouts is not None and mode is not None and levels is not None
+            targets, report, oracle_codebook = (
+                _map_cell_aware_exact_bounds_quad(
+                    global_targets,
+                    population,
+                    layouts=layouts,
+                    mode=mode,
+                    signed_levels=levels,
+                )
+            )
+        else:
+            targets, report = map_ibm_reram_array_targets(
+                global_targets,
+                population,
+                target_mapping=self._config.target_mapping,
+                dual_rail_layout_by_parameter=(
+                    self._config.dual_rail_layout_by_parameter
+                ),
+                common_window_margin_fraction=(
+                    self._config.common_window_margin_fraction
+                ),
+                cell_aware_mode=self._config.cell_aware_mode,
+                cell_aware_signed_levels=(
+                    self._config.cell_aware_signed_levels
+                ),
+            )
         validate_ibm_reram_target_mapping_preflight(report)
-        return global_targets, targets, layout, report
+        return global_targets, targets, layout, report, oracle_codebook
 
     def _write_endpoints(
         self,
@@ -2323,6 +2881,15 @@ class IbmReramHwaParameterModifier:
         above = noncorrupt & (targets > upper)
         inside = noncorrupt & ~(below | above)
         outside_fixed_support = below | above
+        if (
+            self._config.target_mapping == "cell_aware_exact_bounds_quad"
+            and bool(torch.any(outside_fixed_support))
+        ):
+            raise RuntimeError(
+                "Expected the exact-bounds oracle mapper to place every "
+                "non-corrupt target inside its own cell support without "
+                "clipping or fallback."
+            )
 
         # Empty common-window intersections are an explicitly budgeted mapper
         # failure. They can expose a target/reachability class absent from the
@@ -2446,12 +3013,16 @@ class IbmReramHwaParameterModifier:
             fallback_indices.detach().cpu().to(dtype=torch.int64).numpy().tobytes()
         )
         fallback_index_sha256 = sha256(fallback_index_bytes).hexdigest()
-        fallback_policy = (
-            "pulse_resolved_noncorrupt_out_of_bound_empty_pair_only"
-            if self._config.target_mapping
-            == "differential_pair_common_window"
-            else "pulse_resolved_noncorrupt_out_of_bound_empty_quad_only"
-        )
+        if self._config.target_mapping == "differential_pair_common_window":
+            fallback_policy = (
+                "pulse_resolved_noncorrupt_out_of_bound_empty_pair_only"
+            )
+        elif self._config.target_mapping == "cell_aware_exact_bounds_quad":
+            fallback_policy = "none_cell_aware_exact_bounds_all_targets_in_support"
+        else:
+            fallback_policy = (
+                "pulse_resolved_noncorrupt_out_of_bound_empty_quad_only"
+            )
         fallback_report: dict[str, Any] = {
             "policy": fallback_policy,
             "devices": int(fallback_indices.numel()),
@@ -2520,6 +3091,8 @@ class IbmReramHwaParameterModifier:
             fallback_execution_detail = (
                 "compact_endpoint_with_exact_empty_pair_fallback"
             )
+        elif self._config.target_mapping == "cell_aware_exact_bounds_quad":
+            fallback_execution_detail = "compact_endpoint_exact_bounds_in_support"
         else:
             fallback_execution_detail = (
                 "compact_endpoint_with_exact_empty_quad_fallback"
@@ -2528,7 +3101,11 @@ class IbmReramHwaParameterModifier:
             "execution": "compact_endpoint",
             "execution_detail": (
                 fallback_execution_detail
-                if fallback_indices.numel()
+                if (
+                    fallback_indices.numel()
+                    or self._config.target_mapping
+                    == "cell_aware_exact_bounds_quad"
+                )
                 else "compact_endpoint_only"
             ),
             "devices": int(targets.numel()),
@@ -2616,7 +3193,12 @@ class IbmReramHwaParameterModifier:
                 "compact_covered_exact_out_of_bound_empty_pair_fallback"
                 if self._config.target_mapping
                 == "differential_pair_common_window"
-                else "compact_covered_exact_out_of_bound_empty_quad_fallback"
+                else (
+                    "compact_exact_bounds_in_support_only"
+                    if self._config.target_mapping
+                    == "cell_aware_exact_bounds_quad"
+                    else "compact_covered_exact_out_of_bound_empty_quad_fallback"
+                )
             ),
             "requested_target": targets.detach().cpu().clone(),
             "apparent_endpoint": endpoint.detach().cpu().clone(),
@@ -2774,7 +3356,13 @@ class IbmReramHwaParameterModifier:
         try:
             if enabled:
                 with torch.no_grad():
-                    global_targets, targets, layout, mapping_report = self._targets()
+                    (
+                        global_targets,
+                        targets,
+                        layout,
+                        mapping_report,
+                        oracle_codebook,
+                    ) = self._targets()
                     generator = self._generator(stream, targets.device)
                     if self._config.execution == "compact_endpoint":
                         endpoint, report, deployment = self._compact(
@@ -2791,6 +3379,7 @@ class IbmReramHwaParameterModifier:
                         global_targets.detach().cpu().clone()
                     )
                     deployment["target_mapping_report"] = mapping_report
+                    deployment["oracle_codebook"] = oracle_codebook
                     self._last_report = {
                         **report,
                         "endpoint_application_policy": (
@@ -2900,6 +3489,9 @@ class IbmReramHwaParameterModifier:
             saved_config.setdefault("target_mapping", "literal_global")
             saved_config.setdefault("dual_rail_layout_by_parameter", None)
             saved_config.setdefault("common_window_margin_fraction", 0.0)
+            saved_config.setdefault("cell_aware_mode", None)
+            saved_config.setdefault("cell_aware_signed_levels", None)
+            saved_config.setdefault("forward_logit_gain", None)
         if state_dict["version"] != _STATE_VERSION or saved_config != asdict(
             self._config
         ):
@@ -2976,6 +3568,7 @@ __all__ = [
     "IbmReramArrayPopulation",
     "IbmReramHwaConfig",
     "IbmReramHwaParameterModifier",
+    "build_ibm_reram_cell_aware_exact_bounds_codebook",
     "build_ibm_reram_hwa_modifier",
     "load_om_array_population",
     "map_ibm_reram_array_targets",

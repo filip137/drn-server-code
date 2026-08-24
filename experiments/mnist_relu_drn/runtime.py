@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Iterable, TYPE_CHECKING
+from typing import Any, Iterable, Mapping, TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F
@@ -63,6 +64,7 @@ _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS = frozenset(
     {
         "dual_rail_quad_common_window",
         "differential_pair_common_window",
+        "cell_aware_exact_bounds_quad",
     }
 )
 
@@ -160,6 +162,34 @@ def _evaluation_modifier(modifier):
 
 def _training_modifier(modifier):
     return modifier.training if isinstance(modifier, SplitParameterModifier) else modifier
+
+
+@contextmanager
+def _modifier_forward_gain(
+    stack: StudentStack,
+    modifier,
+    *,
+    evaluation: bool,
+):
+    """Temporarily apply the frozen device-forward gain, then restore shadow gain."""
+
+    candidate = (
+        _evaluation_modifier(modifier)
+        if evaluation
+        else _training_modifier(modifier)
+    )
+    gain = (
+        candidate.config.forward_logit_gain
+        if isinstance(candidate, IbmReramHwaParameterModifier)
+        else None
+    )
+    shadow_gain = float(stack.cost.gain)
+    try:
+        if gain is not None:
+            stack.cost.gain = float(gain)
+        yield
+    finally:
+        stack.cost.gain = shadow_gain
 
 
 def _ibm_population_fingerprints(modifier) -> dict[str, str | None]:
@@ -410,6 +440,7 @@ def _model_checkpoint_metadata(
         "fixed_logit_gain": stack.cost.gain,
         "temperature": spec.settings.temperature,
         "selection_evaluation": spec.settings.selection_evaluation,
+        "selection_metric": spec.settings.selection_metric,
         "selection_noise_repeats": spec.settings.selection_noise_repeats,
         "conductance_bounds_s": [
             spec.model.conductance_min,
@@ -1085,7 +1116,14 @@ def _evaluate(
     }
     examples = 0
     active_modifier = modifier_or_default(modifier)
-    with active_modifier.evaluation_context(), torch.no_grad():
+    shadow_logit_gain = float(stack.cost.gain)
+    effective_logit_gain = shadow_logit_gain
+    with (
+        active_modifier.evaluation_context(),
+        _modifier_forward_gain(stack, modifier, evaluation=True),
+        torch.no_grad(),
+    ):
+        effective_logit_gain = float(stack.cost.gain)
         for inputs, labels in limited(loader, maximum_batches):
             if sample_limit is not None:
                 remaining = sample_limit - examples
@@ -1133,7 +1171,11 @@ def _evaluate(
         "raw_score_rms": (totals["raw_score_squared"] / score_values) ** 0.5,
         "calibrated_score_rms": (totals["calibrated_score_squared"] / score_values) ** 0.5,
         "teacher_logit_rms": (totals["teacher_score_squared"] / score_values) ** 0.5,
-        "fixed_logit_gain": stack.cost.gain,
+        "fixed_logit_gain": effective_logit_gain,
+        "shadow_logit_gain": shadow_logit_gain,
+        "device_forward_logit_gain": (
+            effective_logit_gain if modifier is not None else None
+        ),
     }
 
 
@@ -1196,10 +1238,20 @@ def _selection_evaluate(
     result = {
         "examples": reports[0]["examples"],
         "fixed_logit_gain": reports[0]["fixed_logit_gain"],
+        "shadow_logit_gain": reports[0]["shadow_logit_gain"],
+        "device_forward_logit_gain": reports[0][
+            "device_forward_logit_gain"
+        ],
         "selection_evaluation": "modifier_fixed_sequence_average",
         "selection_noise_repeats": len(reports),
         "repeat_kl_teacher_student": [
             report["kl_teacher_student"] for report in reports
+        ],
+        "repeat_student_accuracy": [
+            report["student_accuracy"] for report in reports
+        ],
+        "repeat_teacher_agreement": [
+            report["teacher_agreement"] for report in reports
         ],
     }
     if programming_reports:
@@ -1233,7 +1285,10 @@ def _train_epoch(
         with torch.no_grad():
             teacher_logits = teacher.logits(inputs)
         stack.optimizer.zero_grad(set_to_none=True)
-        with active_modifier.training_context():
+        with (
+            active_modifier.training_context(),
+            _modifier_forward_gain(stack, modifier, evaluation=False),
+        ):
             stack.network.set_input(inputs, reset=True)
             stack.minimizer.compute_equilibrium()
             stack.cost.set_teacher(teacher_logits, labels)
@@ -1306,11 +1361,13 @@ def _selected_payload(
         {
             "teacher_path": str(teacher_path.expanduser().resolve()),
             "selection_metric": (
-                "validation_modifier_mean.kl_teacher_student"
+                "validation_modifier_mean."
+                f"{spec.settings.selection_metric}"
                 if spec.settings.selection_evaluation == "modifier"
-                else "validation_clean.kl_teacher_student"
+                else "validation_clean."
+                f"{spec.settings.selection_metric}"
             ),
-            "selection_value": validation["kl_teacher_student"],
+            "selection_value": validation[spec.settings.selection_metric],
             "selection_epoch": epoch,
             "selection_student_accuracy": validation["student_accuracy"],
             "selection_teacher_agreement": validation["teacher_agreement"],
@@ -1320,6 +1377,21 @@ def _selected_payload(
         stack.bundle.catalog,
         metadata=metadata,
     )
+
+
+def _selection_improved(
+    candidate: Mapping[str, Any],
+    incumbent: Mapping[str, Any],
+    *,
+    metric: str,
+) -> bool:
+    candidate_value = float(candidate[metric])
+    incumbent_value = float(incumbent[metric])
+    if metric == "kl_teacher_student":
+        return candidate_value < incumbent_value
+    if metric == "student_accuracy":
+        return candidate_value > incumbent_value
+    raise ValueError(f"Unsupported selection metric: {metric!r}.")
 
 
 def _adaptation_summary(
@@ -1428,6 +1500,7 @@ def run_train(request: "TrainRequest") -> int:
         weights_path = store.run_dir / "checkpoints" / "weights.pt"
         resume_path = store.run_dir / "checkpoints" / "resume.pt"
         deployment_bundle_path: Path | None = None
+        oracle_codebook_path: Path | None = None
         training_programming_report_path: Path | None = None
         start_epoch = 0
         global_step = 0
@@ -1974,9 +2047,10 @@ def run_train(request: "TrainRequest") -> int:
                 modifier=modifier,
                 clean=last_clean_validation,
             )
-            improved = (
-                last_validation["kl_teacher_student"]
-                < selected_validation["kl_teacher_student"]
+            improved = _selection_improved(
+                last_validation,
+                selected_validation,
+                metric=spec.settings.selection_metric,
             )
             if improved:
                 selected_epoch = epoch
@@ -2042,6 +2116,10 @@ def run_train(request: "TrainRequest") -> int:
                     ),
                     "selected": improved,
                     "selected_epoch": selected_epoch,
+                    "selection_metric": spec.settings.selection_metric,
+                    "selected_value": selected_validation[
+                        spec.settings.selection_metric
+                    ],
                     "selected_kl": selected_validation["kl_teacher_student"],
                     "conductances": conductance_statistics(
                         stack.bundle.catalog,
@@ -2106,9 +2184,35 @@ def run_train(request: "TrainRequest") -> int:
                 store.run_dir / "artifacts" / "ibm_om_deployment.pt"
             )
             atomic_torch_save(deployment, deployment_bundle_path)
+            oracle_codebook = deployment.get("oracle_codebook")
+            if oracle_codebook is not None:
+                oracle_codebook_path = (
+                    store.run_dir
+                    / "artifacts"
+                    / "ibm_om_cell_aware_exact_bounds_codebook.pt"
+                )
+                atomic_torch_save(oracle_codebook, oracle_codebook_path)
         relative_improvement = (
             initial["kl_teacher_student"] - selected_validation["kl_teacher_student"]
         ) / initial["kl_teacher_student"] if initial["kl_teacher_student"] > 0.0 else 0.0
+        if spec.settings.selection_metric == "student_accuracy":
+            selection_improvement = (
+                float(selected_validation["student_accuracy"])
+                - float(initial["student_accuracy"])
+            )
+            selection_gate = {
+                "metric": "student_accuracy",
+                "direction": "maximize",
+                "minimum_absolute_improvement": 0.0,
+                "observed_absolute_improvement": selection_improvement,
+                "passed": selection_improvement >= 0.0,
+            }
+        else:
+            selection_gate = {
+                "minimum_relative_kl_improvement": spec.settings.minimum_relative_kl_improvement,
+                "passed": relative_improvement
+                >= spec.settings.minimum_relative_kl_improvement,
+            }
         final_programming = (
             stack.optimizer.programming_report
             if isinstance(
@@ -2177,15 +2281,13 @@ def run_train(request: "TrainRequest") -> int:
                 "selection_evaluation": (
                     spec.settings.selection_evaluation
                 ),
+                "selection_metric": spec.settings.selection_metric,
                 "selection_noise_repeats": (
                     spec.settings.selection_noise_repeats
                 ),
                 "selected": {"epoch": selected_epoch, **selected_validation},
                 "relative_kl_recovery_from_initialization": relative_improvement,
-                "acceptance_gate": {
-                    "minimum_relative_kl_improvement": spec.settings.minimum_relative_kl_improvement,
-                    "passed": relative_improvement >= spec.settings.minimum_relative_kl_improvement,
-                },
+                "acceptance_gate": selection_gate,
                 "initial_conductances": initial_conductances,
                 "final_conductances": conductance_statistics(
                     stack.bundle.catalog,
@@ -2227,6 +2329,16 @@ def run_train(request: "TrainRequest") -> int:
                         ),
                     )
                     if deployment_bundle_path is not None
+                    else ()
+                ),
+                *(
+                    (
+                        store.artifact_record(
+                            oracle_codebook_path,
+                            kind="ibm_om_cell_aware_exact_bounds_codebook",
+                        ),
+                    )
+                    if oracle_codebook_path is not None
                     else ()
                 ),
             ),
@@ -2356,6 +2468,7 @@ def run_validate(request: "ValidateRequest") -> int:
             report["kl_teacher_student"] for report in reports
         ]
         deployment_path = None
+        oracle_codebook_path = None
         if isinstance(modifier, IbmReramHwaParameterModifier):
             metrics["device_programming"] = modifier.programming_report
             deployment = modifier.last_deployment_bundle
@@ -2368,6 +2481,14 @@ def run_validate(request: "ValidateRequest") -> int:
                 store.run_dir / "artifacts" / "ibm_om_deployment.pt"
             )
             atomic_torch_save(deployment, deployment_path)
+            oracle_codebook = deployment.get("oracle_codebook")
+            if oracle_codebook is not None:
+                oracle_codebook_path = (
+                    store.run_dir
+                    / "artifacts"
+                    / "ibm_om_cell_aware_exact_bounds_codebook.pt"
+                )
+                atomic_torch_save(oracle_codebook, oracle_codebook_path)
         store.append_metric({"mode": "validate", "split": spec.settings.split, **metrics})
         store.complete(
             metrics={
@@ -2404,6 +2525,16 @@ def run_validate(request: "ValidateRequest") -> int:
                         ),
                     )
                     if deployment_path is not None
+                    else ()
+                ),
+                *(
+                    (
+                        store.artifact_record(
+                            oracle_codebook_path,
+                            kind="ibm_om_cell_aware_exact_bounds_codebook",
+                        ),
+                    )
+                    if oracle_codebook_path is not None
                     else ()
                 ),
             ),

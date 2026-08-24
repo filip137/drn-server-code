@@ -42,6 +42,7 @@ _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS = frozenset(
     {
         "dual_rail_quad_common_window",
         "differential_pair_common_window",
+        "cell_aware_exact_bounds_quad",
     }
 )
 _MEASURED_KEYS = {
@@ -129,6 +130,7 @@ class StudentTrainSettings:
     max_validation_batches: int | None
     minimum_relative_kl_improvement: float
     selection_evaluation: str
+    selection_metric: str
     selection_noise_repeats: int
     weight_modifier: UpdateBackendSettings
     selection_weight_modifier: UpdateBackendSettings
@@ -632,7 +634,16 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             "dual_rail_layout_by_parameter",
             "common_window_margin_fraction",
         }
-        _keys(parameters, parameters_path, required, mapping_fields)
+        cell_aware_fields = {
+            "cell_aware_mode",
+            "cell_aware_signed_levels",
+        }
+        _keys(
+            parameters,
+            parameters_path,
+            required,
+            mapping_fields | cell_aware_fields | {"forward_logit_gain"},
+        )
         provided_mapping_fields = mapping_fields & set(parameters)
         if provided_mapping_fields and provided_mapping_fields != mapping_fields:
             raise config_error(
@@ -657,13 +668,15 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             "literal_global",
             "dual_rail_quad_common_window",
             "differential_pair_common_window",
+            "cell_aware_exact_bounds_quad",
         }:
             raise config_error(
                 f"{parameters_path}.target_mapping",
                 "to be 'literal_global' or "
                 "an array-specific common-window mapping "
-                "('dual_rail_quad_common_window' or "
-                "'differential_pair_common_window')",
+                "('dual_rail_quad_common_window', "
+                "'differential_pair_common_window', or "
+                "'cell_aware_exact_bounds_quad')",
                 target_mapping,
             )
         margin = _number(
@@ -678,7 +691,10 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             )
         normalized_parameters["common_window_margin_fraction"] = margin
         raw_layouts = normalized_parameters["dual_rail_layout_by_parameter"]
-        if target_mapping == "dual_rail_quad_common_window":
+        if target_mapping in {
+            "dual_rail_quad_common_window",
+            "cell_aware_exact_bounds_quad",
+        }:
             expected_layouts = {
                 "base.dense_weight.0": "halves",
                 "base.dense_weight.1": "paired",
@@ -693,6 +709,49 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             normalized_parameters["dual_rail_layout_by_parameter"] = dict(
                 raw_layouts
             )
+        if target_mapping == "cell_aware_exact_bounds_quad":
+            if margin != 0.0:
+                raise config_error(
+                    f"{parameters_path}.common_window_margin_fraction",
+                    "to equal 0.0 for cell_aware_exact_bounds_quad",
+                    margin,
+                )
+            if not (
+                cell_aware_fields | {"forward_logit_gain"}
+            ) <= set(parameters):
+                raise config_error(
+                    parameters_path,
+                    "to provide cell_aware_mode and "
+                    "cell_aware_signed_levels plus forward_logit_gain for "
+                    "cell_aware_exact_bounds_quad",
+                    dict(parameters),
+                )
+            mode = normalized_parameters["cell_aware_mode"]
+            if mode not in {"continuous", "quantized_9_level"}:
+                raise config_error(
+                    f"{parameters_path}.cell_aware_mode",
+                    "to be 'continuous' or 'quantized_9_level'",
+                    mode,
+                )
+            levels = _integer(
+                normalized_parameters["cell_aware_signed_levels"],
+                f"{parameters_path}.cell_aware_signed_levels",
+                minimum=1,
+            )
+            if levels != 9:
+                raise config_error(
+                    f"{parameters_path}.cell_aware_signed_levels",
+                    "to equal 9",
+                    levels,
+                )
+            normalized_parameters["cell_aware_signed_levels"] = levels
+        elif cell_aware_fields & set(parameters):
+            raise config_error(
+                parameters_path,
+                "to omit cell-aware fields unless target_mapping is "
+                "cell_aware_exact_bounds_quad",
+                dict(parameters),
+            )
         elif target_mapping == "differential_pair_common_window":
             if raw_layouts is not None:
                 raise config_error(
@@ -702,12 +761,38 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
                     "catalog",
                     raw_layouts,
                 )
-        elif raw_layouts is not None or margin != 0.0:
+        elif target_mapping == "literal_global" and (
+            raw_layouts is not None or margin != 0.0
+        ):
             raise config_error(
                 parameters_path,
                 "to use null dual_rail_layout_by_parameter and zero "
                 "common_window_margin_fraction for literal_global",
                 dict(normalized_parameters),
+            )
+        if "forward_logit_gain" in normalized_parameters:
+            raw_gain = normalized_parameters["forward_logit_gain"]
+            if raw_gain is not None:
+                gain = _number(
+                    raw_gain,
+                    f"{parameters_path}.forward_logit_gain",
+                )
+                if gain <= 0.0:
+                    raise config_error(
+                        f"{parameters_path}.forward_logit_gain",
+                        "to be null or positive",
+                        gain,
+                    )
+                normalized_parameters["forward_logit_gain"] = gain
+        if (
+            target_mapping == "cell_aware_exact_bounds_quad"
+            and normalized_parameters.get("forward_logit_gain") is None
+        ):
+            raise config_error(
+                f"{parameters_path}.forward_logit_gain",
+                "to be a positive frozen development-set gain for the "
+                "cell-aware device forward",
+                normalized_parameters.get("forward_logit_gain"),
             )
         exact = {
             "preset": "reram_array_om",
@@ -863,6 +948,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "weight_modifier",
             "selection_weight_modifier",
             "selection_evaluation",
+            "selection_metric",
             "selection_noise_repeats",
         },
     )
@@ -942,6 +1028,13 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             f"{path}.selection_evaluation",
             "to be 'clean' or 'modifier'",
             selection_evaluation,
+        )
+    selection_metric = raw.get("selection_metric", "kl_teacher_student")
+    if selection_metric not in {"kl_teacher_student", "student_accuracy"}:
+        raise config_error(
+            f"{path}.selection_metric",
+            "to be 'kl_teacher_student' or 'student_accuracy'",
+            selection_metric,
         )
     selection_noise_repeats = _integer(
         raw.get("selection_noise_repeats", 1),
@@ -1032,6 +1125,15 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "dual_rail_layout_by_parameter",
             "common_window_margin_fraction",
         )
+        if (
+            weight_modifier.parameters["target_mapping"]
+            == "cell_aware_exact_bounds_quad"
+        ):
+            matched_fields += (
+                "cell_aware_mode",
+                "cell_aware_signed_levels",
+                "forward_logit_gain",
+            )
         mismatches = {
             name: {
                 "training": weight_modifier.parameters[name],
@@ -1058,6 +1160,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         max_validation_batches=_optional_batches(raw["max_validation_batches"], f"{path}.max_validation_batches"),
         minimum_relative_kl_improvement=relative,
         selection_evaluation=selection_evaluation,
+        selection_metric=selection_metric,
         selection_noise_repeats=selection_noise_repeats,
         weight_modifier=weight_modifier,
         selection_weight_modifier=selection_weight_modifier,
@@ -1188,13 +1291,16 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
             continue
         target_mapping = modifier.parameters["target_mapping"]
         if (
-            target_mapping == "dual_rail_quad_common_window"
+            target_mapping
+            in {
+                "dual_rail_quad_common_window",
+                "cell_aware_exact_bounds_quad",
+            }
             and model.encoding != "single"
         ):
             raise config_error(
                 f"{modifier_path}.parameters.target_mapping",
-                "to select model.encoding='single' for "
-                "dual_rail_quad_common_window",
+                f"to select model.encoding='single' for {target_mapping}",
                 target_mapping,
             )
         if (

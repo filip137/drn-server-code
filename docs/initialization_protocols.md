@@ -220,6 +220,26 @@ For LoRA, keep the named deployed base fixed and initialize the adapter so its
 initial network contribution is exactly zero, following
 [`passive_low_rank_adapter.md`](passive_low_rank_adapter.md#initialization-and-named-checkpoints).
 
+### IBM OM cell-aware exact-bounds oracle
+
+The `cell_aware_exact_bounds_quad` mapping is an explicit oracle ablation, not
+a deployable uncharacterized-array protocol. It consumes every assigned cell's
+simulated logical minimum and maximum, intersects each range with the DRN's
+normalized `[0, 1]` coordinate, and maps the sign-selected rail into that
+cell's own usable span. It intentionally retains different floors and spans
+across the four cells; do not describe it as common-window or RESET-relative
+initialization.
+
+For nine-level operation, reconstruct one logical shadow value per canonical
+quad, round `4u` half away from zero to an integer in `[-4, 4]`, and apply the
+result before compact endpoint sampling or pulse-resolved programming. The
+continuous control uses `4u` without rounding. Do not clip, narrow, reassign,
+or replace the resulting targets. The immutable codebook artifact must retain
+the exact bound tensors, usable ranges, code indices, targets, hashes, and
+sign diagnostics and state unambiguously that hidden bounds generated the
+targets. The formal protocol is
+[`ibm_om_cell_aware_exact_bounds.md`](ibm_om_cell_aware_exact_bounds.md).
+
 ## Checkpoint roles
 
 - Use `checkpoints/weights.pt` for the explicitly selected named state passed
