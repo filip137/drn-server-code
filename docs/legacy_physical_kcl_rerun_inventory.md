@@ -44,6 +44,41 @@ The bounded-Kaiming raw-LR transfer adds two supporting legacy arms (Conv1 and
 Conv2) if that diagnostic remains in the manuscript discussion.  They are not
 part of the 21 primary table cells.
 
+### Exact 21-arm execution checklist
+
+Paths below are relative to `configs/conv/`.  A completed same-LR diagnostic
+does not mark the corresponding paper replacement complete because the
+corrected-model selection gate is still pending.
+
+| # | Legacy arm authority | Status |
+|---:|---|---|
+| 1 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/04_legacy_sgd_bias_zero_seed0.json` | same-LR diagnostic complete; selection/replacement pending |
+| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete; old rate is a viable corrected-model candidate; replacement pending |
+| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/04_legacy_sgd_bias_zero_seed0.json` | pending |
+| 4 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | pending |
+| 5 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/04_legacy_sgd_bias_zero_seed0.json` | pending |
+| 6 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | pending |
+| 7 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
+| 8 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | pending |
+| 9 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | pending |
+| 10 | noisy centered-EqProp authority `perfectdiode_conv13_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_10_30ep_seed0_20260817_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
+| 11 | noisy centered-EqProp authority `perfectdiode_conv2_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_30ep_seed0_20260817_v1.json`, Conv2 legacy logical case `2` in pack `1` | pending |
+| 12 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | pending |
+| 13 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/02_wmax_1em4_legacy_adam.json` | pending |
+| 14 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/05_wmax_5em4_legacy_adam.json` | pending |
+| 15 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/08_wmax_1em3_legacy_adam.json` | pending |
+| 16 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/02_wmax_1em4_legacy_adam.json` | pending |
+| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/05_wmax_5em4_legacy_adam.json` | pending |
+| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/08_wmax_1em3_legacy_adam.json` | pending |
+| 19 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/02_wmax_1em4_legacy_adam.json` | pending |
+| 20 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | pending |
+| 21 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | pending |
+
+If retained, the two supporting bounded-Kaiming authorities are
+`perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-3ep-seed0-20260813-v1/conv1_legacy_adam.json`
+and
+`perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-3ep-seed0-20260813-v1/conv2_legacy_adam.json`.
+
 ## Corrected-model gates and derived analyses to repeat
 
 The following legacy-only portions must be recomputed before corrected results
@@ -70,9 +105,9 @@ The first wave isolates two questions in order:
 
 1. Replay the old Conv1 legacy SGD and Adam best/final checkpoints unchanged
    under the corrected physical equilibrium.  Compare the full 5,000-example
-   validation accuracy and voltage/score scales with the recorded source
-   accuracy.  A descriptive absolute change of `0.5` percentage points or
-   more is predeclared as material.
+   validation accuracy with the recorded source accuracy and record the
+   corrected voltage/score scales.  A descriptive absolute change of `0.5`
+   percentage points or more is predeclared as material.
 2. Retrain the clean wide Conv1 legacy SGD and Adam arms for 10 epochs with
    their exact existing rates:
    - SGD: `[2.05753e-4, 4.76259e-5, 0]`;
