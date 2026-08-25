@@ -64,7 +64,7 @@ can replace manuscript evidence:
    selected checkpoints, and all preceding gates are frozen.  No official-test
    replay is authorized by this inventory.
 
-## Conv1 first-wave diagnostic
+## Conv1 first-wave diagnostic — complete
 
 The first wave isolates two questions in order:
 
@@ -81,3 +81,31 @@ The first wave isolates two questions in order:
 Both use ordinary MNIST, seed/order `0`, exact-zero bias, `T=K=4`, batch size
 16, validation batch size 64, and no official-test access.  The only intended
 model change is the physical-KCL interaction energy.
+
+### Results
+
+All four full checkpoint replays and both 10-epoch exact-LR repeats completed
+on 2026-08-25 and validate canonically.  The comparison uses the predeclared
+`0.5 pp` materiality threshold.
+
+| Optimizer | Test | Old validation | Corrected validation | Change | Material? |
+|---|---|---:|---:|---:|---|
+| SGD | unchanged best checkpoint | 95.92% | 93.84% | -2.08 pp | yes |
+| SGD | unchanged final checkpoint | 95.60% | 93.88% | -1.72 pp | yes |
+| Adam | unchanged best checkpoint | 96.44% | 96.12% | -0.32 pp | no |
+| Adam | unchanged final checkpoint | 96.38% | 96.24% | -0.14 pp | no |
+| SGD | exact-LR retrain, best | 95.92% | 91.78% | -4.14 pp | yes |
+| SGD | exact-LR retrain, final | 95.60% | 91.78% | -3.82 pp | yes |
+| Adam | exact-LR retrain, best | 96.44% | 96.50% | +0.06 pp | no |
+| Adam | exact-LR retrain, final | 96.38% | 96.44% | +0.06 pp | no |
+
+Measured conclusion: compatibility is optimizer-dependent.  The corrected
+Conv1 legacy model preserves the old Adam result at this resolution, including
+when trained from scratch with the same rate, but the old SGD checkpoint and
+training rate both change materially.  The immediate next selection task is
+therefore corrected Conv1 legacy SGD LR qualification.  Adam can remain a
+candidate at its old rate, but this one-seed diagnostic does not replace the
+remaining Conv2/Conv3, EqProp-beta, noisy, or bounded corrected-model gates.
+
+Detailed evidence is in the
+[study report](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/analysis/report.md).

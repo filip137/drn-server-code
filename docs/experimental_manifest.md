@@ -1,6 +1,6 @@
 # Experimental Manifest
 
-Updated: 2026-08-18
+Updated: 2026-08-25
 
 This is the manually curated ledger of analyzed studies. It is not generated
 from raw metrics and does not track transient job state.
@@ -59,6 +59,64 @@ mapping in that runtime order.
 | Conv2 | legacy | Adam | `C0=B0=8.66750e-4, C1=B1=1.52841e-4, D=5.16982e-5` |
 
 ## Finished Studies
+
+## `perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1` — Conv1 legacy checkpoint compatibility and exact-LR retraining under the corrected physical KCL energy
+
+- Analyzed: 2026-08-25
+- Evidence class:
+  `ordinary_mnist_physical_kcl_same_lr_diagnostic`; implementation-change
+  compatibility evidence, non-paper-facing.
+- Outcome: `mixed`.  Corrected-energy Adam remains equivalent at the
+  predeclared `0.5 pp` resolution, whereas both unchanged-checkpoint and
+  exact-LR SGD comparisons change materially.
+- Scientific question: Does replacing the formerly implemented coherent but
+  differently parameterized legacy energy with the physical KCL energy
+  materially change Conv1 validation accuracy when old checkpoint tensors
+  are replayed unchanged or training is repeated with the exact old rates?
+- Frozen setup: seed-0 ordinary MNIST deterministic `55,000/5,000`
+  train/validation split; legacy `(A,B)=(4,.25)`; perfect-diode BPTT;
+  exact-zero hidden bias; `T=K=4`; batch size `16`; validation batch size
+  `64`; ten epochs; source SGD rates
+  `[2.05753e-4,4.76259e-5,0]` and Adam rates
+  `[2.88917e-4,3.64618e-5,0]`.  Checkpoint replays use the source study's
+  exact best/final bytes, reset state each batch, and apply no optimizer step.
+  The official test split remains sealed.
+- Coverage and integrity: both exact-config one-batch smokes, four full
+  5,000-example checkpoint replays, and both ten-epoch retrains complete.
+  All six scientific production bundles validate; every production manifest
+  records clean fix commit `f016bf6a`; config, seed, split/order, epoch,
+  optimizer, and LR contracts match the source arms.  Both new runs report
+  zero official-test evaluations, and every best/final `Bias_0` tensor is
+  exactly zero.  The initial checkpoint smoke is retained but excluded from
+  inference because it compared one batch with a full-split source accuracy;
+  corrected `smoke_v2` is the accepted gate.
+- Headline unchanged-checkpoint measurements: source-to-corrected best/final
+  validation is SGD `95.92/95.60 -> 93.84/93.88%`
+  (`-2.08/-1.72 pp`) and Adam `96.44/96.38 -> 96.12/96.24%`
+  (`-.32/-.14 pp`).
+- Headline exact-LR retraining measurements: source-to-corrected best/final
+  validation is SGD `95.92/95.60 -> 91.78/91.78%`
+  (`-4.14/-3.82 pp`) and Adam `96.44/96.38 -> 96.50/96.44%`
+  (`+.06/+.06 pp`).  Corrected SGD selects epoch 10 and corrected Adam epoch
+  9.
+- Interpretation: historical convergence is expected because the former code
+  still minimized a coherent energy; it does not validate the manuscript's
+  physical circuit equations.  Conv1 Adam's learned decision rule and frozen
+  optimizer scale are empirically robust to the correction at one seed.  SGD
+  is not: its same-checkpoint loss is material, and the larger retraining loss
+  shows that optimizer scaling is more sensitive than checkpoint reuse.
+  Corrected Conv1 legacy SGD therefore requires LR reselection.  The old Adam
+  rate remains a viable candidate, not a generally requalified legacy result.
+- Limits and next gates: one architecture, one seed, two BPTT optimizers, and
+  validation-only evidence.  It neither estimates uncertainty nor clears
+  Conv2/Conv3, EqProp phase gradients and beta, read noise, bounded weights,
+  or an official-test evaluation.  Continue with corrected Conv1 legacy SGD
+  LR qualification and then the legacy-only operating-point/LR and EqProp
+  gates in the rerun inventory.
+- Artifacts: [study report](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/analysis/report.md),
+  [checkpoint replays](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/checkpoint_replay/),
+  [exact-LR retrains](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/same_lr_bptt/), and
+  [legacy rerun inventory](legacy_physical_kcl_rerun_inventory.md).
 
 ## `perfectdiode-conv13-zero-bias-adam-centered-float64-eqprop-one-decade-sigma-5em4-ordinary-mnist-10-30ep-seed0-20260817-v1` — Conv1/Conv3 one-decade EqProp training under endpoint read noise
 
