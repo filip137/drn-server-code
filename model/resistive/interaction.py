@@ -15,7 +15,16 @@ def _interaction_params(*params):
 
 
 class DenseResistive(QFunction):
-    """Dense resistive interaction between two layers
+    """Dense resistive interaction between two layers.
+
+    For an edge whose pre-synaptic layer has index ``p``, the physical
+    amplified-network energy is
+
+    ``0.5 * (current_amp / voltage_amp)**p * g * (alpha * v_pre - v_post)**2``,
+
+    where ``alpha`` is one for the clamped input layer and ``voltage_amp``
+    otherwise.  ``current_amp`` enters through the depth-dependent diagonal
+    energy factor; it does not rescale the receiving-node voltage.
 
     Attributes
     ----------
@@ -69,16 +78,13 @@ class DenseResistive(QFunction):
         layer_pre = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
             layer_pre = layer_pre * self._voltage_amp_value(like=layer_pre)
-        layer_post = self._layer_post.state  # / self._layer_post.gain
-        layer_post = layer_post
+        layer_post = self._layer_post.state
         dims_pre = len(self._layer_pre.shape)
         dims_post = len(self._layer_post.shape)
         for _ in range(dims_post): layer_pre = layer_pre.unsqueeze(-1)  # broadcast layer_pre to (batch_size, shape_pre, shape_post)
         for _ in range(dims_pre): layer_post = layer_post.unsqueeze(1)  # broadcast layer_post to (batch_size, shape_pre, shape_post)
         weight = self._weight.get().unsqueeze(0)  # broadcast weight to (batch_size, shape_pre, shape_post)
-        current_amp = self._current_amp_value(like=layer_post)
-        return 0.5 * ((layer_pre - current_amp*layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1) * self._amp_factor(like=weight)
-        #return 0.5 * ((layer_pre - layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1)
+        return 0.5 * ((layer_pre - layer_post)**2).mul(weight).flatten(start_dim=1).sum(dim=1) * self._amp_factor(like=weight)
 
     def a_coef_fn(self, layer):
         """Overrides the default implementation of QFunction"""
@@ -118,8 +124,7 @@ class DenseResistive(QFunction):
         b_coef = - torch.tensordot(layer_post, weight.permute(permutation), dims=dims_post)
         amp = self._amp_factor(like=weight)
         pre_scale = 1.0 if self._layer_pre.name == 'Layer_0' else self._voltage_amp_value(like=weight)
-        post_scale = self._current_amp_value(like=weight)
-        b_coef = b_coef * amp * pre_scale * post_scale
+        b_coef = b_coef * amp * pre_scale
         return b_coef
 
     def _a_coef_layer_pre(self):
@@ -151,7 +156,7 @@ class DenseResistive(QFunction):
         dims_pre = len(self._layer_pre.shape)  # number of dimensions involved in the tensor product
         b_coef = - torch.tensordot(layer_pre, self._weight.get(), dims=dims_pre)
         amp = self._amp_factor(like=b_coef)
-        b_coef = b_coef * amp * self._current_amp_value(like=b_coef)
+        b_coef = b_coef * amp
         return b_coef
 
     def _a_coef_layer_post(self):
@@ -164,8 +169,7 @@ class DenseResistive(QFunction):
         dims = len(self._layer_pre.shape) - 1
         a_coef = 0.5 * self._weight.get().flatten(end_dim=dims).sum(dim=0).unsqueeze(0)
         amp = self._amp_factor(like=a_coef)
-        current_amp = self._current_amp_value(like=a_coef)
-        a_coef = a_coef * amp * current_amp * current_amp
+        a_coef = a_coef * amp
 
         return a_coef
 
@@ -185,14 +189,12 @@ class DenseResistive(QFunction):
         dims_post = len(self._layer_post.shape)
         for _ in range(dims_post): layer_pre = layer_pre.unsqueeze(-1)
         for _ in range(dims_pre): layer_post = layer_post.unsqueeze(1)
-        current_amp = self._current_amp_value(like=layer_post)
-        grad_weight = 0.5 * ((layer_pre - current_amp*layer_post)**2).mean(dim=0) * self._amp_factor(like=layer_post)
-        #grad_weight = 0.5 * ((layer_pre - layer_post)**2).mean(dim=0)
+        grad_weight = 0.5 * ((layer_pre - layer_post)**2).mean(dim=0) * self._amp_factor(like=layer_post)
         return grad_weight
 
 
 class ConvResistive(QFunction):
-    """Convolutional resistive interaction mirroring DenseResistive logic in conv form."""
+    """Convolutional form of the physical amplified resistive energy."""
 
     def __init__(
         self,
@@ -252,18 +254,17 @@ class ConvResistive(QFunction):
         layer_pre = self._layer_pre.state.clone()
         if self._layer_pre.name != 'Layer_0':
             layer_pre = layer_pre * self._voltage_amp_value(like=layer_pre)
-        layer_post = self._layer_post.state  # / self._layer_post.gain
-        layer_post_scaled = layer_post * self._current_amp_value(like=layer_post)
+        layer_post = self._layer_post.state
 
 
         cols = F.unfold(layer_pre, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
-        N, C_out, H_out, W_out = layer_post_scaled.shape
+        N, C_out, H_out, W_out = layer_post.shape
         K = C_in * Kh * Kw
         L = H_out * W_out
 
         patches = cols.transpose(1, 2).unsqueeze(2)
         kernels = weight.view(1, 1, C_out, K)
-        targets = layer_post_scaled.view(N, C_out, L).transpose(1, 2).unsqueeze(-1)
+        targets = layer_post.view(N, C_out, L).transpose(1, 2).unsqueeze(-1)
 
         diff2 = (patches - targets).pow(2)
         weighted = diff2 * kernels
@@ -342,12 +343,12 @@ class ConvResistive(QFunction):
 
     def _b_coef_layer_pre(self):
         b_coef = -self.col2im()
-        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp_value(like=b_coef)
+        b_coef = b_coef * self._amp_factor() * self._pre_scale()
         return b_coef
 
     def _b_coef_layer_post(self):
         b_coef = -self.im2col()
-        b_coef = b_coef * self._amp_factor() * self._pre_scale() * self._current_amp_value(like=b_coef)
+        b_coef = b_coef * self._amp_factor() * self._pre_scale()
         return b_coef
 
     def _a_coef_layer_pre(self):
@@ -358,8 +359,7 @@ class ConvResistive(QFunction):
 
     def _a_coef_layer_post(self):
         a_map = self.a_im2col()
-        current_amp = self._current_amp_value(like=a_map)
-        a_coef = a_map * self._amp_factor() * current_amp * current_amp
+        a_coef = a_map * self._amp_factor()
         return 0.5 * a_coef
 
     def _grad_weight(self):
@@ -368,7 +368,6 @@ class ConvResistive(QFunction):
         if self._layer_pre.name != 'Layer_0':
             x = x * self._voltage_amp_value(like=x)
         y = self._layer_post.state.clone()
-        y_rescaled = y * self._current_amp_value(like=y)
 
         cols = F.unfold(x, (Kh, Kw), padding=self._P, stride=self._S, dilation=self._D)
         N, C_out, H_out, W_out = y.shape
@@ -376,7 +375,7 @@ class ConvResistive(QFunction):
         L = H_out * W_out
 
         patches = cols.transpose(1, 2).unsqueeze(2)
-        targets = y_rescaled.reshape(N, C_out, L).transpose(1, 2).unsqueeze(-1)
+        targets = y.reshape(N, C_out, L).transpose(1, 2).unsqueeze(-1)
         diff2 = (patches - targets).pow(2)
         grad_weight = 0.5 * diff2.sum(dim=1).mean(dim=0)
 

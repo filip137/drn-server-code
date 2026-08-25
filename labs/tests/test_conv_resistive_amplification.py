@@ -80,7 +80,7 @@ def _expected_conv_energy(interaction, pre, post, weight, voltage_amp, current_a
     amp = (current_amp / voltage_amp) ** layer_pre_index
     pre_scale = 1.0 if pre.name == "Layer_0" else voltage_amp
     x = pre.state * pre_scale
-    y = post.state * current_amp
+    y = post.state
     cols = F.unfold(
         x,
         kernel,
