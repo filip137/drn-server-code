@@ -443,8 +443,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_validation_batches=args.max_validation_batches,
             run_dir=run_dir,
         )
-        delta_pp = 100.0 * (
-            float(replay["accuracy"]) - float(args.source_validation_accuracy)
+        full_validation_split = args.max_validation_batches is None
+        delta_pp = (
+            100.0
+            * (float(replay["accuracy"]) - float(args.source_validation_accuracy))
+            if full_validation_split
+            else None
+        )
+        material_change = (
+            abs(delta_pp) >= float(args.materiality_threshold_pp)
+            if delta_pp is not None
+            else None
         )
         summary = {
             "schema_version": "conv-checkpoint-physical-kcl-replay/v1",
@@ -453,9 +462,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "source_validation_accuracy": float(args.source_validation_accuracy),
             "replay": replay,
             "delta_accuracy_pp": delta_pp,
-            "absolute_delta_accuracy_pp": abs(delta_pp),
+            "absolute_delta_accuracy_pp": (
+                abs(delta_pp) if delta_pp is not None else None
+            ),
             "materiality_threshold_pp": float(args.materiality_threshold_pp),
-            "material_change": abs(delta_pp) >= float(args.materiality_threshold_pp),
+            "material_change": material_change,
             "runtime_dtype": runtime["runtime_dtype_name"],
             "inference_iterations": runtime["inference_iterations"],
             "dataset_provenance": runtime["dataset_provenance"],
@@ -474,12 +485,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 },
                 "source_validation_accuracy": float(args.source_validation_accuracy),
                 "delta_accuracy_pp": delta_pp,
-                "material_change": summary["material_change"],
+                "material_change": material_change,
             },
             completion={
-                "criteria_met": args.max_validation_batches is not None
-                or replay["examples"] == 5000,
-                "full_validation_split": args.max_validation_batches is None,
+                "criteria_met": (
+                    not full_validation_split or replay["examples"] == 5000
+                ),
+                "full_validation_split": full_validation_split,
                 "parameters_mutated": False,
                 "optimizer_steps": 0,
                 "official_test_read": False,
