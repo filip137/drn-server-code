@@ -63,13 +63,13 @@ corrected-model selection gate is still pending.
 |---:|---|---|
 | 1 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete; old rate is a viable corrected-model candidate; replacement pending |
 | 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete on Jean Zay as `1398318` with exit `0:0` in `01:44:46`; remote bundle complete, local collection and replacement selection pending |
-| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic running on Jean Zay as `1398320`; reached epoch `11/30` at `2026-08-26 15:50 CEST`; replacement pending |
+| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete on Jean Zay as `1398320` with exit `0:0` in `03:16:51`; remote bundle complete, local collection and replacement selection pending |
 | 4 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
-| 5 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | queued on `umg@v100` as `1416203`, `afterok:1399201`; injected beta `.03`, `T=K=6`, source/config and smoke gates passed |
-| 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | complete and remotely validated on `umg@v100` as `1399200`; exit `0:0`, elapsed `04:18:39`, official test disabled |
+| 5 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | running on `umg@v100` as `1416203` since `2026-08-26 18:39:45 CEST`; injected beta `.03`, `T=K=6`, all source/science/device guards passed, epoch 1 validation `96.42%` |
+| 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | complete and locally validated on `umg@v100` as `1399200`; exit `0:0`, elapsed `04:18:39`, best/final validation `98.84/98.78%`, official test disabled |
 | 7 | noisy centered-EqProp authority `perfectdiode_conv13_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_10_30ep_seed0_20260817_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
 | 8 | noisy centered-EqProp authority `perfectdiode_conv2_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_30ep_seed0_20260817_v1.json`, Conv2 legacy logical case `2` in pack `1` | queued on `umg@v100` as `1416204`, `afterok:1416203`; injected beta `.03`, `T=K=6`, `sigma_v=5e-4`, source/config and smoke gates passed |
-| 9 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | running on `umg@v100` as `1399201` since `2026-08-26 14:16:01 CEST`; source/config and semantic guards passed; epoch `10/30`, best validation `74.66%` at the `15:50 CEST` checkpoint |
+| 9 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | complete and locally validated on `umg@v100` as `1399201`; exit `0:0`, elapsed `04:20:39`, best/final validation `78.64/74.94%`, official test disabled |
 | 10 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/02_wmax_1em4_legacy_adam.json` | pending |
 | 11 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/05_wmax_5em4_legacy_adam.json` | pending |
 | 12 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/08_wmax_1em3_legacy_adam.json` | pending |
@@ -164,7 +164,7 @@ the corrected physical-KCL source.  Both runs use ordinary MNIST, seed/order
 | Order | Architecture | Exact weight learning rates | `T=K` | Jean Zay budget | Status |
 |---:|---|---|---:|---|---|
 | 1 | Conv2 legacy Adam | `[8.66750e-4, 1.52841e-4, 5.16982e-5]` | 6 | one V100, 3 h ceiling | completed as `1398318`, exit `0:0`, elapsed `01:44:46`; remote bundle complete |
-| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | running as `1398320`; epoch `11/30` at `2026-08-26 15:50 CEST` |
+| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | completed as `1398320`, exit `0:0`, elapsed `03:16:51`; remote bundle complete |
 
 The shared study root is
 `perfectdiode-conv23-legacy-adam-physical-kcl-same-lr-bptt-rerun-seed0-20260826-v1`.
