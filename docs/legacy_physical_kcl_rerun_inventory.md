@@ -1,6 +1,6 @@
 # Legacy physical-KCL rerun inventory
 
-Updated: 2026-08-25
+Updated: 2026-08-26
 
 ## Scope and reason
 
@@ -14,21 +14,23 @@ manuscript.  Baseline `(1, 1)` and ours `(4, 1)` are unchanged because their
 
 Historical medium-affine, hard-sigmoid, pooling, and superseded exploratory
 studies are excluded unless the manuscript later elects to cite them.  The
-official MNIST test split remains sealed.
+official MNIST test split remains sealed.  The active compute priority is Adam
+only.  The three clean-wide SGD arms remain mathematically affected, but are
+deferred and are not part of the scheduled replacement queue.
 
-## Primary training arms to replace
+## Active Adam training arms to replace
 
-The active manuscript contains 21 affected legacy training arms.  Each
+The Adam-first manuscript scope contains 18 affected legacy training arms.  Each
 replacement starts from fresh matched initialization and retains its recorded
-seed, data order, optimizer, epoch budget, and parameter-wise learning-rate
+seed, data order, epoch budget, and parameter-wise learning-rate
 vector unless a preceding corrected-model selection gate changes the final
 paper contract.
 
 | Block | Architecture | Optimizer/condition | Affected arms | Source authority |
 |---|---|---|---:|---|
-| Clean wide BPTT | Conv1 | SGD, Adam | 2 | `configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/04_legacy_sgd_bias_zero_seed0.json`, `05_legacy_adam_bias_zero_seed0.json` |
-| Clean wide BPTT | Conv2 | SGD, Adam | 2 | Same study, Conv2 legacy configs `04` and `05` |
-| Clean wide BPTT | Conv3 | SGD, Adam | 2 | Same study, Conv3 legacy configs `04` and `05` |
+| Clean wide BPTT | Conv1 | Adam | 1 | `configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` |
+| Clean wide BPTT | Conv2 | Adam | 1 | Same study, Conv2 legacy config `05` |
+| Clean wide BPTT | Conv3 | Adam | 1 | Same study, Conv3 legacy config `05` |
 | Clean centered EqProp | Conv1 | Adam, no endpoint noise | 1 | `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json` |
 | Clean centered EqProp | Conv2 | Adam, no endpoint noise | 1 | Same study authority |
 | Clean centered EqProp | Conv3 | Adam, no endpoint noise | 1 | Same study authority |
@@ -38,13 +40,20 @@ paper contract.
 | Fixed-initialization bounded BPTT | Conv1 | Adam, `Gmax={1e-4,5e-4,1e-3}` | 3 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/*legacy*.json` |
 | Fixed-initialization bounded BPTT | Conv2 | Adam, `Gmax={1e-4,5e-4,1e-3}` | 3 | Same study, Conv2 legacy configs |
 | Fixed-initialization bounded BPTT | Conv3 | Adam, `Gmax={1e-4,5e-4,1e-3}` | 3 | Same study, Conv3 legacy configs |
-| **Total** |  |  | **21** |  |
+| **Active total** |  |  | **18** |  |
 
 The bounded-Kaiming raw-LR transfer adds two supporting legacy arms (Conv1 and
 Conv2) if that diagnostic remains in the manuscript discussion.  They are not
-part of the 21 primary table cells.
+part of the 18 primary Adam table cells.
 
-### Exact 21-arm execution checklist
+The deferred clean-wide SGD authorities are the `04_legacy_sgd` config in each
+of the Conv1, Conv2, and Conv3 directories of the ordinary-MNIST zero-bias
+study.  Conv1 already demonstrates that this is not a benign omission: its
+corrected exact-rate retrain changed best validation accuracy by `-4.14 pp`.
+These three arms must not be presented as corrected physical-KCL evidence; they
+are simply outside the current compute priority.
+
+### Exact 18-arm Adam execution checklist
 
 Paths below are relative to `configs/conv/`.  A completed same-LR diagnostic
 does not mark the corresponding paper replacement complete because the
@@ -52,27 +61,24 @@ corrected-model selection gate is still pending.
 
 | # | Legacy arm authority | Status |
 |---:|---|---|
-| 1 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/04_legacy_sgd_bias_zero_seed0.json` | same-LR diagnostic complete; selection/replacement pending |
-| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete; old rate is a viable corrected-model candidate; replacement pending |
-| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/04_legacy_sgd_bias_zero_seed0.json` | pending |
-| 4 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | pending |
-| 5 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/04_legacy_sgd_bias_zero_seed0.json` | pending |
-| 6 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | pending |
-| 7 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
-| 8 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | pending |
-| 9 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | pending |
-| 10 | noisy centered-EqProp authority `perfectdiode_conv13_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_10_30ep_seed0_20260817_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
-| 11 | noisy centered-EqProp authority `perfectdiode_conv2_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_30ep_seed0_20260817_v1.json`, Conv2 legacy logical case `2` in pack `1` | pending |
-| 12 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | pending |
-| 13 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/02_wmax_1em4_legacy_adam.json` | pending |
-| 14 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/05_wmax_5em4_legacy_adam.json` | pending |
-| 15 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/08_wmax_1em3_legacy_adam.json` | pending |
-| 16 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/02_wmax_1em4_legacy_adam.json` | pending |
-| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/05_wmax_5em4_legacy_adam.json` | pending |
-| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/08_wmax_1em3_legacy_adam.json` | pending |
-| 19 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/02_wmax_1em4_legacy_adam.json` | pending |
-| 20 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | pending |
-| 21 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | pending |
+| 1 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete; old rate is a viable corrected-model candidate; replacement pending |
+| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | sequential Jean Zay same-LR diagnostic planned; replacement pending |
+| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | dependent Jean Zay same-LR diagnostic planned; replacement pending |
+| 4 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
+| 5 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | pending |
+| 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | pending |
+| 7 | noisy centered-EqProp authority `perfectdiode_conv13_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_10_30ep_seed0_20260817_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
+| 8 | noisy centered-EqProp authority `perfectdiode_conv2_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_30ep_seed0_20260817_v1.json`, Conv2 legacy logical case `2` in pack `1` | pending |
+| 9 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | pending |
+| 10 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/02_wmax_1em4_legacy_adam.json` | pending |
+| 11 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/05_wmax_5em4_legacy_adam.json` | pending |
+| 12 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/08_wmax_1em3_legacy_adam.json` | pending |
+| 13 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/02_wmax_1em4_legacy_adam.json` | pending |
+| 14 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/05_wmax_5em4_legacy_adam.json` | pending |
+| 15 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/08_wmax_1em3_legacy_adam.json` | pending |
+| 16 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/02_wmax_1em4_legacy_adam.json` | pending |
+| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | pending |
+| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | pending |
 
 If retained, the two supporting bounded-Kaiming authorities are
 `perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-3ep-seed0-20260813-v1/conv1_legacy_adam.json`
@@ -84,8 +90,8 @@ and
 The following legacy-only portions must be recomputed before corrected results
 can replace manuscript evidence:
 
-1. Conv1/2/3 legacy operational `T/K` checks and the six wide legacy LR
-   selection surfaces (architecture by SGD/Adam).  The immediate same-LR
+1. Conv1/2/3 legacy operational `T/K` checks and the three wide legacy Adam LR
+   selection surfaces.  The immediate same-LR
    repeats below are controlled diagnostics, not a claim that the old rates
    remain selected for the corrected model.
 2. Conv1/2/3 legacy EqProp beta-gradient qualification, including the clean
@@ -138,9 +144,29 @@ Measured conclusion: compatibility is optimizer-dependent.  The corrected
 Conv1 legacy model preserves the old Adam result at this resolution, including
 when trained from scratch with the same rate, but the old SGD checkpoint and
 training rate both change materially.  The immediate next selection task is
-therefore corrected Conv1 legacy SGD LR qualification.  Adam can remain a
-candidate at its old rate, but this one-seed diagnostic does not replace the
-remaining Conv2/Conv3, EqProp-beta, noisy, or bounded corrected-model gates.
+corrected-model compatibility for the remaining Adam architectures.  The old
+Conv1 Adam rate can remain a candidate, but this one-seed diagnostic does not
+replace the remaining Conv2/Conv3, EqProp-beta, noisy, or bounded gates.  The
+SGD result is retained as evidence of material sensitivity, but further SGD
+work, including its LR qualification, is deferred under the Adam-only compute
+priority.
 
-Detailed evidence is in the
+Detailed Conv1 evidence is in the
 [study report](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/analysis/report.md).
+
+## Immediate Conv2/Conv3 Adam wave
+
+The next controlled diagnostic uses the unchanged clean-wide Adam configs and
+the corrected physical-KCL source.  Both runs use ordinary MNIST, seed/order
+`0`, exact-zero hidden biases, 30 epochs, batch size 16, validation batch size
+64, and no official-test access.
+
+| Order | Architecture | Exact weight learning rates | `T=K` | Jean Zay budget | Status |
+|---:|---|---|---:|---|---|
+| 1 | Conv2 legacy Adam | `[8.66750e-4, 1.52841e-4, 5.16982e-5]` | 6 | one V100, 3 h ceiling | planned |
+| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | planned |
+
+The shared study root is
+`perfectdiode-conv23-legacy-adam-physical-kcl-same-lr-bptt-rerun-seed0-20260826-v1`.
+The two jobs are separate for failure isolation but dependency-serialized, so
+the study can occupy at most one GPU at a time.

@@ -1,0 +1,258 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+
+\newcommand{\vA}{A}
+\newcommand{\cB}{B}
+\newcommand{\KCL}{\mathcal{F}}
+\newcommand{\Ephys}{\mathcal{E}_{\mathrm{phys}}}
+\newcommand{\Eold}{\mathcal{E}_{\mathrm{old}}}
+
+\title{Physical KCL Energy for Bidirectionally Amplified DRNs\\
+\large Derivation, implementation correction, and experimental consequences}
+\author{Internal technical note}
+\date{26 August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note explains a mismatch between the circuit equations and the interaction
+energy formerly used for bidirectionally amplified deep resistive networks
+(DRNs).  The corrected energy has the physical DRN equilibria as its stationary
+points, up to a positive diagonal rescaling of the Kirchhoff-current-law (KCL)
+vector field.  The former implementation instead placed an extra current-gain
+factor on the receiving-node voltage inside every squared branch drop.  It was
+therefore a coherent energy model, and its numerical residual could decrease to
+zero, but its stationary points did not in general solve the stated physical
+KCL equations.  The difference vanishes when the current gain is one; it affects
+the legacy setting $(A,B)=(4,0.25)$ but not the baseline $(1,1)$ or the proposed
+setting $(4,1)$.
+\end{abstract}
+
+\section{Circuit convention and KCL vector field}
+
+Let $v_i^{(\ell)}$ denote the voltage of node $i$ in layer $\ell$.  A branch
+with conductance $g_{ij}^{(p)}$ joins a sending node in layer $p$ to a receiving
+node in layer $p+1$.  The voltage-controlled voltage source forwards
+$A v_i^{(p)}$ from a hidden sending node, whereas the first branch is driven
+directly by the clamped input.  Define
+\begin{equation}
+  \alpha_p =
+  \begin{cases}
+    1, & p=0,\\
+    A, & p\geq 1,
+  \end{cases}
+  \qquad
+  r_{ij}^{(p)} = \alpha_p v_i^{(p)}-v_j^{(p+1)}.
+  \label{eq:branch-drop}
+\end{equation}
+Thus $g_{ij}^{(p)}r_{ij}^{(p)}$ is the current delivered to the receiving
+node.  The current-controlled current source reflects the outgoing branch
+current into the sending-node KCL equation with gain $B$.  With
+$\KCL^{(\ell)}$ defined as net current delivered to the nodes of layer $\ell$,
+one branch contributes
+\begin{align}
+  \KCL_{j,\mathrm{recv}}^{(p+1)}
+    &= g_{ij}^{(p)}r_{ij}^{(p)},
+    \label{eq:kcl-recv}\\
+  \KCL_{i,\mathrm{send}}^{(p)}
+    &= -B g_{ij}^{(p)}r_{ij}^{(p)}, \qquad p\geq1.
+    \label{eq:kcl-send}
+\end{align}
+The complete vector field is obtained by summing the incoming and outgoing
+branch contributions and the local one-port contribution at every free node.
+The physical equilibrium is therefore characterized by
+\begin{equation}
+  \KCL^{(\ell)}\!\left(v^{(1)},\ldots,v^{(L)}\right)=0,
+  \qquad \ell=1,\ldots,L,
+  \label{eq:kcl-zero}
+\end{equation}
+subject to the perfect-diode constraints at the hidden nodes.  The output layer
+is linear.
+
+\section{Energy whose stationary points are the physical equilibria}
+
+For the free layer $\ell\geq1$, introduce the positive diagonal layer factor
+\begin{equation}
+  d_\ell=\left(\frac{B}{A}\right)^{\ell-1}.
+  \label{eq:diagonal-factor}
+\end{equation}
+The corrected energy contribution of a branch whose sending layer is $p$ is
+\begin{equation}
+  \Ephys_{ij,p}
+  =\frac{1}{2}\left(\frac{B}{A}\right)^p
+   g_{ij}^{(p)}\left(\alpha_p v_i^{(p)}-v_j^{(p+1)}\right)^2.
+  \label{eq:physical-edge-energy}
+\end{equation}
+The factor $(B/A)^p$ is essential: it makes the asymmetric circuit field
+integrable after a positive diagonal rescaling.  Differentiating
+Eq.~\eqref{eq:physical-edge-energy} with respect to its receiving voltage gives
+\begin{equation}
+  \frac{\partial \Ephys_{ij,p}}{\partial v_j^{(p+1)}}
+  =-\left(\frac{B}{A}\right)^p g_{ij}^{(p)}r_{ij}^{(p)}
+  =-d_{p+1}\KCL_{j,\mathrm{recv}}^{(p+1)}.
+  \label{eq:recv-gradient}
+\end{equation}
+For a free sending layer $p\geq1$,
+\begin{align}
+  \frac{\partial \Ephys_{ij,p}}{\partial v_i^{(p)}}
+  &=\left(\frac{B}{A}\right)^p A g_{ij}^{(p)}r_{ij}^{(p)} \\
+  &=d_p B g_{ij}^{(p)}r_{ij}^{(p)}
+   =-d_p\KCL_{i,\mathrm{send}}^{(p)}.
+  \label{eq:send-gradient}
+\end{align}
+After summing all branches and retaining the corresponding one-port
+terms or perfect-diode constraints, the state gradient satisfies
+\begin{equation}
+  \nabla_{v^{(\ell)}}\Ephys=-d_\ell\KCL^{(\ell)},
+  \qquad \ell=1,\ldots,L.
+  \label{eq:gradient-kcl}
+\end{equation}
+Every $d_\ell$ is strictly positive for $A,B>0$.  Consequently,
+\begin{equation}
+  \nabla_v\Ephys=0
+  \quad\Longleftrightarrow\quad
+  \KCL(v)=0.
+  \label{eq:zeros-equivalent}
+\end{equation}
+The energy gradient is not literally the negative KCL vector field when
+$A\neq B$; it is the negative KCL field multiplied by a positive diagonal
+metric.  This distinction changes the numerical scale by layer but not the
+equilibrium set.
+
+\section{The former energy and the extra factor}
+
+The former dense and convolutional interactions evaluated
+\begin{equation}
+  \Eold_{ij,p}
+  =\frac{1}{2}\left(\frac{B}{A}\right)^p
+   g_{ij}^{(p)}\left(\alpha_p v_i^{(p)}-Bv_j^{(p+1)}\right)^2.
+  \label{eq:old-edge-energy}
+\end{equation}
+Compared with Eq.~\eqref{eq:physical-edge-energy}, the receiving-node voltage
+inside the square was multiplied by $B$.  This alters both the cross term and
+the receiving-node quadratic term.  In particular,
+\begin{equation}
+  \frac{\partial \Eold_{ij,p}}{\partial v_j^{(p+1)}}
+  =-\left(\frac{B}{A}\right)^p
+    B g_{ij}^{(p)}\left(\alpha_p v_i^{(p)}-Bv_j^{(p+1)}\right),
+  \label{eq:old-gradient}
+\end{equation}
+which is not a diagonal multiple of the physical receiving-node current in
+Eq.~\eqref{eq:kcl-recv} unless $B=1$ (apart from degenerate cases).
+
+This explains the selective scope of the correction:
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Setting & $A$ & $B$ & Energy changed?\\
+\midrule
+Unamplified baseline & 1 & 1 & No\\
+Proposed voltage amplification & 4 & 1 & No\\
+Legacy reciprocal-current convention & 4 & 0.25 & Yes\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Why the residual could still decrease}
+
+There were two distinct consistency questions:
+\begin{enumerate}
+  \item Does the coordinate solver minimize the energy returned by the code?
+  \item Does that energy generate the KCL equations of the stated circuit?
+\end{enumerate}
+They are not equivalent.
+
+Before the 16 June 2026 change, the energy evaluator contained
+Eq.~\eqref{eq:old-edge-energy}, while the coordinate-update coefficients still
+encoded the raw physical KCL equations.  The coordinate solver could approach a
+physical KCL root even though the autograd gradient of the reported old energy
+did not approach zero.  Commit \texttt{1ba78c73} made the coordinate
+coefficients agree with the derivatives of the old energy; commit
+\texttt{08cfede3} carried that behavior into the amplification branch.  After
+that change, the energy and its residual behaved normally because the solver
+was consistently minimizing $\Eold$.
+
+The observed decrease of the residual was therefore real, but it answered only
+the first question.  It did not establish Eq.~\eqref{eq:gradient-kcl} for the
+physical circuit.  The present correction restores both properties at once:
+the coordinate coefficients agree with autograd, and the resulting gradient is
+the diagonally scaled negative physical KCL field.
+
+This also resolves the apparent contradiction with earlier successful BPTT and
+ReLU-to-DRN experiments.  BPTT can train a differentiable recurrent solver even
+when the solver represents the wrong equilibrium model.  In addition, older
+zero-shot ReLU conversions either used the passive $A=B=1$ case or bypassed the
+affected interaction evaluator, while the differential signed-resistive path
+already used its own physical energy.  Successful accuracy is evidence that an
+implemented model is trainable; it is not, by itself, a circuit-equation test.
+
+\section{Implementation correction and regression tests}
+
+Commit \texttt{599551c6} applies the correction to both
+\texttt{DenseResistive} and \texttt{ConvResistive}.  It retains the depth factor
+$(B/A)^p$ and the sending-node scale $\alpha_p$, but removes $B$ from the
+receiving-node voltage in four coupled places:
+\begin{itemize}
+  \item evaluation of the interaction energy;
+  \item the linear coefficient of each coordinate update;
+  \item the receiving-node quadratic coefficient; and
+  \item the conductance derivative used by energy-based learning.
+\end{itemize}
+The convolutional interaction receives the identical algebraic change after
+unfolding its input patches.  Perfect-diode constraints and the output cost are
+unchanged.
+
+The regression tests check complementary invariants.  Per-interaction tests
+compare coordinate coefficients with the autograd derivative of the evaluated
+energy for dense and convolutional branches.  A two-edge dense-chain test
+constructs the KCL currents explicitly and verifies Eq.~\eqref{eq:gradient-kcl}
+for the affected $(A,B)=(4,0.25)$ setting.  The Conv1 compatibility study then
+tests the end-to-end consequence using the frozen ordinary-MNIST protocol.
+
+\section{Measured consequence and rerun policy}
+
+On Conv1, unchanged-checkpoint replay and exact-learning-rate retraining show
+that the impact depends on the optimizer:
+\begin{center}
+\begin{tabular}{llrr}
+\toprule
+Optimizer & Comparison & Old validation & Corrected validation\\
+\midrule
+SGD & best-checkpoint replay & 95.92\% & 93.84\%\\
+SGD & exact-rate retrain, best & 95.92\% & 91.78\%\\
+Adam & best-checkpoint replay & 96.44\% & 96.12\%\\
+Adam & exact-rate retrain, best & 96.44\% & 96.50\%\\
+\bottomrule
+\end{tabular}
+\end{center}
+Using the predeclared $0.5$ percentage-point diagnostic threshold, the Adam
+result is compatible at this resolution whereas the SGD result changes
+materially.  This empirical compatibility does not undo the mathematical
+correction; it motivates an Adam-first replacement program.
+
+The active operational inventory therefore contains the 18 affected legacy
+Adam arms: three clean wide BPTT arms, three clean centered-EqProp arms, three
+noisy centered-EqProp arms, and nine fixed-initialization bounded BPTT arms.
+The three clean-wide legacy SGD arms remain mathematically affected but are
+deferred.  The immediate next diagnostic repeats only the exact frozen Adam
+learning rates for Conv2 and Conv3, sequentially on one Jean Zay GPU at a time.
+No official MNIST test split is read.  The detailed execution list and status
+are maintained in
+\path{docs/legacy_physical_kcl_rerun_inventory.md}.
+
+\section{Conclusion}
+
+The fixed energy is not an alternative modeling choice: it is the scalar
+potential whose stationary points coincide with the zeros of the stated
+amplified-DRN KCL vector field.  The former code could exhibit decreasing
+energy and residual because it consistently minimized a different potential.
+The corrected implementation preserves that numerical consistency while also
+restoring the physical equilibrium equations.  Only legacy evidence with
+$B\neq1$ needs replacement; the current compute priority is the Adam evidence.
+
+\end{document}
