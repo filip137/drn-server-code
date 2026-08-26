@@ -62,8 +62,8 @@ corrected-model selection gate is still pending.
 | # | Legacy arm authority | Status |
 |---:|---|---|
 | 1 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete; old rate is a viable corrected-model candidate; replacement pending |
-| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete on Jean Zay as `1398318` with exit `0:0` in `01:44:46`; remote bundle complete, local collection and replacement selection pending |
-| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete on Jean Zay as `1398320` with exit `0:0` in `03:16:51`; remote bundle complete, local collection and replacement selection pending |
+| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete and locally validated as Jean Zay job `1398318`, exit `0:0`, elapsed `01:44:46`, best/final validation `98.30/98.08%`; replacement selection pending |
+| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete and locally validated as Jean Zay job `1398320`, exit `0:0`, elapsed `03:16:51`, best/final validation `98.84/98.78%`; replacement selection pending |
 | 4 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
 | 5 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | running on `umg@v100` as `1416203` since `2026-08-26 18:39:45 CEST`; injected beta `.03`, `T=K=6`, all source/science/device guards passed, epoch 1 validation `96.42%` |
 | 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | complete and locally validated on `umg@v100` as `1399200`; exit `0:0`, elapsed `04:18:39`, best/final validation `98.84/98.78%`, official test disabled |
@@ -163,8 +163,8 @@ the corrected physical-KCL source.  Both runs use ordinary MNIST, seed/order
 
 | Order | Architecture | Exact weight learning rates | `T=K` | Jean Zay budget | Status |
 |---:|---|---|---:|---|---|
-| 1 | Conv2 legacy Adam | `[8.66750e-4, 1.52841e-4, 5.16982e-5]` | 6 | one V100, 3 h ceiling | completed as `1398318`, exit `0:0`, elapsed `01:44:46`; remote bundle complete |
-| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | completed as `1398320`, exit `0:0`, elapsed `03:16:51`; remote bundle complete |
+| 1 | Conv2 legacy Adam | `[8.66750e-4, 1.52841e-4, 5.16982e-5]` | 6 | one V100, 3 h ceiling | completed as `1398318`, exit `0:0`, elapsed `01:44:46`, best/final validation `98.30/98.08%`; locally validated |
+| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | completed as `1398320`, exit `0:0`, elapsed `03:16:51`, best/final validation `98.84/98.78%`; locally validated |
 
 The shared study root is
 `perfectdiode-conv23-legacy-adam-physical-kcl-same-lr-bptt-rerun-seed0-20260826-v1`.
@@ -172,4 +172,7 @@ The two jobs are separate for failure isolation but dependency-serialized, so
 the study can occupy at most one GPU at a time.  The authoritative frozen source
 is commit `0efbfc4a` (archive SHA-256 `09439c41...ce8503`); both exact-config
 local CPU smokes, the 115-test staged-source gate, and both scheduler test-only
-requests passed before submission.
+requests passed before submission.  The topology-preserving local collection
+matches Jean Zay exactly: result-archive SHA-256 `15776b9a...01770a`, 42 regular
+files, 28 symlinks, regular-file digest `0a598a6e...d89e9`, and symlink digest
+`cba1ad9a...2912d`; both canonical bundles validate remotely and locally.
