@@ -62,8 +62,8 @@ corrected-model selection gate is still pending.
 | # | Legacy arm authority | Status |
 |---:|---|---|
 | 1 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv1/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic complete; old rate is a viable corrected-model candidate; replacement pending |
-| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | sequential Jean Zay same-LR diagnostic planned; replacement pending |
-| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | dependent Jean Zay same-LR diagnostic planned; replacement pending |
+| 2 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv2/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic queued as Jean Zay `1398318`; replacement pending |
+| 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic queued as Jean Zay `1398320`, `afterok:1398318`; replacement pending |
 | 4 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
 | 5 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | pending |
 | 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | pending |
@@ -163,10 +163,13 @@ the corrected physical-KCL source.  Both runs use ordinary MNIST, seed/order
 
 | Order | Architecture | Exact weight learning rates | `T=K` | Jean Zay budget | Status |
 |---:|---|---|---:|---|---|
-| 1 | Conv2 legacy Adam | `[8.66750e-4, 1.52841e-4, 5.16982e-5]` | 6 | one V100, 3 h ceiling | planned |
-| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | planned |
+| 1 | Conv2 legacy Adam | `[8.66750e-4, 1.52841e-4, 5.16982e-5]` | 6 | one V100, 3 h ceiling | queued as `1398318` |
+| 2 | Conv3 legacy Adam | `[2.60030e-3, 4.58737e-4, 3.25132e-4, 3.64861e-5]` | 8 | one V100, 5 h ceiling, `afterok` Conv2 | queued as `1398320` |
 
 The shared study root is
 `perfectdiode-conv23-legacy-adam-physical-kcl-same-lr-bptt-rerun-seed0-20260826-v1`.
 The two jobs are separate for failure isolation but dependency-serialized, so
-the study can occupy at most one GPU at a time.
+the study can occupy at most one GPU at a time.  The authoritative frozen source
+is commit `0efbfc4a` (archive SHA-256 `09439c41...ce8503`); both exact-config
+local CPU smokes, the 115-test staged-source gate, and both scheduler test-only
+requests passed before submission.
