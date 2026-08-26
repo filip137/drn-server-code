@@ -66,19 +66,19 @@ corrected-model selection gate is still pending.
 | 3 | `perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json` | same-LR diagnostic queued as Jean Zay `1398320`, `afterok:1398318`; replacement pending |
 | 4 | clean centered-EqProp authority `perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
 | 5 | same clean centered-EqProp authority, Conv2 legacy logical case `8` in pack `4` | pending |
-| 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | pending |
+| 6 | same clean centered-EqProp authority, Conv3 legacy logical case `5` in pack `2` | planned on `umg@v100` in the serialized remaining-Conv3 wave |
 | 7 | noisy centered-EqProp authority `perfectdiode_conv13_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_10_30ep_seed0_20260817_v1.json`, Conv1 legacy logical case `4` in pack `2` | pending |
 | 8 | noisy centered-EqProp authority `perfectdiode_conv2_zero_bias_adam_eqprop_one_decade_sigma_5em4_ordinary_mnist_30ep_seed0_20260817_v1.json`, Conv2 legacy logical case `2` in pack `1` | pending |
-| 9 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | pending |
+| 9 | Conv1/Conv3 noisy authority above, Conv3 legacy logical case `5` in pack `2` | planned on `umg@v100` in the serialized remaining-Conv3 wave |
 | 10 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/02_wmax_1em4_legacy_adam.json` | pending |
 | 11 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/05_wmax_5em4_legacy_adam.json` | pending |
 | 12 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv1/08_wmax_1em3_legacy_adam.json` | pending |
 | 13 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/02_wmax_1em4_legacy_adam.json` | pending |
 | 14 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/05_wmax_5em4_legacy_adam.json` | pending |
 | 15 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/08_wmax_1em3_legacy_adam.json` | pending |
-| 16 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/02_wmax_1em4_legacy_adam.json` | pending |
-| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | pending |
-| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | pending |
+| 16 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/02_wmax_1em4_legacy_adam.json` | planned on `umg@v100` in the serialized remaining-Conv3 wave |
+| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | planned on `umg@v100` in the serialized remaining-Conv3 wave |
+| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | planned on `umg@v100` in the serialized remaining-Conv3 wave |
 
 If retained, the two supporting bounded-Kaiming authorities are
 `perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-3ep-seed0-20260813-v1/conv1_legacy_adam.json`
