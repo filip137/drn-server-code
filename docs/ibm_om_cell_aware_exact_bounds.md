@@ -1,5 +1,12 @@
 # IBM OM cell-aware exact-bounds quantization
 
+> **Historical protocol.** This document records the completed `q`-based
+> exact-bounds oracle study and remains immutable scientific evidence. Future
+> IBM OM deployment P&V uses the separate
+> [raw-active-state successor protocol](ibm_om_raw_active_state_program_verify.md),
+> which does not retroactively change the targets, endpoints, or interpretation
+> below.
+
 ## Question
 
 This study asks how the RESET-relative transfer result changes when target

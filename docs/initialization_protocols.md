@@ -240,6 +240,26 @@ sign diagnostics and state unambiguously that hidden bounds generated the
 targets. The formal protocol is
 [`ibm_om_cell_aware_exact_bounds.md`](ibm_om_cell_aware_exact_bounds.md).
 
+### IBM OM raw-active-state deployment protocol
+
+The successor IBM OM deployment protocol represents every DRN conductance with
+one independently evolving raw active state and converts all cells with one
+frozen array-wide affine coordinate. For a four-cell signed weight, it freezes
+one global differential budget at the development assignment's 90% quad
+support threshold and permits one exact shared baseline to vary by eligible
+quad. Unsupported quads are reassigned or fail; they are not locally
+rescaled. This target construction does not, by itself, define network
+initialization. The logical-weight mapping, QAT code spacing, and
+learning-rate derivation must be separately versioned and must consume the
+same frozen coordinate and global differential budget; they must not introduce
+cell-wise normalization or recompute the scale on a replacement array. The
+protocol and its implementation gate are documented in
+[`ibm_om_raw_active_state_program_verify.md`](ibm_om_raw_active_state_program_verify.md).
+The global differential and variable-baseline construction changes only the
+targets supplied to P&V. Boundary conditioning, apparent verification, SET
+below target, RESET after overshoot, tolerance, and pulse budget remain the
+frozen scalar-cell procedure in that deployment protocol.
+
 ## Checkpoint roles
 
 - Use `checkpoints/weights.pt` for the explicitly selected named state passed

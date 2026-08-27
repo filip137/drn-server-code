@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-22
+Last updated: 2026-08-25
 
 ## Purpose
 
@@ -40,6 +40,14 @@ The strongest current interpretation is:
   physical-device reassignment: zero-update transfer from cohort A to five
   cohort-B assignments lost `54.62` accuracy points on average despite scalar
   recalibration and broadly similar aggregate reachable-window statistics.
+- Cell-specific IBM OM QAT shows the same issue in a stricter pulse-resolved
+  setting. The selected fixed-array QAT checkpoint reached `93.31%` programmed
+  validation accuracy on development assignment 84001 but only `74.154%` mean
+  programmed test accuracy after frozen deployment to assignment 85001. It
+  still beat continuous HWA by `6.552` points on the replacement array, so QAT
+  helps, but much of its compensation is array-specific. The transfer loss is
+  therefore a concrete starting gap for deployed-array, on-chip-compatible
+  quantized adaptation.
 - Gradient direction alone is sufficient for substantial same-cohort
   four-device recovery in the endpoint-projection simulator: balanced
   signSGD reached `95.77%` test accuracy from a `61.48%` initialization, but
@@ -294,6 +302,32 @@ and fine-tuning updates must remain separately measurable.
   points, and its KL was `3.50x` higher. These updates changed an ideal digital
   shadow and globally selected the nearest measured endpoint after every
   minibatch; they were not one-pulse-local sign updates on physical devices.
+
+### Cell-specific IBM OM QAT and held-out-array transfer
+
+- **Exact-bounds nine-level QAT:** Starting from the finalized full-span
+  logical checkpoint, four matched arms were trained or selected on repaired
+  IBM OM assignment 84001 and frozen before assignment 85001 was released.
+  Quantized QAT selected at `93.3133%` programmed validation accuracy on the
+  development array, compared with `93.1467%` for continuous HWA. On the
+  untouched replacement array, five pulse-resolved programming repeats gave
+  `74.154%` mean apparent accuracy for QAT versus `67.602%` for continuous
+  HWA, a paired gain of `6.552` percentage points; the zero-update and clean-
+  BPTT pipelines reached `65.124%` and `64.328%`. QAT also passed its
+  predeclared retention gate: apparent accuracy was `100.616%` of its
+  `73.70%` ideal mapped accuracy. The close agreement between ideal and
+  apparent held-out accuracy shows that programming noise alone does not
+  explain the transfer gap. The result supports the narrow QAT-versus-
+  continuous hypothesis while supporting the user's broader interpretation
+  that fixed-array training learns substantial array-specific compensation.
+  The development-to-held-out comparison also changes from validation to test
+  data, and only one development and one replacement assignment were used, so
+  its `19.159`-point drop is not yet a population estimate. Exact target
+  generation consumed every cell's hidden bounds and is an oracle
+  characterization control. The next scientific question is how to continue
+  quantization-aware adaptation from the already programmed replacement-array
+  state using an update rule that is genuinely compatible with on-chip
+  training.
 
 ### RESET-trained single-device teacher-matching result
 
@@ -671,38 +705,51 @@ Exact measurements, limitations, and raw artifact locations are in the
   become preferable to adding a frozen-base LoRA branch?
 - Is fine-tuning only W2 or W2 plus bias enough to close most of the
   `1.908`-point gap between rank-4 LoRA and full-model fine-tuning?
+- Which quantized state and update rule can adapt the already deployed array
+  in situ: persistent nine-level code changes, mixed-precision or Tiki-Taka
+  accumulation, or a quantized adapter? What characterization, gradient, and
+  program-and-verify information does each option require?
 
 ## Next steps
 
-1. Run the declared 128-pulse IBM ReRAM successor and compare it with the
+1. Define and predeclare a deployed-array QAT recovery study. Start every arm
+   from the same preserved assignment-85001 apparent/persistent deployment,
+   keep a frozen no-update control, and define an oracle STE-QAT recovery arm
+   only as an upper bound. Before choosing the physical recovery arm, specify
+   whether discrete updates act directly on persistent nine-level base codes,
+   accumulate through a mixed-precision or Tiki-Taka state, or train a
+   quantized adapter; in every case state how gradients become available
+   SET/RESET pulses and which bounds or verify measurements the controller may
+   use. Do not regenerate a fresh deployment between recovery arms.
+2. Run the declared 128-pulse IBM ReRAM successor and compare it with the
    immutable 512-pulse endpoint model. Select the deployment cap explicitly,
    then integrate that empirical endpoint kernel with its separate
    target-conditioned failure, corruption, saturation, and cost models.
    Preserve each sampled programmed endpoint as the common starting state for
    a predeclared HWA-only versus on-chip-recovery comparison; do not redraw
    endpoints between arms.
-2. Start a separate Tiki-Taka pulsed-device study using measured incremental
+3. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify
    HWA models as pulse-update models unless their source papers provide the
    required per-pulse trajectories. Measure write count, update noise, energy,
    and endurance alongside accuracy.
-3. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
+4. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
    seeds and add a direct ideal-map-to-device-to-BPTT arm. This separates
    whether HWA is necessary for recovery from whether it merely improves the
    first write. Then compare the generic 3% modifier with device-matched HWA,
    without tuning either choice on the final test set.
-4. Compare three targeted post-HWA interventions on the same deployment:
+5. Compare three targeted post-HWA interventions on the same deployment:
    rank-4 LoRA, W2-plus-bias fine-tuning, and full-model fine-tuning. This
    tests whether the full rewrite is actually needed.
-5. Train a perfect-diode DRN from initialization through the affine CMO
+6. Train a perfect-diode DRN from initialization through the affine CMO
    mapping and endpoint noise. Track voltage/noise margin and conductance
    loading as well as accuracy.
-6. Test the current passive LoRA branch on conductance-loss errors such as
+7. Test the current passive LoRA branch on conductance-loss errors such as
    drift or stuck-low devices, where an added conductance path can compensate
    the failure direction.
-7. Design a differential physical LoRA branch and compare it with the
+8. Design a differential physical LoRA branch and compare it with the
    positive-only branch on identical signed perturbations.
-8. Compare active denominator calibration, full rank-one KCL cancellation,
+9. Compare active denominator calibration, full rank-one KCL cancellation,
    and a validation-trained selector mask under matched mismatch and read
    noise. Ordinary numerator-only crossbar subtraction is not an exact DRN
    control.
