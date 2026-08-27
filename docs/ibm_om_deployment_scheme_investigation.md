@@ -1,9 +1,9 @@
 # IBM OM deployment-scheme investigation
 
-- Status: homogeneous ideal-mapping, shared-calibration bounded-codebook, and
-  exact-lower-bound four-delta diagnostics complete; the corrected per-cell
-  RESET-mean four-delta screen is implemented and smoke-validated; no new HWA
-  or stochastic deployment P&V experiment has been launched
+- Status: homogeneous ideal-mapping, shared-calibration bounded-codebook,
+  exact-lower-bound, and corrected per-cell RESET-mean four-delta screens
+  complete; no new HWA or stochastic deployment P&V experiment has been
+  launched
 - Date: 2026-08-27
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
@@ -496,7 +496,7 @@ standard/continuous means were `31.48/32.60%` (four/no `r`),
 collapse exposed insufficient four-delta level capacity; it is not evidence
 that the fitted reference itself is harmful.
 
-### Stage 0D: per-cell raw-`a` RESET-mean origin — implementation complete
+### Stage 0D: per-cell raw-`a` RESET-mean origin — complete
 
 The corrected no-`r` arm uses the same eight sequential one-RESET-pulse/read
 sample cost as the well-performing historical RESET-relative study, but it
@@ -514,6 +514,31 @@ causal ablation: the fixed-`r` arm consumes exact hidden `r`, whereas no-`r`
 uses an eight-read RESET estimate. The frozen v2 contract, assignments,
 calibration grid, bound policy, and claim boundary are documented in
 [`ibm_om_standard_level_scheme_screen.md`](ibm_om_standard_level_scheme_screen.md).
+
+The held-out v2 standard/continuous means are `25.76/27.23%`
+(four/no `r`), `23.03/71.11%` (four/fixed `r`), `23.46/25.22%`
+(eight/no `r`), and `14.16/42.69%` (eight/fixed `r`). All fail 90%.
+The fixed-`r` results are bit-identical to Stage 0C. Relative to its exact
+lower-bound control, per-cell RESET commissioning lowers no-`r` standard
+accuracy by `5.71` points for four devices and `1.72` points for eight.
+
+This rejects the hypothesis that independent per-cell RESET averaging is the
+missing ingredient behind the historical 91% RESET-relative result. About
+`60.32%` of observed means require public-coordinate or cell-bound
+projection. More importantly, the surviving cell-specific origin offsets do
+not cancel at logical zero: no-`r` baseline-contrast RMS and conductance-sum
+loading both rise while median signed capacity stays at seven levels and
+quantization RMS is essentially unchanged. The resulting voltage reduction
+and accuracy loss are already present in the continuous envelope.
+
+The historical high-accuracy mapper instead pooled four observed cells into
+one guarded shared quad baseline. The next no-`r` control must therefore test
+baseline **grouping**, not more independent averaging: one common origin per
+four-device rail quad, and a matched shared zero per active/reference pair (or
+stricter common group) for eight devices. Fixed-`r` needs a separate level-
+capacity control because the one-sided four-delta grid supplies only three
+median signed levels and leaves about `14--16%` of quads at zero capacity;
+its large continuous envelope must not be dismissed as an `r` failure.
 
 ### Stage 1: codebook and P&V gate
 
@@ -554,12 +579,12 @@ from the same explicitly named persistent deployed bundle.
 1. Stop treating additional raw-p90 HWA runs as the next scientific step.
 2. Preserve the completed homogeneous 2-by-2 ideal-mapping result and its exact
    teacher/config hashes.
-3. Execute the corrected per-cell RESET-mean standard four-delta 2-by-2 mapper
-   using frozen OM `r`, commissioned raw-`a` RESET means, bounds, and headroom
-   on the declared development and held-out assignments.
-4. Add the matched load decomposition for lower versus fitted-`r` placement,
-   four versus eight devices, and functional reassignment versus structural
-   failure.
+3. Implement the matched shared-zero control suggested by Stage 0D: a common
+   commissioned baseline per four-device rail quad and a shared zero per
+   eight-device active/reference group, with explicit common-window failure.
+4. Add the matched load decomposition for independent versus grouped RESET
+   baselines, fitted-`r` placement, four versus eight devices, and functional
+   reassignment versus structural failure.
 5. Implement the persistent codebook screen with non-overlapping verify
    windows.
 6. Bind the existing difference/sum interaction to explicit active/reference

@@ -1,7 +1,8 @@
 # IBM OM per-cell RESET-commissioned and reference-centered standard-level screen
 
-- Status: exact-lower-bound v1 diagnostic complete; corrected per-cell
-  RESET-mean v2 smoke complete and production launch pending
+- Status: exact-lower-bound v1 diagnostic and corrected per-cell RESET-mean
+  v2 production screen/replay complete; artifact-verified post-run analysis
+  complete
 - Screen IDs:
   `mnist-ibm-om-standard-level-scheme-screen-20260827-v1` and
   `mnist-ibm-om-standard-level-reset-mean-scheme-screen-20260827-v2`
@@ -161,6 +162,76 @@ and
 `examples/mnist_relu_drn/ibm_om_differential_pair_hwa_pilot/clean.json` with
 SHA-256
 `59c0a6a2c324dfea6bce8ec982dc9cf15286a6f577bace31471c4f646ebd1cad`.
+
+## Results
+
+Both v2 executions completed all four development calibrations, all 12
+held-out arms, eight population receipts, eight commissioning receipts, and
+10,000 test examples per arm. The independent analyzer verified every source,
+population, commissioning, mapping, calibration, prediction, metric, and
+aggregate field. Main and replay satisfy the predeclared semantic-equivalence
+criterion after normalizing only result-root path strings.
+
+| Scheme | Standard mean (range) | Continuous mean (range) | Standard minus continuous |
+| --- | ---: | ---: | ---: |
+| Four devices, no fixed `r` | 25.76% (19.37--30.56%) | 27.23% (19.21--33.27%) | -1.46 pp |
+| Four devices, fixed `r` | 23.03% (20.34--25.95%) | 71.11% (68.03--72.84%) | -48.09 pp |
+| Eight devices, no fixed `r` | 23.46% (21.54--26.10%) | 25.22% (23.06--29.24%) | -1.76 pp |
+| Eight devices, fixed `r` | 14.16% (9.80--16.72%) | 42.69% (29.14--54.20%) | -28.53 pp |
+
+Every arm fails the 90% ideal gate. The fixed-`r` target hashes and results are
+bit-identical between v1 and v2, confirming that commissioning changed only
+the no-`r` intervention. Relative to exact lower-bound v1, bounded per-cell
+RESET means reduce no-`r` standard accuracy by `5.71` points for four devices
+and `1.72` points for eight devices; continuous accuracy falls by `5.37` and
+`1.93` points. Per-cell RESET averaging therefore does not recover the raw-`a`
+scheme.
+
+The mechanism is baseline mismatch, not a new rounding failure. From v1 to
+v2, no-`r` median signed level count remains seven and active-target
+quantization RMS is essentially unchanged. In contrast, baseline logical-
+contrast RMS rises from `0.1431/0.1422` to `0.1502/0.1502` in the two
+four-device layers and from `0.2035/0.2100` to `0.2136/0.2203` in the
+eight-device layers. Mean physical edge loading also rises from
+`0.1209/0.1671` to `0.1319/0.1767` and from `0.2255/0.2724` to
+`0.2484/0.2943`, respectively. Hidden/output voltage RMS falls accordingly.
+Independently estimated cell baselines do not cancel in the four-edge rail
+contrast or between independently sampled active/reference branches, so a
+nominal zero weight already produces transfer and extra denominator loading.
+
+Commissioning itself is strongly boundary dominated. Across held-out
+artifacts, about `60.32%` of mapped means are projected by the public
+coordinate or sampled active bounds; about `46.96%` lie below public `x=0`
+before projection and about `26.2%` of native means fall below the sampled
+minimum. The final origin is only `0.01199` above the exact mapped lower bound
+on average and has median zero shift. These must be called **bounded per-cell
+means**, not untouched observed averages.
+
+The fixed-`r` mechanism remains different. Its continuous envelopes are much
+better, particularly for four devices, but four-delta mapping leaves only
+three median signed levels and roughly `14--16%` zero-capacity quads. The
+large standard-versus-continuous loss is therefore a level-capacity/rounding
+failure layered on reference mismatch and sum loading; it is not evidence
+that retaining `r` is intrinsically harmful.
+
+The next ideal control should enforce zero baseline contrast rather than
+retain independent origins: one commissioned common baseline per four-device
+rail quad, and at least one shared baseline per active/reference edge in the
+eight-device topology so `G_a=G_r` at logical zero. It should preserve the
+physical conductance sum in the denominator and report common-window failures
+explicitly. A separate fixed-`r` sensitivity should test whether a
+bidirectional centered codebook or a smaller frozen spacing can use its lower
+and upper headroom before any P&V or HWA launch.
+
+The ignored result bundles are:
+
+- `results/mnist-ibm-om-standard-level-reset-mean-scheme-screen-20260827-v2/`;
+- `results/mnist-ibm-om-standard-level-reset-mean-scheme-screen-20260827-v2-replay/`.
+
+The verified report is
+`post_run_analysis/post_run_analysis.md` under the main result root. Numerical
+source was frozen at commit `3f389fbb`; the versioned analyzer was added at
+commit `d6227bfd`.
 
 ## Claim boundary
 
