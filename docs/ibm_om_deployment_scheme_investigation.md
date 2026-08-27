@@ -1,8 +1,9 @@
 # IBM OM deployment-scheme investigation
 
 - Status: homogeneous ideal-mapping and shared-calibration identity-aware
-  deterministic bounded-codebook screens complete; every identity-aware arm
-  fails the 90% gate; no new HWA or stochastic P&V experiment has been launched
+  deterministic bounded-codebook screens complete; the scheme-refitted
+  RESET-anchored/reference-centered four-delta screen is implemented but not
+  launched; no new HWA or stochastic P&V experiment has been launched
 - Date: 2026-08-27
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
@@ -461,6 +462,34 @@ The sum-loading-induced operating-point shift is therefore large enough that
 the next ideal investigation must resolve baseline cancellation, headroom,
 and voltage scaling before any stochastic programming study.
 
+### Stage 0C: standard four-delta levels with scheme-specific origins — implemented
+
+The next ideal screen no longer projects the fitted reference onto a dense
+SET-only pulse trajectory and no longer applies the initial-RESET scale/gain
+to every representation. It implements the user's standardized rule:
+
+1. no-fixed-`r` arms use each identity's sampled RESET/lower state as the
+   active origin;
+2. fixed-`r` arms retain the exact intrinsic sampled `r` and center the active
+   grid on it, moving only `a` if the zero-offset active state is outside its
+   bounds;
+3. every adjacent standard target is exactly four nominal OM increments apart
+   in one declared conductance coordinate;
+4. logical sign remains encoded by rail placement, so the four-device arm
+   retains `[[a,r],[r,a]]` and does not count both sides of `r` as duplicate
+   sign levels; and
+5. each scheme refits its layer-scale pair and positive KL gain on the same
+   development assignment, then freezes them on the same three held-out
+   assignments.
+
+The fixed-reference conductance is never projected or optimized. The active
+and reference conductances remain separate in the eight-device solver, so
+transfer uses their difference and denominator loading uses their sum. The
+executable and frozen contract are documented in
+[`ibm_om_standard_level_scheme_screen.md`](ibm_om_standard_level_scheme_screen.md).
+No accuracy result exists yet, and the completed v2 result remains historical
+evidence for its different shared-calibration/dense-codebook question.
+
 ### Stage 1: codebook and P&V gate
 
 Screen at least 3-, 5-, and 7-level codebooks on development identities and
@@ -500,8 +529,9 @@ from the same explicitly named persistent deployed bundle.
 1. Stop treating additional raw-p90 HWA runs as the next scientific step.
 2. Preserve the completed homogeneous 2-by-2 ideal-mapping result and its exact
    teacher/config hashes.
-3. Implement the identity-aware ideal-only 2-by-2 mapper using frozen OM
-   `r`, bounds, and headroom on several untouched assignments.
+3. Execute the implemented standard four-delta identity-aware 2-by-2 mapper
+   using frozen OM `r`, RESET states, bounds, and headroom on the declared
+   development and held-out assignments.
 4. Add the matched load decomposition for lower versus fitted-`r` placement,
    four versus eight devices, and functional reassignment versus structural
    failure.

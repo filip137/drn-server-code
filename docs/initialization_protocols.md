@@ -249,6 +249,30 @@ sign diagnostics and state unambiguously that hidden bounds generated the
 targets. The formal protocol is
 [`ibm_om_cell_aware_exact_bounds.md`](ibm_om_cell_aware_exact_bounds.md).
 
+### IBM OM standard-level deployment screen
+
+The scheme-refitted ideal standard-level control uses two distinct physical
+origins while sharing one level-spacing definition. No-fixed-`r` arms anchor
+the active grid at each identity's sampled RESET/lower state. Fixed-`r` arms
+retain each identity's exact sampled `r` and center the active grid on it;
+only `a` may move to an in-bound integer level. In the repository coordinate
+`x=(a+1)/2`, adjacent targets are exactly
+`4 * (nominal_dw_min / 2)` apart. This is a conductance-coordinate interval,
+not four constant-size pulses.
+
+Logical sign remains a dual-rail placement choice. The four-device fixed-`r`
+arm therefore retains `[[a,r],[r,a]]` or its sign-swapped form, and the lower
+half of a centered cell's grid is recorded as update headroom rather than
+counted again as extra logical sign levels. Eight-device transfer uses the
+active/reference difference, while loading always uses their sum.
+
+Each scheme searches the same scale grid after its own standard-level mapping
+on the development assignment. Its scale pair and positive KL gain are then
+frozen on held-out assignments. This is a scheme-optimized initialization
+comparison, not the historical shared-RESET comparison. The strict contract
+is documented in
+[`ibm_om_standard_level_scheme_screen.md`](ibm_om_standard_level_scheme_screen.md).
+
 ### IBM OM raw-active-state deployment candidate
 
 The frozen raw-active candidate represents every DRN conductance with
