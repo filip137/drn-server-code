@@ -1,8 +1,8 @@
 # IBM OM deterministic bounded-codebook deployment screen
 
-- Status: corrected shared-calibration v2 predeclared and implemented; full
-  execution pending. The completed v1 exploratory run is superseded because
-  it fitted calibration separately in each arm.
+- Status: corrected shared-calibration v2 exploratory execution complete and
+  deterministically replayed. The completed v1 exploratory run is superseded
+  because it fitted calibration separately in each arm.
 - Screen ID: `mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v2`
 - Evidence class: hardware-derived fitted AIHWKit model
 - Source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
@@ -105,6 +105,49 @@ and total-conductance power proxies.
 The headline is the mean and full range of held-out bounded-codebook accuracy
 for each arm. Interpret four-versus-eight and with-versus-without-`r`
 differences only within this matched screen.
+
+## Exploratory v2 result
+
+All four arms used the same `[1.0, 1.0]` fractions and fixed gain
+`4.46683592150963`. The three-assignment held-out results are:
+
+| Scheme | Bounded-codebook mean (range) | Continuous-envelope mean | 90% gate |
+| --- | ---: | ---: | --- |
+| Four devices, no fitted `r` | 35.98% (27.36–43.72%) | 41.02% | fail |
+| Four devices, fixed `r` | 57.85% (53.06–61.30%) | 64.35% | fail |
+| Eight devices, no fitted `r` | 29.95% (23.44–35.17%) | 31.82% | fail |
+| Eight devices, fixed `r` | 36.51% (31.81–40.92%) | 40.73% | fail |
+
+At the deterministic codebook state, adding the fitted reference improves the
+four-device mean by `21.87` percentage points and the eight-device mean by
+`6.56` points. Moving from four to eight devices reduces the mean by `6.03`
+points without `r` and by `21.34` points with `r`. The continuous controls
+also remain far below the gate, so nearest-code projection is not the sole
+failure mechanism.
+
+The actual conductance-sum loading moves the network to very different voltage
+regimes. Mean held-out hidden/output voltage RMS is `2.959/1.426` for four
+devices without `r`, `0.313/0.054` for four devices with `r`, `1.947/0.668`
+for eight devices without `r`, and `0.172/0.006` for eight devices with `r`.
+This supports treating loading and the resulting operating point as part of
+the scheme intervention; it does not show that symmetry subtraction alone is
+the cause of the accuracy differences.
+
+The corrected calibration does not change top-1 predictions: every v1 and v2
+held-out bounded-codebook and continuous prediction hash is identical. That
+is expected because all v1-selected fractions were already `[1.0, 1.0]` and
+changing a positive output gain cannot change `argmax`. The correction does
+matter for score RMS and KL: v1 applied four scheme-specific bounded-codebook
+gains (`0.5012`, `0.7943`, `89.1251`, and `141.2538`), whereas v2 applies the
+one RESET gain to every result.
+
+The complete summary is the ignored exploratory artifact
+`results/mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v2/analysis/summary.json`
+with SHA-256
+`3fb84d925408942c44a3acf9e1a911f2c2633efd510c905c5f05fd1904ab869b`.
+It contains two development and six held-out topology populations, four
+development diagnostics, twelve held-out arm records, and eight exact
+population receipts. A second complete execution reproduced the summary hash.
 
 ## Claim boundary
 

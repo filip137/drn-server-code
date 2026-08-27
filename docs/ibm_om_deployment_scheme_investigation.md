@@ -1,8 +1,8 @@
 # IBM OM deployment-scheme investigation
 
-- Status: homogeneous ideal-mapping screen complete; the identity-aware
-  deterministic bounded-codebook control is predeclared and implemented;
-  no new HWA or stochastic P&V experiment has been launched
+- Status: homogeneous ideal-mapping and shared-calibration identity-aware
+  deterministic bounded-codebook screens complete; every identity-aware arm
+  fails the 90% gate; no new HWA or stochastic P&V experiment has been launched
 - Date: 2026-08-27
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
@@ -392,7 +392,7 @@ that all four constructions can retain approximately `97%` ideal mapped test
 accuracy and that the four-device fixed-`r` proposal is not intrinsically
 inferior to the eight-device realization.
 
-### Stage 0B: identity-aware ideal mapping — next
+### Stage 0B: identity-aware ideal mapping — exploratory control complete
 
 Still without training or P&V, bind all four cells to the same frozen logical
 teacher/checkpoint, DRN topology, data cohorts, solver, scale-selection rule,
@@ -444,6 +444,22 @@ topology reuse exactly the same identities. The earlier v1 exploratory run is
 superseded because it performed scheme-specific calibration, even though all
 four v1 schemes happened to select `[1.0, 1.0]` and positive gain could not
 change their top-1 accuracies.
+
+The v2 held-out bounded-codebook means are `35.98%` (four/no `r`), `57.85%`
+(four/fixed `r`), `29.95%` (eight/no `r`), and `36.51%` (eight/fixed `r`).
+All fail the predeclared 90% gate, including continuous-envelope means of
+`41.02%`, `64.35%`, `31.82%`, and `40.73%`. The fitted reference improves the
+four- and eight-device means by `21.87` and `6.56` percentage points,
+respectively, while the eight-device topology is worse than four devices by
+`6.03` points without `r` and `21.34` points with `r`.
+
+These are scheme effects under heterogeneous OM bounds and correct physical
+loading, not a direct benefit of subtracting `r`. Mean hidden/output voltage
+RMS spans `2.959/1.426` for four/no `r`, `0.313/0.054` for four/fixed `r`,
+`1.947/0.668` for eight/no `r`, and `0.172/0.006` for eight/fixed `r`.
+The sum-loading-induced operating-point shift is therefore large enough that
+the next ideal investigation must resolve baseline cancellation, headroom,
+and voltage scaling before any stochastic programming study.
 
 ### Stage 1: codebook and P&V gate
 
