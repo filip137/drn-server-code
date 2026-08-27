@@ -45,6 +45,11 @@ S = G+ + G-
 D = G+ - G-
 ```
 
+For the IBM OM differential-device notation, identify `G+ = a` and `G- = r`.
+The represented coupling is therefore `D = a-r`, while the conductance in the
+voltage denominator and both endpoint self-loading terms is `S = a+r`. The
+signed effective weight `D` must not replace `S` in those denominator terms.
+
 With `i_x` and `i_y` both defined as currents leaving their respective nodes
 into the edge, the two endpoint currents are
 

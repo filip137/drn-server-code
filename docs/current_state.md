@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-25
+Last updated: 2026-08-27
 
 ## Purpose
 
@@ -705,51 +705,64 @@ Exact measurements, limitations, and raw artifact locations are in the
   become preferable to adding a frozen-base LoRA branch?
 - Is fine-tuning only W2 or W2 plus bias enough to close most of the
   `1.908`-point gap between rank-4 LoRA and full-model fine-tuning?
-- Which quantized state and update rule can adapt the already deployed array
-  in situ: persistent nine-level code changes, mixed-precision or Tiki-Taka
-  accumulation, or a quantized adapter? What characterization, gradient, and
-  program-and-verify information does each option require?
+- Which persistently distinguishable quantized state and update rule can adapt
+  the already deployed array in situ: direct code changes, mixed-precision or
+  Tiki-Taka accumulation, or a quantized adapter? What characterization,
+  gradient, and program-and-verify information does each option require?
 
 ## Next steps
 
-1. Define and predeclare a deployed-array QAT recovery study. Start every arm
-   from the same preserved assignment-85001 apparent/persistent deployment,
-   keep a frozen no-update control, and define an oracle STE-QAT recovery arm
-   only as an upper bound. Before choosing the physical recovery arm, specify
-   whether discrete updates act directly on persistent nine-level base codes,
-   accumulate through a mixed-precision or Tiki-Taka state, or train a
-   quantized adapter; in every case state how gradients become available
-   SET/RESET pulses and which bounds or verify measurements the controller may
-   use. Do not regenerate a fresh deployment between recovery arms.
-2. Run the declared 128-pulse IBM ReRAM successor and compare it with the
+1. Complete the IBM OM deployment-scheme investigation before launching more
+   raw-p90 HWA or any on-chip recovery study. Treat fitted-reference use and
+   device count as separate axes: compare with/without fixed `r` inside both
+   the four-device single-edge and eight-device paired-edge topologies. The
+   homogeneous ideal screen is complete: all four families reached
+   `96.91-97.38%`, so the next gate is identity-aware ideal mapping with frozen
+   per-cell `r`, bounds, and headroom on untouched assignments. Retain the
+   current RESET-relative path, which uses its mapped effective weight for
+   both transfer and loading, only as an effective-weight upper control. Then
+   test functional reassignment, persistent code distinguishability, and P&V.
+   The matched design and implementation gates are in
+   [`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md).
+2. Only after one deployment scheme passes its transfer gate, define and
+   predeclare a deployed-array QAT recovery study. Start every arm from the
+   same preserved apparent/persistent deployment, keep a frozen no-update
+   control, and define an oracle STE-QAT recovery arm only as an upper bound.
+   Before choosing the physical recovery arm, specify whether discrete updates
+   act directly on persistent base codes, accumulate through a mixed-precision
+   or Tiki-Taka state, or train a quantized adapter; in every case state how
+   gradients become available SET/RESET pulses and which bounds or verify
+   measurements the controller may use. Do not regenerate a fresh deployment
+   between recovery arms.
+3. Run the declared 128-pulse IBM ReRAM successor and compare it with the
    immutable 512-pulse endpoint model. Select the deployment cap explicitly,
    then integrate that empirical endpoint kernel with its separate
    target-conditioned failure, corruption, saturation, and cost models.
    Preserve each sampled programmed endpoint as the common starting state for
    a predeclared HWA-only versus on-chip-recovery comparison; do not redraw
    endpoints between arms.
-3. Start a separate Tiki-Taka pulsed-device study using measured incremental
+4. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify
    HWA models as pulse-update models unless their source papers provide the
    required per-pulse trajectories. Measure write count, update noise, energy,
    and endurance alongside accuracy.
-4. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
+5. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
    seeds and add a direct ideal-map-to-device-to-BPTT arm. This separates
    whether HWA is necessary for recovery from whether it merely improves the
    first write. Then compare the generic 3% modifier with device-matched HWA,
    without tuning either choice on the final test set.
-5. Compare three targeted post-HWA interventions on the same deployment:
+6. Compare three targeted post-HWA interventions on the same deployment:
    rank-4 LoRA, W2-plus-bias fine-tuning, and full-model fine-tuning. This
    tests whether the full rewrite is actually needed.
-6. Train a perfect-diode DRN from initialization through the affine CMO
+7. Train a perfect-diode DRN from initialization through the affine CMO
    mapping and endpoint noise. Track voltage/noise margin and conductance
    loading as well as accuracy.
-7. Test the current passive LoRA branch on conductance-loss errors such as
+8. Test the current passive LoRA branch on conductance-loss errors such as
    drift or stuck-low devices, where an added conductance path can compensate
    the failure direction.
-8. Design a differential physical LoRA branch and compare it with the
+9. Design a differential physical LoRA branch and compare it with the
    positive-only branch on identical signed perturbations.
-9. Compare active denominator calibration, full rank-one KCL cancellation,
+10. Compare active denominator calibration, full rank-one KCL cancellation,
    and a validation-trained selector mask under matched mismatch and read
    noise. Ordinary numerator-only crossbar subtraction is not an exact DRN
    control.
@@ -760,8 +773,9 @@ documented in
 
 ## Related documents
 
+- [IBM OM deployment-scheme investigation](ibm_om_deployment_scheme_investigation.md)
 - [Differential pairs using signed amplifier ports](differential_pair_amplifier_implementation.md)
-- [Differential memristor scheme](differential_scheme.md)
+- [Four-device and eight-device reference schemes](differential_scheme.md)
 - [Teacher-initialized MNIST DRN distillation](mnist_relu_drn_kd.md)
 - [Controlled RESET bias/loss/indexing factorial](mnist_relu_drn_reset_factorial.md)
 - [Literal-RESET differential MNIST screen](mnist_relu_drn_reset_differential_10ep.md)

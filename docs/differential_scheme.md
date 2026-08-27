@@ -1,4 +1,59 @@
-# Differential memristor scheme
+# Four-device and eight-device reference schemes
+
+## Scheme nomenclature and denominator rule
+
+Keep topology and reference policy as separate axes:
+
+| Topology | Devices per original signed weight | Per-edge transfer `D` | Per-edge denominator loading `S` |
+| --- | ---: | --- | --- |
+| **Four-device / single-device-per-edge** | 4 | `G` | `G` |
+| **Eight-device / differential-pair-per-edge** | 8 | `G_a-G_r` | `G_a+G_r` |
+
+Either topology can be screened with or without the fitted symmetry reference
+`r`. In the four-device fixed-reference construction, a positive signed
+weight uses
+
+```text
+[[G++, G+-], [G-+, G--]] = [[a, r], [r, a]],
+```
+
+and a negative weight swaps `a` and `r`. Although every rail edge still has
+only one device, the logical contrast is
+
+```text
+(G++ - G+- - G-+ + G--) / 2 = +/- (a-r),
+```
+
+and each paired row/column contributes `a+r` to its voltage denominator. Thus
+using `r` does not by itself imply eight devices.
+
+In the eight-device fixed-reference construction, every rail edge has an
+active/reference pair. Its transfer is `a-r` and its denominator contribution
+is `a+r` directly. The subtraction belongs only to signed transfer. The
+denominator is always formed from the **sum of physical conductances**, because
+every branch draws current and loads its endpoint nodes.
+
+AIHWKit's OM variables `a` and `r` are normalized fitted device states and can
+be negative, so they cannot themselves be asserted to be nonnegative physical
+conductances. If an absolute calibration embeds them as
+
+```text
+G_a = G_0 + s a,
+G_r = G_0 + s r,
+```
+
+then the physical differential-device circuit has
+
+```text
+G_a - G_r = s (a - r)             signed coupling
+G_a + G_r = 2 G_0 + s (a + r)     denominator loading.
+```
+
+When `a` and `r` below already denote calibrated nonnegative branch
+conductances, take `G_a = a` and `G_r = r`, giving the shorter `a-r` and `a+r`
+notation directly.
+
+## Differential-device interaction
 
 The simulated differential scheme replaces each nonnegative DRN edge
 conductance `G` with two nonnegative devices, `G+` and `G-`. In unit-gain
@@ -89,9 +144,10 @@ two-port; an ordinary pair of positive voltage buffers is insufficient. The
 resulting raw two-port is generally nonreciprocal even though its positive
 layer-weighted KCL field is integrable.
 
-Both tested schemes retain dual-rail neurons. The comparison is one versus two
+Both topologies retain dual-rail neurons. The comparison is one versus two
 devices per physical dual-rail edge, corresponding to four versus eight
-devices per original teacher synapse.
+devices per original teacher synapse. Fixed-reference versus no-fixed-reference
+placement is an independent comparison within each topology.
 
 The simulated signed interaction is in
 [`SignedDenseResistive`](../model/resistive/interaction.py). The active port

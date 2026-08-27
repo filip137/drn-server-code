@@ -1,7 +1,7 @@
 # IBM OM raw-active-state deployment protocol
 
-- Status: authoritative frozen deployment protocol; runtime implementation and
-  experimental evidence are deferred
+- Status: frozen candidate baseline under deployment-scheme review; it is not
+  the approved primary deployment path
 - Scope: shared-scale four-cell differential target construction and
   deployment program-and-verify for each DRN conductance
 - Device model: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
@@ -10,12 +10,25 @@
 
 ## Purpose and scope
 
+> **Investigation notice.** The global raw coordinate, midpoint baseline, and
+> p90 support policy are now explicit candidate interventions in the
+> [deployment-scheme investigation](ibm_om_deployment_scheme_investigation.md).
+> Do not interpret this document as evidence that raw-active deployment is
+> preferable to a correctly loaded differential-device realization. This
+> document defines the four-device/no-fixed-`r` candidate: every rail edge
+> uses one programmed active conductance, which also contributes to the
+> conductance-sum voltage denominator. It does not define either the proposed
+> four-device fixed-reference pattern `[[a,r],[r,a]]` or the eight-device
+> per-edge equations `D=a-r`, `S=a+r`. The protocol remains useful as the exact
+> definition of the raw candidate and its scalar pulse plant.
+
 This protocol defines how one independently evolving IBM optimized-material
 (OM) cell represents one non-negative DRN conductance, how four such cells
 represent one signed DRN weight with a global differential scale and a
 quad-specific common-mode baseline, and how each cell is programmed to its
-resulting target. It replaces the nominal `q = (w + 1) / 2` coordinate for
-future IBM OM work. It does not reinterpret the completed [`q`-based
+resulting target. It was proposed as a replacement for the nominal
+`q = (w + 1) / 2` coordinate, but that choice is now under matched review. It
+does not reinterpret the completed [`q`-based
 exact-bounds study](ibm_om_cell_aware_exact_bounds.md), and it does not define
 DRN initialization, quantization-aware training (QAT), or a learning-rate
 schedule.

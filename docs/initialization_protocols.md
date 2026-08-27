@@ -108,6 +108,15 @@ The normalized device fractions are then:
 | Four devices, `single` | `q_e = q0 + f max(z_e, 0)` |
 | Eight devices, `differential` | `q_e+ = f max(z_e, 0)` and `q_e- = f max(-z_e, 0)` |
 
+That table describes the established no-fixed-symmetry-reference mappings.
+For the IBM OM deployment investigation, reference policy is an additional
+axis. A four-device fixed-`r` map uses `[[a,r],[r,a]]` for a positive logical
+weight and swaps the entries for a negative weight; its logical contrast is
+`a-r`, but the paired voltage denominator receives `a+r`. An eight-device
+fixed-`r` map uses `G_a=r+delta L` and `G_r=r` on each rail edge; its transfer
+is `G_a-G_r`, while its denominator loading is `G_a+G_r`. Never substitute the
+signed difference for either physical conductance sum.
+
 For the four-device mapping, `q0 = 0` for lower placement and
 `q0 = (1 - f) / 2` for centered placement. The differential mapper requires
 lower placement. Thus a positive weight raises the `++` and `--` cells in the
@@ -240,21 +249,31 @@ sign diagnostics and state unambiguously that hidden bounds generated the
 targets. The formal protocol is
 [`ibm_om_cell_aware_exact_bounds.md`](ibm_om_cell_aware_exact_bounds.md).
 
-### IBM OM raw-active-state deployment protocol
+### IBM OM raw-active-state deployment candidate
 
-The successor IBM OM deployment protocol represents every DRN conductance with
+The frozen raw-active candidate represents every DRN conductance with
 one independently evolving raw active state and converts all cells with one
-frozen array-wide affine coordinate. For a four-cell signed weight, it freezes
-one global differential budget at the development assignment's 90% quad
-support threshold and permits one exact shared baseline to vary by eligible
-quad. Unsupported quads are reassigned or fail; they are not locally
-rescaled. This target construction does not, by itself, define network
-initialization. The logical-weight mapping, QAT code spacing, and
-learning-rate derivation must be separately versioned and must consume the
-same frozen coordinate and global differential budget; they must not introduce
-cell-wise normalization or recompute the scale on a replacement array. The
-protocol and its implementation gate are documented in
+frozen array-wide affine coordinate. It is the candidate single-device scheme:
+`w=a`, with the physical active conductance `a` included in the
+conductance-sum voltage denominator. More precisely, it is the
+four-device/no-fixed-`r` cell of the deployment screen. It is distinct both
+from the four-device fixed-reference pattern `[[a,r],[r,a]]`, whose logical
+contrast is `a-r` but whose paired denominator loading is `a+r`, and from the
+eight-device per-edge differential topology. For a four-cell signed weight,
+the raw candidate freezes one global differential budget at the development
+assignment's 90% quad support threshold and permits one exact shared baseline
+to vary by eligible quad.
+Unsupported quads are reassigned or fail; they are not locally rescaled. This
+target construction does not, by itself, define network initialization. The
+logical-weight mapping, QAT code spacing, and learning-rate derivation must be
+separately versioned and must consume the same frozen coordinate and global
+differential budget; they must not introduce cell-wise normalization or
+recompute the scale on a replacement array. The protocol and its
+implementation gate are documented in
 [`ibm_om_raw_active_state_program_verify.md`](ibm_om_raw_active_state_program_verify.md).
+Its coordinate, baseline, and support choices are under matched review in
+[`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md);
+do not treat it as the selected primary deployment path.
 The global differential and variable-baseline construction changes only the
 targets supplied to P&V. Boundary conditioning, apparent verification, SET
 below target, RESET after overshoot, tolerance, and pulse budget remain the

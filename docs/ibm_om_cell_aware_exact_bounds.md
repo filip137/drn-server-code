@@ -2,10 +2,13 @@
 
 > **Historical protocol.** This document records the completed `q`-based
 > exact-bounds oracle study and remains immutable scientific evidence. Future
-> IBM OM deployment P&V uses the separate
-> [raw-active-state successor protocol](ibm_om_raw_active_state_program_verify.md),
+> IBM OM deployment P&V is being evaluated under the separate
+> [raw-active-state candidate protocol](ibm_om_raw_active_state_program_verify.md),
 > which does not retroactively change the targets, endpoints, or interpretation
-> below.
+> below. The completed mapper used its normalized effective coordinate as one
+> DRN conductance, so it did not retain separate active/reference loading
+> `a+r`; it is neither the proposed four-device fixed-reference construction
+> nor a correctly loaded eight-device paired-edge result.
 
 ## Question
 
