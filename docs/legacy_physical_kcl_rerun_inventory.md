@@ -77,8 +77,8 @@ corrected-model selection gate is still pending.
 | 14 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/05_wmax_5em4_legacy_adam.json` | pending |
 | 15 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv2/08_wmax_1em3_legacy_adam.json` | pending |
 | 16 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/02_wmax_1em4_legacy_adam.json` | complete remotely on `umg@v100` as `1399202`, exit `0:0`, elapsed `03:14:46`, best/final validation `93.56/93.56%`; semantic and independent remote bundle validation passed, official test disabled; authoritative local collection pending the complete bounded tail |
-| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | running on `umg@v100` as `1399203` on `r6i4n2` since `2026-08-27 03:01:16 CEST`; both launch checks and every source/science/device guard passed, epoch 1 validation `82.54%` |
-| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | queued on `umg@v100` as `1399204`, `afterok:1399203` |
+| 17 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/05_wmax_5em4_legacy_adam.json` | complete remotely on `umg@v100` as `1399203`, exit `0:0`, elapsed `03:19:28`, best/final validation `97.68/97.66%`; semantic and independent remote bundle validation passed, official test disabled; authoritative local collection pending `1399204` |
+| 18 | `perfectdiode-conv123-fixed-uniform-init-wmax-adam-10-30-30ep-seed0-20260814-v1/conv3/08_wmax_1em3_legacy_adam.json` | running on `umg@v100` as `1399204` on `r8i4n2` since `2026-08-27 06:21:20 CEST`; both launch checks and every source/science/device guard passed, epoch 1 validation `82.54%` |
 
 If retained, the two supporting bounded-Kaiming authorities are
 `perfectdiode-conv12-bounded-kaiming-adam-lr-transfer-3ep-seed0-20260813-v1/conv1_legacy_adam.json`
