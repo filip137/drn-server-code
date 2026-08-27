@@ -1,7 +1,9 @@
 # IBM OM deterministic bounded-codebook deployment screen
 
-- Status: predeclared and implemented; full execution pending
-- Screen ID: `mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v1`
+- Status: corrected shared-calibration v2 predeclared and implemented; full
+  execution pending. The completed v1 exploratory run is superseded because
+  it fitted calibration separately in each arm.
+- Screen ID: `mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v2`
 - Evidence class: hardware-derived fitted AIHWKit model
 - Source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 
@@ -69,11 +71,21 @@ is active.
 ## Frozen comparison
 
 All arms use the same bias-free ReLU teacher, normalized logical matrices,
-MNIST cohorts, perfect-diode DRN, solver, and fraction grid. Assignment
-`86001` selects a layer-fraction pair by bounded-codebook calibration accuracy,
-then calibrated KL and lexicographic scales. The selected fractions and gains
-are frozen before assignments `87001`, `87002`, and `87003` are sampled and
-evaluated.
+MNIST cohorts, perfect-diode DRN, solver, and one calibration derived before
+the scheme intervention. The immutable initial-RESET receipt
+`data/ibm_om_cell_aware_full_span_v1.receipt.json` (SHA-256
+`d58b0d709312061dc2425d143744f45fdf9de9d5e583a619e7a91325c53059b8`)
+fixes layer fractions `[1.0, 1.0]` and positive output gain
+`4.46683592150963`. Its teacher hash must match the screen teacher and its
+`optimizer_updates` field must remain zero.
+
+Those fractions and that gain are applied unchanged to all four schemes and
+to both the bounded-codebook and continuous-envelope states. No variant is
+allowed to select a scale or fit a gain. Assignment `86001` now supplies only
+matched development diagnostics; assignments `87001`, `87002`, and `87003`
+are held-out evaluations. The shared positive gain cannot change top-1
+predictions, but freezing it prevents scheme-specific KL rescaling from being
+mistaken for deployment performance.
 
 For each selected map, an exact continuous target inside the same codebook
 baseline-to-maximum envelope is evaluated as a diagnostic upper control. It
@@ -83,11 +95,12 @@ isolates nearest-level projection loss.
 ## Completion and analysis
 
 Completion requires all four arms on the development assignment and all three
-held-out assignments, exact population receipts, complete target hashes, and
-deterministic replay. Report accuracy, teacher agreement, KL, continuous-to-
-codebook prediction flips, reference projections, pulse indices, effective
-level counts, target error, signed contrast, sign flips, denominator loading,
-voltage statistics, and total-conductance power proxies.
+held-out assignments, validation of the exact initial-RESET receipt, exact
+population receipts, complete target hashes, and deterministic replay. Report
+accuracy, teacher agreement, fixed-gain KL, continuous-to-codebook prediction
+flips, reference projections, pulse indices, effective level counts, target
+error, signed contrast, sign flips, denominator loading, voltage statistics,
+and total-conductance power proxies.
 
 The headline is the mean and full range of held-out bounded-codebook accuracy
 for each arm. Interpret four-versus-eight and with-versus-without-`r`

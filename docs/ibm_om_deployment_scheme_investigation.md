@@ -433,11 +433,17 @@ endpoint.
 
 The nominal OM `dw_min` is not treated as a universal fixed level count. A
 continuous target inside the same per-cell codebook baseline-to-maximum
-envelope is retained as a diagnostic upper control. Assignment `86001`
-selects scales; topology-specific assignments `87001`, `87002`, and `87003`
-are evaluated without retuning. Four- and eight-device assignments have
-different hashes because the physical cell counts and binding catalogs differ;
-with/without-`r` arms within one topology reuse exactly the same identities.
+envelope is retained as a diagnostic upper control. The v2 contract freezes
+the initial-RESET receipt's `[1.0, 1.0]` layer fractions and
+`4.46683592150963` positive output gain for every scheme and both endpoint
+controls. Assignment `86001` supplies diagnostics only; topology-specific
+assignments `87001`, `87002`, and `87003` are evaluated without retuning.
+Four- and eight-device assignments have different hashes because the physical
+cell counts and binding catalogs differ; with/without-`r` arms within one
+topology reuse exactly the same identities. The earlier v1 exploratory run is
+superseded because it performed scheme-specific calibration, even though all
+four v1 schemes happened to select `[1.0, 1.0]` and positive gain could not
+change their top-1 accuracies.
 
 ### Stage 1: codebook and P&V gate
 

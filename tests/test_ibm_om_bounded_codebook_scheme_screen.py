@@ -10,6 +10,7 @@ from experiments.mnist_relu_drn.ibm_om_bounded_codebook_scheme_screen import (
     build_baseline_state,
     build_bounded_scheme_targets,
     build_deterministic_set_codebook,
+    load_initial_reset_calibration_receipt,
     load_screen_contract,
     project_to_nearest_code,
 )
@@ -25,6 +26,8 @@ _SCREEN = (
     / "ibm_om_bounded_codebook_scheme_screen"
     / "screen.json"
 )
+_INITIAL_RESET_RECEIPT = _ROOT / "data" / "ibm_om_cell_aware_full_span_v1.receipt.json"
+_TEACHER = _ROOT / "data" / "mnist_relu_teacher_fixed_init_20260816.pt"
 
 
 def _population(*, devices: int, reference: float = 0.0) -> IbmReramArrayPopulation:
@@ -69,8 +72,23 @@ def test_tracked_contract_pins_no_noise_device_specific_codebook() -> None:
     assert contract.development_assignment_seed == 86001
     assert contract.heldout_assignment_seeds == (87001, 87002, 87003)
     assert contract.corruption_policy == "counterfactual_repaired"
+    assert contract.shared_scale_fractions == (1.0, 1.0)
+    assert contract.shared_fixed_logit_gain == pytest.approx(4.46683592150963)
     assert contract.raw["deterministic_codebook"]["cycle_to_cycle_random_term"] == 0.0
     assert contract.raw["deterministic_codebook"]["apparent_write_noise"] == 0.0
+
+
+def test_shared_calibration_is_validated_against_initial_reset_receipt() -> None:
+    contract = load_screen_contract(_SCREEN)
+    report = load_initial_reset_calibration_receipt(
+        _INITIAL_RESET_RECEIPT,
+        contract=contract,
+        teacher_weights_path=_TEACHER,
+    )
+    assert report["target_scale_fractions"] == [1.0, 1.0]
+    assert report["fixed_logit_gain"] == pytest.approx(4.46683592150963)
+    assert report["optimizer_updates"] == 0
+    assert report["per_scheme_refit_performed"] is False
 
 
 def test_contract_rejects_calling_nominal_step_a_universal_level_count(
@@ -142,6 +160,10 @@ def test_four_device_fixed_r_retains_a_r_pattern_and_physical_loading() -> None:
         torch.testing.assert_close(target, expected)
     layer = report["layers"][0]
     assert layer["logical_sign_flip_count"] == 0
+    assert layer["continuous_logical_sign_flip_count"] == 0
+    assert layer["codebook_incremental_sign_flip_count"] == 0
+    assert layer["continuous_incremental_sign_flip_count"] == 0
+    assert layer["baseline_logical_contrast"]["rms"] == pytest.approx(0.0)
     assert layer["mean_edge_denominator_loading"] == pytest.approx(0.625)
 
 
@@ -172,5 +194,9 @@ def test_eight_device_fixed_r_uses_difference_for_transfer_and_sum_for_loading()
             torch.tensor(((1.25, 1.0), (1.0, 1.25))),
         )
     layer = report["layers"][0]
+    assert layer["continuous_logical_sign_flip_count"] == 0
+    assert layer["codebook_incremental_sign_flip_count"] == 0
+    assert layer["continuous_incremental_sign_flip_count"] == 0
+    assert layer["baseline_logical_contrast"]["rms"] == pytest.approx(0.0)
     assert layer["difference_rms"] == pytest.approx(0.1767766953)
     assert layer["mean_edge_denominator_loading"] == pytest.approx(1.125)

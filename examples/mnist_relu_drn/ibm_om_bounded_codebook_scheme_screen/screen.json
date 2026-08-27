@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "screen_id": "mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v1",
+  "schema_version": 2,
+  "screen_id": "mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v2",
   "evidence_class": "model_based_aihwkit_preset",
   "preset": "reram_array_om",
   "required_aihwkit_version": "1.1.0",
@@ -22,11 +22,15 @@
     "with_fixed_r": "nearest_deterministic_code_to_bounded_sampled_reference",
     "out_of_bounds_reference": "project_to_nearest_reachable_code_and_report"
   },
-  "scale_fractions": [0.125, 0.25, 0.5, 1.0],
-  "selection": {
-    "domain": "development_assignment_training_calibration_subset",
-    "primary": "bounded_codebook_student_accuracy",
-    "tie_break": "bounded_codebook_calibrated_kl_then_lexicographic_scales"
+  "shared_initial_reset_calibration": {
+    "source": "immutable_initial_reset_receipt",
+    "receipt_schema": "ebl.mnist_relu_drn.ibm_om_reset_relative_initialization",
+    "receipt_schema_version": 1,
+    "receipt_sha256": "d58b0d709312061dc2425d143744f45fdf9de9d5e583a619e7a91325c53059b8",
+    "teacher_sha256": "9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52",
+    "target_scale_fractions": [1.0, 1.0],
+    "fixed_logit_gain": 4.46683592150963,
+    "application": "all_schemes_and_endpoint_controls"
   },
   "continuous_envelope_control": true,
   "sample_limit": null
