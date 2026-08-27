@@ -1,9 +1,9 @@
 # IBM OM deployment-scheme investigation
 
-- Status: homogeneous ideal-mapping and shared-calibration identity-aware
-  deterministic bounded-codebook screens complete; the scheme-refitted
-  RESET-anchored/reference-centered four-delta screen is implemented but not
-  launched; no new HWA or stochastic P&V experiment has been launched
+- Status: homogeneous ideal-mapping, shared-calibration bounded-codebook, and
+  exact-lower-bound four-delta diagnostics complete; the corrected per-cell
+  RESET-mean four-delta screen is implemented and smoke-validated; no new HWA
+  or stochastic deployment P&V experiment has been launched
 - Date: 2026-08-27
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
@@ -462,7 +462,7 @@ The sum-loading-induced operating-point shift is therefore large enough that
 the next ideal investigation must resolve baseline cancellation, headroom,
 and voltage scaling before any stochastic programming study.
 
-### Stage 0C: standard four-delta levels with scheme-specific origins — implemented
+### Stage 0C: exact-lower-bound four-delta diagnostic — complete
 
 The next ideal screen no longer projects the fitted reference onto a dense
 SET-only pulse trajectory and no longer applies the initial-RESET scale/gain
@@ -487,8 +487,33 @@ and reference conductances remain separate in the eight-device solver, so
 transfer uses their difference and denominator loading uses their sum. The
 executable and frozen contract are documented in
 [`ibm_om_standard_level_scheme_screen.md`](ibm_om_standard_level_scheme_screen.md).
-No accuracy result exists yet, and the completed v2 result remains historical
-evidence for its different shared-calibration/dense-codebook question.
+
+The v1 lower-bound-origin result is retained as a diagnostic, but it does not
+implement the newly specified no-`r` commissioning method. Its held-out
+standard/continuous means were `31.48/32.60%` (four/no `r`),
+`23.03/71.11%` (four/fixed `r`), `25.18/27.16%` (eight/no `r`), and
+`14.16/42.69%` (eight/fixed `r`). The large fixed-`r` continuous-to-standard
+collapse exposed insufficient four-delta level capacity; it is not evidence
+that the fitted reference itself is harmful.
+
+### Stage 0D: per-cell raw-`a` RESET-mean origin — implementation complete
+
+The corrected no-`r` arm uses the same eight sequential one-RESET-pulse/read
+sample cost as the well-performing historical RESET-relative study, but it
+implements the user's distinct estimator: each physical cell retains its own
+arithmetic mean in apparent raw `a`. There is no quad maximum, 3-SE guard,
+or cross-cell broadcast. The mean is mapped to the nonnegative conductance
+coordinate, bounded to that cell's usable active interval, frozen once per
+topology/assignment, and followed by levels exactly four nominal increments
+apart. Commissioning uses the preset stochastic pulse/read terms; ideal level
+deployment remains noiseless. The fixed-`r` arms are unchanged and provide a
+bit-identical control against Stage 0C.
+
+This is a scheme-optimized comparison, not a characterization-cost-matched
+causal ablation: the fixed-`r` arm consumes exact hidden `r`, whereas no-`r`
+uses an eight-read RESET estimate. The frozen v2 contract, assignments,
+calibration grid, bound policy, and claim boundary are documented in
+[`ibm_om_standard_level_scheme_screen.md`](ibm_om_standard_level_scheme_screen.md).
 
 ### Stage 1: codebook and P&V gate
 
@@ -529,9 +554,9 @@ from the same explicitly named persistent deployed bundle.
 1. Stop treating additional raw-p90 HWA runs as the next scientific step.
 2. Preserve the completed homogeneous 2-by-2 ideal-mapping result and its exact
    teacher/config hashes.
-3. Execute the implemented standard four-delta identity-aware 2-by-2 mapper
-   using frozen OM `r`, RESET states, bounds, and headroom on the declared
-   development and held-out assignments.
+3. Execute the corrected per-cell RESET-mean standard four-delta 2-by-2 mapper
+   using frozen OM `r`, commissioned raw-`a` RESET means, bounds, and headroom
+   on the declared development and held-out assignments.
 4. Add the matched load decomposition for lower versus fitted-`r` placement,
    four versus eight devices, and functional reassignment versus structural
    failure.

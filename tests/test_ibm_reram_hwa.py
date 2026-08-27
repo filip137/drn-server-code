@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from hashlib import sha256
 from pathlib import Path
@@ -16,15 +17,19 @@ from training.ibm_reram_hwa import (
     IbmReramArrayPopulation,
     IbmReramHwaConfig,
     IbmReramHwaParameterModifier,
+    IbmReramRawResetCommissioning,
+    _ArrayPlant,
+    _RawResetCommissioningPlant,
     _map_cell_aware_exact_bounds_quad,
     build_ibm_reram_cell_aware_exact_bounds_codebook,
+    commission_ibm_reram_raw_reset_means,
     load_om_array_population,
     map_ibm_reram_array_targets,
     sample_om_array_population,
     save_om_array_population,
     validate_ibm_reram_target_mapping_preflight,
 )
-from training.ibm_reram_program_verify import PopulationStepEstimator
+from training.ibm_reram_program_verify import PopulationStepEstimator, derive_seed
 
 
 def _binding(shape: tuple[int, int] = (2, 2)) -> ParameterBinding:
@@ -104,6 +109,170 @@ def _population(
         fingerprint=f"fixture-{corruption_policy}",
         aihwkit_version="1.1.0",
     )
+
+
+def test_raw_reset_commissioning_replays_exactly() -> None:
+    population = replace(
+        _population(
+            _binding(),
+            corruption_policy="counterfactual_repaired",
+        ),
+        dw_min_std=0.35,
+        write_noise_std=0.25,
+        reference=torch.tensor([0.4, -0.2, 0.1, -0.3]),
+        fingerprint="raw-reset-replay",
+    )
+
+    first = commission_ibm_reram_raw_reset_means(
+        population,
+        read_samples=8,
+    )
+    replay = commission_ibm_reram_raw_reset_means(
+        population,
+        read_samples=8,
+    )
+
+    assert isinstance(first, IbmReramRawResetCommissioning)
+    assert first.commissioning_seed == derive_seed(
+        population.assignment_seed,
+        "per_cell_raw_a_reset_commissioning_v2",
+        population.fingerprint,
+        8,
+    )
+    assert first.commissioning_seed == replay.commissioning_seed
+    assert torch.equal(first.reset_mean_raw_a, replay.reset_mean_raw_a)
+    assert torch.equal(
+        first.reset_standard_error_raw_a,
+        replay.reset_standard_error_raw_a,
+    )
+    assert first.report == replay.report
+    assert first.report["read_samples"] == 8
+    assert first.report["reset_pulses_per_device"] == 8
+    assert first.report["total_reset_pulses"] == population.size * 8
+    assert first.report["reference_consumed"] is False
+    assert first.report["pooling"] == "none_per_cell"
+    assert first.report["guard_standard_errors"] is None
+    assert first.report["projection"] == "none"
+
+
+def test_raw_reset_commissioning_is_reference_invariant() -> None:
+    base = replace(
+        _population(
+            _binding(),
+            corruption_policy="counterfactual_repaired",
+        ),
+        dw_min_std=0.25,
+        write_noise_std=0.15,
+        fingerprint="raw-reset-reference-invariance",
+    )
+    first = replace(
+        base,
+        reference=torch.tensor([-0.7, -0.2, 0.3, 0.8]),
+    )
+    second = replace(
+        base,
+        reference=torch.tensor([0.9, 0.4, -0.1, -0.6]),
+    )
+
+    first_result = commission_ibm_reram_raw_reset_means(
+        first,
+        read_samples=8,
+    )
+    second_result = commission_ibm_reram_raw_reset_means(
+        second,
+        read_samples=8,
+    )
+
+    assert first_result.commissioning_seed == second_result.commissioning_seed
+    assert torch.equal(
+        first_result.reset_mean_raw_a,
+        second_result.reset_mean_raw_a,
+    )
+    assert torch.equal(
+        first_result.reset_standard_error_raw_a,
+        second_result.reset_standard_error_raw_a,
+    )
+    assert first_result.report == second_result.report
+
+
+def test_raw_reset_commissioning_noise_zero_collapses_to_min_bound() -> None:
+    population = replace(
+        _population(
+            _binding(),
+            corruption_policy="counterfactual_repaired",
+        ),
+        min_bound=torch.tensor([-0.95, -0.75, -0.55, -0.35]),
+        max_bound=torch.tensor([0.80, 0.85, 0.90, 0.95]),
+        dwmin_down=torch.tensor([0.10, 0.20, 0.30, 0.40]),
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        reference=torch.tensor([0.8, -0.6, 0.4, -0.2]),
+        fingerprint="raw-reset-noise-zero",
+    )
+    result = commission_ibm_reram_raw_reset_means(
+        population,
+        read_samples=8,
+    )
+
+    torch.testing.assert_close(
+        result.reset_mean_raw_a,
+        population.min_bound,
+        rtol=0.0,
+        atol=torch.finfo(torch.float32).eps,
+    )
+    torch.testing.assert_close(
+        result.reset_standard_error_raw_a,
+        torch.zeros(population.size),
+        rtol=0.0,
+        atol=0.0,
+    )
+
+
+def test_raw_reset_commissioning_pulse_equation_matches_array_plant_at_zero_r(
+) -> None:
+    population = replace(
+        _population(
+            _binding(),
+            corruption_policy="counterfactual_repaired",
+        ),
+        dw_min_std=0.35,
+        write_noise_std=0.25,
+        reference=torch.zeros(4),
+        fingerprint="raw-reset-pulse-parity",
+    )
+    array_generator = torch.Generator(device="cpu")
+    raw_generator = torch.Generator(device="cpu")
+    array_generator.manual_seed(123456)
+    raw_generator.manual_seed(123456)
+    array_plant = _ArrayPlant(
+        population,
+        generator=array_generator,
+        device=torch.device("cpu"),
+    )
+    raw_plant = _RawResetCommissioningPlant(
+        population,
+        generator=raw_generator,
+    )
+    reset = -torch.ones(population.size, dtype=torch.int8)
+    for _sample_index in range(8):
+        raw_read = raw_plant.reset_and_read()
+        array_plant.pulse(reset)
+        assert torch.equal(raw_plant.persistent_a, array_plant.persistent)
+        assert torch.equal(raw_read, array_plant.apparent)
+
+
+@pytest.mark.parametrize("read_samples", [True, 0, 1, 1.5])
+def test_raw_reset_commissioning_requires_two_integer_samples(
+    read_samples: object,
+) -> None:
+    with pytest.raises(ValueError, match="at least two samples"):
+        commission_ibm_reram_raw_reset_means(
+            _population(
+                _binding(),
+                corruption_policy="counterfactual_repaired",
+            ),
+            read_samples=read_samples,  # type: ignore[arg-type]
+        )
 
 
 def _quantiles(value: float) -> dict[str, object]:

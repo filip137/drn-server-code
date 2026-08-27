@@ -7,13 +7,17 @@ adjacent targets are four nominal device increments apart.  No stochastic
 write term, pulse controller, HWA modifier, optimizer update, or endpoint
 sampler is used.
 
-The no-reference arms anchor their grid at the sampled RESET/lower state.  The
-fixed-reference arms retain each sampled reference ``r`` exactly and center
-the active grid on it; if ``a=r`` is outside the active bounds, only ``a`` is
-moved to the nearest in-bounds integer grid level.  Four-device signed weights
-still use diagonal/off-diagonal placement, while eight-device edges retain
-separate active and reference tensors.  Consequently transfer and loading are
-always evaluated from the physical difference and sum, respectively.
+Version 1 anchors each no-reference cell at its exact sampled RESET/lower
+state.  Version 2 instead commissions each no-reference cell independently:
+it averages eight sequential apparent raw-``a`` observations, each following
+one RESET pulse, bounds that estimate to the cell's usable conductance range,
+and freezes it as the cell's grid origin.  The fixed-reference arms retain
+each sampled reference ``r`` exactly and center the active grid on it; if
+``a=r`` is outside the active bounds, only ``a`` is moved to the nearest
+in-bounds integer grid level.  Four-device signed weights still use
+diagonal/off-diagonal placement, while eight-device edges retain separate
+active and reference tensors.  Consequently transfer and loading are always
+evaluated from the physical difference and sum, respectively.
 """
 
 from __future__ import annotations
@@ -24,9 +28,12 @@ import gc
 from itertools import product
 import json
 import math
+import os
 from pathlib import Path
+import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -59,17 +66,26 @@ from experiments.mnist_relu_drn.ibm_om_ideal_mapping_scheme_screen import (
 from experiments.mnist_relu_drn.runtime import _load_teacher
 from experiments.mnist_shared import build_mnist_loaders
 from experiments.schema import RunMode
-from training.ibm_reram_hwa import IbmReramArrayPopulation
+from training.ibm_reram_hwa import (
+    IbmReramArrayPopulation,
+    IbmReramRawResetCommissioning,
+    commission_ibm_reram_raw_reset_means,
+)
 
 
 SCHEMA = "ebl.mnist_relu_drn.ibm_om_standard_level_scheme_screen"
 SCHEMA_VERSION = 1
-CONTRACT_SCHEMA_VERSION = 1
+CONTRACT_SCHEMA_VERSIONS = (1, 2)
 _LAYOUTS = ("halves", "paired")
+_RESET_COMMISSIONING_SCHEMA = (
+    "ebl.mnist_relu_drn.ibm_om_per_cell_raw_reset_commissioning"
+)
+_RESET_COMMISSIONING_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
 class StandardLevelScreenContract:
+    contract_schema_version: int
     screen_id: str
     evidence_class: str
     preset: str
@@ -81,6 +97,7 @@ class StandardLevelScreenContract:
     heldout_assignment_seeds: tuple[int, ...]
     spacing_delta_multiples: int
     scale_fractions: tuple[float, ...]
+    reset_read_samples: int | None
     sample_limit: int | None
     continuous_envelope_control: bool
     raw: Mapping[str, Any]
@@ -166,27 +183,33 @@ def load_standard_level_contract(path: Path) -> StandardLevelScreenContract:
         raise ValueError(f"Expected a readable strict screen config: {source}.") from error
     if not isinstance(raw, dict):
         raise ValueError("Expected the standard-level screen config to contain one object.")
+    schema_version = raw.get("schema_version")
+    if schema_version not in CONTRACT_SCHEMA_VERSIONS:
+        raise ValueError(
+            "Expected standard-level screen schema_version to equal 1 or 2."
+        )
+    top_level_keys = {
+        "schema_version",
+        "screen_id",
+        "evidence_class",
+        "preset",
+        "required_aihwkit_version",
+        "corruption_policy",
+        "source",
+        "development_assignment_seed",
+        "heldout_assignment_seeds",
+        "standard_levels",
+        "per_scheme_calibration",
+        "continuous_envelope_control",
+        "sample_limit",
+    }
+    if schema_version == 2:
+        top_level_keys.add("reset_baseline_commissioning")
     _exact_keys(
         raw,
-        {
-            "schema_version",
-            "screen_id",
-            "evidence_class",
-            "preset",
-            "required_aihwkit_version",
-            "corruption_policy",
-            "source",
-            "development_assignment_seed",
-            "heldout_assignment_seeds",
-            "standard_levels",
-            "per_scheme_calibration",
-            "continuous_envelope_control",
-            "sample_limit",
-        },
+        top_level_keys,
         label="standard-level screen config",
     )
-    if raw["schema_version"] != CONTRACT_SCHEMA_VERSION:
-        raise ValueError("Expected standard-level screen schema_version to equal 1.")
     for name in ("screen_id", "evidence_class", "preset", "required_aihwkit_version"):
         if not isinstance(raw[name], str) or not raw[name]:
             raise ValueError(f"Expected {name} to be a non-empty string.")
@@ -229,29 +252,37 @@ def load_standard_level_contract(path: Path) -> StandardLevelScreenContract:
     levels = raw["standard_levels"]
     if not isinstance(levels, dict):
         raise ValueError("Expected standard_levels to be an object.")
-    _exact_keys(
-        levels,
-        {
-            "delta_definition",
-            "conductance_coordinate",
-            "minimum_spacing_delta_multiples",
-            "without_fixed_r_origin",
-            "with_fixed_r_origin",
-            "with_fixed_r_active_zero",
-            "active_programming_direction",
-            "range_policy",
-            "zero_positive_capacity_group",
-            "no_in_bounds_standard_level",
-            "logical_rounding",
-            "cycle_to_cycle_random_term",
-            "apparent_write_noise",
-        },
-        label="standard_levels",
-    )
+    level_keys = {
+        "delta_definition",
+        "conductance_coordinate",
+        "minimum_spacing_delta_multiples",
+        "without_fixed_r_origin",
+        "with_fixed_r_origin",
+        "with_fixed_r_active_zero",
+        "active_programming_direction",
+        "range_policy",
+        "zero_positive_capacity_group",
+        "no_in_bounds_standard_level",
+        "logical_rounding",
+    }
+    if schema_version == 1:
+        level_keys.update(("cycle_to_cycle_random_term", "apparent_write_noise"))
+    else:
+        level_keys.update(
+            (
+                "deployment_cycle_to_cycle_random_term",
+                "deployment_apparent_write_noise",
+            )
+        )
+    _exact_keys(levels, level_keys, label="standard_levels")
     expected_levels = {
         "delta_definition": "nominal_dw_min_in_native_a_coordinate",
         "conductance_coordinate": "clip((a+1)/2,0,1)",
-        "without_fixed_r_origin": "sampled_min_bound_reset",
+        "without_fixed_r_origin": (
+            "sampled_min_bound_reset"
+            if schema_version == 1
+            else "bounded_per_cell_mean_of_repeated_apparent_raw_a_reset_reads"
+        ),
         "with_fixed_r_origin": "exact_sampled_reference_r",
         "with_fixed_r_active_zero": (
             "nearest_in_bounds_integer_level_without_changing_r"
@@ -263,9 +294,21 @@ def load_standard_level_contract(path: Path) -> StandardLevelScreenContract:
             "retain_exact_reference_zero_only_and_report"
         ),
         "logical_rounding": "nearest_integer_half_away_from_zero",
-        "cycle_to_cycle_random_term": 0.0,
-        "apparent_write_noise": 0.0,
     }
+    if schema_version == 1:
+        expected_levels.update(
+            {
+                "cycle_to_cycle_random_term": 0.0,
+                "apparent_write_noise": 0.0,
+            }
+        )
+    else:
+        expected_levels.update(
+            {
+                "deployment_cycle_to_cycle_random_term": 0.0,
+                "deployment_apparent_write_noise": 0.0,
+            }
+        )
     mismatches = {
         key: {"expected": expected_value, "provided": levels.get(key)}
         for key, expected_value in expected_levels.items()
@@ -280,6 +323,74 @@ def load_standard_level_contract(path: Path) -> StandardLevelScreenContract:
     )
     if spacing_delta_multiples != 4:
         raise ValueError("Expected adjacent standard targets to be four delta apart.")
+
+    reset_read_samples: int | None = None
+    if schema_version == 2:
+        reset = raw["reset_baseline_commissioning"]
+        if not isinstance(reset, dict):
+            raise ValueError("Expected reset_baseline_commissioning to be an object.")
+        _exact_keys(
+            reset,
+            {
+                "applies_to",
+                "samples_per_cell",
+                "sample_sequence",
+                "read_coordinate",
+                "baseline_estimator",
+                "cross_cell_pooling",
+                "standard_error_guard",
+                "bound_policy",
+                "commissioning_noise",
+                "seed_derivation",
+                "freeze_policy",
+            },
+            label="reset_baseline_commissioning",
+        )
+        expected_reset = {
+            "applies_to": "without_fixed_r_only",
+            "sample_sequence": (
+                "initialize_at_sampled_lower_bound_then_one_reset_pulse_and_"
+                "apparent_read_per_sample"
+            ),
+            "read_coordinate": "raw_active_a_before_conductance_mapping",
+            "baseline_estimator": "per_cell_arithmetic_mean",
+            "cross_cell_pooling": "none",
+            "standard_error_guard": 0.0,
+            "bound_policy": (
+                "clip_mapped_mean_to_sampled_active_conductance_bounds"
+            ),
+            "commissioning_noise": (
+                "preset_cycle_to_cycle_and_apparent_write_noise_enabled"
+            ),
+            "seed_derivation": (
+                "derive_seed(assignment_seed,per_cell_raw_a_reset_commissioning_"
+                "v2,population_fingerprint,samples_per_cell)"
+            ),
+            "freeze_policy": (
+                "one_baseline_per_topology_assignment_reused_for_every_scale_"
+                "candidate"
+            ),
+        }
+        reset_mismatches = {
+            key: {"expected": expected, "provided": reset.get(key)}
+            for key, expected in expected_reset.items()
+            if reset.get(key) != expected
+        }
+        if reset_mismatches:
+            raise ValueError(
+                "Expected the per-cell raw-a RESET commissioning policy: "
+                f"{reset_mismatches!r}."
+            )
+        reset_read_samples = _integer(
+            reset["samples_per_cell"],
+            label="reset_baseline_commissioning.samples_per_cell",
+            minimum=2,
+        )
+        if reset_read_samples != 8:
+            raise ValueError(
+                "Expected eight RESET/read observations to match the historical "
+                "commissioning cost."
+            )
 
     calibration = raw["per_scheme_calibration"]
     if not isinstance(calibration, dict):
@@ -331,6 +442,7 @@ def load_standard_level_contract(path: Path) -> StandardLevelScreenContract:
         sample_limit = _integer(sample_limit, label="sample_limit", minimum=1)
 
     return StandardLevelScreenContract(
+        contract_schema_version=int(schema_version),
         screen_id=raw["screen_id"],
         evidence_class=raw["evidence_class"],
         preset=raw["preset"],
@@ -342,16 +454,299 @@ def load_standard_level_contract(path: Path) -> StandardLevelScreenContract:
         heldout_assignment_seeds=heldout,
         spacing_delta_multiples=spacing_delta_multiples,
         scale_fractions=tuple(float(value) for value in fractions),
+        reset_read_samples=reset_read_samples,
         sample_limit=sample_limit,
         continuous_envelope_control=True,
         raw=raw,
     )
 
 
+def _atomic_save_reset_commissioning(
+    path: Path,
+    commissioning: IbmReramRawResetCommissioning,
+    population: IbmReramArrayPopulation,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            np.savez_compressed(
+                stream,
+                schema=np.asarray(_RESET_COMMISSIONING_SCHEMA),
+                schema_version=np.asarray(
+                    _RESET_COMMISSIONING_SCHEMA_VERSION, dtype=np.int64
+                ),
+                population_fingerprint=np.asarray(
+                    commissioning.population_fingerprint
+                ),
+                assignment_seed=np.asarray(
+                    commissioning.assignment_seed, dtype=np.int64
+                ),
+                commissioning_seed=np.asarray(
+                    commissioning.commissioning_seed, dtype=np.int64
+                ),
+                read_samples=np.asarray(
+                    commissioning.read_samples, dtype=np.int64
+                ),
+                binding_keys_json=np.asarray(
+                    json.dumps(
+                        list(population.binding_keys),
+                        allow_nan=False,
+                        separators=(",", ":"),
+                    )
+                ),
+                binding_shapes_json=np.asarray(
+                    json.dumps(
+                        [list(shape) for shape in population.binding_shapes],
+                        allow_nan=False,
+                        separators=(",", ":"),
+                    )
+                ),
+                reset_mean_raw_a=(
+                    commissioning.reset_mean_raw_a.detach().cpu().numpy()
+                ),
+                reset_standard_error_raw_a=(
+                    commissioning.reset_standard_error_raw_a.detach().cpu().numpy()
+                ),
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def _load_reset_commissioning_arrays(path: Path) -> dict[str, Any]:
+    expected_fields = {
+        "schema",
+        "schema_version",
+        "population_fingerprint",
+        "assignment_seed",
+        "commissioning_seed",
+        "read_samples",
+        "binding_keys_json",
+        "binding_shapes_json",
+        "reset_mean_raw_a",
+        "reset_standard_error_raw_a",
+    }
+    try:
+        with np.load(path, allow_pickle=False) as source:
+            if set(source.files) != expected_fields:
+                raise ValueError("Unexpected RESET commissioning artifact fields.")
+            values = {name: source[name].copy() for name in source.files}
+    except (OSError, ValueError) as error:
+        raise RuntimeError(
+            f"Expected a readable RESET commissioning artifact: {path}."
+        ) from error
+
+    def scalar(name: str) -> Any:
+        value = values[name]
+        if value.shape != () or value.dtype.hasobject:
+            raise RuntimeError(
+                f"Expected scalar non-object RESET field {name!r}."
+            )
+        return value.item()
+
+    for name in (
+        "schema_version",
+        "assignment_seed",
+        "commissioning_seed",
+        "read_samples",
+    ):
+        if values[name].dtype != np.dtype(np.int64):
+            raise RuntimeError(
+                f"Expected int64 RESET commissioning field {name!r}."
+            )
+    for name in (
+        "schema",
+        "population_fingerprint",
+        "binding_keys_json",
+        "binding_shapes_json",
+    ):
+        if values[name].dtype.kind not in {"U", "S"}:
+            raise RuntimeError(
+                f"Expected string RESET commissioning field {name!r}."
+            )
+    reset_mean = values["reset_mean_raw_a"]
+    reset_standard_error = values["reset_standard_error_raw_a"]
+    for name, value in (
+        ("reset_mean_raw_a", reset_mean),
+        ("reset_standard_error_raw_a", reset_standard_error),
+    ):
+        if (
+            value.dtype != np.dtype(np.float32)
+            or value.ndim != 1
+            or value.size < 1
+            or not bool(np.isfinite(value).all())
+        ):
+            raise RuntimeError(
+                f"Expected finite one-dimensional float32 RESET field {name!r}."
+            )
+    if reset_mean.shape != reset_standard_error.shape or bool(
+        np.any(reset_standard_error < 0.0)
+    ):
+        raise RuntimeError(
+            "Expected matching RESET mean/SE vectors and non-negative SE."
+        )
+    if (
+        str(scalar("schema")) != _RESET_COMMISSIONING_SCHEMA
+        or int(scalar("schema_version"))
+        != _RESET_COMMISSIONING_SCHEMA_VERSION
+    ):
+        raise RuntimeError("Expected RESET commissioning artifact schema version 1.")
+    try:
+        raw_keys = json.loads(str(scalar("binding_keys_json")))
+        raw_shapes = json.loads(str(scalar("binding_shapes_json")))
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("Expected canonical RESET binding metadata.") from error
+    if (
+        not isinstance(raw_keys, list)
+        or not raw_keys
+        or any(not isinstance(key, str) or not key for key in raw_keys)
+        or len(set(raw_keys)) != len(raw_keys)
+        or not isinstance(raw_shapes, list)
+        or len(raw_shapes) != len(raw_keys)
+        or any(
+            not isinstance(shape, list)
+            or not shape
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+                for value in shape
+            )
+            for shape in raw_shapes
+        )
+    ):
+        raise RuntimeError("Expected canonical RESET binding keys and shapes.")
+    binding_keys = tuple(raw_keys)
+    binding_shapes = tuple(tuple(shape) for shape in raw_shapes)
+    if sum(math.prod(shape) for shape in binding_shapes) != reset_mean.size:
+        raise RuntimeError("Expected RESET binding shapes to cover every cell.")
+    return {
+        "population_fingerprint": str(scalar("population_fingerprint")),
+        "assignment_seed": int(scalar("assignment_seed")),
+        "commissioning_seed": int(scalar("commissioning_seed")),
+        "read_samples": int(scalar("read_samples")),
+        "binding_keys": binding_keys,
+        "binding_shapes": binding_shapes,
+        "reset_mean_raw_a": torch.from_numpy(values["reset_mean_raw_a"]),
+        "reset_standard_error_raw_a": torch.from_numpy(
+            values["reset_standard_error_raw_a"]
+        ),
+    }
+
+
+def _commission_reset_origin_for_population(
+    population: IbmReramArrayPopulation,
+    *,
+    topology: int,
+    read_samples: int,
+    output_dir: Path,
+) -> tuple[IbmReramRawResetCommissioning, dict[str, Any]]:
+    commissioning = commission_ibm_reram_raw_reset_means(
+        population,
+        read_samples=read_samples,
+    )
+    stem = f"{topology}-device-assignment-{population.assignment_seed}"
+    artifact_path = output_dir / "commissioning" / f"{stem}.npz"
+    receipt_path = output_dir / "commissioning" / f"{stem}.receipt.json"
+    if artifact_path.exists() != receipt_path.exists():
+        raise RuntimeError(
+            "Expected RESET commissioning artifact and receipt to coexist."
+        )
+    existing = artifact_path.exists()
+    if not existing:
+        _atomic_save_reset_commissioning(
+            artifact_path,
+            commissioning,
+            population,
+        )
+    expected_receipt = {
+        "schema": _RESET_COMMISSIONING_SCHEMA,
+        "schema_version": _RESET_COMMISSIONING_SCHEMA_VERSION,
+        "algorithm": "sequential_reset_pulse_read_per_cell_mean_raw_a",
+        "population_fingerprint": population.fingerprint,
+        "assignment_seed": population.assignment_seed,
+        "topology": topology,
+        "commissioning_seed": commissioning.commissioning_seed,
+        "read_samples": read_samples,
+        "reset_pulses_per_cell": read_samples,
+        "total_reset_pulses": population.size * read_samples,
+        "baseline_estimator": "per_cell_arithmetic_mean",
+        "cross_cell_pooling": "none",
+        "standard_error_guard": 0.0,
+        "read_coordinate": "apparent_raw_active_a",
+        "reference_consumed_by_commissioner": False,
+        "artifact": artifact_path.name,
+        "artifact_sha256": sha256_file(artifact_path),
+        "reset_mean_raw_a_sha256": _tensor_sha256(
+            commissioning.reset_mean_raw_a
+        ),
+        "reset_standard_error_raw_a_sha256": _tensor_sha256(
+            commissioning.reset_standard_error_raw_a
+        ),
+        "commissioner_report": commissioning.report,
+    }
+    if not existing:
+        atomic_write_json(receipt_path, expected_receipt)
+    stored = _load_reset_commissioning_arrays(artifact_path)
+    expected_metadata = {
+        "population_fingerprint": population.fingerprint,
+        "assignment_seed": population.assignment_seed,
+        "commissioning_seed": commissioning.commissioning_seed,
+        "read_samples": read_samples,
+        "binding_keys": population.binding_keys,
+        "binding_shapes": population.binding_shapes,
+    }
+    mismatches = {
+        key: {"expected": value, "stored": stored.get(key)}
+        for key, value in expected_metadata.items()
+        if stored.get(key) != value
+    }
+    if mismatches:
+        raise RuntimeError(
+            f"RESET commissioning artifact metadata mismatch: {mismatches!r}."
+        )
+    for name in ("reset_mean_raw_a", "reset_standard_error_raw_a"):
+        if not torch.equal(stored[name], getattr(commissioning, name)):
+            raise RuntimeError(
+                f"RESET commissioning artifact tensor mismatch for {name}."
+            )
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("Expected a readable RESET commissioning receipt.") from error
+    if receipt != expected_receipt:
+        raise RuntimeError("Expected the exact RESET commissioning receipt.")
+    return commissioning, {
+        "path": str(artifact_path),
+        "sha256": sha256_file(artifact_path),
+        "receipt": str(receipt_path),
+        "receipt_sha256": sha256_file(receipt_path),
+        **{
+            key: value
+            for key, value in expected_receipt.items()
+            if key != "commissioner_report"
+        },
+        "reset_mean_raw_a": _float_summary(commissioning.reset_mean_raw_a),
+        "reset_standard_error_raw_a": _float_summary(
+            commissioning.reset_standard_error_raw_a
+        ),
+    }
+
+
 def build_standard_level_grid(
     population: IbmReramArrayPopulation,
     *,
     use_fixed_reference: bool,
+    no_r_reset_mean_raw_a: torch.Tensor | None = None,
     spacing_delta_multiples: int = 4,
 ) -> StandardLevelGrid:
     """Build exact uniform levels while keeping a sampled ``r`` unchanged.
@@ -378,7 +773,12 @@ def build_standard_level_grid(
     if bool(torch.any(upper < lower)):
         raise ValueError("Expected mapped OM upper bounds not below lower bounds.")
 
+    reset_origin_report: dict[str, Any] | None = None
     if use_fixed_reference:
+        if no_r_reset_mean_raw_a is not None:
+            raise ValueError(
+                "Expected RESET-mean origins only for schemes without fixed r."
+            )
         origin = _native_to_unit(
             population.reference.detach().to(device="cpu", dtype=torch.float64)
         )
@@ -412,7 +812,46 @@ def build_standard_level_grid(
         )
         policy = "exact_sampled_reference_center_with_active_a_projection_only"
     else:
-        origin = lower.clone()
+        if no_r_reset_mean_raw_a is None:
+            origin = lower.clone()
+            policy = "sampled_min_bound_reset_origin"
+        else:
+            reset_mean = no_r_reset_mean_raw_a.detach().to(
+                device="cpu", dtype=torch.float64
+            )
+            if reset_mean.shape != (population.size,) or not bool(
+                torch.all(torch.isfinite(reset_mean))
+            ):
+                raise ValueError(
+                    "Expected one finite apparent raw-a RESET mean per cell."
+                )
+            unbounded_origin = (reset_mean + 1.0) / 2.0
+            public_origin = torch.clamp(unbounded_origin, 0.0, 1.0)
+            origin = torch.minimum(torch.maximum(public_origin, lower), upper)
+            projection = origin - unbounded_origin
+            projected = torch.abs(projection) > 1e-12
+            reset_origin_report = {
+                "apparent_raw_a_mean": _float_summary(reset_mean),
+                "mapped_mean_before_bounds": _float_summary(unbounded_origin),
+                "mapped_mean_after_bounds": _float_summary(origin),
+                "mapped_mean_projection": _float_summary(projection),
+                "projected_cell_count": int(projected.sum().item()),
+                "projected_cell_fraction": float(
+                    projected.to(torch.float64).mean().item()
+                ),
+                "hashes": {
+                    "apparent_raw_a_mean": _tensor_sha256(
+                        reset_mean.to(torch.float32)
+                    ),
+                    "mapped_mean_before_bounds": _tensor_sha256(
+                        unbounded_origin.to(torch.float32)
+                    ),
+                    "mapped_mean_after_bounds": _tensor_sha256(
+                        origin.to(torch.float32)
+                    ),
+                },
+            }
+            policy = "bounded_per_cell_mean_apparent_raw_a_reset_origin"
         minimum_indices = torch.zeros(population.size, dtype=torch.int64)
         zero_indices = torch.zeros(population.size, dtype=torch.int64)
         maximum_indices = torch.floor((upper - origin) / spacing + 1e-12).to(
@@ -422,7 +861,6 @@ def build_standard_level_grid(
         outside = torch.zeros(population.size, dtype=torch.bool)
         clipped_reference = torch.zeros(population.size, dtype=torch.bool)
         no_level = torch.zeros(population.size, dtype=torch.bool)
-        policy = "sampled_min_bound_reset_origin"
 
     maximum_positive = maximum_indices - zero_indices
     maximum_negative = zero_indices - minimum_indices
@@ -477,6 +915,7 @@ def build_standard_level_grid(
         "active_zero_outside_active_bounds_count": int(
             active_zero_outside.sum().item()
         ),
+        "reset_mean_commissioning": reset_origin_report,
         "hashes": {
             "origin": _tensor_sha256(origin),
             "active_zero": _tensor_sha256(active_zero),
@@ -977,6 +1416,31 @@ def run_screen(
             aihwkit_python=aihwkit_python,
             output_dir=output_dir,
         )
+        reset_commissioning = None
+        if contract.reset_read_samples is not None:
+            reset_commissioning, reset_commissioning_report = (
+                _commission_reset_origin_for_population(
+                    population,
+                    topology=topology,
+                    read_samples=contract.reset_read_samples,
+                    output_dir=output_dir,
+                )
+            )
+            population_report["reset_baseline_commissioning"] = (
+                reset_commissioning_report
+            )
+            population_report["declared_dw_min_std"] = population_report.pop(
+                "declared_dw_min_std_but_disabled"
+            )
+            population_report["declared_write_noise_std"] = population_report.pop(
+                "declared_write_noise_std_but_disabled"
+            )
+            population_report["noise_application"] = {
+                "reset_commissioning": (
+                    "preset cycle-to-cycle and apparent write noise enabled"
+                ),
+                "ideal_level_deployment": "both disabled",
+            }
         population_report["standard_level_grids"] = {}
         for scheme in (
             value
@@ -986,6 +1450,12 @@ def run_screen(
             grid = build_standard_level_grid(
                 population,
                 use_fixed_reference=scheme.use_fixed_reference,
+                no_r_reset_mean_raw_a=(
+                    reset_commissioning.reset_mean_raw_a
+                    if reset_commissioning is not None
+                    and not scheme.use_fixed_reference
+                    else None
+                ),
                 spacing_delta_multiples=contract.spacing_delta_multiples,
             )
             population_report["standard_level_grids"][scheme.name] = grid.report
@@ -1104,6 +1574,33 @@ def run_screen(
                 aihwkit_python=aihwkit_python,
                 output_dir=output_dir,
             )
+            reset_commissioning = None
+            if contract.reset_read_samples is not None:
+                reset_commissioning, reset_commissioning_report = (
+                    _commission_reset_origin_for_population(
+                        population,
+                        topology=topology,
+                        read_samples=contract.reset_read_samples,
+                        output_dir=output_dir,
+                    )
+                )
+                population_report["reset_baseline_commissioning"] = (
+                    reset_commissioning_report
+                )
+                population_report["declared_dw_min_std"] = population_report.pop(
+                    "declared_dw_min_std_but_disabled"
+                )
+                population_report["declared_write_noise_std"] = (
+                    population_report.pop(
+                        "declared_write_noise_std_but_disabled"
+                    )
+                )
+                population_report["noise_application"] = {
+                    "reset_commissioning": (
+                        "preset cycle-to-cycle and apparent write noise enabled"
+                    ),
+                    "ideal_level_deployment": "both disabled",
+                }
             population_report["standard_level_grids"] = {}
             arm_reports = []
             for scheme in (
@@ -1114,6 +1611,12 @@ def run_screen(
                 grid = build_standard_level_grid(
                     population,
                     use_fixed_reference=scheme.use_fixed_reference,
+                    no_r_reset_mean_raw_a=(
+                        reset_commissioning.reset_mean_raw_a
+                        if reset_commissioning is not None
+                        and not scheme.use_fixed_reference
+                        else None
+                    ),
                     spacing_delta_multiples=contract.spacing_delta_multiples,
                 )
                 population_report["standard_level_grids"][scheme.name] = grid.report
@@ -1241,10 +1744,23 @@ def run_screen(
         "status": "identity_aware_ideal_standard_level_screen_complete",
         "screen_id": contract.screen_id,
         "claim_boundary": (
-            "AIHWKit 1.1.0 normalized OM fitted-model control with repaired "
-            "identities and analyst-standard uniform levels separated by four "
-            "nominal increments. No stochastic write, program-and-verify, HWA, "
-            "training, absolute conductance calibration, or fabricated-device claim."
+            (
+                "AIHWKit 1.1.0 normalized OM fitted-model control with repaired "
+                "identities, per-cell raw-a baselines commissioned from eight "
+                "stochastic RESET/read observations in the no-r arms, and "
+                "analyst-standard uniform levels separated by four nominal "
+                "increments. Level deployment itself is ideal and noiseless. "
+                "No program-and-verify, HWA, training, absolute conductance "
+                "calibration, or fabricated-device claim."
+            )
+            if contract.reset_read_samples is not None
+            else (
+                "AIHWKit 1.1.0 normalized OM fitted-model control with repaired "
+                "identities and analyst-standard uniform levels separated by "
+                "four nominal increments. No stochastic write, program-and-"
+                "verify, HWA, training, absolute conductance calibration, or "
+                "fabricated-device claim."
+            )
         ),
         "source_precision": "fp32_teacher_and_drn_solver",
         "deployment_precision": "uniform_four_delta_standard_level_grid",
@@ -1272,7 +1788,18 @@ def run_screen(
             ),
         },
         "scheme_contract": {
-            "without_fixed_r_origin": "sampled RESET/lower state",
+            "without_fixed_r_origin": (
+                "bounded per-cell arithmetic mean of eight sequential apparent "
+                "raw-a RESET/read observations"
+                if contract.reset_read_samples is not None
+                else "sampled RESET/lower state"
+            ),
+            "without_fixed_r_cross_cell_pooling": (
+                "none" if contract.reset_read_samples is not None else None
+            ),
+            "without_fixed_r_standard_error_guard": (
+                0.0 if contract.reset_read_samples is not None else None
+            ),
             "with_fixed_r_origin": "exact intrinsic sampled r",
             "active_level_spacing": "4 * nominal dw_min/2 in x=(a+1)/2",
             "four_fixed_r_positive": "G++=G--=a; G+-=G-+=r",

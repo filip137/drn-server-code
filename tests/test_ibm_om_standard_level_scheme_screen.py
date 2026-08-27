@@ -4,11 +4,13 @@ from dataclasses import replace
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
 from experiments.mnist_relu_drn.ibm_om_ideal_mapping_scheme_screen import Scheme
 from experiments.mnist_relu_drn.ibm_om_standard_level_scheme_screen import (
+    _commission_reset_origin_for_population,
     build_standard_level_grid,
     build_standard_scheme_targets,
     load_standard_level_contract,
@@ -24,6 +26,7 @@ _SCREEN = (
     / "ibm_om_standard_level_scheme_screen"
     / "screen.json"
 )
+_SCREEN_V2 = _SCREEN.with_name("screen_v2.json")
 
 
 def _population(*, devices: int, reference: float = 0.0) -> IbmReramArrayPopulation:
@@ -82,6 +85,31 @@ def test_contract_pins_reset_centered_four_delta_and_per_scheme_refit() -> None:
     )
 
 
+def test_v2_contract_pins_per_cell_raw_a_reset_mean_commissioning() -> None:
+    contract = load_standard_level_contract(_SCREEN_V2)
+    assert contract.contract_schema_version == 2
+    assert contract.reset_read_samples == 8
+    reset = contract.raw["reset_baseline_commissioning"]
+    assert reset["baseline_estimator"] == "per_cell_arithmetic_mean"
+    assert reset["cross_cell_pooling"] == "none"
+    assert reset["standard_error_guard"] == 0.0
+    assert (
+        contract.raw["standard_levels"]["without_fixed_r_origin"]
+        == "bounded_per_cell_mean_of_repeated_apparent_raw_a_reset_reads"
+    )
+
+
+def test_v2_contract_rejects_a_different_reset_sample_count(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(_SCREEN_V2.read_text(encoding="utf-8"))
+    payload["reset_baseline_commissioning"]["samples_per_cell"] = 7
+    path = tmp_path / "invalid-v2.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="eight RESET/read"):
+        load_standard_level_contract(path)
+
+
 def test_contract_rejects_spacing_below_four_delta(tmp_path: Path) -> None:
     payload = json.loads(_SCREEN.read_text(encoding="utf-8"))
     payload["standard_levels"]["minimum_spacing_delta_multiples"] = 3
@@ -107,6 +135,91 @@ def test_reset_grid_uses_exact_uniform_four_delta_levels() -> None:
         torch.full((population.size,), 5, dtype=torch.int64),
     )
     torch.testing.assert_close(grid.upper_values, torch.ones(population.size))
+
+
+def test_reset_mean_grid_preserves_per_cell_means_and_bounds_them() -> None:
+    population = _population(devices=4)
+    raw_mean = torch.linspace(-1.2, 1.2, population.size)
+    grid = build_standard_level_grid(
+        population,
+        use_fixed_reference=False,
+        no_r_reset_mean_raw_a=raw_mean,
+        spacing_delta_multiples=4,
+    )
+    expected = torch.clamp((raw_mean + 1.0) / 2.0, 0.0, 1.0)
+    torch.testing.assert_close(grid.origin, expected)
+    torch.testing.assert_close(grid.active_zero, expected)
+    assert torch.unique(grid.origin).numel() > 1
+    assert grid.report["policy"] == (
+        "bounded_per_cell_mean_apparent_raw_a_reset_origin"
+    )
+    assert grid.report["reset_mean_commissioning"]["projected_cell_count"] == 2
+    positive = grid.maximum_positive_steps > 0
+    torch.testing.assert_close(
+        grid.upper_values[positive] - grid.origin[positive],
+        grid.maximum_positive_steps[positive].to(torch.float32) * grid.spacing,
+    )
+
+
+def test_fixed_r_grid_rejects_reset_mean_origin() -> None:
+    population = _population(devices=4)
+    with pytest.raises(ValueError, match="only for schemes without fixed r"):
+        build_standard_level_grid(
+            population,
+            use_fixed_reference=True,
+            no_r_reset_mean_raw_a=population.min_bound,
+        )
+
+
+def test_reset_commissioning_receipt_fails_closed_on_policy_tamper(
+    tmp_path: Path,
+) -> None:
+    population = _population(devices=4)
+    commissioning, report = _commission_reset_origin_for_population(
+        population,
+        topology=4,
+        read_samples=8,
+        output_dir=tmp_path,
+    )
+    assert commissioning.size == population.size
+    receipt_path = Path(report["receipt"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["baseline_estimator"] = "tampered"
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exact RESET commissioning receipt"):
+        _commission_reset_origin_for_population(
+            population,
+            topology=4,
+            read_samples=8,
+            output_dir=tmp_path,
+        )
+
+
+def test_reset_commissioning_artifact_rejects_noncanonical_tensor_dtype(
+    tmp_path: Path,
+) -> None:
+    population = _population(devices=4)
+    _commissioning, report = _commission_reset_origin_for_population(
+        population,
+        topology=4,
+        read_samples=8,
+        output_dir=tmp_path,
+    )
+    artifact_path = Path(report["path"])
+    with np.load(artifact_path, allow_pickle=False) as source:
+        payload = {name: source[name].copy() for name in source.files}
+    payload["reset_mean_raw_a"] = payload["reset_mean_raw_a"].astype(
+        np.float64
+    )
+    with artifact_path.open("wb") as stream:
+        np.savez_compressed(stream, **payload)
+    with pytest.raises(RuntimeError, match="float32 RESET field"):
+        _commission_reset_origin_for_population(
+            population,
+            topology=4,
+            read_samples=8,
+            output_dir=tmp_path,
+        )
 
 
 def test_fixed_r_grid_keeps_r_exact_and_reports_both_centered_sides() -> None:

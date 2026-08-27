@@ -1,7 +1,10 @@
-# IBM OM RESET-anchored and reference-centered standard-level screen
+# IBM OM per-cell RESET-commissioned and reference-centered standard-level screen
 
-- Status: executable and focused tests complete; native screen not launched
-- Screen ID: `mnist-ibm-om-standard-level-scheme-screen-20260827-v1`
+- Status: exact-lower-bound v1 diagnostic complete; corrected per-cell
+  RESET-mean v2 smoke complete and production launch pending
+- Screen IDs:
+  `mnist-ibm-om-standard-level-scheme-screen-20260827-v1` and
+  `mnist-ibm-om-standard-level-reset-mean-scheme-screen-20260827-v2`
 - Evidence class: hardware-derived fitted AIHWKit model
 - Source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 
@@ -16,9 +19,12 @@ different, scheme-optimized question:
 > representation attain when its baseline is physically appropriate and all
 > arms use the same standard conductance-level spacing?
 
-This remains an ideal mapping gate. It includes sampled OM identities, bounds,
-references, and nominal resolution, but excludes write noise, stochastic pulse
-trajectories, program-and-verify, HWA, optimizer updates, and on-chip recovery.
+This remains an ideal deployment gate. It includes sampled OM identities,
+bounds, references, and nominal resolution. Version 2 additionally enables
+the fitted cycle-to-cycle and apparent-write terms only while commissioning
+the no-`r` baseline. The mapped level deployment remains deterministic and
+excludes write noise, program-and-verify, HWA, optimizer updates, and on-chip
+recovery.
 
 ## Common level definition
 
@@ -51,8 +57,25 @@ state-dependent.
 
 | Reference policy | Frozen origin | Active levels used for mapping |
 | --- | --- | --- |
-| Without fixed `r` | the identity's sampled RESET/lower state `B_i` | `a_i(m) = B_i + m h`, for whole in-bound levels `m = 0,...,M_i` |
-| With fixed `r` | the identity's exact sampled `r_i` | `a_i(m) = r_i + m h`, using whole in-bound levels and never projecting or changing `r_i` |
+| Without fixed `r`, v1 diagnostic | the identity's exact sampled lower state `B_i` | `a_i(m) = B_i + m h`, for whole in-bound levels `m = 0,...,M_i` |
+| Without fixed `r`, v2 primary | the bounded per-cell mean `B_i` from eight apparent raw-`a` RESET/read observations | `a_i(m) = B_i + m h`, for whole in-bound levels `m = 0,...,M_i` |
+| With fixed `r`, unchanged | the identity's exact sampled `r_i` | `a_i(m) = r_i + m h`, using whole in-bound levels and never projecting or changing `r_i` |
+
+For v2, every cell starts at its sampled active lower bound. Each of eight
+sequential samples applies one stochastic RESET pulse and then reads apparent
+raw `a`; there is no SET or reinitialization between samples. The arithmetic
+mean is computed independently for every cell. There is no quad maximum,
+cross-cell pooling, or standard-error guard. The mapped mean
+`(mean(a)+1)/2` is clipped only to the intersection of the public `[0,1]`
+conductance coordinate and that cell's sampled active interval, and then
+frozen once per topology/assignment for all scale candidates. The fixed-`r`
+arms do not consume this commissioning result.
+
+This deliberately differs from the earlier 91% RESET-relative protocol. That
+protocol used the same eight-sample cost but formed one guarded shared quad
+baseline `max_i(mean_i + 3 SE_i)` in the already reference-relative
+coordinate. V2 tests the user's new per-cell raw-`a` proposal; it is not a
+reproduction of the historical mapper.
 
 For a fixed-`r` identity whose zero-offset active state is outside its active
 bounds, the fixed reference remains exactly `r_i`; only `a_i` moves to the
@@ -117,7 +140,8 @@ uniform-level result isolates logical quantization, not programming noise.
 ## Required output
 
 The executable records the source/config hashes, sampled population receipts,
-exact `r`, RESET origins, integer grid indices, positive and negative level
+strict per-assignment commissioning NPZ/receipts, exact `r`, RESET origins,
+integer grid indices, positive and negative level
 capacities, zero-reference residuals, target hashes, selected scale/gain,
 accuracy, teacher agreement, KL, prediction flips, logical sign flips,
 `RMS(D)/mean(S)`, conductance-sum loading, voltage statistics, and a normalized
@@ -126,7 +150,10 @@ total-conductance proxy.
 The implementation and strict config are:
 
 - `experiments/mnist_relu_drn/ibm_om_standard_level_scheme_screen.py`;
-- `examples/mnist_relu_drn/ibm_om_standard_level_scheme_screen/screen.json`.
+- `examples/mnist_relu_drn/ibm_om_standard_level_scheme_screen/screen.json`
+  (v1 exact-lower-bound diagnostic); and
+- `examples/mnist_relu_drn/ibm_om_standard_level_scheme_screen/screen_v2.json`
+  (v2 per-cell RESET-mean primary screen).
 
 The frozen source inputs are the bias-free teacher with SHA-256
 `9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52`
@@ -138,6 +165,10 @@ SHA-256
 ## Claim boundary
 
 The OM preset is a normalized fitted model, not raw measured-device replay and
-not an absolute conductance calibration. A completed result can compare the
-declared model-relative schemes, but cannot establish fabricated-array
-accuracy, write success, physical power, or a need for on-chip training.
+not an absolute conductance calibration. V2 is also a scheme-optimized
+commissioning comparison: exact hidden `r` is not characterization-cost
+matched to an eight-read RESET estimate. A completed result can compare the
+declared model-relative schemes and isolate the v1-to-v2 no-`r` baseline
+change, but cannot establish a causal benefit of `r`, fabricated-array
+accuracy, deployment write success, physical power, or a need for on-chip
+training.

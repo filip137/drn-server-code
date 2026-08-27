@@ -359,6 +359,65 @@ class IbmReramArrayPopulation:
         }
 
 
+@dataclass(frozen=True)
+class IbmReramRawResetCommissioning:
+    """Per-cell apparent raw-``a`` statistics from repeated RESET reads.
+
+    The commissioning observation is deliberately kept in the device's
+    native active-state coordinate.  It contains no reference-relative
+    coordinate, pooling across cells, guard, clipping, or target projection.
+    """
+
+    population_fingerprint: str
+    assignment_seed: int
+    commissioning_seed: int
+    read_samples: int
+    reset_mean_raw_a: torch.Tensor
+    reset_standard_error_raw_a: torch.Tensor
+    report: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not self.population_fingerprint:
+            raise ValueError(
+                "Expected raw-a RESET commissioning to identify one "
+                "physical population."
+            )
+        size = int(self.reset_mean_raw_a.numel())
+        if size < 1:
+            raise ValueError(
+                "Expected raw-a RESET commissioning to contain at least "
+                "one cell."
+            )
+        for name in ("reset_mean_raw_a", "reset_standard_error_raw_a"):
+            value = getattr(self, name)
+            if (
+                value.shape != (size,)
+                or value.dtype != torch.float32
+                or value.device.type != "cpu"
+                or not bool(torch.all(torch.isfinite(value)))
+            ):
+                raise ValueError(
+                    f"Expected commissioning {name} to be a finite CPU "
+                    f"float32 vector of length {size}."
+                )
+        if bool(torch.any(self.reset_standard_error_raw_a < 0.0)):
+            raise ValueError(
+                "Expected non-negative raw-a RESET standard errors."
+            )
+
+    @property
+    def size(self) -> int:
+        return int(self.reset_mean_raw_a.numel())
+
+    def tensor_state(self) -> dict[str, torch.Tensor]:
+        return {
+            "reset_mean_raw_a": self.reset_mean_raw_a.detach().cpu().clone(),
+            "reset_standard_error_raw_a": (
+                self.reset_standard_error_raw_a.detach().cpu().clone()
+            ),
+        }
+
+
 def _selected_array_population(
     population: IbmReramArrayPopulation,
     selection: torch.Tensor,
@@ -2563,6 +2622,164 @@ class _ArrayControllerPort:
             )
 
 
+class _RawResetCommissioningPlant:
+    """RESET-only pulse plant whose state and observations are raw ``a``.
+
+    This is the physical-state counterpart of :class:`_ArrayPlant` for a
+    no-reference commissioning readout.  It deliberately never consults the
+    sampled reference tensor.
+    """
+
+    def __init__(
+        self,
+        population: IbmReramArrayPopulation,
+        *,
+        generator: torch.Generator,
+    ) -> None:
+        self.population = population.to("cpu")
+        self.generator = generator
+        self.persistent_a = self.population.min_bound.clone()
+        write_scale = (
+            self.population.write_noise_std
+            * self.population.nominal_dw_min
+        )
+        self.apparent_a = (
+            self.persistent_a + write_scale * self._normal_all()
+        )
+
+    @property
+    def size(self) -> int:
+        return self.population.size
+
+    def _normal_all(self) -> torch.Tensor:
+        return torch.randn(
+            (self.size,),
+            dtype=torch.float32,
+            device="cpu",
+            generator=self.generator,
+        )
+
+    def reset_and_read(self) -> torch.Tensor:
+        """Apply one RESET pulse to every cell and return apparent raw ``a``."""
+
+        population = self.population
+        cycle = self._normal_all()
+        normalized = torch.where(
+            population.min_bound < 0.0,
+            self.persistent_a / population.min_bound,
+            torch.zeros_like(self.persistent_a),
+        )
+        response = population.dwmin_down * (
+            1.0 - normalized + population.dw_min_std * cycle
+        )
+        candidate = self.persistent_a - response
+        candidate = torch.maximum(candidate, population.min_bound)
+        candidate = torch.minimum(candidate, population.max_bound)
+        self.persistent_a.copy_(candidate)
+        write_scale = population.write_noise_std * population.nominal_dw_min
+        self.apparent_a.copy_(
+            self.persistent_a + write_scale * self._normal_all()
+        )
+        return self.apparent_a.clone()
+
+
+def commission_ibm_reram_raw_reset_means(
+    population: IbmReramArrayPopulation,
+    *,
+    read_samples: int,
+) -> IbmReramRawResetCommissioning:
+    """Estimate one raw-``a`` RESET baseline per physical cell.
+
+    The plant starts every cell at its sampled ``min_bound``.  Each sample is
+    one stochastic RESET pulse followed immediately by one apparent raw-``a``
+    read.  Samples are sequential: there is no SET, state reinitialization, or
+    independent restart between reads.  The result is the arithmetic mean and
+    unbiased standard error for each cell, without reference subtraction,
+    pooling, a statistical guard, clipping, or bound projection.
+    """
+
+    if not isinstance(population, IbmReramArrayPopulation):
+        raise TypeError(
+            "Expected one IbmReramArrayPopulation for raw-a RESET "
+            "commissioning."
+        )
+    if (
+        isinstance(read_samples, bool)
+        or not isinstance(read_samples, int)
+        or read_samples < 2
+    ):
+        raise ValueError(
+            "Expected raw-a RESET commissioning to use at least two "
+            f"samples. Provided value: {read_samples!r}."
+        )
+    seed = derive_seed(
+        population.assignment_seed,
+        "per_cell_raw_a_reset_commissioning_v2",
+        population.fingerprint,
+        read_samples,
+    )
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(seed)
+    plant = _RawResetCommissioningPlant(
+        population,
+        generator=generator,
+    )
+    observations = []
+    for _sample_index in range(read_samples):
+        apparent_a = plant.reset_and_read()
+        if not bool(torch.all(torch.isfinite(apparent_a))):
+            raise RuntimeError(
+                "Expected finite apparent raw-a RESET reads during "
+                "commissioning."
+            )
+        observations.append(apparent_a)
+    reads = torch.stack(observations).to(dtype=torch.float32, device="cpu")
+    reset_mean_raw_a = reads.mean(dim=0)
+    reset_standard_error_raw_a = (
+        reads.std(dim=0, unbiased=True) / math.sqrt(read_samples)
+    )
+    report = {
+        "schema": "ebl.ibm_reram.raw_a_reset_commissioning_receipt",
+        "schema_version": 1,
+        "algorithm": "sequential_reset_pulse_apparent_raw_a_mean_per_cell",
+        "coordinate": "native_raw_active_a",
+        "start_state": "sampled_min_bound",
+        "sample_protocol": (
+            "one_reset_pulse_then_one_apparent_read_without_reinitialization"
+        ),
+        "reference_consumed": False,
+        "pooling": "none_per_cell",
+        "guard_standard_errors": None,
+        "projection": "none",
+        "population_fingerprint": population.fingerprint,
+        "assignment_seed": population.assignment_seed,
+        "commissioning_seed": seed,
+        "read_samples": read_samples,
+        "devices": population.size,
+        "reset_pulses_per_device": read_samples,
+        "total_reset_pulses": population.size * read_samples,
+        "total_apparent_reads": population.size * read_samples,
+        "reset_mean_raw_a": _tensor_summary(reset_mean_raw_a),
+        "reset_standard_error_raw_a": _tensor_summary(
+            reset_standard_error_raw_a
+        ),
+        "raw_a_reads_sha256": _tensor_sha256(reads),
+        "reset_mean_raw_a_sha256": _tensor_sha256(reset_mean_raw_a),
+        "reset_standard_error_raw_a_sha256": _tensor_sha256(
+            reset_standard_error_raw_a
+        ),
+    }
+    return IbmReramRawResetCommissioning(
+        population_fingerprint=population.fingerprint,
+        assignment_seed=population.assignment_seed,
+        commissioning_seed=seed,
+        read_samples=read_samples,
+        reset_mean_raw_a=reset_mean_raw_a,
+        reset_standard_error_raw_a=reset_standard_error_raw_a,
+        report=report,
+    )
+
+
 def _result_mapping(result: ProgramVerifyResult) -> dict[str, Any]:
     count = int(result.accepted.numel())
     return {
@@ -3624,8 +3841,10 @@ __all__ = [
     "IbmReramArrayPopulation",
     "IbmReramHwaConfig",
     "IbmReramHwaParameterModifier",
+    "IbmReramRawResetCommissioning",
     "build_ibm_reram_cell_aware_exact_bounds_codebook",
     "build_ibm_reram_hwa_modifier",
+    "commission_ibm_reram_raw_reset_means",
     "load_om_array_population",
     "map_ibm_reram_array_targets",
     "sample_om_array_population",
