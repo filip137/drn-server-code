@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "screen_id": "mnist-ibm-om-bounded-codebook-scheme-screen-20260827-v1",
+  "evidence_class": "model_based_aihwkit_preset",
+  "preset": "reram_array_om",
+  "required_aihwkit_version": "1.1.0",
+  "corruption_policy": "counterfactual_repaired",
+  "development_assignment_seed": 86001,
+  "heldout_assignment_seeds": [87001, 87002, 87003],
+  "deterministic_codebook": {
+    "start_state": "sampled_min_bound",
+    "pulse_direction": "set_only",
+    "maximum_pulses": 128,
+    "cycle_to_cycle_random_term": 0.0,
+    "apparent_write_noise": 0.0,
+    "conductance_coordinate": "clip((a+1)/2,0,1)",
+    "target_projection": "nearest_absolute_error",
+    "tie_break": "lowest_pulse_index"
+  },
+  "reference_policy": {
+    "without_fixed_r": "deterministic_pulse_zero_lower_state",
+    "with_fixed_r": "nearest_deterministic_code_to_bounded_sampled_reference",
+    "out_of_bounds_reference": "project_to_nearest_reachable_code_and_report"
+  },
+  "scale_fractions": [0.125, 0.25, 0.5, 1.0],
+  "selection": {
+    "domain": "development_assignment_training_calibration_subset",
+    "primary": "bounded_codebook_student_accuracy",
+    "tie_break": "bounded_codebook_calibrated_kl_then_lexicographic_scales"
+  },
+  "continuous_envelope_control": true,
+  "sample_limit": null
+}

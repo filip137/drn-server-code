@@ -1,7 +1,8 @@
 # IBM OM deployment-scheme investigation
 
-- Status: homogeneous ideal-mapping screen complete; identity-aware ideal
-  mapping is next; no new native training or P&V experiment has been launched
+- Status: homogeneous ideal-mapping screen complete; the identity-aware
+  deterministic bounded-codebook control is predeclared and implemented;
+  no new HWA or stochastic P&V experiment has been launched
 - Date: 2026-08-27
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
@@ -417,6 +418,26 @@ Only arms that preserve the declared ideal-accuracy gate and cover every
 logical target proceed to programming. The interrupted differential-pair
 pilot is useful implementation evidence but does not replace this comparison:
 its branches, checkpoint, and mapping protocol were different.
+
+The first Stage 0B control is now frozen in
+[`ibm_om_bounded_codebook_scheme_screen.md`](ibm_om_bounded_codebook_scheme_screen.md)
+and
+[`screen.json`](../examples/mnist_relu_drn/ibm_om_bounded_codebook_scheme_screen/screen.json).
+The logical source and solver remain FP32. Each literal repaired OM identity
+contributes its own bounds, fitted reference, and deterministic lower-to-SET
+pulse codes through pulse index 128. The cycle-to-cycle random term and
+apparent write noise are exactly zero, and a requested target is projected to
+the nearest deterministic code. Thus this control includes identity range and
+pulse resolution but excludes the realistic controller and stochastic write
+endpoint.
+
+The nominal OM `dw_min` is not treated as a universal fixed level count. A
+continuous target inside the same per-cell codebook baseline-to-maximum
+envelope is retained as a diagnostic upper control. Assignment `86001`
+selects scales; topology-specific assignments `87001`, `87002`, and `87003`
+are evaluated without retuning. Four- and eight-device assignments have
+different hashes because the physical cell counts and binding catalogs differ;
+with/without-`r` arms within one topology reuse exactly the same identities.
 
 ### Stage 1: codebook and P&V gate
 
