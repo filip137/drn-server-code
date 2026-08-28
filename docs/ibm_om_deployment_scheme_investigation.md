@@ -894,6 +894,38 @@ remaining loss. The existing 90% held-out-mean gate and complete functional
 coverage remain the progression criteria. No BPTT, P&V, or on-chip recovery
 arm is eligible while this gate fails.
 
+### Stage 0F: fixed-`r` identity-balance diagnostic
+
+The four-device intrinsic-reference idea has a distinct zero condition:
+
+```text
+r+++r-- = r+-+r-+.
+```
+
+Equal references are sufficient but not necessary. Stage 0F therefore tests
+whether weight-blind physical identity assignment can make this signed sum
+small enough for useful ideal initialization. It is not part of the no-`r`
+shared-zero Stage 0E intervention and does not replace that pending canonical
+gate.
+
+The frozen `reference_balanced_binding_v1` policy globally stable-sorts mapped
+references within each layer, forms consecutive quartets, chooses the minimum
+signed-sum two-versus-two partition, and then deterministically shuffles the
+completed quartets over logical addresses. Every identity field moves
+together; no identity crosses a layer, and the rule reads no weights, labels,
+bounds, calibration outcome, or accuracy. The sampled-order binding is the
+matched control.
+
+Stage 0F uses the bounded continuous positive-only map and explicitly records
+every branch as `G=B+d`. It contains no four-delta rounding or level-count
+cap, so it informs only the baseline decision. Both bindings receive their
+own development refit, and both selected calibrations are cross-applied on
+held-out assignments to expose calibration interaction. Main and replay run
+through the native workflow under
+`ibm_om.reference_balanced_continuous_init.v1`; exact inputs, algorithms,
+artifacts, caveats, and the 90% diagnostic gate are frozen in
+[`ibm_om_four_reference_balance.md`](ibm_om_four_reference_balance.md).
+
 ### Stage 1: codebook and P&V gate
 
 Screen at least 3-, 5-, and 7-level codebooks on development identities and

@@ -42,6 +42,12 @@ from experiments.mnist_relu_drn.config import (
     parse_student_config,
     resolve_student_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
+    EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
+    parse_balance_config,
+    resolve_balance_spec,
+)
 from experiments.mnist_relu_drn_reset.config import (
     BIAS_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_BIAS_EXPERIMENT_ID,
     DIFFERENTIAL_EXPERIMENT_ID as MNIST_RELU_DRN_RESET_DIFFERENTIAL_EXPERIMENT_ID,
@@ -795,8 +801,22 @@ MNIST_RELU_DRN_RESET_FACTORIAL_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_FOUR_REFERENCE_BALANCE_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
+    schema_version=IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
+    description=(
+        "Validate ideal continuous four-device OM initialization under matched "
+        "sampled-order and intrinsic-reference-balanced identity bindings."
+    ),
+    supported_modes=(RunMode.VALIDATE,),
+    parser=parse_balance_config,
+    resolver=resolve_balance_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
+    IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
     MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,
     MNIST_RELU_DRN_KD_V1.experiment_id: MNIST_RELU_DRN_KD_V1,

@@ -1079,6 +1079,9 @@ def _evaluate_detailed(
         )
     return {
         "examples": examples,
+        "student_correct": totals["student_correct"],
+        "teacher_correct": totals["teacher_correct"],
+        "teacher_agreement_count": totals["agreement"],
         "kl_teacher_student": totals["kl"] / examples,
         "raw_kl_teacher_student": totals["raw_kl"] / examples,
         "student_accuracy": totals["student_correct"] / examples,
