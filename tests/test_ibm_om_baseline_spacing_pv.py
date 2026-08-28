@@ -11,7 +11,15 @@ from experiments.mnist_relu_drn.ibm_om_baseline_selection import (
     quad_stack,
 )
 from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv import (
+    UNCLIPPED_STUDY_CONDUCTANCE_CEILING,
+    UNCLIPPED_STUDY_CONDUCTANCE_PER_RAW_X,
+    UNCLIPPED_STUDY_RAW_X_MAXIMUM,
+    UNCLIPPED_STUDY_RAW_X_ORIGIN,
     build_baseline_spacing_mapping,
+    build_unclipped_baseline_spacing_mapping,
+)
+from training.ibm_reram_raw_active_program_verify import (
+    raw_active_x_to_full_conductance,
 )
 
 
@@ -217,3 +225,93 @@ def test_no_reference_mapping_and_strict_spacing_selector() -> None:
             baseline_position_fraction=0.25,
             spacing_delta_multiples=1.5,  # type: ignore[arg-type]
         )
+
+
+def test_unclipped_raw_x_mapper_preserves_affine_full_conductance() -> None:
+    inputs = _inputs()
+    origin = -1.5
+    slope = 2.0
+    raw_span = 3.5
+    ceiling = slope * raw_span
+    lower_raw = tuple(origin + raw_span * value for value in inputs["cell_lower_units"])
+    upper_raw = tuple(origin + raw_span * value for value in inputs["cell_upper_units"])
+    reset_raw = tuple(
+        origin + raw_span * value for value in inputs["reset_baseline_units"]
+    )
+    normalized = build_baseline_spacing_mapping(
+        inputs["logical_weights"],
+        baseline_position_fraction=0.25,
+        spacing_delta_multiples=2,
+        scale_fractions=inputs["scale_fractions"],
+        nominal_dw_min=inputs["nominal_dw_min"],
+        conductance_min=0.0,
+        conductance_max=ceiling,
+        cell_lower_units=inputs["cell_lower_units"],
+        cell_upper_units=inputs["cell_upper_units"],
+        reset_baseline_units=inputs["reset_baseline_units"],
+        intrinsic_references_native=inputs["intrinsic_references_native"],
+    )
+    corrected = build_unclipped_baseline_spacing_mapping(
+        inputs["logical_weights"],
+        baseline_position_fraction=0.25,
+        spacing_delta_multiples=2,
+        scale_fractions=inputs["scale_fractions"],
+        nominal_dw_min=inputs["nominal_dw_min"] * raw_span,
+        raw_x_origin=origin,
+        conductance_per_raw_x=slope,
+        conductance_ceiling=ceiling,
+        cell_lower_raw_x=lower_raw,
+        cell_upper_raw_x=upper_raw,
+        reset_baseline_raw_x=reset_raw,
+        intrinsic_references_native=inputs["intrinsic_references_native"],
+    )
+
+    assert min(float(value.min().item()) for value in lower_raw) < 0.0
+    assert max(float(value.max().item()) for value in upper_raw) > 1.0
+    assert corrected.report["out_of_bounds_policy"] == "fail_no_projection_no_clipping"
+    assert corrected.report["level_spacing_unit"] == pytest.approx(
+        2 * inputs["nominal_dw_min"] * raw_span / 2.0
+    )
+    for expected, actual, baseline_raw, target_raw in zip(
+        normalized.physical.layers,
+        corrected.physical.layers,
+        corrected.baseline_raw_x,
+        corrected.ideal_target_units,
+    ):
+        assert torch.equal(actual.integer_level_number, expected.integer_level_number)
+        assert torch.allclose(actual.baseline, expected.baseline, rtol=0.0, atol=1e-6)
+        assert torch.allclose(
+            actual.quantized_conductance,
+            expected.quantized_conductance,
+            rtol=0.0,
+            atol=1e-6,
+        )
+        assert torch.count_nonzero(quad_contrast(baseline_raw, layout=actual.layout)) == 0
+        mapped_target = raw_active_x_to_full_conductance(
+            target_raw,
+            raw_x_origin=origin,
+            conductance_per_raw_x=slope,
+            conductance_ceiling=ceiling,
+        )
+        assert torch.allclose(
+            mapped_target,
+            actual.quantized_conductance,
+            rtol=0.0,
+            atol=ceiling * 1e-6,
+        )
+
+
+def test_unclipped_study_embedding_constants_cover_exact_frozen_support() -> None:
+    minimum_g = UNCLIPPED_STUDY_CONDUCTANCE_PER_RAW_X * (
+        -1.3759238719940186 - UNCLIPPED_STUDY_RAW_X_ORIGIN
+    )
+    expected_ceiling = UNCLIPPED_STUDY_CONDUCTANCE_PER_RAW_X * (
+        UNCLIPPED_STUDY_RAW_X_MAXIMUM - UNCLIPPED_STUDY_RAW_X_ORIGIN
+    )
+
+    assert minimum_g == pytest.approx(1.10e-10, rel=1e-9)
+    assert UNCLIPPED_STUDY_CONDUCTANCE_CEILING == expected_ceiling
+    assert UNCLIPPED_STUDY_CONDUCTANCE_CEILING == pytest.approx(
+        0.0003545739916261292,
+        rel=1e-15,
+    )

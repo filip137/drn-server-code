@@ -796,6 +796,13 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv_runtime import (
             run_validate,
         )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_baseline_spacing_pv_no_clip.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv_no_clip_runtime import (
+            run_validate,
+        )
     elif request.definition.experiment_id == "ibm_om_four_reference_balance.v1":
         from experiments.mnist_relu_drn.ibm_om_four_reference_balance_runtime import (
             run_validate,

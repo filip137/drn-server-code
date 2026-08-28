@@ -15,6 +15,7 @@ from training.ibm_reram_raw_active_program_verify import (
     classify_persistent_uniform_codes,
     matched_trajectory_seeds,
     project_raw_active_unit_to_full_conductance,
+    raw_active_x_to_full_conductance,
     raw_active_unit_to_full_conductance,
     required_cuda_random_draws,
     run_raw_active_program_verify,
@@ -183,6 +184,51 @@ def test_public_projection_preserves_raw_endpoint_and_records_masks() -> None:
     assert report["persistent_continuation_state_changed"] is False
     assert report["below_public_minimum"] == 1
     assert report["above_public_maximum"] == 1
+
+
+def test_affine_raw_x_handoff_is_unclipped_and_strictly_positive() -> None:
+    origin = -1.3759248719940185
+    slope = 1.10e-4
+    raw_maximum = 1.8474750518798828
+    ceiling = slope * (raw_maximum - origin)
+    raw = torch.tensor(
+        [-1.3759238719940186, 0.0, 1.0, raw_maximum],
+        dtype=torch.float64,
+    )
+
+    full = raw_active_x_to_full_conductance(
+        raw,
+        raw_x_origin=origin,
+        conductance_per_raw_x=slope,
+        conductance_ceiling=ceiling,
+    )
+
+    assert torch.equal(raw, torch.tensor(raw.tolist(), dtype=torch.float64))
+    assert full[0].item() == pytest.approx(1.10e-10, rel=1e-9)
+    assert full[2].item() > 1.10e-4
+    assert full[-1].item() == pytest.approx(ceiling, rel=1e-12)
+    assert bool(torch.all(full > 0.0))
+
+
+def test_affine_raw_x_handoff_fails_instead_of_clipping() -> None:
+    origin = -1.5
+    slope = 2.0
+    ceiling = 7.0
+
+    with pytest.raises(ValueError, match="strictly positive"):
+        raw_active_x_to_full_conductance(
+            torch.tensor([origin], dtype=torch.float64),
+            raw_x_origin=origin,
+            conductance_per_raw_x=slope,
+            conductance_ceiling=ceiling,
+        )
+    with pytest.raises(ValueError, match="ceiling"):
+        raw_active_x_to_full_conductance(
+            torch.tensor([2.1], dtype=torch.float64),
+            raw_x_origin=origin,
+            conductance_per_raw_x=slope,
+            conductance_ceiling=ceiling,
+        )
 
 
 def test_seed_matching_and_cuda_draw_budget_exclude_mapping_arm() -> None:

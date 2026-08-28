@@ -30,10 +30,31 @@ from experiments.mnist_relu_drn.ibm_om_baseline_selection import (
     quad_stack,
     scatter_quads,
 )
+from training.ibm_reram_raw_active_program_verify import (
+    raw_active_x_to_full_conductance,
+)
 
 
 BASELINE_POSITIONS = (0.0, 0.25, 0.5)
 SPACING_DELTA_MULTIPLES = (1, 2, 4)
+
+# One frozen translation for the corrected replay of the completed
+# development/held-out identity cohort.  The origin sits 1e-6 raw-x below the
+# smallest sampled native lower bound, so even that exact lower state maps to
+# a strictly positive conductance.  The slope is the historical 110 uS per
+# raw-x unit; unlike the rejected public-coordinate mapping, it is not used as
+# an x=[0,1] ceiling.
+UNCLIPPED_STUDY_RAW_X_MINIMUM = -1.3759238719940186
+UNCLIPPED_STUDY_RAW_X_MAXIMUM = 1.8474750518798828
+UNCLIPPED_STUDY_RAW_X_ORIGIN_MARGIN = 1e-6
+UNCLIPPED_STUDY_RAW_X_ORIGIN = (
+    UNCLIPPED_STUDY_RAW_X_MINIMUM - UNCLIPPED_STUDY_RAW_X_ORIGIN_MARGIN
+)
+UNCLIPPED_STUDY_CONDUCTANCE_PER_RAW_X = 1.10e-4
+UNCLIPPED_STUDY_CONDUCTANCE_CEILING = (
+    UNCLIPPED_STUDY_CONDUCTANCE_PER_RAW_X
+    * (UNCLIPPED_STUDY_RAW_X_MAXIMUM - UNCLIPPED_STUDY_RAW_X_ORIGIN)
+)
 
 
 def _tensor_sha256(value: torch.Tensor) -> str:
@@ -73,6 +94,93 @@ class LayerDirectionalCapacity:
 
 
 @dataclass(frozen=True)
+class RawXConductanceEmbedding:
+    """One study-wide affine raw-device-coordinate embedding.
+
+    The physical conversion is exactly
+
+    ``G = conductance_per_raw_x * (x_raw - raw_x_origin)``.
+
+    ``conductance_ceiling`` is a fail-closed circuit capacity, not a
+    normalization slope and not permission to clip an endpoint.
+    """
+
+    raw_x_origin: float
+    conductance_per_raw_x: float
+    conductance_ceiling: float
+
+    def __post_init__(self) -> None:
+        values = (
+            float(self.raw_x_origin),
+            float(self.conductance_per_raw_x),
+            float(self.conductance_ceiling),
+        )
+        if (
+            not all(math.isfinite(value) for value in values)
+            or self.conductance_per_raw_x <= 0.0
+            or self.conductance_ceiling <= 0.0
+        ):
+            raise ValueError(
+                "Expected a finite raw-x origin and positive finite affine "
+                "conductance slope and ceiling."
+            )
+
+    @property
+    def raw_x_span(self) -> float:
+        return float(self.conductance_ceiling) / float(
+            self.conductance_per_raw_x
+        )
+
+    @property
+    def raw_x_ceiling(self) -> float:
+        return float(self.raw_x_origin) + self.raw_x_span
+
+    def to_full_conductance(self, raw_x: torch.Tensor) -> torch.Tensor:
+        return raw_active_x_to_full_conductance(
+            raw_x,
+            raw_x_origin=self.raw_x_origin,
+            conductance_per_raw_x=self.conductance_per_raw_x,
+            conductance_ceiling=self.conductance_ceiling,
+        )
+
+    def to_mapping_unit(self, raw_x: torch.Tensor) -> torch.Tensor:
+        """Return an internal [0,1] circuit fraction without clipping."""
+
+        full = self.to_full_conductance(raw_x)
+        unit = full / float(self.conductance_ceiling)
+        if bool(torch.any(unit <= 0.0)) or bool(torch.any(unit > 1.0 + 1e-12)):
+            raise ValueError("Raw-x endpoint leaves the affine mapping support.")
+        return unit
+
+    def from_mapping_unit(self, unit: torch.Tensor) -> torch.Tensor:
+        """Invert the internal circuit fraction without projection."""
+
+        value = torch.as_tensor(unit)
+        if (
+            value.numel() < 1
+            or not value.is_floating_point()
+            or not bool(torch.all(torch.isfinite(value)))
+            or bool(torch.any(value <= 0.0))
+            or bool(torch.any(value > 1.0 + 1e-12))
+        ):
+            raise ValueError("Expected a strictly positive in-range mapping unit.")
+        raw64 = float(self.raw_x_origin) + self.raw_x_span * value.to(
+            dtype=torch.float64
+        )
+        return raw64.to(dtype=value.dtype)
+
+    def report(self) -> Mapping[str, float | str]:
+        return {
+            "policy": "study_wide_affine_raw_x_translation_no_clipping",
+            "formula": "G=conductance_per_raw_x*(x_raw-raw_x_origin)",
+            "raw_x_origin": float(self.raw_x_origin),
+            "raw_x_ceiling": self.raw_x_ceiling,
+            "conductance_per_raw_x": float(self.conductance_per_raw_x),
+            "conductance_ceiling": float(self.conductance_ceiling),
+        }
+
+
+@dataclass(frozen=True)
 class BaselineSpacingMapping:
     """One full two-layer physical map plus its baseline/spacing decision."""
 
@@ -82,6 +190,9 @@ class BaselineSpacingMapping:
     physical: PhysicalMapping
     directional_capacity: tuple[LayerDirectionalCapacity, ...]
     report: Mapping[str, Any]
+    raw_x_embedding: RawXConductanceEmbedding | None = None
+    raw_x_baselines: tuple[torch.Tensor, ...] | None = None
+    raw_x_ideal_targets: tuple[torch.Tensor, ...] | None = None
 
     @property
     def ideal_targets(self) -> tuple[torch.Tensor, ...]:
@@ -93,6 +204,8 @@ class BaselineSpacingMapping:
 
     @property
     def ideal_target_units(self) -> tuple[torch.Tensor, ...]:
+        if self.raw_x_ideal_targets is not None:
+            return tuple(value.clone() for value in self.raw_x_ideal_targets)
         return tuple(
             (
                 layer.baseline_unit.to(torch.float64)
@@ -101,6 +214,14 @@ class BaselineSpacingMapping:
             ).to(torch.float32)
             for layer in self.physical.layers
         )
+
+    @property
+    def baseline_raw_x(self) -> tuple[torch.Tensor, ...]:
+        """Return shared full-rail baselines in the controller's raw-x frame."""
+
+        if self.raw_x_baselines is not None:
+            return tuple(value.clone() for value in self.raw_x_baselines)
+        return tuple(layer.baseline_unit.clone() for layer in self.physical.layers)
 
 
 def _destination_group_values(
@@ -421,6 +542,169 @@ def build_baseline_spacing_mapping(
     )
 
 
+def build_unclipped_baseline_spacing_mapping(
+    logical_weights: Sequence[torch.Tensor],
+    *,
+    baseline_position_fraction: float,
+    spacing_delta_multiples: int,
+    scale_fractions: Sequence[float],
+    nominal_dw_min: float,
+    raw_x_origin: float,
+    conductance_per_raw_x: float,
+    conductance_ceiling: float,
+    cell_lower_raw_x: Sequence[torch.Tensor],
+    cell_upper_raw_x: Sequence[torch.Tensor],
+    reset_baseline_raw_x: Sequence[torch.Tensor],
+    intrinsic_references_native: Sequence[torch.Tensor],
+) -> BaselineSpacingMapping:
+    """Build the corrected shared-destination map from unclipped raw ``x``.
+
+    Baseline windows, level spacing, capacity, and P&V targets are all defined
+    in the native raw coordinate ``x=(a+1)/2``.  A normalized mapping unit is
+    used only as an internal compatibility representation for the established
+    physical-mapping data structures.  Full conductance always follows the
+    literal affine embedding and is never clipped at either end.
+    """
+
+    embedding = RawXConductanceEmbedding(
+        raw_x_origin=float(raw_x_origin),
+        conductance_per_raw_x=float(conductance_per_raw_x),
+        conductance_ceiling=float(conductance_ceiling),
+    )
+    raw_sequences = (
+        tuple(cell_lower_raw_x),
+        tuple(cell_upper_raw_x),
+        tuple(reset_baseline_raw_x),
+    )
+    if any(len(values) != 2 for values in raw_sequences):
+        raise ValueError("Expected exactly two raw-x physical layers.")
+    raw_lower, raw_upper, raw_reset = raw_sequences
+    for layer_index, (lower, upper, reset) in enumerate(
+        zip(raw_lower, raw_upper, raw_reset)
+    ):
+        matrices = tuple(
+            torch.as_tensor(value).detach().to(device="cpu", dtype=torch.float64)
+            for value in (lower, upper, reset)
+        )
+        lower64, upper64, reset64 = matrices
+        if (
+            lower64.shape != upper64.shape
+            or lower64.shape != reset64.shape
+            or lower64.numel() < 1
+            or not all(bool(torch.isfinite(value).all()) for value in matrices)
+            or bool(torch.any(upper64 < lower64))
+            or bool(torch.any(reset64 < lower64))
+            or bool(torch.any(reset64 > upper64))
+        ):
+            raise ValueError(
+                f"Expected finite ordered raw-x bounds and bounded RESET in layer "
+                f"{layer_index}."
+            )
+
+    native_delta = float(nominal_dw_min)
+    if not math.isfinite(native_delta) or native_delta <= 0.0:
+        raise ValueError("Expected a finite positive native OM dw_min.")
+    normalized_delta = native_delta / embedding.raw_x_span
+    lower_unit = tuple(embedding.to_mapping_unit(value) for value in raw_lower)
+    upper_unit = tuple(embedding.to_mapping_unit(value) for value in raw_upper)
+    reset_unit = tuple(embedding.to_mapping_unit(value) for value in raw_reset)
+    mapped = build_baseline_spacing_mapping(
+        logical_weights,
+        baseline_position_fraction=baseline_position_fraction,
+        spacing_delta_multiples=spacing_delta_multiples,
+        scale_fractions=scale_fractions,
+        nominal_dw_min=normalized_delta,
+        conductance_min=0.0,
+        conductance_max=embedding.conductance_ceiling,
+        cell_lower_units=lower_unit,
+        cell_upper_units=upper_unit,
+        reset_baseline_units=reset_unit,
+        intrinsic_references_native=intrinsic_references_native,
+    )
+
+    alpha = float(baseline_position_fraction)
+    spacing_raw_x = int(spacing_delta_multiples) * native_delta / 2.0
+    raw_baselines: list[torch.Tensor] = []
+    raw_targets: list[torch.Tensor] = []
+    tolerance_raw_x = max(1e-12, embedding.raw_x_span * 1e-6)
+    tolerance_g = max(1e-12, embedding.conductance_ceiling * 1e-6)
+    for layer, lower, upper, reset in zip(
+        mapped.physical.layers,
+        raw_lower,
+        raw_upper,
+        raw_reset,
+    ):
+        lower64 = torch.as_tensor(lower, dtype=torch.float64, device="cpu")
+        upper64 = torch.as_tensor(upper, dtype=torch.float64, device="cpu")
+        reset64 = torch.as_tensor(reset, dtype=torch.float64, device="cpu")
+        reset_quad = quad_stack(reset64, layout=layer.layout)
+        upper_quad = quad_stack(upper64, layout=layer.layout)
+        _group_lower, _group_upper, group_baseline = _destination_group_values(
+            reset_quad,
+            upper_quad,
+            alpha,
+        )
+        baseline_quad = _expanded_destination_groups(group_baseline)
+        baseline_raw = scatter_quads(
+            baseline_quad,
+            shape=tuple(lower64.shape),
+            layout=layer.layout,
+        ).to(torch.float32)
+        target_raw = (
+            baseline_raw.to(torch.float64)
+            + layer.integer_level_number.to(torch.float64) * spacing_raw_x
+        ).to(torch.float32)
+        if (
+            bool(torch.any(baseline_raw.to(torch.float64) < lower64 - tolerance_raw_x))
+            or bool(torch.any(baseline_raw.to(torch.float64) > upper64 + tolerance_raw_x))
+            or bool(torch.any(target_raw.to(torch.float64) < lower64 - tolerance_raw_x))
+            or bool(torch.any(target_raw.to(torch.float64) > upper64 + tolerance_raw_x))
+        ):
+            raise RuntimeError("Corrected raw-x baseline or target left native support.")
+        baseline_g = embedding.to_full_conductance(baseline_raw)
+        target_g = embedding.to_full_conductance(target_raw)
+        if (
+            not torch.allclose(
+                baseline_g,
+                layer.baseline,
+                rtol=0.0,
+                atol=tolerance_g,
+            )
+            or not torch.allclose(
+                target_g,
+                layer.quantized_conductance,
+                rtol=0.0,
+                atol=tolerance_g,
+            )
+        ):
+            raise RuntimeError(
+                "Internal mapping units do not reproduce the no-clipping affine G."
+            )
+        raw_baselines.append(baseline_raw)
+        raw_targets.append(target_raw)
+
+    report = {
+        **dict(mapped.report),
+        "coordinate": "raw_x=(native_raw_active_a+1)/2_unclipped",
+        "delta_x": native_delta / 2.0,
+        "level_spacing_unit": spacing_raw_x,
+        "conductance_embedding": dict(embedding.report()),
+        "internal_mapping_coordinate": (
+            "z=G/conductance_ceiling; compatibility_only_not_device_coordinate"
+        ),
+        "internal_mapping_delta_x": normalized_delta / 2.0,
+        "out_of_bounds_policy": "fail_no_projection_no_clipping",
+    }
+    return replace(
+        mapped,
+        nominal_dw_min=native_delta,
+        report=report,
+        raw_x_embedding=embedding,
+        raw_x_baselines=tuple(raw_baselines),
+        raw_x_ideal_targets=tuple(raw_targets),
+    )
+
+
 def apply_full_conductance_targets(
     catalog: Any,
     targets: Sequence[torch.Tensor],
@@ -530,7 +814,15 @@ __all__ = [
     "SPACING_DELTA_MULTIPLES",
     "BaselineSpacingMapping",
     "LayerDirectionalCapacity",
+    "RawXConductanceEmbedding",
+    "UNCLIPPED_STUDY_CONDUCTANCE_CEILING",
+    "UNCLIPPED_STUDY_CONDUCTANCE_PER_RAW_X",
+    "UNCLIPPED_STUDY_RAW_X_MAXIMUM",
+    "UNCLIPPED_STUDY_RAW_X_MINIMUM",
+    "UNCLIPPED_STUDY_RAW_X_ORIGIN",
+    "UNCLIPPED_STUDY_RAW_X_ORIGIN_MARGIN",
     "apply_full_conductance_targets",
     "build_baseline_spacing_mapping",
+    "build_unclipped_baseline_spacing_mapping",
     "persistent_weight_error_report",
 ]

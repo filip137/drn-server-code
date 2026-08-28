@@ -179,6 +179,70 @@ def raw_active_unit_to_full_conductance(
     return lower + (upper - lower) * value
 
 
+def raw_active_x_to_full_conductance(
+    endpoint_unit: torch.Tensor,
+    *,
+    raw_x_origin: float,
+    conductance_per_raw_x: float,
+    conductance_ceiling: float,
+) -> torch.Tensor:
+    """Apply a positive affine raw-``x`` conductance embedding without clipping.
+
+    ``raw_x_origin`` is the raw device coordinate that would represent zero
+    conductance, while ``conductance_per_raw_x`` is the literal slope in
+    conductance per raw-``x`` unit. Every supplied endpoint must lie strictly
+    above the origin and at or below the declared circuit ceiling. Unlike
+    :func:`project_raw_active_unit_to_full_conductance`, this conversion never
+    projects, clamps, or otherwise changes a device endpoint.
+
+    The calculation is performed in float64 and returned in the input floating
+    dtype. This keeps the positivity/support checks independent of float32
+    subtraction round-off while preserving the circuit tensor dtype expected
+    by callers.
+    """
+
+    origin = float(raw_x_origin)
+    slope = float(conductance_per_raw_x)
+    ceiling = float(conductance_ceiling)
+    value = torch.as_tensor(endpoint_unit)
+    if (
+        value.numel() < 1
+        or not value.is_floating_point()
+        or not bool(torch.all(torch.isfinite(value)))
+        or not math.isfinite(origin)
+        or not math.isfinite(slope)
+        or not math.isfinite(ceiling)
+        or slope <= 0.0
+        or ceiling <= 0.0
+    ):
+        raise ValueError(
+            "Expected finite floating raw-x endpoints, a finite origin, and "
+            "positive finite affine conductance parameters."
+        )
+
+    raw64 = value.to(dtype=torch.float64)
+    full64 = (raw64 - origin) * slope
+    tolerance = max(1e-15, ceiling * 1e-12)
+    if bool(torch.any(raw64 <= origin)) or bool(torch.any(full64 <= 0.0)):
+        raise ValueError(
+            "Raw-active endpoint does not map to strictly positive "
+            "conductance under the declared no-clipping affine embedding."
+        )
+    if bool(torch.any(full64 > ceiling + tolerance)):
+        raise ValueError(
+            "Raw-active endpoint exceeds the declared no-clipping affine "
+            "conductance ceiling."
+        )
+
+    full = full64.to(dtype=value.dtype)
+    if bool(torch.any(full <= 0.0)) or not bool(torch.all(torch.isfinite(full))):
+        raise ValueError(
+            "Affine raw-x conductance became non-positive or non-finite in "
+            "the requested circuit dtype."
+        )
+    return full
+
+
 @dataclass(frozen=True)
 class PublicConductanceProjection:
     """Auditable handoff from native raw ``x`` to passive public conductance.
@@ -521,6 +585,7 @@ __all__ = [
     "classify_persistent_uniform_codes",
     "matched_trajectory_seeds",
     "project_raw_active_unit_to_full_conductance",
+    "raw_active_x_to_full_conductance",
     "raw_active_unit_to_full_conductance",
     "required_cuda_random_draws",
     "run_raw_active_program_verify",
