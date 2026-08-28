@@ -253,6 +253,12 @@ def test_registry_has_stable_config_selected_id() -> None:
     assert document.experiment_id == "small_drn.v1"
 
 
+def test_registry_has_local_reference_compensation_validate_only() -> None:
+    definition = EXPERIMENT_REGISTRY["ibm_om_local_reference_compensation.v1"]
+
+    assert definition.supported_modes == (RunMode.VALIDATE,)
+
+
 def test_digital_low_rank_config_is_strict_normalized_and_registered() -> None:
     payload = _enable_digital_low_rank(_config())
     document = parse_small_drn_config(payload)

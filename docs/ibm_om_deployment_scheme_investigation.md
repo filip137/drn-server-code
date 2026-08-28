@@ -941,6 +941,63 @@ through the native workflow under
 artifacts, caveats, and the 90% diagnostic gate are frozen in
 [`ibm_om_four_reference_balance.md`](ibm_om_four_reference_balance.md).
 
+The completed main/replay study reduced intrinsic-reference zero-contrast RMS
+by 58--150 times and increased held-out scheme-optimized ideal accuracy from
+84.49% to 91.83%.  Under the sampled-order calibration frozen for both
+bindings, the mean paired improvement was +7.68 percentage points.  This
+strongly supports heterogeneous signed reference contrast as a failure
+mechanism.  It does not establish a deployable assignment rule: the treatment
+globally regrouped complete device identities within each layer, which is not
+available when initializing a fixed physical array.  The workflow outcome is
+therefore `inconclusive` for deployment despite passing the mechanistic 90%
+gate.
+
+### Stage 0G: fixed-binding local reference compensation
+
+The next intervention leaves every sampled identity at its existing physical
+address and leaves its intrinsic symmetry parameter `r_i` immutable.  It
+changes only the programmed zero-state baseline.  For rail order
+`(++,+-,-+,--)`, let `s=(+1,-1,-1,+1)`, map the symmetry point to `rho_i`, and
+form the reachable control baseline
+
+```text
+B0_i = clip(rho_i, [l_i,u_i]).
+```
+
+The treatment solves independently inside each existing quad:
+
+```text
+B* = argmin_B 0.5 ||B-rho||_2^2
+     subject to l_i <= B_i <= u_i and s^T B = 0.
+```
+
+Thus `B*` is the smallest local conductance movement that makes weight zero
+exactly zero.  No identity is reassigned and no donor is selected.  Away from
+active bounds the correction is the checkerboard update
+`B*=rho-(s^T rho/4)s`; it preserves both row sums, both column sums, and total
+zero-state loading.  Bound-active quads retain exact zero through the declared
+box projection and explicitly report any loading redistribution.
+
+The primary continuous comparison uses the same offset tensor `d` for both
+baselines, limited by the headroom common to both policies.  Every physical
+branch remains `G=B+d`, and every full `G` enters both signed transfer and
+denominator loading.  Assignment 86001 selects the scale/gain; assignments
+87001--87003 receive the frozen two-by-two policy/calibration matrix.  The
+primary effect is `B*@cal_B0 - B0@cal_B0`; independently refitted accuracy is
+secondary.  Quantization, pulse programming, training, and noise remain
+excluded so this study resolves only the baseline decision.  Its tracked
+contract is in
+[`ibm_om_local_reference_compensation.md`](ibm_om_local_reference_compensation.md).
+
+Read-only feasibility on the four frozen populations found an exact bounded
+solution for all 158,800 quads.  The unconstrained load-preserving correction
+was already in bounds for 97.66%; the bounded correction magnitude had median
+0.00891 and p99 0.03491 in normalized `x`, below the nominal single-pulse
+increment 0.04745 in most cases.  These are feasibility diagnostics, not
+accuracy or programmability evidence.  In particular, a successful continuous
+result must be followed by a discrete baseline/codebook and deterministic-P&V
+test because the required trim is commonly sub-pulse.
+
 ### Stage 1: codebook and P&V gate
 
 Screen at least 3-, 5-, and 7-level codebooks on development identities and

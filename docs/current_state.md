@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
 
 ## Purpose
 
@@ -48,6 +48,13 @@ The strongest current interpretation is:
   helps, but much of its compensation is array-specific. The transfer loss is
   therefore a concrete starting gap for deployed-array, on-chip-compatible
   quantized adaptation.
+- Ideal IBM OM baseline controls now isolate zero-state contrast as a major
+  initialization mechanism.  A globally reference-balanced four-device
+  assignment increased held-out continuous ideal accuracy from `84.49%` to
+  `91.83%` and reduced reference-contrast RMS by `58-150x`, but it requires
+  nonlocal identity reassignment and is therefore not a deployable fixed-array
+  solution.  The active successor keeps every identity in place and tests a
+  minimum-change programmed baseline with exact local zero contrast.
 - Gradient direction alone is sufficient for substantial same-cohort
   four-device recovery in the endpoint-projection simulator: balanced
   signSGD reached `95.77%` test accuracy from a `61.48%` initialization, but
@@ -713,16 +720,17 @@ Exact measurements, limitations, and raw artifact locations are in the
 ## Next steps
 
 1. Complete the IBM OM deployment-scheme investigation before launching more
-   raw-p90 HWA or any on-chip recovery study. Treat fitted-reference use and
-   device count as separate axes: compare with/without fixed `r` inside both
-   the four-device single-edge and eight-device paired-edge topologies. The
-   homogeneous ideal screen is complete: all four families reached
-   `96.91-97.38%`, so the next gate is identity-aware ideal mapping with frozen
-   per-cell `r`, bounds, and headroom on untouched assignments. Retain the
-   current RESET-relative path, which uses its mapped effective weight for
-   both transfer and loading, only as an effective-weight upper control. Then
-   test functional reassignment, persistent code distinguishability, and P&V.
-   The matched design and implementation gates are in
+   raw-p90 HWA or any on-chip recovery study.  Shared-zero baseline controls
+   and the nonlocal four-reference identity-balancing diagnostic are complete;
+   the latter passed its 90% ideal gate but is not physically local.  The
+   active ideal gate keeps every identity fixed and compares its nearest
+   reachable symmetry baseline with the minimum-L2 in-bound baseline that
+   enforces exact four-rail zero, using identical logical offsets and full
+   `G=B+d` loading.  Only after that fixed-binding baseline question is
+   resolved should the selected scheme enter four-delta codebook,
+   deterministic pulse distinguishability, and P&V tests.  Retain the
+   RESET-relative effective-weight path only as an upper control.  The matched
+   design and implementation gates are in
    [`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md).
 2. Only after one deployment scheme passes its transfer gate, define and
    predeclare a deployed-array QAT recovery study. Start every arm from the

@@ -796,6 +796,10 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.ibm_om_four_reference_balance_runtime import (
             run_validate,
         )
+    elif request.definition.experiment_id == "ibm_om_local_reference_compensation.v1":
+        from experiments.mnist_relu_drn.ibm_om_local_reference_compensation_runtime import (
+            run_validate,
+        )
     elif request.definition.experiment_id == "small_drn.v1":
         from experiments.small_network.runtime import run_validate
     elif request.definition.experiment_id == "mnist_relu.v1":
