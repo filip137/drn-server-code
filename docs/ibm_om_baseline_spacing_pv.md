@@ -8,8 +8,9 @@
 - Device model: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Execution: validate-only CUDA for production and the excluded smoke canary;
   no CPU path
-- Status: frozen workflow-managed contract; no run is evidence until all
-  declared coverage and the fail-closed analysis are complete
+- Status: frozen workflow-managed contract plus a completed direct CUDA
+  exploratory screen; the exploratory result is noncanonical and has not been
+  workflow-finalized
 
 ## Question
 
@@ -276,6 +277,97 @@ Report the best ideal design separately even if it differs from the practical
 P&V winner. This prevents a noisy endpoint from hiding deterministic
 quantization failure and prevents an ideal-only optimum from being presented
 as programmable.
+
+## Exploratory CUDA result
+
+A direct local CUDA screen completed the full numerical 3-by-3 design on
+2026-08-28. It contains 27 complete configurations: three baseline positions,
+three spacings, and three held-out OM assignments. Each configuration includes
+five matched P&V endpoint seeds, giving 135 complete stochastic endpoints.
+Five failed or interrupted attempts are preserved outside the selected
+complete bundles. This run did not use the prepared-study/finalization
+lifecycle and is therefore `exploratory_noncanonical`, not finalized workflow
+evidence.
+
+For clarity, the `alpha=0` baseline is the higher of the two bounded,
+eight-read RESET means in each destination-column pair:
+
+```text
+B+ = max(b++, b-+)    for (G++,G-+)
+B- = max(b+-, b--)    for (G+-,G--).
+```
+
+It is not the largest individual noisy read and is not one maximum over all
+four cells. Both cells in a destination pair receive that common baseline.
+The cell with the larger commissioned RESET mean is consequently requested at
+approximately its RESET baseline when its level index is zero, while its
+partner is raised to the same baseline. Nonzero sign-selected rails are then
+raised by `n h`.
+
+### Accuracy
+
+All accuracies below are held-out arithmetic means. Continuous and ideal
+quantized accuracies average the three hardware assignments. Persistent P&V
+accuracy averages the five matched endpoint seeds nested within each of those
+three assignments.
+
+| `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | `1 delta_x` | 94.97% | 94.77% | **78.16%** |
+| 0.00 | `2 delta_x` | 94.97% | 93.06% | 76.81% |
+| 0.00 | `4 delta_x` | 94.97% | 88.56% | 73.35% |
+| 0.25 | `1 delta_x` | 95.04% | **94.88%** | 67.20% |
+| 0.25 | `2 delta_x` | 95.04% | 90.40% | 62.40% |
+| 0.25 | `4 delta_x` | 95.04% | 79.39% | 58.01% |
+| 0.50 | `1 delta_x` | 94.80% | 93.60% | 45.05% |
+| 0.50 | `2 delta_x` | 94.80% | 88.59% | 44.80% |
+| 0.50 | `4 delta_x` | 94.80% | 56.90% | 27.94% |
+
+The ideal-only optimum is `alpha=0.25, h=delta_x` at 94.8767%. Its advantage
+over `alpha=0, h=delta_x` is only 0.1067 percentage point. Under persistent
+P&V, however, the practical optimum is the lowest feasible baseline and
+finest tested spacing, `alpha=0, h=delta_x`, at 78.1553%. Raising the baseline
+to `alpha=0.25` loses 10.9533 points and centering it at `alpha=0.5` loses
+33.1047 points. The historical `alpha=0, h=4 delta_x` ideal counts are
+reproduced exactly at 9098, 8580, and 8889 correct.
+
+### Mechanism and weight error
+
+At `h=delta_x`, increasing `alpha` from 0 to 0.25 to 0.5 raises mean W1
+baseline loading from `8.37e-5` to `1.60e-4` to `2.36e-4`, reduces W1 upward
+headroom from 0.633 to 0.484 to 0.333, and increases the required fitted gain
+from 14.1 to 70.8 to 281.8. Mean P&V cost rises from 7.14 to 9.55 to 13.08
+pulses per cell. Thus the shared baseline cancels in the zero-state signed
+contrast but remains fully present in denominator loading, while the extra
+downward headroom is unused by this one-sided initialization.
+
+For the practical `alpha=0, h=delta_x` choice, ideal DRN-versus-ReLU
+relative-L2 errors are 0.310 for W1 and 0.278 for W2; after persistent P&V
+they rise to 0.661 and 0.388. Apparent-endpoint network accuracy is 93.994%
+and apparent acceptance is 99.9639%, but persistent accuracy is only 78.1553%
+and persistent-window success is 35.4711%. The 15.8387-point
+apparent-to-persistent accuracy gap identifies noisy apparent admission of an
+incorrect hidden persistent state as the main remaining write-path failure.
+
+### Exploratory interpretation
+
+For one-shot initialization, carry forward one baseline per destination
+column at `B=L` with `h=delta_x`. Do not move the baseline toward the window
+midpoint merely to create unused downward headroom. A later in-place rewrite
+or on-chip-update study may require bidirectional headroom, but that is a
+separate intervention and must account for the substantial loading and P&V
+cost observed here.
+
+The next matched write-path control should keep `B=L`, `h=delta_x`, identities,
+targets, and endpoint seeds fixed while estimating persistent raw-`x` state
+from apparent verify value, target, pulse direction, and pulse history. QAT,
+BPTT, or on-chip recovery should not be used to obscure this controller error
+before that control is understood.
+
+Detailed local artifacts are in
+[`post_run_analysis.md`](../results/mnist-ibm-om-baseline-spacing-pv-exploratory-20260828-v1/analysis/post_run_analysis.md)
+and
+[`exploratory_summary.json`](../results/mnist-ibm-om-baseline-spacing-pv-exploratory-20260828-v1/analysis/exploratory_summary.json).
 
 ## Claim boundary
 

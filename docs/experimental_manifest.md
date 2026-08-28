@@ -1039,6 +1039,58 @@ evidence available today, not pass/fail gates.
 - **Workflow summary:** `results/mnist-ibm-om-four-device-baseline-selection-20260828-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-four-device-baseline-selection-20260828-v1 -->
 
+### mnist-ibm-om-shared-destination-baseline-spacing-pv-20260828-v1
+
+**Shared-destination baseline position and spacing under raw-active P&V —
+direct exploratory CUDA screen**
+
+- **Finished:** 2026-08-28
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Lifecycle:** `exploratory_noncanonical`; this is deliberately not an EBL
+  managed/finalized study block
+- **Question:** With exact destination-column zero sharing fixed, how should
+  the baseline position and uniform level spacing be selected when both ideal
+  quantization and stochastic persistent program-and-verify accuracy matter?
+- **Setup:** Four-device, no-fixed-reference quads; baseline positions
+  `alpha={0,0.25,0.5}`; spacings `h={1,2,4} delta_x`; held-out assignments
+  87001-87003; five matched P&V seeds per assignment; 27 complete CUDA
+  configurations and 135 complete persistent endpoints. Five failed or
+  interrupted attempts are retained separately.
+- **Baseline definition:** Within each destination pair `(G++,G-+)` or
+  `(G+-,G--)`, `L` is the larger of the two cells' bounded means from eight
+  RESET/read observations, `U` is the smaller sampled upper bound, and
+  `B=L+alpha(U-L)`. Thus `alpha=0` assigns both cells the higher of their two
+  commissioned RESET means; it is not a four-cell maximum.
+- **Headline result:** The best ideal quantized result was 94.8767% for
+  `alpha=0.25,h=delta_x`, only 0.1067 point above `alpha=0,h=delta_x`.
+  Persistent P&V instead strongly selected `alpha=0,h=delta_x` at 78.1553%,
+  versus 67.2020% for `alpha=0.25` and 45.0507% for the midpoint
+  `alpha=0.5`. At `alpha=0`, persistent accuracy fell from 78.1553% to
+  76.8060% and 73.3507% as spacing increased from one to two and four
+  `delta_x`.
+- **Interpretation:** For one-shot initialization, use the lowest feasible
+  shared destination baseline `B=L` and the finest tested spacing
+  `h=delta_x`. Raising `B` creates unused downward headroom while increasing
+  full-conductance denominator loading, reducing upward headroom, increasing
+  SET distance and pulse cost, and amplifying persistent write errors. The
+  remaining limitation is primarily the apparent-to-persistent controller
+  gap: the selected arm reached 93.994% apparent-endpoint accuracy but only
+  78.1553% persistent accuracy.
+- **Main limitations:** This direct run was not prepared, summarized, reviewed,
+  or finalized through the managed study lifecycle. It uses the AIHWKit 1.1.0
+  OM preset with counterfactually repaired identities rather than raw measured
+  trajectories or fabricated arrays. Native P&V endpoints are clipped only at
+  the declared public `x=[0,1]` circuit handoff; about 7.4% of persistent cells
+  in the selected arm were projected. There is no QAT, BPTT, HWA, inference
+  read noise, retention, drift, repeated logical rewrite, or on-chip recovery.
+- **Next step:** At fixed `B=L,h=delta_x`, compare the current apparent-value
+  controller with a development-fitted persistent-state estimator using
+  target, direction, and pulse history before adding training or recovery.
+- **Tracked report:**
+  [`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md)
+- **Local ignored artifacts:**
+  `results/mnist-ibm-om-baseline-spacing-pv-exploratory-20260828-v1/analysis/`
+
 <!-- BEGIN EBL STUDY mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1 -->
 ### mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1
 
