@@ -54,7 +54,13 @@ This is a conductance-coordinate separation, not a claim that four pulses
 produce a constant displacement. The OM soft-bounds pulse response is
 state-dependent.
 
-## Baseline and level-count rules
+## Completed v1/v2 baseline and capacity rules
+
+These completed screens bundled baseline placement with the mechanically
+resulting bounded capacity. Stage 0E changes only the baseline policy while
+retaining four-delta spacing and the existing whole-level capacity algorithm
+as frozen probes; spacing and level-count selection are subsequent technical
+decisions.
 
 | Reference policy | Frozen origin | Active levels used for mapping |
 | --- | --- | --- |
@@ -222,6 +228,13 @@ physical conductance sum in the denominator and report common-window failures
 explicitly. A separate fixed-`r` sensitivity should test whether a
 bidirectional centered codebook or a smaller frozen spacing can use its lower
 and upper headroom before any P&V or HWA launch.
+
+The versioned definition of `ideal_mapped_init_accuracy` and the frozen
+shared-zero Stage 0E design are recorded in
+[`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md#standard-headline-accuracies).
+This completed v2 screen predates that artifact contract and remains its
+independent-baseline parent evidence; it must not be relabelled as the
+canonical metric output.
 
 The ignored result bundles are:
 

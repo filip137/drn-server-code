@@ -2,12 +2,251 @@
 
 - Status: homogeneous ideal-mapping, shared-calibration bounded-codebook,
   exact-lower-bound, and corrected per-cell RESET-mean four-delta screens
-  complete; no new HWA or stochastic deployment P&V experiment has been
-  launched
-- Date: 2026-08-27
+  complete; the three-accuracy ladder is frozen and the shared-zero ideal
+  initialization control is the active next stage; no new HWA or stochastic
+  deployment P&V experiment has been launched
+- Date: 2026-08-28
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
   conductance traces and not an absolute conductance calibration
+
+## Standard headline accuracies
+
+Use the following three accuracy names for this investigation. Do not call
+all three "baselines": `B` is reserved for the physical conductance baseline
+of a cell or device group.
+
+| Order | Metric | Question answered | Current status |
+| --- | --- | --- | --- |
+| 1 | `ideal_mapped_init_accuracy` | How accurate is the frozen logical model immediately after deterministic mapping into one hardware instance's physical bounds and discrete codebook? | active gate |
+| 2 | `same_hardware_bptt_accuracy` | How much can BPTT recover when it adapts the exact mapped state against the same hardware instance? | blocked until metric 1 passes and the physical HWA writer is available |
+| 3 | `cross_hardware_deployment_accuracy` | How much of the source-hardware BPTT result survives when its frozen logical checkpoint is mapped onto untouched hardware? | blocked until metrics 1 and 2 are valid |
+
+All three metrics obey one physical-conductance invariant. Each branch enters
+the circuit as its full nonnegative conductance
+
+```text
+G_i = B_i + d_i.
+```
+
+No mapper, training modifier, or evaluator may remove `B_i` before forming
+transfer or loading. For a four-device rail quad,
+
+```text
+C = (B_pp+d_pp) - (B_pm+d_pm) - (B_mp+d_mp) + (B_mm+d_mm),
+L = (B_pp+d_pp) + (B_pm+d_pm) + (B_mp+d_mp) + (B_mm+d_mm).
+```
+
+For an eight-device active/reference edge,
+
+```text
+D = (B_a+d_a) - (B_r+d_r),
+S = (B_a+d_a) + (B_r+d_r).
+```
+
+Equal realized baselines may cancel algebraically from `C` or `D`; that is a
+measured property of the full conductances, not an implementation shortcut.
+The same baselines always remain in `L` or `S`.
+
+### 1. Ideal bounded-codebook initialization accuracy
+
+The canonical definition ID for the first metric is
+`ibm_om.ideal_bounded_standard4delta_init.v1`.
+`ideal_mapped_init_accuracy(H)` is the top-1 test accuracy of one explicitly
+named pre-BPTT FP32 logical checkpoint after deterministic mapping onto one
+frozen OM hardware instance `H`. A hardware instance comprises the sampled
+identity population, physical-cell bindings, per-cell bounds and fitted
+references, corruption/reassignment policy, baseline-commissioning receipt,
+topology, and codebook.
+
+The primary codebook is the declared uniform standard grid in
+`x=(a+1)/2`, with adjacent targets exactly
+`4 * (nominal_dw_min/2)` apart and with the frozen rounding, tie,
+zero-capacity, and unsupported-group rules. The exact selected codebook state
+is applied without stochastic target-write or inference-read noise. If noisy
+RESET/read observations were used to commission `B`, their one frozen receipt
+remains part of `H`: ideal evaluation removes later deployment noise, not the
+already committed commissioning error.
+
+The following are separate diagnostics and must not be reported under the
+headline name:
+
+- `continuous_envelope_accuracy`, which omits nearest-level rounding inside
+  the same bounds and capacity envelope;
+- an exact-bound or exact-baseline oracle;
+- the native state-dependent 0--128-pulse codebook; and
+- any historical effective-coordinate map that presents `(a-r+1)/2` to the
+  DRN as though it were a physical conductance.
+
+Each scheme searches the same predeclared layer-fraction grid and objective
+on the development assignment only. Its selected fractions and positive KL
+gain are then frozen before held-out evaluation. Test labels and held-out
+hardware cannot affect baseline commissioning, mapping, codebook,
+reassignment, calibration, or checkpoint selection. No optimizer update,
+HWA modifier, endpoint sampler, P&V controller, retention/drift, or on-chip
+recovery is active.
+
+Report exact `correct/examples` per untouched assignment, followed by the
+arithmetic mean and full assignment range. Development accuracy is
+calibration evidence, not the headline result. The existing 90% gate applies
+to the held-out mean, while the full range must remain visible.
+
+The metric is invalid, rather than merely low, if any required source,
+population, binding, commissioning, codebook, or calibration hash is absent
+or mismatched; if an unsupported group is handled outside its predeclared
+policy; or if any target is nonfinite, negative, outside its assigned bounds,
+or violates `G_i=B_i+d_i` beyond the declared numerical tolerance. The
+assignment artifact must therefore record or hash at least:
+
+- the definition, scheme, topology, reference policy, and hardware-instance
+  IDs;
+- the source checkpoint, teacher, model, solver, dataset/split, runtime, and
+  device-population identities and hashes;
+- the baseline estimator, grouping rule, seed, sample count, noise policy,
+  receipt, and realized per-cell `B_i` tensor;
+- code indices, capacities, rounding/tie policy, requested and exact targets,
+  zero-capacity groups, and unsupported/reassigned/failure counts;
+- per-branch `B_i`, `d_i`, and `G_i` hashes, their maximum decomposition
+  residual, finite/nonnegative/bounds checks, and derived `C/L` or `D/S`
+  hashes and loading statistics; and
+- development calibration receipt, exact held-out correct count, prediction
+  hash, teacher agreement, KL, voltage diagnostics, and explicit zero counts
+  for optimizer updates and every excluded deployment noise/process.
+
+The completed per-cell RESET-mean v2 screen remains relevant evidence, but it
+predates this definition and cannot be relabelled as its canonical output: it
+does not save an explicit checked `B_i`, `d_i`, `G_i=B_i+d_i` decomposition,
+one hardware-instance ID, an exact correct count, or a fail-closed validity
+record. Its independent origins also do not implement the shared-zero
+candidate selected below.
+
+### 2. Same-hardware BPTT accuracy
+
+`same_hardware_bptt_accuracy(H_s)` starts from the exact artifact-identified
+state used for `ideal_mapped_init_accuracy(H_s)`, performs BPTT against that
+same hardware instance, and evaluates the selected checkpoint
+deterministically on `H_s`. Identities, bindings, baselines, bounds, codebook,
+topology, and calibration remain fixed. The metric records the initialization,
+optimizer, training, and checkpoint hashes. It measures adaptation to `H_s`,
+not hardware transfer.
+
+This metric cannot use the current reusable IBM OM modifier unchanged. That
+legacy path writes the effective coordinate `(a-r+1)/2` into a DRN
+conductance tensor and therefore omits the separate physical-reference
+loading. A full-physical-`G` BPTT writer and parity tests are prerequisites.
+
+### 3. Cross-hardware deployment accuracy
+
+`cross_hardware_deployment_accuracy(H_s -> H_t)` freezes the BPTT-selected
+logical/master checkpoint and source-selected calibration from `H_s`, maps it
+without optimizer updates or target-specific calibration onto a disjoint,
+untouched hardware instance `H_t`, and evaluates it deterministically. The
+target uses its own commissioned baselines, bounds, identities, bindings, and
+codebook under the same frozen scheme rule. Absolute source conductances are
+never copied to `H_t`.
+
+Compute `ideal_mapped_init_accuracy(H_t)` on the same target instances so the
+three useful differences are identifiable:
+
+```text
+same-hardware recovery = same_hardware_bptt_accuracy(H_s)
+                         - ideal_mapped_init_accuracy(H_s)
+
+cross-hardware drop    = cross_hardware_deployment_accuracy(H_s -> H_t)
+                         - same_hardware_bptt_accuracy(H_s)
+
+held-out BPTT benefit  = cross_hardware_deployment_accuracy(H_s -> H_t)
+                         - ideal_mapped_init_accuracy(H_t).
+```
+
+Any pulse-programmed, fresh-read, retention, or noisy-inference accuracy is a
+later separately suffixed metric. It must not be folded into these three
+deterministic structural accuracies.
+
+## Three physical mapping decisions
+
+Represent every physical branch conductance as
+
+```text
+G_i = B_i + n_i h,
+```
+
+where the three mapping decisions are:
+
+1. the physical baseline `B_i` and its commissioning/grouping rule;
+2. the adjacent-level conductance spacing `h`; and
+3. the allowed integer index set for `n_i`, which determines the usable
+   level count.
+
+Change these decisions in separate stages. They are experimentally
+separable, but not mathematically independent under bounded devices. For a
+one-sided grid,
+
+```text
+M_i(B_i,h) = floor((u_i-B_i)/h)
+```
+
+limits the realizable positive level count. A baseline experiment must
+therefore freeze the spacing and level-count rule while reporting any
+mechanical capacity change caused by moving the baseline. The frozen
+four-delta grid is a probe for this stage, not a final selection of spacing
+or level count.
+
+The first active decision is the baseline. Here, "weight zero is zero" means
+zero signed transfer, not zero physical conductance or zero circuit loading.
+For a four-device rail quad, the hard zero condition is
+
+```text
+C0 = B_pp - B_pm - B_mp + B_mm = 0.
+```
+
+One exactly realized `B_Q` shared by all four cells is a sufficient, robust
+construction. For an eight-device active/reference edge, the robust local
+condition is
+
+```text
+D0,e = B_a,e - B_r,e = 0,
+```
+
+so one exactly realized baseline shared by each active/reference pair is
+sufficient. In both cases the full zero-state baseline remains in KCL
+loading:
+
+```text
+L0,Q = B_pp + B_pm + B_mp + B_mm,
+S0,e = B_a,e + B_r,e.
+```
+
+Consequently, zero transfer must be verified from the stored full
+conductances; it must never be implemented by dropping `B` from the circuit.
+Unless all baselines are physically zero, a zero logical weight still has a
+nonzero electrical loading footprint.
+
+### Baseline-first decision experiment
+
+Stage 0E changes only the baseline rule. Its primary interventions are:
+
+- four devices/no fixed `r`: replace four independent `B_i` values by one
+  bound-feasible commissioned `B_Q` shared by the rail quad; and
+- eight devices/no fixed `r`: replace independent active/reference origins
+  by one bound-feasible `B_e` shared within each pair.
+
+The fitted intrinsic `r_i` is observed rather than selected and is therefore
+not part of this first baseline-choice intervention. A later fixed-`r` study
+may test identity balancing or active-state compensation, but must retain the
+sampled `r_i`.
+
+Before accuracy is inspected, every assignment must pass exact zero-transfer
+checks at `n=0`, full `G=B+n h` bounds and KCL parity checks, and complete
+functional coverage or its frozen reassignment/failure policy. Report
+zero-state loading, common-window feasibility, positive headroom, and the
+mechanically resulting capacity.
+
+The headline remains `ideal_mapped_init_accuracy`. Report the continuous
+bounded-envelope diagnostic beside the frozen four-delta probe. If both
+improve, baseline cancellation/loading was limiting. If only the continuous
+result improves, spacing or level count is the next limitation. Do not select
+a new spacing or level count from Stage 0E.
 
 ## Decision at this checkpoint
 
@@ -540,6 +779,121 @@ capacity control because the one-sided four-delta grid supplies only three
 median signed levels and leaves about `14--16%` of quads at zero capacity;
 its large continuous envelope must not be dismissed as an `r` failure.
 
+### Stage 0E: baseline decision — shared-zero ideal initialization
+
+Stage 0E is the first experiment governed by
+`ibm_om.ideal_bounded_standard4delta_init.v1`. It tests the specific
+explanation exposed by Stage 0D:
+
+> The no-`r` ideal initialization fails primarily because independently
+> commissioned baselines create a large zero-weight contrast. Enforcing one
+> physically reachable zero within the relevant device group should remove
+> that contrast while retaining every baseline in denominator loading.
+
+Implement it as a new version-3 screen contract and config. Do not change the
+meaning, schema, or artifacts of completed v1/v2 screens.
+
+Keep the v2 logical source, teacher, topology, solver, assignments, eight
+sequential RESET/read samples per cell, normalized conductance coordinate,
+four-delta spacing, scale grid, per-scheme development refit, and noiseless
+level deployment. The declared intervention is the baseline rule. Keep `h`
+and the whole-level capacity algorithm frozen. Moving `B` may mechanically
+change realizable capacity under the bounds; record that consequence, but do
+not optimize the spacing or select a new level count in this stage. The
+existing independent-baseline v2 results are the frozen parent controls; do
+not rerun or retune them after inspecting Stage 0E.
+
+For every commissioned cell, first reproduce the bounded estimate
+
+```text
+b_i = clip((mean(a_i)+1)/2, [l_i, u_i]).
+```
+
+For a four-device no-`r` rail quad, define
+
+```text
+L_Q = max_i(l_i),
+U_Q = min_i(u_i),
+B_Q_requested = max_i(b_i),
+B_Q = clip(B_Q_requested, L_Q, U_Q).
+```
+
+The group is feasible only if `L_Q <= U_Q`. The requested-to-realized group
+projection is part of this ideal bound-constrained mapper and must be recorded;
+it is not evidence that a stochastic RESET/P&V sequence can reach the value.
+For a signed integer magnitude `m` and spacing
+`h=4*(nominal_dw_min/2)`, use
+
+```text
+positive: G++=B_Q+m h, G+-=B_Q,     G-+=B_Q,     G--=B_Q+m h
+negative: G++=B_Q,     G+-=B_Q+m h, G-+=B_Q+m h, G--=B_Q.
+```
+
+All four full `G=B_Q+d` values enter KCL. The realized zero contrast is
+exactly zero, while the four-cell loading is `4 B_Q + 2 m h`. Capacity is
+the largest whole `m` for which every potentially raised cell remains within
+its own upper bound.
+
+For an eight-device no-`r` edge with active and reference branches, define
+
+```text
+B_e_requested = max(b_a, b_r),
+B_e = clip(B_e_requested, max(l_a,l_r), min(u_a,u_r)),
+```
+
+and require a nonempty pairwise common interval. Keep the reference branch at
+`G_r=B_e`; set the active branch to `G_a=B_e+d` on the sign-selected rail.
+Thus logical zero has exact `D=0`, while the solver retains `S=2 B_e+d`.
+Quad capacity is the minimum whole active-branch capacity over the four rail
+edges. A stricter common zero across all eight devices may be reported later
+as a separate grouping intervention; it is not required to test local
+active/reference cancellation.
+
+An empty exact common interval must fail the assignment or consume a
+separately predeclared deterministic group-reassignment stream. The mapper
+must never fall back to independent cell baselines, drop a logical weight, or
+choose a donor after observing accuracy. Report the group-baseline projection
+count and error separately from empty-window and reassignment counts. A
+feasible group with zero positive capacity remains an explicitly reported
+zero-only group.
+
+The minimal new primary arms are four/no-`r` shared-quad zero and eight/no-`r`
+shared-pair zero. The existing four/eight no-`r` independent-baseline results
+provide their paired historical controls. The intrinsic-`r` arms remain
+unchanged reference-policy controls, but they must not be called shared-zero
+schemes:
+heterogeneous intrinsic `r_i` can still create a nonzero rail contrast. A
+separate fixed-`r` spacing or identity-balancing study follows only after the
+shared-zero no-`r` question is answered.
+
+In this normalized model, "exact `r`" means that `r` is not moved onto the
+active integer grid. The repository mapping still intersects native state
+with the public `[0,1]` coordinate; any `r` outside native `[-1,1]` is clipped
+by that coordinate. The canonical metric must retain both raw and mapped `r`,
+report the clipping count, and must not describe a clipped value as the
+unchanged native reference.
+
+Stage 0E is valid only if it records the complete first-metric artifact
+contract above and additionally proves:
+
+- exact zero baseline contrast in every feasible four-device shared quad and
+  exact `G_a-G_r=0` in every feasible eight-device pair at `d=0`;
+- finite, nonnegative, in-bound `B`, `d`, and `G=B+d` tensors and exact
+  four-delta integer levels;
+- full-conductance four-device KCL and eight-device `D/S` parity;
+- explicit common-window, zero-capacity, reassignment, and failure counts;
+- one frozen selected scale pair and gain per scheme from assignment `86001`,
+  evaluated without refit on assignments `87001`, `87002`, and `87003`; and
+- deterministic main/replay equality under the declared semantic path
+  normalization.
+
+The headline is the held-out mean and assignment range of
+`ideal_mapped_init_accuracy`; `continuous_envelope_accuracy`, baseline
+contrast, capacity, loading, voltage, and sign-flip statistics explain any
+remaining loss. The existing 90% held-out-mean gate and complete functional
+coverage remain the progression criteria. No BPTT, P&V, or on-chip recovery
+arm is eligible while this gate fails.
+
 ### Stage 1: codebook and P&V gate
 
 Screen at least 3-, 5-, and 7-level codebooks on development identities and
@@ -576,23 +930,31 @@ from the same explicitly named persistent deployed bundle.
 
 ## Immediate implementation order
 
-1. Stop treating additional raw-p90 HWA runs as the next scientific step.
-2. Preserve the completed homogeneous 2-by-2 ideal-mapping result and its exact
-   teacher/config hashes.
-3. Implement the matched shared-zero control suggested by Stage 0D: a common
-   commissioned baseline per four-device rail quad and a shared zero per
-   eight-device active/reference group, with explicit common-window failure.
-4. Add the matched load decomposition for independent versus grouped RESET
-   baselines, fitted-`r` placement, four versus eight devices, and functional
-   reassignment versus structural failure.
-5. Implement the persistent codebook screen with non-overlapping verify
-   windows.
-6. Bind the existing difference/sum interaction to explicit active/reference
-   OM branches and verify numerator/denominator parity.
-7. Keep every scheme blocked from absolute physical claims until OM
+1. Keep `ideal_mapped_init_accuracy` as the only active accuracy gate; do not
+   launch additional raw-p90 HWA, BPTT, or transfer runs yet.
+2. Add a fail-closed physical-target artifact/API carrying explicit `B`, `d`,
+   and `G=B+d`, exact correct counts, one hardware-instance ID, and the metric
+   validity record. Quarantine effective-`(a-r)` writers from physical metric
+   IDs.
+3. Implement the Stage 0E matched shared-zero control: a bound-feasible common
+   commissioned baseline per four-device rail quad and per eight-device
+   active/reference pair, with explicit common-window failure or a separately
+   frozen reassignment policy.
+4. Add heterogeneous-baseline four-device KCL and eight-device branch-pair
+   regression tests proving that every full conductance contributes to both
+   transfer and loading.
+5. Run the Stage 0E deterministic main/replay screen and compare it with the
+   frozen Stage 0D independent-baseline artifacts. Preserve the completed
+   homogeneous 2-by-2 result and every exact teacher/config hash.
+6. If the first metric passes, implement the persistent codebook screen with
+   non-overlapping verify windows. If it fails, remain in ideal-only analysis
+   and test the declared capacity/identity controls before training.
+7. Only after the first metric and persistent-code gate pass, implement the
+   full-physical-`G` BPTT path required for
+   `same_hardware_bptt_accuracy`, followed by untouched-hardware transfer.
+8. Keep every scheme blocked from absolute physical claims until OM
    conductance traces or a versioned normalized-to-conductance calibration are
-   supplied.
-8. Materialize the exact workflow-managed P&V study only after the selected
+   supplied. Materialize a workflow-managed P&V study only after its selected
    arms, configs, artifact schema, and parity tests exist.
 
 This sequence determines whether the remaining gap belongs to device
