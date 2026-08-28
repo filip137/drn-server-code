@@ -971,9 +971,11 @@ B* = argmin_B 0.5 ||B-rho||_2^2
      subject to l_i <= B_i <= u_i and s^T B = 0.
 ```
 
-Thus `B*` is the smallest local conductance movement that makes weight zero
-exactly zero.  No identity is reassigned and no donor is selected.  Away from
-active bounds the correction is the checkerboard update
+Thus `B*` is the smallest local conductance movement that makes the normalized
+float64 zero target exact.  Any last-bit residual after canonical float32
+physical conversion is reported and retained in KCL.  No identity is
+reassigned and no donor is selected.  Away from active bounds the correction
+is the checkerboard update
 `B*=rho-(s^T rho/4)s`; it preserves both row sums, both column sums, and total
 zero-state loading.  Bound-active quads retain exact zero through the declared
 box projection and explicitly report any loading redistribution.

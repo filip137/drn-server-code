@@ -87,6 +87,12 @@ total zero-state loading.  When a bound is active, the declared objective is
 still minimum L2 displacement plus exact zero; any resulting row, column, or
 total loading change is measured rather than silently constrained away.
 
+Here, exact zero means the normalized float64 baseline target satisfies the
+constraint to the declared tolerance.  Conversion to the canonical float32
+physical conductances can leave a last-bit residual; that physical residual is
+measured and retained in the mapping report and is never subtracted from the
+circuit equations.
+
 Exact zero is feasible for a quad precisely when zero lies between its minimum
 and maximum attainable signed sums:
 
