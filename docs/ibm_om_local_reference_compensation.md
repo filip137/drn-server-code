@@ -15,6 +15,9 @@ This study separates two quantities that must not be conflated:
 The treatment changes `B_i`; it does not change `r_i`, exchange identities, or
 move any other fitted device field.
 
+This is the fixed-binding local member of the
+[symmetry-reference-anchored study family](ibm_om_reference_anchored_studies.md).
+
 ## Frozen initialization inputs
 
 Both native arms receive the same explicit pre-BPTT logical checkpoint at
@@ -189,6 +192,31 @@ The metric identifier is
 `model_based_aihwkit_preset`: it is a fitted-model ideal-initialization result,
 not measured fabricated-array accuracy and not a claim about a deployable P&V
 sequence.
+
+## Artifact-verified results
+
+Both canonical native arms completed with 53 artifacts each.  Full artifact
+hash verification and independent main/replay reconstruction passed.  On the
+three held-out assignments, the scheme-refitted ideal continuous results were:
+
+| Assignment | Nearest symmetry | Local compensation | Paired gain |
+|---|---:|---:|---:|
+| 87001 | 84.23% | 90.73% | +6.50 pp |
+| 87002 | 87.30% | 93.58% | +6.28 pp |
+| 87003 | 79.20% | 91.10% | +11.90 pp |
+| **Mean** | **83.58%** | **91.80%** | **+8.23 pp** |
+
+The primary comparison held the nearest-symmetry calibration fixed for both
+baseline policies.  Its mean improvement was 8.23 percentage points, above
+the predeclared 5-point mechanistic gate.  The independently refitted local
+compensation mean was 91.80%, above the predeclared 90% absolute gate.  The
+same canonical physical `d` hashes were used in every paired comparison, so
+the accuracy difference is attributable to the baseline policy within this
+ideal continuous contract rather than extra treatment headroom.
+
+These measurements do not establish that the fine baseline correction can be
+resolved by discrete pulses, survives stochastic P&V, or improves on-chip
+learning.  Those are separate progression gates.
 
 ## Native workflow commands
 

@@ -52,9 +52,12 @@ The strongest current interpretation is:
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
   `91.83%` and reduced reference-contrast RMS by `58-150x`, but it requires
-  nonlocal identity reassignment and is therefore not a deployable fixed-array
-  solution.  The active successor keeps every identity in place and tests a
-  minimum-change programmed baseline with exact local zero contrast.
+  nonlocal identity reassignment.  The fixed-binding successor now supports a
+  physically local ideal candidate: minimum-L2 exact-zero compensation raised
+  mean held-out continuous accuracy from `83.58%` to `91.80%` with the same
+  identities and matched offsets.  This resolves the continuous baseline
+  mechanism, but the commonly sub-pulse corrections still require discrete
+  codebook and P&V validation before any deployment or learning claim.
 - Gradient direction alone is sufficient for substantial same-cohort
   four-device recovery in the endpoint-projection simulator: balanced
   signSGD reached `95.77%` test accuracy from a `61.48%` initialization, but
@@ -309,6 +312,23 @@ and fine-tuning updates must remain separately measurable.
   points, and its KL was `3.50x` higher. These updates changed an ideal digital
   shadow and globally selected the nearest measured endpoint after every
   minibatch; they were not one-pulse-local sign updates on physical devices.
+
+### IBM OM reference-anchored ideal initialization
+
+- **Fixed-binding local exact-zero compensation:** The artifact-verified
+  main/replay study kept every sampled OM identity at its original physical
+  address and compared the nearest attainable intrinsic-symmetry baseline with
+  the minimum-L2 in-bound baseline satisfying exact four-rail zero.  Both arms
+  used bitwise-identical matched offset tensors and retained every full
+  `G=B+d` in transfer and loading.  Across assignments 87001--87003, nearest
+  symmetry averaged `83.58%` ideal continuous accuracy and local compensation
+  averaged `91.80%`; the fixed-control-calibration effect was `+8.23` points
+  with a `+6.28` to `+11.90` range.  Both predeclared gates passed, supporting
+  local signed baseline mismatch as an important initialization mechanism.
+  The result is bounded continuous AIHWKit-preset evidence, not proof that the
+  mostly sub-pulse correction can be programmed or that reference anchoring
+  improves persistent on-chip updates.  These studies are grouped under the
+  [symmetry-reference-anchored umbrella](ibm_om_reference_anchored_studies.md).
 
 ### Cell-specific IBM OM QAT and held-out-array transfer
 
@@ -719,18 +739,17 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Complete the IBM OM deployment-scheme investigation before launching more
-   raw-p90 HWA or any on-chip recovery study.  Shared-zero baseline controls
-   and the nonlocal four-reference identity-balancing diagnostic are complete;
-   the latter passed its 90% ideal gate but is not physically local.  The
-   active ideal gate keeps every identity fixed and compares its nearest
-   reachable symmetry baseline with the minimum-L2 in-bound baseline that
-   enforces exact four-rail zero, using identical logical offsets and full
-   `G=B+d` loading.  Only after that fixed-binding baseline question is
-   resolved should the selected scheme enter four-delta codebook,
-   deterministic pulse distinguishability, and P&V tests.  Retain the
-   RESET-relative effective-weight path only as an upper control.  The matched
-   design and implementation gates are in
+1. Advance the supported fixed-binding local-compensation result through the
+   discrete deployment gates before launching on-chip recovery.  Keep the same
+   identities and baseline objective while testing standard levels,
+   deterministic pulse reachability, persistent code distinguishability, and
+   stochastic P&V with full `G=B+d` loading.  Retain nearest symmetry and the
+   RESET-relative effective-weight path as controls.  Only a baseline that
+   produces a valid named persistent deployment can enter the matched
+   lower-versus-centered by frozen-versus-persistent-update factorial.  The
+   reference-anchored family and matched design gates are in
+   [`ibm_om_reference_anchored_studies.md`](ibm_om_reference_anchored_studies.md)
+   and
    [`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md).
 2. Only after one deployment scheme passes its transfer gate, define and
    predeclare a deployed-array QAT recovery study. Start every arm from the
@@ -782,6 +801,8 @@ documented in
 ## Related documents
 
 - [IBM OM deployment-scheme investigation](ibm_om_deployment_scheme_investigation.md)
+- [IBM OM symmetry-reference-anchored studies](ibm_om_reference_anchored_studies.md)
+- [IBM OM fixed-binding local reference compensation](ibm_om_local_reference_compensation.md)
 - [Differential pairs using signed amplifier ports](differential_pair_amplifier_implementation.md)
 - [Four-device and eight-device reference schemes](differential_scheme.md)
 - [Teacher-initialized MNIST DRN distillation](mnist_relu_drn_kd.md)

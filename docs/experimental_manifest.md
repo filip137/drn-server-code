@@ -37,6 +37,18 @@ interpretation**; negative and inconclusive outcomes are first-class results.
 The operational procedure is in
 [`experiment_workflow.md`](experiment_workflow.md).
 
+## Study-family terminology
+
+The **symmetry-reference-anchored memristor studies**, shortened to
+**reference-anchored studies**, cover IBM OM schemes whose stored zero-state
+baseline is derived from an identity's intrinsic fitted symmetry reference
+`r_i`.  Exact fixed-reference arms use `B_i=r_i`; local compensation uses a
+nearby stored `B_i≈r_i` while keeping `r_i` immutable.  The family includes
+both four-device rail-quad and eight-device active/reference-pair topologies;
+the name does not imply that every member contains a separate reference branch
+per edge.  The family contract and on-chip-learning boundary are documented in
+[`ibm_om_reference_anchored_studies.md`](ibm_om_reference_anchored_studies.md).
+
 ## Progress toward the program goal
 
 The states `supported`, `partial`, and `open` are a compact view of the
@@ -1051,6 +1063,35 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1/`
 - **Workflow summary:** `results/mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1 -->
+### mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1
+
+**Fixed-identity local exact-zero reference compensation at ideal initialization**
+
+- **Finished:** 2026-08-28
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** supported
+- **Initial hypothesis:** With sampled identities fixed at their existing four-cell addresses, programming the nearest in-bounds local baseline whose signed four-rail contrast is exactly zero will improve held-out ideal continuous initialization by at least 5 percentage points under the frozen control calibration and recover at least 90 percent under per-scheme refitting.
+- **Completion criteria:**
+  - Both native commands receive data/ibm_om_cell_aware_full_span_v1.pt (SHA-256 a99995a3e5b321a56bb7e00e29840c3b76f3fee95b8d8c80fdf0fa16e93b3563) through --weights and data/mnist_relu_teacher_fixed_init_20260816.pt (SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52) through --teacher-weights; the initialization derivation receipt is data/ibm_om_cell_aware_full_span_v1.receipt.json (SHA-256 d58b0d709312061dc2425d143744f45fdf9de9d5e583a619e7a91325c53059b8).
+  - Both declared native validate arms complete from the frozen pre-BPTT checkpoint and teacher, cover development assignment 86001 and held-out assignments 87001-87003, and evaluate all 10000 test examples per held-out policy/calibration cell.
+  - The sampled device identities and their flat physical addresses are identical between baseline policies; no identity, intrinsic r, bound, or other device field is reassigned or mutated.
+  - All local exact-zero box projections are feasible, remain inside sampled active bounds, and have absolute signed baseline-contrast residual at most 1e-12 in normalized double precision before canonical physical conversion.
+  - For every assignment, layer, scale pair, and logical weight, the control and treatment d tensors are bitwise identical after canonical physical conversion and are limited by the common headroom available to both policies.
+  - Every selected physical branch is finite and nonnegative, every active branch is within its sampled bounds, every mapping records rho, bounds, B, d, and G with zero decomposition residual, and the full G enters both four-rail contrast and denominator loading.
+  - Optimizer updates, quantization, pulse programming, HWA, deployment write noise, inference read noise, retention, and drift are exactly absent.
+  - The mechanistic accuracy gate passes only if the primary fixed-control-calibration held-out mean improvement is at least 5 percentage points. The absolute recovery gate passes only if the treatment scheme-refitted held-out mean accuracy is at least 90 percent. Any failed gate is retained and interpreted rather than repaired after inspection.
+- **Coverage:** 2 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared ideal-continuous hypothesis is supported. With every sampled identity fixed at its existing physical address and with bitwise-identical matched offset tensors, the minimum-L2 local baseline compensation improved held-out accuracy by 8.2267 percentage points under the frozen nearest-symmetry calibration, with paired gains of 6.50, 6.28, and 11.90 points. The compensated scheme-refitted mean was 91.8033 percent across assignments 87001-87003, with a range of 90.73 to 93.58 percent. It therefore passed both the 5-point mechanistic-effect gate and the 90-percent absolute-accuracy gate. This supports local signed zero-state baseline mismatch as an important cause of the nearest-symmetry initialization loss and establishes fixed-binding local compensation as a successful ideal continuous reference-anchored initialization candidate. It does not establish that the commonly sub-pulse corrections can be programmed, that they survive stochastic program-and-verify, or that reference anchoring improves on-chip learning.
+- **Main limitations:** This is model_based_aihwkit_preset evidence from AIHWKit 1.1.0 rather than raw measured conductance traces or fabricated hardware. It uses one frozen checkpoint and teacher, one MNIST split, one development assignment (86001), and three held-out assignments (87001-87003) drawn from counterfactually repaired OM populations. Each policy searched the same 16 development scale pairs and fitted a positive logit gain. The experiment is bounded but continuous and excludes discrete levels, pulse reachability, P&V, write and read noise, retention, drift, HWA, QAT/BPTT, persistent updates, Tiki-Taka, LoRA, endurance, and absolute-Siemens calibration. The compensated baseline enforces circuit zero but need not coincide with either the active-range midpoint or the pulse-symmetry point. Many required baseline corrections are smaller than one nominal OM pulse increment, so continuous feasibility is not programmability evidence.
+- **Next steps:**
+  - Keep the same identities and local baseline objective and run a predeclared discrete-codebook and deterministic-then-stochastic program-and-verify study that measures whether the compensated baseline can be resolved persistently, preserves full G=B+d circuit accounting, and passes the persistent distinguishability and coverage gates.
+  - Only after a realizable persistent deployment and an HWA-only recovery gap exist, run the matched two-by-two on-chip-learning study crossing shared-zero lower versus centered reference-anchored baseline placement with frozen versus direct persistent-pulse recovery. Start paired frozen/update arms from byte-identical deployed states, predeclare the difference-in-differences threshold, and report update bias, return-to-zero error, saturation, pulse count, loading drift, voltage, endurance, and accuracy.
+  - Introduce Tiki-Taka or LoRA only as a separately predeclared matched recovery arm after the direct-pulse comparison; do not infer that either is necessary from the initialization result alone.
+- **Raw artifacts:** `results/mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1 -->
 
 ## Shared validity notes
 

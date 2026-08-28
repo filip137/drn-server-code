@@ -6,6 +6,9 @@ Can the four-device fixed-reference topology recover a genuine logical zero by
 choosing which sampled device identities form each quad, before making any
 decision about level spacing or level count?
 
+This is the nonlocal identity-binding upper control in the
+[symmetry-reference-anchored study family](ibm_om_reference_anchored_studies.md).
+
 For one quad, the zero-state transfer term is
 
 \[

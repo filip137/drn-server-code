@@ -264,6 +264,14 @@ choice:
    signed weight), or use an active/reference pair per edge (eight devices per
    original signed weight).
 
+Collectively, schemes whose zero-state baseline is derived from intrinsic
+`r_i` are **symmetry-reference-anchored memristor schemes**, shortened to
+**reference-anchored schemes**.  Exact fixed-`r` arms set `B_i=r_i`; local
+compensation sets `B_i≈r_i` while leaving intrinsic `r_i` immutable.  Reference
+anchoring is independent of four- versus eight-device topology.  The family
+and its on-chip-learning boundary are summarized in
+[`ibm_om_reference_anchored_studies.md`](ibm_om_reference_anchored_studies.md).
+
 This gives the following 2-by-2 screen. `B` denotes the characterized lower
 conductance used by the no-`r` control and `L` is the nonnegative dual-rail
 lift of the requested signed weight.
@@ -999,6 +1007,17 @@ increment 0.04745 in most cases.  These are feasibility diagnostics, not
 accuracy or programmability evidence.  In particular, a successful continuous
 result must be followed by a discrete baseline/codebook and deterministic-P&V
 test because the required trim is commonly sub-pulse.
+
+The canonical main/replay study is complete and finalized with outcome
+`supported` for its declared ideal-continuous hypothesis.  Nearest symmetry
+averaged `83.58%` held-out accuracy, while local exact-zero compensation
+averaged `91.80%` over assignments 87001--87003.  Under the control calibration
+frozen for both policies, the paired mean gain was `+8.23` percentage points
+with a `+6.28` to `+11.90` range.  Both the predeclared five-point mechanistic
+gate and 90% absolute gate passed.  Because identities and canonical physical
+offset tensors were matched, this supports local signed baseline mismatch as
+an important ideal-initialization mechanism.  It remains explicitly silent on
+discrete programmability, stochastic P&V, and on-chip learning.
 
 ### Stage 1: codebook and P&V gate
 

@@ -13,6 +13,11 @@ Either topology can be screened with or without the fitted symmetry reference
 `r`. In the four-device fixed-reference construction, a positive signed
 weight uses
 
+Schemes whose zero-state baseline is derived from intrinsic `r_i` belong to
+the [symmetry-reference-anchored family](ibm_om_reference_anchored_studies.md).
+This reference policy is independent of topology: only the eight-device
+construction necessarily has a separate active/reference pair on each edge.
+
 ```text
 [[G++, G+-], [G-+, G--]] = [[a, r], [r, a]],
 ```
