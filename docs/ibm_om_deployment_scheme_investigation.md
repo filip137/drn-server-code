@@ -781,9 +781,24 @@ its large continuous envelope must not be dismissed as an `r` failure.
 
 ### Stage 0E: baseline decision — shared-zero ideal initialization
 
-Stage 0E is the first experiment governed by
-`ibm_om.ideal_bounded_standard4delta_init.v1`. It tests the specific
-explanation exposed by Stage 0D:
+The workflow-managed implementation is frozen in
+[`ibm_om_baseline_selection.md`](ibm_om_baseline_selection.md) under study
+`mnist-ibm-om-four-device-baseline-selection-20260828-v1`. It expands the
+original two-arm screen into a matched four-policy, four-device comparison:
+independent cell origins, one shared quad origin, two destination-column
+origins, and sign-selected partner-reference enforcement. One jointly
+repaired identity assignment is shared across policies. Because the scientific
+question at this stage is baseline choice rather than level choice, its
+primary definition is `ibm_om.ideal_bounded_continuous_init.v1`; the frozen
+four-delta map remains a secondary diagnostic using the same selected
+calibration. The detailed contract in the linked document is authoritative
+where this earlier version-3 sketch differs.
+
+The earlier two-arm Stage 0E sketch used
+`ibm_om.ideal_bounded_standard4delta_init.v1` as its primary metric. The
+formal four-policy study retains that definition only for its secondary
+codebook diagnostic. Both versions test the specific explanation exposed by
+Stage 0D:
 
 > The no-`r` ideal initialization fails primarily because independently
 > commissioned baselines create a large zero-weight contrast. Enforcing one

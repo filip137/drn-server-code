@@ -42,6 +42,12 @@ from experiments.mnist_relu_drn.config import (
     parse_student_config,
     resolve_student_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_baseline_selection_config import (
+    EXPERIMENT_ID as IBM_OM_BASELINE_SELECTION_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_BASELINE_SELECTION_SCHEMA_VERSION,
+    parse_baseline_selection_config,
+    resolve_baseline_selection_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -814,8 +820,22 @@ IBM_OM_FOUR_REFERENCE_BALANCE_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_BASELINE_SELECTION_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_BASELINE_SELECTION_EXPERIMENT_ID,
+    schema_version=IBM_OM_BASELINE_SELECTION_SCHEMA_VERSION,
+    description=(
+        "Validate four matched IBM OM baseline policies at ideal bounded "
+        "continuous initialization with a frozen four-delta diagnostic."
+    ),
+    supported_modes=(RunMode.VALIDATE,),
+    parser=parse_baseline_selection_config,
+    resolver=resolve_baseline_selection_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
+    IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
     IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
     MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,

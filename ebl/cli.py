@@ -788,7 +788,11 @@ def _default_linspace_handler(request: LinspaceRequest) -> Optional[int]:
 
 
 def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
-    if request.definition.experiment_id == "ibm_om_four_reference_balance.v1":
+    if request.definition.experiment_id == "mnist_ibm_om_baseline_selection.v1":
+        from experiments.mnist_relu_drn.ibm_om_baseline_selection_runtime import (
+            run_validate,
+        )
+    elif request.definition.experiment_id == "ibm_om_four_reference_balance.v1":
         from experiments.mnist_relu_drn.ibm_om_four_reference_balance_runtime import (
             run_validate,
         )
