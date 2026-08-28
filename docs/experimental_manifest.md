@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-08-25
+Last updated: 2026-08-28
 
 ## Program goal
 
@@ -999,6 +999,33 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-ibm-om-cell-aware-exact-bounds-transfer-20260824-v1/`
 - **Workflow summary:** `results/mnist-ibm-om-cell-aware-exact-bounds-transfer-20260824-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-cell-aware-exact-bounds-transfer-20260824-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-four-device-baseline-selection-20260828-v1 -->
+### mnist-ibm-om-four-device-baseline-selection-20260828-v1
+
+**Four-device IBM OM ideal baseline selection**
+
+- **Finished:** 2026-08-28
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** mixed
+- **Initial hypothesis:** A baseline shared within each destination-column pair, or enforced exactly by a partner intrinsic-reference cell, will make logical zero physically faithful and recover ideal bounded continuous initialization accuracy relative to independent per-cell RESET means, while a single quad-wide baseline will reveal the tradeoff between exact zero contrast and equal zero-state destination loading.
+- **Completion criteria:**
+  - All twelve declared native validate runs complete from the frozen ReLU source SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, repeat development assignment 86001, and evaluate exactly one of held-out assignments 87001-87003 on all 10000 test examples.
+  - Every production config resolves runtime.device=cuda, and the formal launcher records a successful CUDA availability and GPU-identity probe before creating any native task.
+  - At each assignment seed, every policy uses the same jointly repaired four-cell hardware identities and the same commissioned RESET observations; semantic population, donor-selection, commissioning, source, topology, solver, and data fingerprints match across arms.
+  - Every physical target is finite and nonnegative, every programmed active target is within its sampled bounds, every saved mapping satisfies G=B+d exactly, and full G enters both signed transfer and conductance-sum loading.
+  - Shared-quad, shared-destination-column, and reference-enforced policies satisfy their declared exact zero-contrast gate within 1e-9 of the four-delta spacing; donor exhaustion, incomplete coverage, or a failed physical invariant invalidates the assignment rather than silently clipping it.
+  - Continuous bounded mapping alone selects each policy's development scale pair and positive logit gain. The four-delta mapping reuses those frozen values without refitting and cannot select the preferred baseline.
+  - Optimizer updates, BPTT, QAT, program-and-verify, target write noise, inference read noise, retention, drift, and post-deployment recovery are exactly absent.
+  - The initialization gate passes only if the preferred policy reaches at least 90 percent mean held-out continuous accuracy. A unique winner is declared only if it has strictly more continuous correct predictions than every other arm on all three paired held-out assignments and leads the runner-up mean by at least 1.00 percentage point; otherwise the comparison is inconclusive.
+- **Coverage:** 12 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The evidence supports the shared-zero mechanism in the initial hypothesis: exact baseline cancellation is essential for useful ideal bounded initialization, with mean continuous accuracies of 51.58% for independent per-cell RESET means, 93.82% for one shared quad baseline, 94.97% for shared destination-column baselines, and 95.00% for reference-enforced destination columns. For follow-on deployment work, shared_destination_columns_reset_max is the practical baseline choice because it preserves exact logical zero, improves on a single quad-wide baseline, and retains 88.56% accuracy on the frozen standard four-delta diagnostic, whereas reference enforcement collapses to 12.38% on that diagnostic. The predeclared unique-winner comparison remains inconclusive: reference enforcement leads shared destination columns by only 0.0233 percentage point in mean continuous accuracy, does not dominate on all three held-out assignments, and does not meet the required 1.00-point lead. The study therefore resolves the baseline-choice stage operationally without claiming a statistically or predeclared uniquely superior continuous policy.
+- **Main limitations:** This is model_based_aihwkit_preset evidence from one development assignment and three matched held-out hardware assignments, using a jointly repaired donor assignment. It evaluates ideal bounded initialization only: target-write noise, inference read noise, program-and-verify, BPTT, QAT, HWA, and post-deployment training are absent. The result therefore isolates baseline selection but does not establish programmed or replacement-hardware deployment accuracy.
+- **Next steps:**
+  - Freeze shared_destination_columns_reset_max as the baseline and run a separately predeclared ideal study of level size and level count while retaining the full physical conductance G=B+d in both signed transfer and conductance-sum loading.
+- **Raw artifacts:** `results/mnist-ibm-om-four-device-baseline-selection-20260828-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-four-device-baseline-selection-20260828-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-four-device-baseline-selection-20260828-v1 -->
 
 ## Shared validity notes
 
