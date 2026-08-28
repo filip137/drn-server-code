@@ -743,6 +743,120 @@ class IbmReramPlant:
         return _IbmReramControllerPort(self)
 
 
+class IbmReramRawActivePlant(IbmReramPlant):
+    """Explicit-RNG pulse plant whose stored state is native raw ``a``.
+
+    This plant intentionally does not implement AIHWKit's tile-facing
+    reference-relative coordinate. ``persistent`` is the bounded active state
+    ``a``; ``apparent`` is ``a`` plus the preset's apparent write noise; and
+    the capability-limited controller port reports ``x=(a+1)/2``. The sampled
+    ``reference`` remains population provenance but is never consumed by
+    initialization, pulsing, verification, or endpoint recovery.
+
+    RNG initialization, per-trajectory streams, CUDA buffering, and exact
+    continuation are inherited from :class:`IbmReramPlant`.
+    """
+
+    STATE_COORDINATE = "native_raw_active_a"
+
+    def initialize_at_sampled_lower(self) -> None:
+        """Set persistent ``a`` to ``a_min`` and draw one apparent sample.
+
+        This represents the observation available after RESET conditioning.
+        It applies no target-programming pulse and consumes none of the P&V
+        pulse budget.
+        """
+
+        population = self.population
+        self.persistent.copy_(population.min_bound)
+        write_scale = population.write_noise_std * population.nominal_dw_min
+        if write_scale > 0.0:
+            active = torch.ones(
+                self.size, dtype=torch.bool, device=self.device
+            )
+            self.apparent.copy_(
+                self.persistent + float(write_scale) * self._normal(active)
+            )
+        else:
+            self.apparent.copy_(self.persistent)
+
+    def pulse(self, directions: torch.Tensor) -> None:
+        """Apply one raw-active SET/RESET pulse without reference subtraction."""
+
+        direction = torch.as_tensor(
+            directions, dtype=torch.int8, device=self.device
+        )
+        if direction.shape != self.persistent.shape or bool(
+            torch.any((direction < -1) | (direction > 1))
+        ):
+            raise ValueError(
+                "Expected raw-active directions to contain only -1, 0, or 1. "
+                f"Provided value: shape={tuple(direction.shape)!r}."
+            )
+        active = direction != 0
+        if not bool(torch.any(active)):
+            return
+
+        population = self.population
+        cycle = self._normal(active)
+        up = direction > 0
+        down = direction < 0
+        candidate = self.persistent.clone()
+        if bool(torch.any(up)):
+            normalized = torch.where(
+                population.max_bound > 0.0,
+                self.persistent / population.max_bound,
+                torch.zeros_like(self.persistent),
+            )
+            response = population.dwmin_up * (
+                1.0
+                - normalized
+                + population.dw_min_std * cycle
+            )
+            candidate[up] = self.persistent[up] + response[up]
+        if bool(torch.any(down)):
+            normalized = torch.where(
+                population.min_bound < 0.0,
+                self.persistent / population.min_bound,
+                torch.zeros_like(self.persistent),
+            )
+            response = population.dwmin_down * (
+                1.0
+                - normalized
+                + population.dw_min_std * cycle
+            )
+            candidate[down] = self.persistent[down] - response[down]
+        candidate = torch.maximum(candidate, population.min_bound)
+        candidate = torch.minimum(candidate, population.max_bound)
+        self.persistent[active] = candidate[active]
+
+        write_scale = population.write_noise_std * population.nominal_dw_min
+        if write_scale > 0.0:
+            write = self._normal(active)
+            self.apparent[active] = (
+                self.persistent + float(write_scale) * write
+            )[active]
+        else:
+            self.apparent[active] = self.persistent[active]
+
+    def controller_port(self) -> VerifyPort:
+        return _IbmReramRawStateControllerPort(self)
+
+    def state_dict(self) -> dict[str, object]:
+        state = super().state_dict()
+        state["state_coordinate"] = self.STATE_COORDINATE
+        return state
+
+    def load_state_dict(self, state: Mapping[str, object]) -> None:
+        if state.get("state_coordinate") != self.STATE_COORDINATE:
+            raise ValueError(
+                "Expected an IBM ReRAM raw-active plant continuation state."
+            )
+        base = dict(state)
+        del base["state_coordinate"]
+        super().load_state_dict(base)
+
+
 class _IbmReramControllerPort:
     """Capability-limited view: no hidden state or device parameters."""
 
@@ -776,6 +890,52 @@ class _IbmReramControllerPort:
         if bool(torch.any(count < 0)):
             raise ValueError(
                 "Expected pulse counts to be non-negative. "
+                f"Provided value: minimum={int(count.min().item())}."
+            )
+        maximum = int(count.max().item()) if count.numel() else 0
+        for pulse_index in range(maximum):
+            active_direction = torch.where(
+                count > pulse_index,
+                direction,
+                torch.zeros_like(direction),
+            )
+            self.__plant.pulse(active_direction)
+
+
+class _IbmReramRawStateControllerPort:
+    """Capability-limited port exposing only apparent raw ``x=(a+1)/2``."""
+
+    def __init__(self, plant: IbmReramRawActivePlant) -> None:
+        self.__plant = plant
+
+    @property
+    def size(self) -> int:
+        return self.__plant.size
+
+    def verify(self) -> torch.Tensor:
+        return (self.__plant.apparent.clone() + 1.0) / 2.0
+
+    def apply_identical_pulses(
+        self,
+        directions: torch.Tensor,
+        counts: torch.Tensor,
+    ) -> None:
+        direction = torch.as_tensor(
+            directions, dtype=torch.int8, device=self.__plant.device
+        )
+        count = torch.as_tensor(
+            counts, dtype=torch.int64, device=self.__plant.device
+        )
+        if direction.shape != (self.size,) or count.shape != (self.size,):
+            raise ValueError(
+                "Expected directions and counts to match the raw-active "
+                f"controller port size {self.size}. Provided value: "
+                f"direction={tuple(direction.shape)!r}, "
+                f"count={tuple(count.shape)!r}."
+            )
+        if bool(torch.any(count < 0)):
+            raise ValueError(
+                "Expected raw-active pulse counts to be non-negative. "
                 f"Provided value: minimum={int(count.min().item())}."
             )
         maximum = int(count.max().item()) if count.numel() else 0
@@ -1219,6 +1379,7 @@ __all__ = [
     "HFO2_PRESET",
     "IbmReramPlant",
     "IbmReramPopulation",
+    "IbmReramRawActivePlant",
     "OM_PRESET",
     "PUBLISHED_CORRUPT_PROBABILITY",
     "PopulationStepEstimator",
