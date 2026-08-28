@@ -1039,18 +1039,33 @@ evidence available today, not pass/fail gates.
 - **Workflow summary:** `results/mnist-ibm-om-four-device-baseline-selection-20260828-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-four-device-baseline-selection-20260828-v1 -->
 
+#### Post-finalization conductance-range correction
+
+This amendment does not alter the finalized run, review, or generated study
+block above. It narrows their interpretation. The runtime intersected native
+`x=(a+1)/2` support with a public `[0,1]` interval; 49.90% of held-out raw
+upper coordinates exceed `1` and were censored, so the apparent
+individual-cell `p90=1.000` headroom is not a device ceiling. The exact-zero
+algebra and the choice of a four-cell- or destination-pair-shared baseline are
+retained. Numerical headroom, baseline placement, spacing, and accuracy are
+evidence only for the clipped mapping. The corrected successor below now uses
+one globally frozen affine map from raw OM state to nonnegative conductance
+without an upper clip at `x=1`; its independent result supersedes the clipped
+mapping for the unrestricted-conductance question.
+
 ### mnist-ibm-om-shared-destination-baseline-spacing-pv-20260828-v1
 
 **Shared-destination baseline position and spacing under raw-active P&V —
-direct exploratory CUDA screen**
+clipped-range direct exploratory CUDA screen**
 
 - **Finished:** 2026-08-28
 - **Evidence class:** `model_based_aihwkit_preset`
 - **Lifecycle:** `exploratory_noncanonical`; this is deliberately not an EBL
   managed/finalized study block
-- **Question:** With exact destination-column zero sharing fixed, how should
-  the baseline position and uniform level spacing be selected when both ideal
-  quantization and stochastic persistent program-and-verify accuracy matter?
+- **Question:** Within the historical public `x=[0,1]` embedding and with exact
+  destination-column zero sharing fixed, how do baseline position and uniform
+  level spacing affect ideal quantization and stochastic persistent
+  program-and-verify accuracy?
 - **Setup:** Four-device, no-fixed-reference quads; baseline positions
   `alpha={0,0.25,0.5}`; spacings `h={1,2,4} delta_x`; held-out assignments
   87001-87003; five matched P&V seeds per assignment; 27 complete CUDA
@@ -1058,38 +1073,156 @@ direct exploratory CUDA screen**
   interrupted attempts are retained separately.
 - **Baseline definition:** Within each destination pair `(G++,G-+)` or
   `(G+-,G--)`, `L` is the larger of the two cells' bounded means from eight
-  RESET/read observations, `U` is the smaller sampled upper bound, and
-  `B=L+alpha(U-L)`. Thus `alpha=0` assigns both cells the higher of their two
-  commissioned RESET means; it is not a four-cell maximum.
-- **Headline result:** The best ideal quantized result was 94.8767% for
-  `alpha=0.25,h=delta_x`, only 0.1067 point above `alpha=0,h=delta_x`.
+  RESET/read observations, `U` is the smaller sampled upper bound after
+  intersection with `[0,1]`, and `B=L+alpha(U-L)`. Thus `alpha=0` assigns both
+  cells the higher of their two commissioned RESET means; it is not a
+  four-cell maximum.
+- **Headline clipped-range result:** The best ideal quantized result was
+  94.8767% for `alpha=0.25,h=delta_x`, only 0.1067 point above
+  `alpha=0,h=delta_x`.
   Persistent P&V instead strongly selected `alpha=0,h=delta_x` at 78.1553%,
   versus 67.2020% for `alpha=0.25` and 45.0507% for the midpoint
   `alpha=0.5`. At `alpha=0`, persistent accuracy fell from 78.1553% to
   76.8060% and 73.3507% as spacing increased from one to two and four
   `delta_x`.
-- **Interpretation:** For one-shot initialization, use the lowest feasible
-  shared destination baseline `B=L` and the finest tested spacing
-  `h=delta_x`. Raising `B` creates unused downward headroom while increasing
-  full-conductance denominator loading, reducing upward headroom, increasing
-  SET distance and pulse cost, and amplifying persistent write errors. The
-  remaining limitation is primarily the apparent-to-persistent controller
-  gap: the selected arm reached 93.994% apparent-endpoint accuracy but only
-  78.1553% persistent accuracy.
+- **Interpretation:** Inside the clipped screen, one-shot initialization favored
+  the lowest feasible shared destination baseline `B=L` and the finest tested
+  spacing `h=delta_x`. Raising `B` created unused downward headroom while
+  increasing full-conductance denominator loading, reducing upward headroom,
+  increasing SET distance and pulse cost, and amplifying persistent write
+  errors. The selected arm reached 93.994% apparent-endpoint accuracy but only
+  78.1553% persistent accuracy. This is not a deployment selection for
+  unrestricted positive conductance: removing the imposed upper ceiling
+  changes `U`, baseline placement, capacity, loading, calibration, and endpoint
+  handoff. The corrected successor below supersedes and rejects this entry's
+  numerical unrestricted-deployment conclusion while preserving these exact
+  historical clipped measurements.
 - **Main limitations:** This direct run was not prepared, summarized, reviewed,
   or finalized through the managed study lifecycle. It uses the AIHWKit 1.1.0
   OM preset with counterfactually repaired identities rather than raw measured
-  trajectories or fabricated arrays. Native P&V endpoints are clipped only at
-  the declared public `x=[0,1]` circuit handoff; about 7.4% of persistent cells
-  in the selected arm were projected. There is no QAT, BPTT, HWA, inference
-  read noise, retention, drift, repeated logical rewrite, or on-chip recovery.
-- **Next step:** At fixed `B=L,h=delta_x`, compare the current apparent-value
-  controller with a development-fitted persistent-state estimator using
-  target, direction, and pulse history before adding training or recovery.
+  trajectories or fabricated arrays. The mapping first clipped 49.90% of raw
+  sampled cell upper coordinates that exceeded `x=1`; 23.25% of individual
+  headrooms consequently pile up at exactly `1`. Native P&V endpoints were
+  also clipped at the declared public `x=[0,1]` circuit handoff; about 7.4% of
+  persistent cells in the selected arm were projected. There is no QAT, BPTT,
+  HWA, inference read noise, retention, drift, repeated logical rewrite, or
+  on-chip recovery.
+- **Successor:**
+  `mnist-ibm-om-baseline-spacing-pv-no-clip-exploratory-20260828-v1`
+  completed the corrected affine no-clipping matrix. It independently ranks
+  the same nominal `B=L,h=delta_x` design first, but obtains only 54.7013%
+  persistent accuracy rather than 78.1553%.
+- **Next step:** First hold `alpha=0,h=delta_x` fixed and evaluate
+  `[1.0,1.0]` layer scales on all three held-out assignments; only then
+  investigate the controller/state estimator or spacing before any QAT, HWA,
+  BPTT, or on-chip recovery arm.
 - **Tracked report:**
   [`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md)
 - **Local ignored artifacts:**
   `results/mnist-ibm-om-baseline-spacing-pv-exploratory-20260828-v1/analysis/`
+
+### mnist-ibm-om-baseline-spacing-pv-no-clip-exploratory-20260828-v1
+
+**Shared-destination baseline position and spacing under raw-native affine
+P&V — no-clipping direct exploratory CUDA screen**
+
+- **Finished:** 2026-08-28
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Lifecycle:** `exploratory_noncanonical`; this direct CUDA result was not
+  prepared, reviewed, or finalized through the workflow-managed lifecycle
+- **Experiment ID:** `mnist_ibm_om_baseline_spacing_pv_no_clip.v1`
+- **Configs:**
+  `examples/mnist_relu_drn/ibm_om_baseline_spacing_pv_no_clip/`
+- **Source:** revision
+  `329c6912c944e00b2f1441af57bab5420cd6d1cd` with per-run dirty-state
+  fingerprints retained in the native manifests; frozen ReLU source/teacher
+  SHA-256
+  `9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52`
+- **Question:** With exact destination-column zero sharing retained, which
+  baseline position and uniform spacing survive both ideal quantization and
+  persistent P&V when raw native OM support is embedded into strictly positive
+  conductance without any `[0,1]` clipping?
+- **Affine embedding:** `x_raw=(a+1)/2`; exact frozen support floor/ceiling
+  `-1.3759238719940186/1.8474750518798828`; study-wide origin
+  `x_origin=-1.3759248719940185`; slope `s=0.00011`; and
+  `G=s*(x_raw-x_origin)`. The strict mapped minimum is `1.1e-10` and configured
+  ceiling is `0.0003545739916261292`. These are normalized circuit values, not
+  an absolute-Siemens calibration.
+- **Setup:** Four-device, no-fixed-reference quads; one baseline per
+  destination column; `alpha={0,0.25,0.5}`;
+  `h={1,2,4} delta_x`; development assignment 86001; held-out assignments
+  87001-87003; five matched P&V seeds per held-out assignment; per-`alpha`
+  development refit frozen across spacing, held-out hardware, and endpoint
+  repeats.
+- **Calibration caveat:** For `alpha=0`, development selected `[1.0,0.5]`
+  over `[1.0,1.0]` by only 990 versus 989 correct examples out of 1,024. The
+  selected scale halves W2 target contrast while the P&V contrast-error scale
+  remains about `6.2 uS`.
+- **Coverage:** All 27 CUDA configurations and 135 persistent endpoints
+  completed. Two preserved earlier attempts failed before numerical execution
+  because the CUDA device was inaccessible inside the sandbox; they are not
+  configurations, results, or CPU runs.
+- **Accuracy matrix:**
+
+  | `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+  | ---: | ---: | ---: | ---: | ---: |
+  | 0.00 | `1 delta_x` | 94.1133% | **93.6967%** | **54.7013%** |
+  | 0.00 | `2 delta_x` | 94.1133% | 85.3967% | 52.3760% |
+  | 0.00 | `4 delta_x` | 94.1133% | 68.6033% | 42.4633% |
+  | 0.25 | `1 delta_x` | 93.9167% | 85.9433% | 27.6213% |
+  | 0.25 | `2 delta_x` | 93.9167% | 55.5400% | 23.7733% |
+  | 0.25 | `4 delta_x` | 93.9167% | 15.1933% | 13.0167% |
+  | 0.50 | `1 delta_x` | 93.2100% | 87.4133% | 30.5787% |
+  | 0.50 | `2 delta_x` | 93.2100% | 73.7767% | 26.5440% |
+  | 0.50 | `4 delta_x` | 93.2100% | 25.3533% | 15.4440% |
+
+- **Headline result:** Only `alpha=0,h=delta_x` passes the 90% ideal gate.
+  Its ideal assignment range is 93.38--93.92%, while its three assignment-level
+  persistent means are 55.978%, 57.436%, and 50.690%. It is the sole
+  P&V-eligible design in this matrix, but its 54.7013% persistent mean is not a
+  usable deployment result.
+- **Validity:** Every saved ideal and persistent `G` is strictly positive; all
+  targets and persistent endpoints remain in exact native support; projection
+  count is zero; full conductance enters numerator and denominator; and
+  apparent endpoints are controller diagnostics that are never deployed to the
+  DRN.
+- **Weight/programming diagnosis:** For the selected arm, ideal quantized
+  DRN-versus-ReLU relative-L2 error is 0.3388/0.3325 in W1/W2 and persistent
+  error is 0.6668/0.6162. Requested-code correctness is 49.9727%, persistent-
+  window success is 35.3374%, apparent acceptance is 99.9627%, and mean cost is
+  7.106 pulses per cell. The affine shift adds `151.35 uS` per cell and
+  `605.41 uS` per quad in the configured embedding. Corrected W1/W2 baseline
+  loads are `676.94/679.09 uS`, versus `83.68/84.95 uS` in the clipped screen;
+  these are embedding micro-units, not an absolute device calibration. Raw P&V
+  residual/code diagnostics barely change from the clipped run.
+- **Interpretation:** The corrected screen independently selects the same
+  nominal one-sided, finest-spacing design as the clipped predecessor, but
+  rejects its 78.1553% unrestricted-deployment accuracy and immediate
+  apparent-controller interpretation. The baseline cancels from signed zero
+  while remaining fully in denominator loading; stochastic persistent error is
+  large relative to the useful contrast, especially after the weakly selected
+  `[1.0,0.5]` scale halves W2 signal. Only about half the persistent states
+  resolve to the requested code, far below the 90% progression criterion, but
+  the calibration confound must be removed before assigning the full gap to
+  the controller.
+- **Main limitations:** This is one frozen ReLU source, one development
+  assignment, three held-out counterfactually repaired model assignments, and
+  five endpoint seeds per assignment. All per-`alpha` gains hit the declared
+  `1000` calibration-grid ceiling, and the selected alpha-zero layer scales
+  led `[1.0,1.0]` by only one development example. There is no absolute conductance calibration,
+  raw measured-device or fabricated-array evidence, fixed intrinsic reference,
+  eight-device topology, inference read noise, retention, drift, logical
+  rewrite, QAT, HWA, BPTT, replacement-hardware transfer after training, or
+  on-chip recovery.
+- **Next step:** At fixed `alpha=0,h=delta_x`, rerun `[1.0,1.0]` across all
+  three held-out assignments with the same five endpoint seeds and corrected
+  loading. If the persistent gap remains after this scale control, test a
+  controller/state estimator or persistently distinguishable spacing. Training
+  and recovery remain blocked until the persistent-code gate passes.
+- **Tracked report:**
+  [`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md)
+- **Local ignored artifacts:**
+  `results/mnist-ibm-om-baseline-spacing-pv-no-clip-exploratory-20260828-v1/`
 
 <!-- BEGIN EBL STUDY mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1 -->
 ### mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1

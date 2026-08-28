@@ -8,16 +8,67 @@
 - Device model: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Execution: validate-only CUDA for production and the excluded smoke canary;
   no CPU path
-- Status: frozen workflow-managed contract plus a completed direct CUDA
-  exploratory screen; the exploratory result is noncanonical and has not been
-  workflow-finalized
+- Status: the clipped-range direct CUDA screen is retained as a historical
+  diagnostic, and its no-clipping successor has completed all 27 CUDA
+  configurations and 135 persistent endpoints. Both are
+  `exploratory_noncanonical`; neither has been workflow-reviewed or finalized.
+
+## Post-run scope correction: `x=1` was an imposed ceiling
+
+The completed 3-by-3 screen deliberately inherited the earlier mapping
+
+```text
+x_raw = (a+1)/2,
+x_public = clip(x_raw, 0, 1),
+G = G_min + (G_max-G_min) x_public.
+```
+
+It clipped sampled cell bounds before constructing `L`, `U`, and `B`, required
+every ideal target to remain in `[0,1]`, and hard-projected raw P&V endpoints
+back to `[0,1]` at the circuit handoff. The tables below are an exact record of
+that frozen intervention, but `x=1` is not an intrinsic OM SET bound.
+
+Across the three held-out repaired assignments, 49.90% of 476,400 raw sampled
+upper coordinates exceed `1` and were collapsed to exactly `1`; 23.25% of
+individual clipped headrooms consequently equal exactly `1`. The raw upper
+coordinate has `p90=1.224`, `p99=1.405`, and maximum `1.847`. A direct
+same-identity diagnostic without public clipping gives individual-cell
+RESET-to-upper-bound headroom `p10=0.584`, median `0.978`, and `p90=1.402`,
+rather than `0.554`, `0.857`, and `1.000`. This diagnostic does not replace a
+rerun because the original assignment repair, baselines, calibration, full-G
+loading, and accuracy all used the clipped bounds.
+
+The intended branch question permits any **nonnegative** conductance. Its
+successor must retain raw sampled support and define one common affine
+embedding such as
+
+```text
+G = G0 + s x_raw,    s > 0,
+```
+
+with a globally frozen `G0` large enough to keep every used branch
+nonnegative. `G0` and `s` may not vary by cell or held-out assignment, and the
+conversion scale must be separate from the largest conductance accepted by
+the DRN. Raw P&V endpoints above `x=1` must be handed to the circuit through
+that same affine map rather than clipped. Since the OM preset supplies no
+absolute conductance calibration, this remains a normalized affine circuit
+embedding rather than a microSiemens claim.
+
+Accordingly, the completed screen is a **clipped-range diagnostic**, not the
+final baseline/spacing selection. Its internal finding that one-sided
+initialization did best at `B=L,h=delta_x` remains a historical measurement
+about that capped contract only. The corrected direct CUDA successor is now
+reported below. It independently selects the same nominal design, but rejects
+the clipped screen's unrestricted-deployment accuracy and controller
+interpretation.
 
 ## Question
 
-For the four-device, no-fixed-reference topology selected by the completed
-baseline study, how should the shared destination-column baseline and uniform
-conductance-level spacing be chosen when both ideal quantization and noisy
-program-and-verify are considered?
+Under the historical public-`[0,1]` embedding, for the four-device,
+no-fixed-reference topology selected by the completed baseline study, how
+should the shared destination-column baseline and uniform conductance-level
+spacing be chosen when both ideal quantization and noisy program-and-verify
+are considered?
 
 The study is a matched 3-by-3 design:
 
@@ -75,7 +126,8 @@ assignments, with P&V randomness paired across baseline and spacing choices.
 ## Baseline construction
 
 For each destination-column group `j`, let `b_i` be the bounded commissioned
-RESET mean of cell `i` and `u_i` its sampled upper conductance bound. Define
+RESET mean of cell `i` and `u_i` its sampled upper conductance bound **after
+intersection with the public `[0,1]` coordinate**. Define
 
 ```text
 L_j = max_i b_i
@@ -278,7 +330,7 @@ P&V winner. This prevents a noisy endpoint from hiding deterministic
 quantization failure and prevents an ideal-only optimum from being presented
 as programmable.
 
-## Exploratory CUDA result
+## Exploratory CUDA result under the clipped public range
 
 A direct local CUDA screen completed the full numerical 3-by-3 design on
 2026-08-28. It contains 27 complete configurations: three baseline positions,
@@ -287,7 +339,9 @@ five matched P&V endpoint seeds, giving 135 complete stochastic endpoints.
 Five failed or interrupted attempts are preserved outside the selected
 complete bundles. This run did not use the prepared-study/finalization
 lifecycle and is therefore `exploratory_noncanonical`, not finalized workflow
-evidence.
+evidence. It also cannot answer the unrestricted-positive-conductance question
+because every baseline, capacity, target, and circuit endpoint below depends
+on the imposed public `[0,1]` ceiling.
 
 For clarity, the `alpha=0` baseline is the higher of the two bounded,
 eight-read RESET means in each destination-column pair:
@@ -323,10 +377,12 @@ three assignments.
 | 0.50 | `2 delta_x` | 94.80% | 88.59% | 44.80% |
 | 0.50 | `4 delta_x` | 94.80% | 56.90% | 27.94% |
 
-The ideal-only optimum is `alpha=0.25, h=delta_x` at 94.8767%. Its advantage
-over `alpha=0, h=delta_x` is only 0.1067 percentage point. Under persistent
-P&V, however, the practical optimum is the lowest feasible baseline and
-finest tested spacing, `alpha=0, h=delta_x`, at 78.1553%. Raising the baseline
+Within the clipped contract, the ideal-only optimum is
+`alpha=0.25, h=delta_x` at 94.8767%. Its advantage over
+`alpha=0, h=delta_x` is only 0.1067 percentage point. Under persistent P&V in
+the same clipped contract, the practical optimum is the lowest feasible
+baseline and finest tested spacing, `alpha=0, h=delta_x`, at 78.1553%.
+Raising the baseline
 to `alpha=0.25` loses 10.9533 points and centering it at `alpha=0.5` loses
 33.1047 points. The historical `alpha=0, h=4 delta_x` ideal counts are
 reproduced exactly at 9098, 8580, and 8889 correct.
@@ -341,7 +397,7 @@ pulses per cell. Thus the shared baseline cancels in the zero-state signed
 contrast but remains fully present in denominator loading, while the extra
 downward headroom is unused by this one-sided initialization.
 
-For the practical `alpha=0, h=delta_x` choice, ideal DRN-versus-ReLU
+For the clipped-screen `alpha=0, h=delta_x` choice, ideal DRN-versus-ReLU
 relative-L2 errors are 0.310 for W1 and 0.278 for W2; after persistent P&V
 they rise to 0.661 and 0.388. Apparent-endpoint network accuracy is 93.994%
 and apparent acceptance is 99.9639%, but persistent accuracy is only 78.1553%
@@ -349,20 +405,22 @@ and persistent-window success is 35.4711%. The 15.8387-point
 apparent-to-persistent accuracy gap identifies noisy apparent admission of an
 incorrect hidden persistent state as the main remaining write-path failure.
 
-### Exploratory interpretation
+### Exploratory interpretation and invalidated carry-forward
 
-For one-shot initialization, carry forward one baseline per destination
-column at `B=L` with `h=delta_x`. Do not move the baseline toward the window
-midpoint merely to create unused downward headroom. A later in-place rewrite
-or on-chip-update study may require bidirectional headroom, but that is a
-separate intervention and must account for the substantial loading and P&V
-cost observed here.
+Within the capped screen, one-shot initialization favored one baseline per
+destination column at `B=L` with `h=delta_x`; moving toward the midpoint
+created unused downward headroom while increasing loading and P&V cost. That
+mechanism remains useful, but `B=L,h=delta_x` must not be frozen as the
+unrestricted deployment choice. Removing the artificial upper ceiling changes
+`U`, every baseline with `alpha>0`, active-pair capacity, full-conductance
+loading, calibration, and endpoint handoff. The matched 3-by-3 comparison must
+therefore be rerun first.
 
-The next matched write-path control should keep `B=L`, `h=delta_x`, identities,
-targets, and endpoint seeds fixed while estimating persistent raw-`x` state
-from apparent verify value, target, pulse direction, and pulse history. QAT,
-BPTT, or on-chip recovery should not be used to obscure this controller error
-before that control is understood.
+The apparent-to-persistent gap remains a valid diagnostic of the historical
+write path, but its proposed controller follow-up was conditional on first
+rerunning the matrix with a global nonnegative affine map. That corrected
+rerun is reported below. QAT, BPTT, and on-chip recovery remain downstream of
+its persistent-code gate.
 
 Detailed local artifacts are in
 [`post_run_analysis.md`](../results/mnist-ibm-om-baseline-spacing-pv-exploratory-20260828-v1/analysis/post_run_analysis.md)
@@ -371,9 +429,147 @@ and
 
 ## Claim boundary
 
-This study selects among nine four-device, no-fixed-reference,
-shared-destination initialization designs in one normalized OM preset. It
-does not test four versus eight devices, a fixed intrinsic reference, BPTT,
+This study compares nine four-device, no-fixed-reference,
+shared-destination initialization designs in one normalized OM preset under an
+explicitly clipped public `[0,1]` range. It does not select among those designs
+for an unrestricted-positive-conductance embedding. It does not test four
+versus eight devices, a fixed intrinsic reference, BPTT,
 QAT, HWA, replacement hardware after training, repeated rewrites, or on-chip
 recovery. It provides model-based P&V evidence, not raw measured-device or
 absolute-conductance evidence.
+
+## Corrected no-clipping exploratory successor
+
+- Result ID:
+  `mnist-ibm-om-baseline-spacing-pv-no-clip-exploratory-20260828-v1`
+- Experiment ID: `mnist_ibm_om_baseline_spacing_pv_no_clip.v1`
+- Lifecycle: `exploratory_noncanonical`; direct local CUDA, not a prepared,
+  reviewed, or finalized workflow-managed study
+- Source revision: `329c6912c944e00b2f1441af57bab5420cd6d1cd` with the
+  run-specific dirty-state fingerprints retained in each native manifest
+- Exact configs:
+  `examples/mnist_relu_drn/ibm_om_baseline_spacing_pv_no_clip/`
+- Frozen source/teacher: `data/mnist_relu_teacher_fixed_init_20260816.pt`,
+  SHA-256
+  `9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52`
+
+The successor retains raw native support and applies one study-wide pure
+translation, without range compression or an upper projection:
+
+```text
+x_raw = (a+1)/2
+x_origin = -1.3759248719940185
+s = 1.10e-4 conductance units per raw-x unit
+G = s (x_raw - x_origin).
+```
+
+The origin is one `1e-6` raw-`x` margin below the exact frozen repaired-cohort
+support floor `-1.3759238719940186`. The exact support ceiling is
+`1.8474750518798828`; the resulting study-wide mapped minimum is `1.1e-10`
+and the configured mapped ceiling is `0.0003545739916261292`. These are
+normalized circuit-embedding values, not a microSiemens calibration. The same
+origin and slope are used for every cell, assignment, target, and persistent
+endpoint. An out-of-support value invalidates the run; nothing is clipped.
+
+The identity reconstruction, eight-read RESET commissioning, complete-quad
+joint repair, assignments `86001/87001/87002/87003`, and five endpoint seeds
+per held-out assignment match the clipped predecessor semantically. Each
+`alpha` refits one scale pair and positive gain on development assignment
+`86001`, then freezes them across spacings, held-out assignments, and endpoint
+repeats. All three gains reached the declared upper grid boundary of `1000`,
+which is a response-scale limitation but cannot change top-1 predictions.
+For `alpha=0`, the refit selected scale fractions `[1.0,0.5]` over
+`[1.0,1.0]` by only one development example: 990 versus 989 correct out of
+1,024. That weak choice halves the intended W2 contrast while the P&V
+contrast-error scale remains about `6.2 uS`. Persistent accuracy therefore
+still confounds the physical handoff with a nearly tied calibration choice.
+
+All 27 configurations completed, covering three held-out assignments and five
+P&V repeats per configuration: 135 persistent endpoints. Every saved ideal
+and persistent full conductance was strictly positive; all targets and
+persistent endpoints remained in native support; projection count was zero;
+and the apparent verify endpoint was never applied to the DRN. Two earlier
+attempts are preserved as pre-numerical CUDA sandbox-access failures. They are
+not additional configurations, endpoint results, or CPU executions.
+
+### Corrected 3-by-3 accuracy matrix
+
+Continuous and ideal quantized values are arithmetic means over the three
+held-out assignments. Persistent P&V values are arithmetic means over all 15
+matched endpoints nested within those assignments.
+
+| `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | `1 delta_x` | 94.1133% | **93.6967%** | **54.7013%** |
+| 0.00 | `2 delta_x` | 94.1133% | 85.3967% | 52.3760% |
+| 0.00 | `4 delta_x` | 94.1133% | 68.6033% | 42.4633% |
+| 0.25 | `1 delta_x` | 93.9167% | 85.9433% | 27.6213% |
+| 0.25 | `2 delta_x` | 93.9167% | 55.5400% | 23.7733% |
+| 0.25 | `4 delta_x` | 93.9167% | 15.1933% | 13.0167% |
+| 0.50 | `1 delta_x` | 93.2100% | 87.4133% | 30.5787% |
+| 0.50 | `2 delta_x` | 93.2100% | 73.7767% | 26.5440% |
+| 0.50 | `4 delta_x` | 93.2100% | 25.3533% | 15.4440% |
+
+Only `alpha=0,h=delta_x` clears the 90% ideal gate. Its ideal assignment
+range is 93.38--93.92%, and its three assignment-level persistent means are
+55.978%, 57.436%, and 50.690%. It is therefore the sole P&V-eligible design in
+this matrix and independently reproduces the *nominal* one-sided,
+finest-spacing choice. It does not reproduce the clipped result's performance:
+the corrected persistent mean is 54.7013%, rather than 78.1553%.
+
+The clipped predecessor's numerical deployment conclusion and its proposed
+immediate controller interpretation are consequently **superseded and rejected
+for unrestricted positive conductance**. Its measurements remain above as an
+exact historical result of the capped `[0,1]` intervention. The fact that both
+screens rank `B=L,h=delta_x` first does not rehabilitate the clipped handoff;
+the corrected choice is based on a new, physically admissible mapping.
+
+### Corrected weight error and programming diagnosis
+
+For `alpha=0,h=delta_x`, the held-out DRN-versus-ReLU relative-L2 error
+averages 0.3388 in W1 and 0.3325 in W2 at the ideal quantized endpoint. Across
+the 15 persistent endpoints it rises to 0.6668 and 0.6162. Persistent
+requested-code correctness is 49.9727%, persistent-window success is 35.3374%,
+and apparent acceptance is 99.9627%; apparent values are controller-side
+diagnostics only and no apparent-endpoint network accuracy is reported. Mean
+programming cost is 7.106 pulses per cell and 0.0373% of cells exhaust the
+128-pulse budget.
+
+The affine translation itself adds `151.35 uS` per cell, or `605.41 uS` per
+four-cell quad, in the configured conductance embedding. Mean selected-arm
+zero-state loading is `676.94/679.09 uS` in W1/W2, versus `83.68/84.95 uS`
+under the clipped handoff. These numerical micro-units describe the declared
+embedding, not a fabricated-device calibration. The baseline still cancels
+exactly from signed zero but remains in every denominator.
+
+By contrast, the raw programming diagnostics barely move: persistent-window
+success is 35.3374% versus 35.4711% previously, apparent acceptance is
+99.9627% versus 99.9639%, mean cost is 7.106 versus about 7.14 pulses per cell,
+and P&V contrast error remains about `6.2 uS`. The large persistent-accuracy
+change is therefore not evidence for a suddenly worse pulse plant. It is
+consistent with retaining the physical common-mode loading while the weak
+`[1.0,0.5]` refit also halves W2 target contrast.
+
+The selected design fails the later persistent-code progression criterion:
+approximately half of persistent states, not at least 90%, resolve to the
+requested nearest code. It is not yet eligible for QAT, HWA, BPTT, or on-chip
+recovery. The immediate diagnostic is one fixed
+`alpha=0,h=delta_x,[1.0,1.0]` arm across all three held-out assignments, using
+the same five endpoint seeds and corrected affine loading. Only after that
+matched scale control should the investigation attribute the remaining loss to
+the controller/state estimator or change code spacing.
+
+Raw native bundles, manifests, configs, and scientific summaries are under
+`results/mnist-ibm-om-baseline-spacing-pv-no-clip-exploratory-20260828-v1/`.
+
+### Corrected claim boundary
+
+This successor compares nine four-device, no-fixed-reference,
+shared-destination initialization designs in a normalized AIHWKit 1.1.0 OM
+preset. It is complete exploratory coverage, not workflow-reviewed or
+finalized evidence. It uses counterfactually repaired model identities rather
+than raw measured conductance traces or fabricated arrays and supplies no
+absolute-conductance calibration. It does not test four versus eight devices,
+a fixed intrinsic reference, inference read noise, retention, drift, repeated
+logical rewrites, BPTT, QAT, HWA, replacement-hardware transfer, or on-chip
+recovery.

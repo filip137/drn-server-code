@@ -1,14 +1,104 @@
 # IBM OM deployment-scheme investigation
 
-- Status: homogeneous ideal-mapping, shared-calibration bounded-codebook,
-  exact-lower-bound, and corrected per-cell RESET-mean four-delta screens
-  complete; the three-accuracy ladder is frozen and the shared-zero ideal
-  initialization control is the active next stage; no new HWA or stochastic
-  deployment P&V experiment has been launched
+- Status: shared-zero baseline grouping and the corrected no-clipping 3-by-3
+  baseline-position-by-spacing CUDA screen are complete. Only
+  `B=L,h=delta_x` passes the ideal gate, but its 54.7013% persistent accuracy
+  and 49.9727% requested-code correctness fail the persistent-code gate. The
+  active stage is a fixed `[1.0,1.0]` scale diagnostic at the corrected
+  physical handoff, followed by controller/state estimation if needed; HWA,
+  BPTT, and on-chip recovery remain blocked
 - Date: 2026-08-28
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
   conductance traces and not an absolute conductance calibration
+
+## Current conductance-coordinate correction
+
+Completed baseline-selection and exploratory baseline/spacing runs formed
+`x_raw=(a+1)/2` and then intersected sampled support with a public `[0,1]`
+interval. That was a declared historical mapping intervention, not a physical
+OM limit. Across the three held-out repaired assignments, 49.90% of raw upper
+coordinates exceed `1`; the reported individual-cell headroom
+`p90=1.000` is therefore censored.
+
+The forward contract permits any nonnegative branch conductance. It must use
+one globally frozen affine embedding such as
+
+```text
+G = G0 + s x_raw,    s > 0,
+```
+
+with no upper clipping at `x_raw=1`, with `G0` large enough to keep every used
+branch nonnegative, and with the same `G0` and `s` across cells and matched
+assignments. Per-cell normalization is forbidden because it changes physical
+loading and the meaning of spacing. The affine scale and the largest value
+accepted by the DRN must be distinct configuration concepts.
+
+This correction does not change the exact-zero algebra: a viable four-device
+mapping still needs either one baseline shared by the quad or one shared by
+each two-cell destination column. It makes all clipped-range headroom,
+accuracy, baseline-position, spacing, and P&V numbers historical controls for
+the unrestricted-conductance question. The raw-support windows, full-G circuit
+calibration, and 3-by-3 comparison have now been rebuilt in the corrected
+exploratory successor below.
+
+### Corrected no-clipping 3-by-3 outcome
+
+The direct CUDA successor uses
+
+```text
+x_raw=(a+1)/2
+x_origin=-1.3759248719940185
+G=0.00011 (x_raw-x_origin).
+```
+
+The origin lies `1e-6` below the exact frozen support floor
+`-1.3759238719940186`; the exact support ceiling is
+`1.8474750518798828`, the strict mapped minimum is `1.1e-10`, and the mapped
+ceiling is `0.0003545739916261292`. The affine map is global and no target or
+persistent endpoint is clipped or rescaled per cell.
+
+All 27 CUDA configurations and 135 persistent endpoints completed. Saved
+ideal and persistent conductances are strictly positive, projection count is
+zero, and apparent endpoints are never applied to the DRN. Two preserved
+failed attempts stopped before numerical execution because CUDA was
+inaccessible inside the sandbox; they are not additional configurations or
+results.
+
+| `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | `1 delta_x` | 94.1133% | **93.6967%** | **54.7013%** |
+| 0.00 | `2 delta_x` | 94.1133% | 85.3967% | 52.3760% |
+| 0.00 | `4 delta_x` | 94.1133% | 68.6033% | 42.4633% |
+| 0.25 | `1 delta_x` | 93.9167% | 85.9433% | 27.6213% |
+| 0.25 | `2 delta_x` | 93.9167% | 55.5400% | 23.7733% |
+| 0.25 | `4 delta_x` | 93.9167% | 15.1933% | 13.0167% |
+| 0.50 | `1 delta_x` | 93.2100% | 87.4133% | 30.5787% |
+| 0.50 | `2 delta_x` | 93.2100% | 73.7767% | 26.5440% |
+| 0.50 | `4 delta_x` | 93.2100% | 25.3533% | 15.4440% |
+
+Only the lowest feasible shared baseline with the finest spacing clears the
+90% ideal gate. The same nominal design ranked first in the clipped screen,
+but the corrected persistent result is 54.7013%, not 78.1553%. The clipped
+screen's numerical unrestricted-deployment and immediate-controller
+conclusions are therefore superseded and rejected; its measurements remain a
+historical capped-coordinate control. The corrected selected arm's ideal
+DRN-versus-ReLU relative-L2 error is 0.3388/0.3325 in W1/W2 and rises to
+0.6668/0.6162 after P&V. Full details and the exploratory claim boundary are
+in [`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md).
+
+There is one calibration confound before blaming the controller. At
+`alpha=0`, development selected `[1.0,0.5]` over `[1.0,1.0]` by only 990
+versus 989 correct examples out of 1,024. That choice halves W2 target
+contrast, while the P&V contrast-error scale remains about `6.2 uS`. The
+study-wide affine translation also adds `151.35 uS` per cell, or `605.41 uS`
+per quad: corrected W1/W2 baseline loads are `676.94/679.09 uS`, versus
+`83.68/84.95 uS` in the clipped screen. These are configured embedding
+micro-units, not an absolute device calibration. Raw P&V residual/code
+statistics barely change, so the immediate matched diagnostic is fixed
+`alpha=0,h=delta_x,[1.0,1.0]` across the same three held-out assignments and
+five endpoint seeds. Controller/state estimation follows only if that scale
+control leaves the persistent gap.
 
 ## Standard headline accuracies
 
@@ -18,8 +108,8 @@ of a cell or device group.
 
 | Order | Metric | Question answered | Current status |
 | --- | --- | --- | --- |
-| 1 | `ideal_mapped_init_accuracy` | How accurate is the frozen logical model immediately after deterministic mapping into one hardware instance's physical bounds and discrete codebook? | active gate |
-| 2 | `same_hardware_bptt_accuracy` | How much can BPTT recover when it adapts the exact mapped state against the same hardware instance? | blocked until metric 1 passes and the physical HWA writer is available |
+| 1 | `ideal_mapped_init_accuracy` | How accurate is the frozen logical model immediately after deterministic mapping into one hardware instance's physical bounds and discrete codebook? | `B=L,h=delta_x` passes the exploratory corrected gate at 93.6967%; all other tested designs fail |
+| 2 | `same_hardware_bptt_accuracy` | How much can BPTT recover when it adapts the exact mapped state against the same hardware instance? | blocked by the pending `[1.0,1.0]` scale diagnostic, the 49.9727% persistent-code result, and the missing physical HWA writer |
 | 3 | `cross_hardware_deployment_accuracy` | How much of the source-hardware BPTT result survives when its frozen logical checkpoint is mapped onto untouched hardware? | blocked until metrics 1 and 2 are valid |
 
 All three metrics obey one physical-conductance invariant. Each branch enters
@@ -802,6 +892,15 @@ four-delta map remains a secondary diagnostic using the same selected
 calibration. The detailed contract in the linked document is authoritative
 where this earlier version-3 sketch differs.
 
+That completed implementation used clipped public bounds. Its evidence for
+shared-zero grouping is retained, while its numerical headroom and accuracy
+results are now explicitly scoped to the historical `[0,1]` embedding. The
+unrestricted-positive-conductance successor described above is a new mapping
+intervention and does not rewrite or relabel the completed Stage 0E artifacts.
+It independently carries the destination-column grouping forward and selects
+`B=L,h=delta_x` as the only design passing its ideal gate, while failing the
+persistent-code gate.
+
 The earlier two-arm Stage 0E sketch used
 `ibm_om.ideal_bounded_standard4delta_init.v1` as its primary metric. The
 formal four-policy study retains that definition only for its secondary
@@ -813,18 +912,14 @@ Stage 0D:
 > physically reachable zero within the relevant device group should remove
 > that contrast while retaining every baseline in denominator loading.
 
-Implement it as a new version-3 screen contract and config. Do not change the
-meaning, schema, or artifacts of completed v1/v2 screens.
-
-Keep the v2 logical source, teacher, topology, solver, assignments, eight
-sequential RESET/read samples per cell, normalized conductance coordinate,
-four-delta spacing, scale grid, per-scheme development refit, and noiseless
-level deployment. The declared intervention is the baseline rule. Keep `h`
-and the whole-level capacity algorithm frozen. Moving `B` may mechanically
-change realizable capacity under the bounds; record that consequence, but do
-not optimize the spacing or select a new level count in this stage. The
-existing independent-baseline v2 results are the frozen parent controls; do
-not rerun or retune them after inspecting Stage 0E.
+The completed version-3 screen did not change the meaning, schema, or artifacts
+of completed v1/v2 screens. It kept the v2 logical source, teacher, topology,
+solver, assignments, eight sequential RESET/read samples per cell, normalized
+conductance coordinate, four-delta spacing, scale grid, per-scheme development
+refit, and noiseless level deployment. Its declared intervention was the
+baseline rule. It kept `h` and the whole-level capacity algorithm frozen and
+reported the mechanical capacity changes caused by moving `B`; it did not
+optimize spacing or select a new level count.
 
 For every commissioned cell, first reproduce the bounded estimate
 
@@ -889,12 +984,14 @@ heterogeneous intrinsic `r_i` can still create a nonzero rail contrast. A
 separate fixed-`r` spacing or identity-balancing study follows only after the
 shared-zero no-`r` question is answered.
 
-In this normalized model, "exact `r`" means that `r` is not moved onto the
-active integer grid. The repository mapping still intersects native state
-with the public `[0,1]` coordinate; any `r` outside native `[-1,1]` is clipped
-by that coordinate. The canonical metric must retain both raw and mapped `r`,
-report the clipping count, and must not describe a clipped value as the
-unchanged native reference.
+In the historical clipped screens, "exact `r`" means that `r` is not moved
+onto the active integer grid after the mapping intersects native state with
+the public `[0,1]` coordinate. Any `r` outside native `[-1,1]` was clipped by
+that coordinate; those metrics must retain both raw and mapped `r`, report the
+clipping count, and must not describe a clipped value as the unchanged native
+reference. The forward unrestricted-positive-conductance contract instead
+retains raw `r` and applies the same global nonnegative affine transform used
+for every other branch.
 
 Stage 0E is valid only if it records the complete first-metric artifact
 contract above and additionally proves:
@@ -1055,32 +1152,32 @@ from the same explicitly named persistent deployed bundle.
 
 ## Immediate implementation order
 
-1. Keep `ideal_mapped_init_accuracy` as the only active accuracy gate; do not
-   launch additional raw-p90 HWA, BPTT, or transfer runs yet.
-2. Add a fail-closed physical-target artifact/API carrying explicit `B`, `d`,
-   and `G=B+d`, exact correct counts, one hardware-instance ID, and the metric
-   validity record. Quarantine effective-`(a-r)` writers from physical metric
-   IDs.
-3. Implement the Stage 0E matched shared-zero control: a bound-feasible common
-   commissioned baseline per four-device rail quad and per eight-device
-   active/reference pair, with explicit common-window failure or a separately
-   frozen reassignment policy.
-4. Add heterogeneous-baseline four-device KCL and eight-device branch-pair
-   regression tests proving that every full conductance contributes to both
-   transfer and loading.
-5. Run the Stage 0E deterministic main/replay screen and compare it with the
-   frozen Stage 0D independent-baseline artifacts. Preserve the completed
-   homogeneous 2-by-2 result and every exact teacher/config hash.
-6. If the first metric passes, implement the persistent codebook screen with
-   non-overlapping verify windows. If it fails, remain in ideal-only analysis
-   and test the declared capacity/identity controls before training.
-7. Only after the first metric and persistent-code gate pass, implement the
-   full-physical-`G` BPTT path required for
-   `same_hardware_bptt_accuracy`, followed by untouched-hardware transfer.
-8. Keep every scheme blocked from absolute physical claims until OM
+1. Retain the completed Stage 0E result only for its structural conclusion:
+   use a baseline shared by the four-cell quad or by each two-cell destination
+   column. Preserve its clipped numerical results as historical controls.
+2. Keep the completed study-wide affine map fixed at
+   `G=0.00011*(x_raw+1.3759248719940185)`. Do not restore the `[0,1]` clip,
+   rescale by assignment, or omit the translated baseline from loading.
+3. Carry forward the corrected physical-target and endpoint artifacts with raw
+   bounds, raw RESET estimates, raw P&V endpoints, affine provenance, and
+   explicit `B`, `d`, and `G=B+d`.
+4. Treat `B=L,h=delta_x` as the sole ideal-gate-passing design in the completed
+   exploratory matrix, not yet as a deployment-ready codebook.
+5. At fixed `alpha=0,h=delta_x`, affine map, identities, and endpoint seeds,
+   evaluate `[1.0,1.0]` across all three held-out assignments to remove the
+   one-example development-scale confound.
+6. If that matched scale control still fails, test a controller/state estimator
+   or spacing rule that can raise persistent requested-code correctness from
+   49.9727% to the declared 90% progression criterion.
+7. Preserve apparent acceptance, persistent correctness, and any fresh-read
+   correctness as different metrics; never deploy the apparent endpoint as a
+   substitute for persistent state.
+8. Only after the persistent-code gate passes, implement the
+   full-physical-`G` HWA/BPTT path, followed by untouched-hardware transfer and
+   any predeclared on-chip recovery comparison.
+9. Keep every scheme blocked from absolute fabricated-device claims until OM
    conductance traces or a versioned normalized-to-conductance calibration are
-   supplied. Materialize a workflow-managed P&V study only after its selected
-   arms, configs, artifact schema, and parity tests exist.
+   supplied.
 
 This sequence determines whether the remaining gap belongs to device
 programming, passive loading, assignment transfer, or training. It deliberately
