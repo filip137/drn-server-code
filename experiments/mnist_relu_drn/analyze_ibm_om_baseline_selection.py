@@ -36,6 +36,7 @@ from experiments.mnist_relu_drn.ibm_om_baseline_selection import (
     MAPPING_SCHEMA,
     MAPPING_SCHEMA_VERSION,
     LayerPhysicalMapping,
+    baseline_group_violation_mask,
     hardware_instance_fingerprint,
     quad_column_loading,
     quad_contrast,
@@ -241,6 +242,16 @@ def _digest(value: Any, *, label: str) -> str:
         or any(character not in "0123456789abcdef" for character in value)
     ):
         _fail(f"Expected lowercase SHA-256 for {label}.")
+    return value
+
+
+def _git_commit(value: Any, *, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 40
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        _fail(f"Expected lowercase Git SHA-1 for {label}.")
     return value
 
 
@@ -981,6 +992,18 @@ def _validate_mapping(
         zero_required = policy != INDEPENDENT_CELL_RESET_MEAN
         if zero_required and zero_max > zero_tolerance:
             _fail(f"Policy {policy!r} violates its exact-zero contrast gate.")
+        group_violation_count = int(
+            baseline_group_violation_mask(
+                baseline, layout=layout, policy=policy
+            )
+            .sum()
+            .item()
+        )
+        if group_violation_count:
+            _fail(
+                f"Policy {policy!r} violates its declared baseline grouping "
+                f"in {group_violation_count} logical quads."
+            )
         capacity = values["selected_level_capacity"].astype(np.float64, copy=False)
         column = values["baseline_column_loading"].astype(np.float64, copy=False)
         diagnostics.append(
@@ -998,6 +1021,7 @@ def _validate_mapping(
                 "exact_zero_required": zero_required,
                 "exact_zero_tolerance": zero_tolerance,
                 "exact_zero_passed": (not zero_required) or zero_max <= zero_tolerance,
+                "declared_baseline_group_violation_count": group_violation_count,
                 "continuous_decomposition_max_abs_residual": 0.0,
                 "standard4delta_decomposition_max_abs_residual": 0.0,
             }
@@ -1276,6 +1300,18 @@ def _validate_run(
     _equal(result.get("error"), None, label="result error")
     _equal(manifest.get("experiment_id"), EXPERIMENT_ID, label="manifest experiment")
     _equal(result.get("experiment_id"), EXPERIMENT_ID, label="result experiment")
+    run_source = manifest.get("source")
+    if not isinstance(run_source, dict):
+        _fail("Expected a source-controlled run manifest.")
+    _exact_keys(
+        run_source,
+        {"available", "commit", "dirty", "dirty_hash"},
+        label="manifest source state",
+    )
+    _equal(run_source.get("available"), True, label="manifest source availability")
+    _git_commit(run_source.get("commit"), label="manifest source commit")
+    _equal(run_source.get("dirty"), False, label="manifest clean source state")
+    _equal(run_source.get("dirty_hash"), None, label="manifest dirty hash")
     _equal(manifest.get("config", {}).get("sha256"), content_hash(config), label="resolved config hash")
     study_link = manifest.get("study")
     if not isinstance(study_link, dict):
@@ -1515,6 +1551,7 @@ def _validate_run(
         "arm_id": arm["arm_id"],
         "policy": expected_policy,
         "heldout_assignment_seed": int(heldout_seed),
+        "run_source": run_source,
         "development_hardware_instance_id": dev_joint["hardware_instance_id"],
         "heldout_hardware_instance_id": held_joint["hardware_instance_id"],
         "source_sha256": EXPECTED_WEIGHTS_SHA256,
@@ -1594,6 +1631,11 @@ def _discover(study_dir: Path, study: dict[str, Any]) -> list[dict[str, Any]]:
     source_states = {canonical_json_bytes(record["source_logical_weight_hashes"]) for record in records}
     if len(source_states) != 1:
         _fail("Frozen logical source hashes differ across runs.")
+    run_source_states = {
+        canonical_json_bytes(record["run_source"]) for record in records
+    }
+    if len(run_source_states) != 1:
+        _fail("Run source commit or clean-state provenance differs across runs.")
     data_states = {canonical_json_bytes(record["data_provenance"]) for record in records}
     if len(data_states) != 1:
         _fail("MNIST test/calibration provenance differs across runs.")
@@ -1793,6 +1835,7 @@ def analyze_study(study_dir: Path | str, output_dir: Path | str | None = None) -
             "runtime_device": "cuda",
             "examples_per_run": EXPECTED_EXAMPLES,
             "source_sha256": EXPECTED_WEIGHTS_SHA256,
+            "run_source_commit": records[0]["run_source"]["commit"],
             "development_assignment_seed": DEVELOPMENT_ASSIGNMENT_SEED,
             "heldout_assignment_seeds": list(HELDOUT_ASSIGNMENT_SEEDS),
             "registered_artifacts_verified": True,

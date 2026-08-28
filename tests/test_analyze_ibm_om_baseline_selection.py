@@ -25,6 +25,7 @@ from experiments.mnist_relu_drn.ibm_om_baseline_selection import (
     fit_weight_reconstruction_scales,
     hardware_instance_fingerprint,
     save_physical_mapping,
+    scatter_quads,
 )
 from experiments.mnist_relu_drn.ibm_om_baseline_selection_config import (
     CONTINUOUS_METRIC_DEFINITION,
@@ -490,8 +491,15 @@ def _one_run(
     logical = (torch.tensor([[0.8]], dtype=torch.float32), torch.tensor([[-0.6]], dtype=torch.float32))
     lower = (torch.zeros((2, 2)), torch.zeros((2, 2)))
     upper = (torch.ones((2, 2)), torch.ones((2, 2)))
-    reset = (torch.full((2, 2), 0.2), torch.full((2, 2), 0.2))
-    reference = (torch.full((2, 2), -0.6), torch.full((2, 2), -0.6))
+    unequal_column_baseline = torch.tensor(
+        [[[0.18545419, 0.47649482, 0.18545419, 0.47649482]]],
+        dtype=torch.float32,
+    )
+    reset = (
+        scatter_quads(unequal_column_baseline, shape=(2, 2), layout="halves"),
+        scatter_quads(unequal_column_baseline, shape=(2, 2), layout="paired"),
+    )
+    reference = tuple(2.0 * value - 1.0 for value in reset)
     kwargs = {
         "policy": policy,
         "scale_fractions": (0.5, 0.5),
@@ -777,6 +785,12 @@ def _one_run(
             "schema_version": 1,
             "run_id": run_id,
             "experiment_id": spec.experiment_id,
+            "source": {
+                "available": True,
+                "commit": "1" * 40,
+                "dirty": False,
+                "dirty_hash": None,
+            },
             "config": {"path": "config.resolved.json", "sha256": content_hash(resolved)},
             "inputs": [{"role": "weights", "path": "/frozen/teacher.pt", "sha256": EXPECTED_WEIGHTS_SHA256}],
             "study": {
@@ -855,5 +869,19 @@ def test_analyzer_requires_all_twelve_complete_bundles(tmp_path: Path) -> None:
     with pytest.raises(
         BaselineSelectionAnalysisError,
         match="exactly 12 complete RunStore bundles",
+    ):
+        analyze_study(study_dir)
+
+
+def test_analyzer_rejects_mixed_source_commits(tmp_path: Path) -> None:
+    study_dir, runs = _study(tmp_path)
+    manifest_path = runs[-1] / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source"]["commit"] = "2" * 40
+    atomic_write_json(manifest_path, manifest)
+
+    with pytest.raises(
+        BaselineSelectionAnalysisError,
+        match="source commit or clean-state provenance differs",
     ):
         analyze_study(study_dir)

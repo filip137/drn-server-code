@@ -44,6 +44,7 @@ from experiments.mnist_relu_drn.ibm_om_baseline_selection import (
     all_policy_feasibility_from_quads,
     apply_checked_physical_targets,
     apply_joint_repair_field,
+    baseline_group_violation_mask,
     quad_stack,
     save_physical_mapping,
 )
@@ -1052,6 +1053,15 @@ def _mapping_invariants(mapping) -> Mapping[str, Any]:
         zero_max = float(layer.baseline_contrast.abs().max().item())
         zero_tolerance = 1e-9 * layer.level_spacing_physical
         zero_ok = not shared_zero or zero_max <= zero_tolerance
+        baseline_group_violation_count = int(
+            baseline_group_violation_mask(
+                layer.baseline,
+                layout=layer.layout,
+                policy=mapping.policy,
+            )
+            .sum()
+            .item()
+        )
         span = mapping.conductance_max - mapping.conductance_min
         lower = mapping.conductance_min + span * layer.cell_lower_unit
         upper = mapping.conductance_min + span * layer.cell_upper_unit
@@ -1075,6 +1085,7 @@ def _mapping_invariants(mapping) -> Mapping[str, Any]:
             decomposition_continuous == 0.0
             and decomposition_quantized == 0.0
             and zero_ok
+            and baseline_group_violation_count == 0
             and bound_violations == 0
             and reference_invalid_count == 0
         )
@@ -1101,6 +1112,9 @@ def _mapping_invariants(mapping) -> Mapping[str, Any]:
                 "zero_tolerance": zero_tolerance,
                 "exact_zero_required": shared_zero,
                 "exact_zero_passed": zero_ok,
+                "declared_baseline_group_violation_count": (
+                    baseline_group_violation_count
+                ),
                 "bound_violation_count": bound_violations,
                 "selected_reference_public_or_bound_violation_count": (
                     reference_invalid_count

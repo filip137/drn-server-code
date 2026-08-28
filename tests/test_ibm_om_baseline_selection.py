@@ -23,6 +23,7 @@ from experiments.mnist_relu_drn.ibm_om_baseline_selection import (
     all_policy_feasibility_from_quads,
     apply_checked_physical_targets,
     apply_joint_repair_field,
+    baseline_group_violation_mask,
     build_joint_repair_plan,
     build_layer_physical_mapping,
     build_physical_mapping,
@@ -367,6 +368,54 @@ def test_destination_column_grouping_balances_contrast_not_column_loading() -> N
     )
     torch.testing.assert_close(
         quad_loading(baseline, layout="halves"), torch.tensor([[1.60]])
+    )
+
+
+@pytest.mark.parametrize("layout", ("halves", "paired"))
+def test_destination_column_contrast_is_exact_zero_at_float32(
+    layout: str,
+) -> None:
+    # These are representative physical-conductance values from the failed
+    # development assignment.  A left-associated four-term subtraction leaves
+    # a nonzero float32 round-off residual even though each destination pair is
+    # bit-identical.
+    plus = 2.039996070379857e-05
+    minus = 5.2414430683711544e-05
+    baseline_quads = torch.tensor(
+        [[[plus, minus, plus, minus]]], dtype=torch.float32
+    )
+    legacy = (
+        baseline_quads[..., 0]
+        - baseline_quads[..., 1]
+        - baseline_quads[..., 2]
+        + baseline_quads[..., 3]
+    ) / 2.0
+    assert bool(torch.any(legacy != 0.0))
+
+    baseline = _physical_from_quads(baseline_quads, layout=layout)
+    assert torch.equal(
+        quad_contrast(baseline, layout=layout), torch.zeros((1, 1))
+    )
+    assert not bool(
+        baseline_group_violation_mask(
+            baseline,
+            layout=layout,
+            policy=SHARED_DESTINATION_COLUMNS_RESET_MAX,
+        ).any()
+    )
+
+    perturbed_quads = baseline_quads.clone()
+    perturbed_quads[..., 0] = torch.nextafter(
+        perturbed_quads[..., 0],
+        torch.full_like(perturbed_quads[..., 0], float("inf")),
+    )
+    perturbed = _physical_from_quads(perturbed_quads, layout=layout)
+    assert bool(
+        baseline_group_violation_mask(
+            perturbed,
+            layout=layout,
+            policy=SHARED_DESTINATION_COLUMNS_RESET_MAX,
+        ).all()
     )
 
 

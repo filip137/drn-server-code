@@ -190,7 +190,31 @@ def quad_contrast(matrix: torch.Tensor, *, layout: str) -> torch.Tensor:
     """Return ``(G++ - G+- - G-+ + G--)/2`` from full conductances."""
 
     quad = quad_stack(matrix, layout=layout)
-    return (quad[..., 0] - quad[..., 1] - quad[..., 2] + quad[..., 3]) / 2.0
+    # Pair the two conductances feeding each destination rail before combining
+    # the rails.  This is algebraically identical to the expression in the
+    # docstring, while preserving an exact zero when a baseline policy stores
+    # G++ == G-+ and G+- == G-- in finite precision.
+    return ((quad[..., 0] - quad[..., 2]) + (quad[..., 3] - quad[..., 1])) / 2.0
+
+
+def baseline_group_violation_mask(
+    matrix: torch.Tensor, *, layout: str, policy: str
+) -> torch.Tensor:
+    """Return logical quads that violate a policy's declared baseline groups."""
+
+    quad = quad_stack(matrix, layout=layout)
+    if policy == INDEPENDENT_CELL_RESET_MEAN:
+        return torch.zeros(quad.shape[:-1], dtype=torch.bool, device=quad.device)
+    if policy == SHARED_QUAD_RESET_MAX:
+        return torch.any(quad != quad[..., :1], dim=-1)
+    if policy in {
+        SHARED_DESTINATION_COLUMNS_RESET_MAX,
+        REFERENCE_ENFORCED_DESTINATION_COLUMNS,
+    }:
+        return (quad[..., 0] != quad[..., 2]) | (
+            quad[..., 1] != quad[..., 3]
+        )
+    raise ValueError(f"Unexpected baseline policy: {policy!r}.")
 
 
 def quad_loading(matrix: torch.Tensor, *, layout: str) -> torch.Tensor:
@@ -1256,6 +1280,7 @@ __all__ = [
     "all_policy_feasibility_from_quads",
     "apply_checked_physical_targets",
     "apply_joint_repair_field",
+    "baseline_group_violation_mask",
     "build_joint_repair_plan",
     "build_layer_physical_mapping",
     "build_physical_mapping",
