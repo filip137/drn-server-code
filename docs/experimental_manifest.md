@@ -1027,6 +1027,31 @@ evidence available today, not pass/fail gates.
 - **Workflow summary:** `results/mnist-ibm-om-four-device-baseline-selection-20260828-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-four-device-baseline-selection-20260828-v1 -->
 
+<!-- BEGIN EBL STUDY mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1 -->
+### mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1
+
+**Four-device intrinsic-reference identity balance at ideal initialization**
+
+- **Finished:** 2026-08-28
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** inconclusive
+- **Initial hypothesis:** Weight-blind identity binding that minimizes the signed intrinsic-reference sum of each four-cell quad will strongly reduce zero-weight contrast and recover at least 90 percent held-out ideal bounded continuous initialization accuracy relative to the sampled identity order.
+- **Completion criteria:**
+  - Both declared native validate arms complete from the frozen pre-BPTT checkpoint and teacher, cover development assignment 86001 and held-out assignments 87001-87003, and evaluate all 10000 test examples per held-out binding/calibration arm.
+  - The balanced binding is a deterministic, bijective, within-layer permutation of exactly the same sampled identities, uses no weights, labels, bounds, calibration outcomes, or test results, and its main/replay plan hashes match.
+  - Every selected physical branch is finite and nonnegative, every active branch is within its sampled bounds, every mapping records B, d, and G with zero decomposition residual, and the full G enters both four-rail contrast and loading.
+  - Optimizer updates, quantization, pulse programming, HWA, deployment write noise, inference read noise, retention, and drift are exactly absent.
+  - The primary accuracy gate passes only if balanced@balanced held-out mean accuracy is at least 90 percent. Failure is retained and interpreted rather than repaired after inspection.
+- **Coverage:** 2 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The measurements support heterogeneous signed intrinsic-reference contrast as an important failure mechanism: weight-blind reference-balanced binding reduced zero-reference contrast RMS by 58 to 150 times and increased held-out scheme-optimized ideal bounded continuous accuracy from 84.49 percent to 91.83 percent, passing the declared 90 percent gate. With the random-binding calibration held fixed, the mean improvement was 7.68 percentage points. The result nevertheless remains inconclusive as a deployable initialization scheme because the intervention globally regrouped complete device identities within each layer. That nonlocal reassignment is not available when programming a fixed physical array. The study therefore validates the zero-bias mechanism and a nonlocal upper control, but it does not establish a practical baseline-selection method.
+- **Main limitations:** This is model-based AIHWKit 1.1.0 OM-preset evidence from one frozen checkpoint and teacher, one MNIST split, one development assignment (86001), and three held-out assignments (87001-87003). The populations are counterfactually repaired rather than published-corrupt or fabricated arrays. Development selected each binding policy from 16 scale pairs and fitted a logit gain; the held-out cross-calibration matrix diagnoses this dependence but does not remove it. The primary metric is ideal bounded continuous initialization only. It excludes discrete levels, pulse programming and verify, write and read noise, retention, drift, BPTT, QAT, HWA, and on-chip recovery. Most importantly, the balanced policy moves whole device identities through a global within-layer permutation, changing each quad's identities, bounds, headroom, and loading together; it is not a local programming intervention on fixed hardware.
+- **Next steps:**
+  - Run a predeclared ideal bounded continuous study on the same fixed identity binding that compares the nearest intrinsic-symmetry baseline with the box-constrained minimum-L2 baseline adjustment satisfying exact four-cell zero contrast, records every conductance as G=B+d in both numerator and denominator, and uses identical matched d tensors plus a frozen cross-calibration matrix.
+  - If the local continuous compensation succeeds, apply the same fixed binding to the standard four-delta level codebook without refitting the baseline objective, then test whether deterministic pulse programming can resolve the required baseline corrections before adding stochastic write noise, HWA, or on-chip recovery.
+- **Raw artifacts:** `results/mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1 -->
+
 ## Shared validity notes
 
 - These studies are exploratory rather than final paper-facing evidence.

@@ -88,3 +88,44 @@ The accuracy gate is a held-out balanced scheme-optimized mean of at least
 90%.  A failure is informative: if reference contrast collapses but accuracy
 does not recover, then baseline signed-sum mismatch alone is not the limiting
 mechanism.
+
+## Results and interpretation
+
+Both declared native arms completed with 53 artifacts each.  Artifact-verified
+coverage and independent semantic replay passed.  On held-out assignments
+87001--87003, the ideal bounded continuous results were:
+
+| Binding | Mean accuracy | Range | Exact results |
+|---|---:|---:|---|
+| Sampled identity order | 84.49% | 80.78--87.80% | 8489, 8780, and 8078 correct out of 10000 |
+| Reference-balanced binding | 91.83% | 87.47--94.13% | 9389, 8747, and 9413 correct out of 10000 |
+
+Thus the balanced scheme passed its predeclared 90% mean gate and improved the
+scheme-optimized mean by 7.34 percentage points.  With the random-binding
+development calibration frozen for both bindings, the paired mean improvement
+was 7.68 points, ranging from +0.49 to +13.45 points.  The scheme-optimized
+effect was not uniform: assignment 87002 was 0.33 points lower after balancing.
+
+The physical diagnostics strongly support signed reference mismatch as a
+failure mechanism.  Depending on assignment and layer, balancing reduced the
+intrinsic-reference zero-contrast RMS by 58--150 times.  The nonzero-weight
+sign-flip fraction fell from 19.9--20.4% to 0.23--0.29% in the first layer and
+from 9.6--11.4% to 0--0.4% in the second layer.
+
+This is not, however, a deployable local initialization method for a fixed
+array.  The balancing policy globally regroups complete device identities
+within each layer, so it changes the identities, bounds, headroom, and loading
+assigned to each quad.  The appropriate closeout outcome is therefore
+`inconclusive`: the zero-bias mechanism is supported and the nonlocal upper
+control is strong, but the study does not show that a physical array can obtain
+the same benefit through local programming.
+
+The next matched study keeps every identity in place and programs a nearby
+baseline per conductance.  Its primary intervention is the box-constrained
+minimum-L2 adjustment from mapped intrinsic symmetry values subject to exact
+quad zero contrast.  It must retain the complete `G=B+d` in the numerator and
+denominator and use identical matched `d` tensors across the uncompensated and
+compensated arms.  Continuous ideal mapping comes first; the same baseline
+objective should then be checked with the standard four-delta codebook and
+deterministic pulse distinguishability before introducing stochastic write
+noise, HWA, or on-chip recovery.
