@@ -759,6 +759,24 @@ def _default_train_handler(request: TrainRequest) -> Optional[int]:
         from experiments.mnist_relu.runtime import run_train
     elif request.definition.experiment_id == "mnist_relu_drn_kd.v1":
         from experiments.mnist_relu_drn.runtime import run_train
+    elif request.definition.experiment_id == "mnist_ibm_om_winsorized_qat.v1":
+        from experiments.mnist_relu_drn.ibm_om_winsorized_qat_runtime import (
+            run_train,
+        )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_winsorized_multi_assignment_qat.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_winsorized_multi_assignment_qat_runtime import (
+            run_train,
+        )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_winsorized_pv_ensemble_qat.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_winsorized_pv_ensemble_qat_runtime import (
+            run_train,
+        )
     elif request.definition.experiment_id in {
         "mnist_relu_drn_reset.v1",
         "mnist_relu_drn_reset_differential.v1",
@@ -801,6 +819,13 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
         == "mnist_ibm_om_baseline_spacing_pv_no_clip.v1"
     ):
         from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv_no_clip_runtime import (
+            run_validate,
+        )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_baseline_spacing_pv_truncated_nominal.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv_truncated_nominal_runtime import (
             run_validate,
         )
     elif request.definition.experiment_id == "ibm_om_four_reference_balance.v1":

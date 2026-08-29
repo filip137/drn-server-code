@@ -60,6 +60,30 @@ from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv_no_clip_config import
     parse_baseline_spacing_pv_no_clip_config,
     resolve_baseline_spacing_pv_no_clip_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_baseline_spacing_pv_truncated_nominal_config import (
+    EXPERIMENT_ID as IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_SCHEMA_VERSION,
+    parse_baseline_spacing_pv_truncated_nominal_config,
+    resolve_baseline_spacing_pv_truncated_nominal_spec,
+)
+from experiments.mnist_relu_drn.ibm_om_winsorized_qat_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_QAT_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_QAT_SCHEMA_VERSION,
+    parse_winsorized_qat_config,
+    resolve_winsorized_qat_spec,
+)
+from experiments.mnist_relu_drn.ibm_om_winsorized_multi_assignment_qat_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_SCHEMA_VERSION,
+    parse_winsorized_multi_assignment_qat_config,
+    resolve_winsorized_multi_assignment_qat_spec,
+)
+from experiments.mnist_relu_drn.ibm_om_winsorized_pv_ensemble_qat_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_SCHEMA_VERSION,
+    parse_winsorized_pv_ensemble_qat_config,
+    resolve_winsorized_pv_ensemble_qat_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -891,11 +915,68 @@ IBM_OM_BASELINE_SPACING_PV_NO_CLIP_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_EXPERIMENT_ID,
+    schema_version=IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_SCHEMA_VERSION,
+    description=(
+        "Validate an exploratory four-device IBM OM baseline/spacing matrix "
+        "after counterfactual per-identity nominal-bound Winsorization to "
+        "raw a in [-1, 1] before RESET commissioning and programming."
+    ),
+    supported_modes=(RunMode.VALIDATE,),
+    parser=parse_baseline_spacing_pv_truncated_nominal_config,
+    resolver=resolve_baseline_spacing_pv_truncated_nominal_spec,
+)
+
+
+IBM_OM_WINSORIZED_QAT_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_QAT_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_QAT_SCHEMA_VERSION,
+    description=(
+        "Train the alpha-zero Winsorized IBM OM four-device DRN with a "
+        "deterministic uniform codebook and straight-through QAT."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_winsorized_qat_config,
+    resolver=resolve_winsorized_qat_spec,
+)
+
+
+IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_SCHEMA_VERSION,
+    description=(
+        "Train the alpha-zero Winsorized IBM OM four-device DRN by cycling "
+        "two frozen deterministic device codebooks per global minibatch."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_winsorized_multi_assignment_qat_config,
+    resolver=resolve_winsorized_multi_assignment_qat_spec,
+)
+
+
+IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_SCHEMA_VERSION,
+    description=(
+        "Compare deterministic, mean-P&V, and tail-robust QAT using exact "
+        "precomputed persistent IBM OM endpoints on frozen device codebooks."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_winsorized_pv_ensemble_qat_config,
+    resolver=resolve_winsorized_pv_ensemble_qat_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
     IBM_OM_BASELINE_SPACING_PV_V1.experiment_id: IBM_OM_BASELINE_SPACING_PV_V1,
     IBM_OM_BASELINE_SPACING_PV_NO_CLIP_V1.experiment_id: IBM_OM_BASELINE_SPACING_PV_NO_CLIP_V1,
+    IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_V1.experiment_id: IBM_OM_BASELINE_SPACING_PV_TRUNCATED_NOMINAL_V1,
+    IBM_OM_WINSORIZED_QAT_V1.experiment_id: IBM_OM_WINSORIZED_QAT_V1,
+    IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_V1.experiment_id: IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_V1,
+    IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_V1.experiment_id: IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_V1,
     IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
