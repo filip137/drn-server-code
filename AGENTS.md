@@ -1,19 +1,20 @@
-# AGENTS — Tiki-Taka/LoRA integration
+# AGENTS — IBM OM standard-crossbar versus DRN
 
 ## Worktree scope
 
-These instructions apply to the `codex/tiki-taka-lora-integration` worktree.
-Its primary research question is:
+These instructions apply to the `codex/ibm-om-crossbar-digital-relu`
+worktree. Its primary research question is:
 
-> Under which measured-device conditions does hardware-aware (HWA) training
-> underperform, and does the remaining performance gap require additional
-> on-chip training?
+> How much on-chip recovery is required by an IBM-OM standard analog
+> crossbar--digital-ReLU--analog-crossbar network, and how does its deployment
+> loss, recovery, and fresh-array transfer compare with the matched DRN?
 
-Work in this tree must help separate the effects of initialization, HWA,
-physical-device programming or reassignment, and the post-deployment update
-rule. Compare HWA-only behavior with matched on-chip recovery controls such as
-Tiki-Taka or LoRA when the study plan calls for them. Do not assume that
-on-chip training is needed; require a predeclared matched comparison.
+Work in this tree must separate logical architecture, deterministic mapping,
+stochastic programming, off-chip adaptation, same-array on-chip recovery, and
+fresh-array transfer. The standard-crossbar comparator is an explicit
+architecture control; it does not replace the evaluated DRN. Do not infer a
+general need for on-chip training from one favorable endpoint or one device
+assignment.
 
 Keep unrelated repository maintenance and unrelated experiment families out
 of this worktree.
@@ -75,8 +76,30 @@ of this worktree.
 
 - The evaluated student architecture is a dissipative resistive network (DRN)
   using `perfect_diode` nonlinearities.
-- A conventional ReLU network may be used as a frozen teacher or reference,
-  but it is not a substitute for the evaluated perfect-diode DRN.
+- The explicit comparator has the same logical `784-50-10` dimensions and
+  bias-free layer structure as the teacher-targeted DRN. It consists of a
+  standard analog MVM, a digital ReLU, and a second standard analog MVM. The DRN's
+  doubled `1568-100-20` tensors are rail encoding, not extra learned neurons.
+- The crossbar initializes from the exact ReLU teacher tensors. The pinned DRN
+  comparison initializes from its separately recovered physical checkpoint;
+  they share the teacher task and dimensions, not an identical trained weight
+  tensor. Compare source-to-deployment loss as well as absolute accuracy.
+- The standard crossbar uses the AIHWKit OM effective state `q=a-r` for
+  transfer and has no passive-DRN conductance-sum voltage denominator. Keep
+  this architectural distinction visible; do not present standard MVM
+  accuracy as a physically loaded DRN result.
+- AIHWKit-style standard-crossbar forwards consume the post-write apparent
+  effective state. The hidden persistent state controls subsequent pulse
+  updates and is a required robustness diagnostic, but it must not be
+  substituted for the apparent forward state. Report both states explicitly.
+- Match the frozen teacher, logical dimensions, data split, minibatch order,
+  objective, assignment/endpoint seeds, recovery budget, and checkpoint
+  selection wherever the two architectures permit it. When topology changes
+  the population shape, record rather than conceal the different identity
+  and device counts.
+- Report 39,700 logical weights for the `784-50-10` comparator and distinguish
+  programmable active OM states from fitted reference values. Do not infer a
+  fabricated device count from AIHWKit's abstract reference subtraction.
 - Matched arms must keep the DRN topology, solver, data split, teacher or base
   checkpoint, and device assignment fixed unless one of them is the explicitly
   declared intervention.
@@ -88,6 +111,15 @@ of this worktree.
   apparent acceptance as three different facts. Bound classification may pair
   conditioned RESET/SET states only on the analysis side; an apparent noisy
   admission must not be relabelled as a persistently reachable target.
+- A frozen-model fresh-array test must remap the frozen off-chip FP32 master
+  independently through each target array's own bounds and codebook. Do not
+  copy a source array's realized codebook or stochastic endpoint to a fresh
+  array. A recovered-state transfer is a distinct arm and must name the
+  transferred hidden persistent state explicitly.
+- Several endpoint seeds on one assignment are repeated programming
+  realizations on one array, not independent arrays. Array-transfer evidence
+  must include several distinct target assignment seeds and report
+  assignment-level as well as pooled summaries.
 - Preserve per-identity AIHWKit construction seeds and explicit per-trajectory
   conditioning/programming seeds. Do not replace the explicit pulse plant with
   a native CPU tile unless its cycle-to-cycle RNG becomes serializable and an

@@ -1,0 +1,745 @@
+"""Strict configuration for the IBM-OM crossbar--digital-ReLU comparator."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import math
+import re
+from typing import Any, Mapping
+
+from experiments.mnist_relu.config import _integer, _keys, _number, _object
+from experiments.schema import RunMode, config_error
+
+
+EXPERIMENT_ID = "mnist_ibm_om_crossbar_relu.v1"
+SCHEMA_VERSION = 1
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True)
+class RuntimeSettings:
+    seed: int
+    data_seed: int
+    device: str
+    dtype: str
+    required_aihwkit_version: str
+
+
+@dataclass(frozen=True)
+class DataSettings:
+    batch_size: int
+    validation_points: int
+    num_points: int | None
+    shuffle: bool
+
+
+@dataclass(frozen=True)
+class ModelSettings:
+    dims: tuple[int, int, int]
+    bias: bool
+    digital_non_linearity: str
+    maximum_input_size: int
+    maximum_output_size: int
+
+
+@dataclass(frozen=True)
+class SourceSettings:
+    expected_teacher_weights_path: str
+    expected_teacher_weights_sha256: str
+
+
+@dataclass(frozen=True)
+class DeviceSettings:
+    preset: str
+    evidence_class: str
+    assignment_seed: int
+    endpoint_seeds: tuple[int, ...]
+    corruption_policy: str
+    bound_policy: str
+    reference_policy: str
+    deterministic_codebook_pulses: int
+    maximum_programming_pulses: int
+    verify_tolerance_x: float
+    controller: str
+
+
+@dataclass(frozen=True)
+class MappingSettings:
+    weight_scaling_omega: tuple[float, float]
+    scaling_policy: str
+    out_of_bounds_policy: str
+    codebook_tie_rule: str
+
+
+@dataclass(frozen=True)
+class OffchipSettings:
+    policy: str
+    epochs: int
+    logical_learning_rates: tuple[float, float]
+    beta_1: float
+    beta_2: float
+    epsilon: float
+    objective: str
+    master_q_bounds: tuple[float, float]
+    maximum_batches: int | None
+    checkpoint_policy: str
+
+
+@dataclass(frozen=True)
+class RecoverySettings:
+    policy: str
+    layer_scope: str
+    epochs: int
+    learning_rates_q: tuple[float, float]
+    beta_1: float
+    beta_2: float
+    epsilon: float
+    objective: str
+    pulse_cap_per_cell: int
+    maximum_batches: int | None
+
+
+@dataclass(frozen=True)
+class TransferTargetSettings:
+    assignment_seed: int
+    endpoint_seeds: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class TransferSettings:
+    enabled: bool
+    source_state: str
+    targets: tuple[TransferTargetSettings, ...]
+
+
+@dataclass(frozen=True)
+class EvaluationSettings:
+    evaluate_test: bool
+    sample_limit: int | None
+    maximum_validation_batches: int | None
+    selection_metric: str
+
+
+@dataclass(frozen=True)
+class DrnReferenceSettings:
+    path: str
+    sha256: str
+    architecture: str
+    assignment_seed: int
+    endpoint_seeds: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class CrossbarConfig:
+    schema_version: int
+    experiment_id: str
+    runtime: RuntimeSettings
+    data: DataSettings
+    model: ModelSettings
+    source: SourceSettings
+    device: DeviceSettings
+    mapping: MappingSettings
+    offchip: OffchipSettings
+    recovery: RecoverySettings
+    transfer: TransferSettings
+    evaluation: EvaluationSettings
+    drn_reference: DrnReferenceSettings
+
+
+@dataclass(frozen=True)
+class CrossbarTrainSpec:
+    experiment_id: str
+    runtime: RuntimeSettings
+    data: DataSettings
+    model: ModelSettings
+    source: SourceSettings
+    device: DeviceSettings
+    mapping: MappingSettings
+    offchip: OffchipSettings
+    recovery: RecoverySettings
+    transfer: TransferSettings
+    evaluation: EvaluationSettings
+    drn_reference: DrnReferenceSettings
+
+
+def _digest(value: Any, path: str) -> str:
+    if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+        raise config_error(path, "to be a lowercase SHA-256 digest", value)
+    return value
+
+
+def _text(value: Any, path: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise config_error(path, "to be a non-empty string", value)
+    return value.strip()
+
+
+def _boolean(value: Any, path: str) -> bool:
+    if not isinstance(value, bool):
+        raise config_error(path, "to be a boolean", value)
+    return value
+
+
+def _integer_tuple(
+    value: Any,
+    path: str,
+    *,
+    allow_empty: bool = False,
+) -> tuple[int, ...]:
+    if not isinstance(value, (list, tuple)) or (not value and not allow_empty):
+        raise config_error(path, "to be a non-empty list of positive integers", value)
+    result = tuple(
+        _integer(item, f"{path}[{index}]", minimum=1)
+        for index, item in enumerate(value)
+    )
+    if len(set(result)) != len(result):
+        raise config_error(path, "to contain unique values", value)
+    return result
+
+
+def _pair(
+    value: Any,
+    path: str,
+    *,
+    minimum: float,
+    maximum: float | None = None,
+    positive: bool = False,
+) -> tuple[float, float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise config_error(path, "to contain exactly two numbers", value)
+    result = tuple(_number(item, f"{path}[{index}]", minimum=minimum) for index, item in enumerate(value))
+    if positive and any(item <= 0.0 for item in result):
+        raise config_error(path, "to contain two positive numbers", value)
+    if maximum is not None and any(item > maximum for item in result):
+        raise config_error(path, f"to contain values <= {maximum}", value)
+    return (float(result[0]), float(result[1]))
+
+
+def _optional_positive_integer(value: Any, path: str) -> int | None:
+    return None if value is None else _integer(value, path, minimum=1)
+
+
+def _parse_runtime(value: Any) -> RuntimeSettings:
+    path = "config.runtime"
+    raw = _object(value, path)
+    _keys(raw, path, {"seed", "data_seed", "device", "dtype", "required_aihwkit_version"})
+    if raw["device"] not in {"cpu", "cuda"}:
+        raise config_error(f"{path}.device", "to be 'cpu' or 'cuda'", raw["device"])
+    if raw["dtype"] != "float32":
+        raise config_error(f"{path}.dtype", "to equal 'float32'", raw["dtype"])
+    if raw["required_aihwkit_version"] != "1.1.0":
+        raise config_error(
+            f"{path}.required_aihwkit_version", "to equal '1.1.0'", raw["required_aihwkit_version"]
+        )
+    if raw["seed"] != 42 or raw["data_seed"] != 42:
+        raise config_error(path, "to use matched runtime and data seeds 42", dict(raw))
+    return RuntimeSettings(
+        seed=_integer(raw["seed"], f"{path}.seed"),
+        data_seed=_integer(raw["data_seed"], f"{path}.data_seed"),
+        device=raw["device"],
+        dtype="float32",
+        required_aihwkit_version="1.1.0",
+    )
+
+
+def _parse_data(value: Any) -> DataSettings:
+    path = "config.data"
+    raw = _object(value, path)
+    _keys(raw, path, {"batch_size", "validation_points", "num_points", "shuffle"})
+    batch_size = _integer(raw["batch_size"], f"{path}.batch_size", minimum=1)
+    validation_points = _integer(
+        raw["validation_points"], f"{path}.validation_points", minimum=1
+    )
+    shuffle = _boolean(raw["shuffle"], f"{path}.shuffle")
+    if batch_size != 16 or validation_points != 5000 or shuffle is not True:
+        raise config_error(
+            path,
+            "to use matched batch_size=16, validation_points=5000, and shuffle=true",
+            dict(raw),
+        )
+    return DataSettings(
+        batch_size=batch_size,
+        validation_points=validation_points,
+        num_points=_optional_positive_integer(raw["num_points"], f"{path}.num_points"),
+        shuffle=shuffle,
+    )
+
+
+def _parse_model(value: Any) -> ModelSettings:
+    path = "config.model"
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {"dims", "bias", "digital_non_linearity", "maximum_input_size", "maximum_output_size"},
+    )
+    if not isinstance(raw["dims"], (list, tuple)) or tuple(raw["dims"]) != (784, 50, 10):
+        raise config_error(f"{path}.dims", "to equal [784, 50, 10]", raw["dims"])
+    if raw["bias"] is not False:
+        raise config_error(f"{path}.bias", "to be false", raw["bias"])
+    if raw["digital_non_linearity"] != "relu":
+        raise config_error(
+            f"{path}.digital_non_linearity", "to equal 'relu'", raw["digital_non_linearity"]
+        )
+    maximum_input = _integer(raw["maximum_input_size"], f"{path}.maximum_input_size", minimum=1)
+    maximum_output = _integer(raw["maximum_output_size"], f"{path}.maximum_output_size", minimum=1)
+    if maximum_input != 512 or maximum_output != 512:
+        raise config_error(path, "to use the standard 512-by-512 AIHWKit tile limits", dict(raw))
+    return ModelSettings((784, 50, 10), False, "relu", 512, 512)
+
+
+def _parse_source(value: Any) -> SourceSettings:
+    path = "config.source"
+    raw = _object(value, path)
+    _keys(raw, path, {"expected_teacher_weights_path", "expected_teacher_weights_sha256"})
+    return SourceSettings(
+        expected_teacher_weights_path=_text(raw["expected_teacher_weights_path"], f"{path}.expected_teacher_weights_path"),
+        expected_teacher_weights_sha256=_digest(raw["expected_teacher_weights_sha256"], f"{path}.expected_teacher_weights_sha256"),
+    )
+
+
+def _parse_device(value: Any) -> DeviceSettings:
+    path = "config.device"
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "preset",
+            "evidence_class",
+            "assignment_seed",
+            "endpoint_seeds",
+            "corruption_policy",
+            "bound_policy",
+            "reference_policy",
+            "deterministic_codebook_pulses",
+            "maximum_programming_pulses",
+            "verify_tolerance_x",
+            "controller",
+        },
+    )
+    expected = {
+        "preset": "ReRamArrayOMPresetDevice",
+        "evidence_class": "model_based_aihwkit_preset",
+        "reference_policy": "fixed_sampled_intrinsic_reference_q_equals_a_minus_r",
+        "controller": "one_pulse_apparent_verify_persistent_handoff",
+    }
+    for name, expected_value in expected.items():
+        if raw[name] != expected_value:
+            raise config_error(f"{path}.{name}", f"to equal {expected_value!r}", raw[name])
+    if raw["corruption_policy"] not in {"published", "counterfactual_repaired"}:
+        raise config_error(
+            f"{path}.corruption_policy", "to be 'published' or 'counterfactual_repaired'", raw["corruption_policy"]
+        )
+    if raw["bound_policy"] not in {
+        "native_sampled_bounds",
+        "winsorize_raw_active_a_to_unit_interval",
+    }:
+        raise config_error(
+            f"{path}.bound_policy",
+            (
+                "to be 'native_sampled_bounds' or "
+                "'winsorize_raw_active_a_to_unit_interval'"
+            ),
+            raw["bound_policy"],
+        )
+    codebook_pulses = _integer(
+        raw["deterministic_codebook_pulses"], f"{path}.deterministic_codebook_pulses", minimum=1
+    )
+    programming_pulses = _integer(
+        raw["maximum_programming_pulses"], f"{path}.maximum_programming_pulses", minimum=1
+    )
+    if codebook_pulses != 128 or programming_pulses != 128:
+        raise config_error(path, "to use the frozen 128-pulse deterministic and P&V caps", dict(raw))
+    tolerance = _number(raw["verify_tolerance_x"], f"{path}.verify_tolerance_x")
+    if tolerance <= 0.0:
+        raise config_error(f"{path}.verify_tolerance_x", "to be positive", tolerance)
+    if not math.isclose(float(tolerance), 0.023725, rel_tol=0.0, abs_tol=1e-12):
+        raise config_error(
+            f"{path}.verify_tolerance_x",
+            "to equal the matched half-nominal-step tolerance 0.023725",
+            tolerance,
+        )
+    return DeviceSettings(
+        preset=expected["preset"],
+        evidence_class=expected["evidence_class"],
+        assignment_seed=_integer(raw["assignment_seed"], f"{path}.assignment_seed", minimum=1),
+        endpoint_seeds=_integer_tuple(raw["endpoint_seeds"], f"{path}.endpoint_seeds"),
+        corruption_policy=raw["corruption_policy"],
+        bound_policy=raw["bound_policy"],
+        reference_policy=expected["reference_policy"],
+        deterministic_codebook_pulses=128,
+        maximum_programming_pulses=128,
+        verify_tolerance_x=float(tolerance),
+        controller=expected["controller"],
+    )
+
+
+def _parse_mapping(value: Any) -> MappingSettings:
+    path = "config.mapping"
+    raw = _object(value, path)
+    _keys(raw, path, {"weight_scaling_omega", "scaling_policy", "out_of_bounds_policy", "codebook_tie_rule"})
+    expected = {
+        "scaling_policy": "one_shared_absmax_scale_per_logical_layer",
+        "out_of_bounds_policy": "retain_request_and_report_endpoint_saturation",
+        "codebook_tie_rule": "lowest_pulse_index",
+    }
+    for name, expected_value in expected.items():
+        if raw[name] != expected_value:
+            raise config_error(f"{path}.{name}", f"to equal {expected_value!r}", raw[name])
+    return MappingSettings(
+        weight_scaling_omega=_pair(
+            raw["weight_scaling_omega"], f"{path}.weight_scaling_omega", minimum=0.0, maximum=1.0, positive=True
+        ),
+        scaling_policy=expected["scaling_policy"],
+        out_of_bounds_policy=expected["out_of_bounds_policy"],
+        codebook_tie_rule=expected["codebook_tie_rule"],
+    )
+
+
+def _parse_offchip(value: Any) -> OffchipSettings:
+    path = "config.offchip"
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "policy",
+            "epochs",
+            "logical_learning_rates",
+            "betas",
+            "epsilon",
+            "objective",
+            "master_q_bounds",
+            "maximum_batches",
+            "checkpoint_policy",
+        },
+    )
+    if raw["policy"] not in {"none", "continuous_hwa", "deterministic_qat"}:
+        raise config_error(
+            f"{path}.policy",
+            "to be 'none', 'continuous_hwa', or 'deterministic_qat'",
+            raw["policy"],
+        )
+    epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=0)
+    rates = _pair(
+        raw["logical_learning_rates"],
+        f"{path}.logical_learning_rates",
+        minimum=0.0,
+    )
+    betas = _pair(raw["betas"], f"{path}.betas", minimum=0.0)
+    epsilon = _number(raw["epsilon"], f"{path}.epsilon")
+    bounds = _pair(raw["master_q_bounds"], f"{path}.master_q_bounds", minimum=-1.0)
+    if (
+        betas != (0.9, 0.999)
+        or not math.isclose(float(epsilon), 1e-8, rel_tol=0.0, abs_tol=1e-16)
+        or raw["objective"] != "teacher_kl"
+        or bounds != (-1.0, 1.0)
+        or raw["checkpoint_policy"] != "fixed_final_epoch_no_selection"
+    ):
+        raise config_error(
+            path,
+            (
+                "to use teacher-KL, Adam betas [0.9, 0.999], epsilon 1e-8, "
+                "master q bounds [-1, 1], and a fixed final checkpoint"
+            ),
+            dict(raw),
+        )
+    if raw["policy"] == "none":
+        if epochs != 0 or rates != (0.0, 0.0):
+            raise config_error(
+                path,
+                "to use zero epochs and rates for offchip policy='none'",
+                dict(raw),
+            )
+    elif epochs != 5 or rates != (1e-4, 1e-4):
+        raise config_error(
+            path,
+            (
+                "to use the predeclared five epochs and logical learning "
+                "rates [1e-4, 1e-4] for HWA/QAT"
+            ),
+            dict(raw),
+        )
+    return OffchipSettings(
+        policy=raw["policy"],
+        epochs=epochs,
+        logical_learning_rates=rates,
+        beta_1=betas[0],
+        beta_2=betas[1],
+        epsilon=float(epsilon),
+        objective="teacher_kl",
+        master_q_bounds=bounds,
+        maximum_batches=_optional_positive_integer(
+            raw["maximum_batches"], f"{path}.maximum_batches"
+        ),
+        checkpoint_policy=raw["checkpoint_policy"],
+    )
+
+
+def _parse_recovery(value: Any) -> RecoverySettings:
+    path = "config.recovery"
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "policy",
+            "layer_scope",
+            "epochs",
+            "learning_rates_q",
+            "betas",
+            "epsilon",
+            "objective",
+            "pulse_cap_per_cell",
+            "maximum_batches",
+        },
+    )
+    if raw["policy"] not in {"none", "pulse_adam"}:
+        raise config_error(f"{path}.policy", "to be 'none' or 'pulse_adam'", raw["policy"])
+    if raw["layer_scope"] not in {"all", "input_only", "output_only"}:
+        raise config_error(
+            f"{path}.layer_scope", "to be 'all', 'input_only', or 'output_only'", raw["layer_scope"]
+        )
+    epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=0)
+    rates = _pair(raw["learning_rates_q"], f"{path}.learning_rates_q", minimum=0.0)
+    betas = _pair(raw["betas"], f"{path}.betas", minimum=0.0)
+    if any(value >= 1.0 for value in betas):
+        raise config_error(f"{path}.betas", "to contain values in [0, 1)", raw["betas"])
+    epsilon = _number(raw["epsilon"], f"{path}.epsilon")
+    if epsilon <= 0.0:
+        raise config_error(f"{path}.epsilon", "to be positive", epsilon)
+    if betas != (0.9, 0.999) or not math.isclose(
+        float(epsilon), 1e-8, rel_tol=0.0, abs_tol=1e-16
+    ):
+        raise config_error(
+            path,
+            "to use the matched Adam betas [0.9, 0.999] and epsilon 1e-8",
+            dict(raw),
+        )
+    if raw["objective"] != "teacher_kl":
+        raise config_error(f"{path}.objective", "to equal 'teacher_kl'", raw["objective"])
+    pulse_cap = _integer(
+        raw["pulse_cap_per_cell"], f"{path}.pulse_cap_per_cell", minimum=0
+    )
+    if raw["policy"] == "none":
+        if (
+            epochs != 0
+            or rates != (0.0, 0.0)
+            or raw["layer_scope"] != "all"
+            or pulse_cap != 0
+        ):
+            raise config_error(
+                path,
+                "to use zero epochs/rates/cap and scope='all' for policy='none'",
+                dict(raw),
+            )
+    elif epochs != 1 or rates != (6e-5, 6e-5) or pulse_cap != 64:
+        raise config_error(
+            path,
+            (
+                "to use one epoch, q-coordinate learning rates [6e-5, 6e-5], "
+                "and the matched 64-pulse per-cell recovery cap for pulse_adam"
+            ),
+            dict(raw),
+        )
+    return RecoverySettings(
+        policy=raw["policy"],
+        layer_scope=raw["layer_scope"],
+        epochs=epochs,
+        learning_rates_q=rates,
+        beta_1=betas[0],
+        beta_2=betas[1],
+        epsilon=float(epsilon),
+        objective="teacher_kl",
+        pulse_cap_per_cell=pulse_cap,
+        maximum_batches=_optional_positive_integer(raw["maximum_batches"], f"{path}.maximum_batches"),
+    )
+
+
+def _parse_transfer(value: Any, *, endpoint_count: int, source_assignment: int) -> TransferSettings:
+    path = "config.transfer"
+    raw = _object(value, path)
+    _keys(raw, path, {"enabled", "source_state", "targets"})
+    enabled = _boolean(raw["enabled"], f"{path}.enabled")
+    source_state = raw["source_state"]
+    targets_raw = raw["targets"]
+    if not isinstance(targets_raw, (list, tuple)):
+        raise config_error(f"{path}.targets", "to be a list", targets_raw)
+    if enabled:
+        if source_state not in {
+            "offchip_fixed_final_master",
+            "same_array_persistent",
+        }:
+            raise config_error(
+                f"{path}.source_state",
+                (
+                    "to be 'offchip_fixed_final_master' or "
+                    "'same_array_persistent' when transfer is enabled"
+                ),
+                source_state,
+            )
+        if not targets_raw:
+            raise config_error(
+                f"{path}.targets",
+                "to contain at least one fresh target array when enabled",
+                targets_raw,
+            )
+        targets: list[TransferTargetSettings] = []
+        assignments: list[int] = []
+        for index, item in enumerate(targets_raw):
+            target_path = f"{path}.targets[{index}]"
+            target = _object(item, target_path)
+            _keys(target, target_path, {"assignment_seed", "endpoint_seeds"})
+            assignment = _integer(
+                target["assignment_seed"],
+                f"{target_path}.assignment_seed",
+                minimum=1,
+            )
+            endpoints = _integer_tuple(
+                target["endpoint_seeds"],
+                f"{target_path}.endpoint_seeds",
+            )
+            if assignment == source_assignment:
+                raise config_error(
+                    f"{target_path}.assignment_seed",
+                    "to differ from the source assignment",
+                    assignment,
+                )
+            if len(endpoints) != endpoint_count:
+                raise config_error(
+                    f"{target_path}.endpoint_seeds",
+                    "to contain one target endpoint per source endpoint",
+                    target["endpoint_seeds"],
+                )
+            assignments.append(assignment)
+            targets.append(TransferTargetSettings(assignment, endpoints))
+        if len(set(assignments)) != len(assignments):
+            raise config_error(
+                f"{path}.targets",
+                "to contain unique target assignment seeds",
+                targets_raw,
+            )
+        return TransferSettings(True, source_state, tuple(targets))
+    if source_state != "none" or targets_raw:
+        raise config_error(
+            path,
+            "to use source_state='none' and targets=[] when disabled",
+            dict(raw),
+        )
+    return TransferSettings(False, "none", ())
+
+
+def _parse_evaluation(value: Any) -> EvaluationSettings:
+    path = "config.evaluation"
+    raw = _object(value, path)
+    _keys(raw, path, {"evaluate_test", "sample_limit", "maximum_validation_batches", "selection_metric"})
+    if raw["selection_metric"] != "fixed_final_epoch_no_selection":
+        raise config_error(
+            f"{path}.selection_metric",
+            "to equal 'fixed_final_epoch_no_selection'",
+            raw["selection_metric"],
+        )
+    return EvaluationSettings(
+        evaluate_test=_boolean(raw["evaluate_test"], f"{path}.evaluate_test"),
+        sample_limit=_optional_positive_integer(raw["sample_limit"], f"{path}.sample_limit"),
+        maximum_validation_batches=_optional_positive_integer(
+            raw["maximum_validation_batches"], f"{path}.maximum_validation_batches"
+        ),
+        selection_metric=raw["selection_metric"],
+    )
+
+
+def _parse_drn_reference(value: Any) -> DrnReferenceSettings:
+    path = "config.drn_reference"
+    raw = _object(value, path)
+    _keys(raw, path, {"path", "sha256", "architecture", "assignment_seed", "endpoint_seeds"})
+    if raw["architecture"] != "four_device_full_G_perfect_diode_drn":
+        raise config_error(
+            f"{path}.architecture", "to equal 'four_device_full_G_perfect_diode_drn'", raw["architecture"]
+        )
+    return DrnReferenceSettings(
+        path=_text(raw["path"], f"{path}.path"),
+        sha256=_digest(raw["sha256"], f"{path}.sha256"),
+        architecture=raw["architecture"],
+        assignment_seed=_integer(raw["assignment_seed"], f"{path}.assignment_seed", minimum=1),
+        endpoint_seeds=_integer_tuple(raw["endpoint_seeds"], f"{path}.endpoint_seeds"),
+    )
+
+
+def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
+    raw = _object(payload, "config")
+    required = {
+        "schema_version",
+        "experiment_id",
+        "runtime",
+        "data",
+        "model",
+        "source",
+        "device",
+        "mapping",
+        "offchip",
+        "recovery",
+        "transfer",
+        "evaluation",
+        "drn_reference",
+    }
+    _keys(raw, "config", required)
+    if raw["schema_version"] != SCHEMA_VERSION:
+        raise config_error("config.schema_version", "to equal 1", raw["schema_version"])
+    if raw["experiment_id"] != EXPERIMENT_ID:
+        raise config_error("config.experiment_id", f"to equal {EXPERIMENT_ID!r}", raw["experiment_id"])
+    device = _parse_device(raw["device"])
+    transfer = _parse_transfer(
+        raw["transfer"], endpoint_count=len(device.endpoint_seeds), source_assignment=device.assignment_seed
+    )
+    reference = _parse_drn_reference(raw["drn_reference"])
+    if reference.assignment_seed != device.assignment_seed or reference.endpoint_seeds != device.endpoint_seeds:
+        raise config_error(
+            "config.drn_reference", "to identify the same assignment and endpoint cohort as the crossbar", dict(raw["drn_reference"])
+        )
+    return CrossbarConfig(
+        schema_version=1,
+        experiment_id=EXPERIMENT_ID,
+        runtime=_parse_runtime(raw["runtime"]),
+        data=_parse_data(raw["data"]),
+        model=_parse_model(raw["model"]),
+        source=_parse_source(raw["source"]),
+        device=device,
+        mapping=_parse_mapping(raw["mapping"]),
+        offchip=_parse_offchip(raw["offchip"]),
+        recovery=_parse_recovery(raw["recovery"]),
+        transfer=transfer,
+        evaluation=_parse_evaluation(raw["evaluation"]),
+        drn_reference=reference,
+    )
+
+
+def resolve_crossbar_spec(document: CrossbarConfig, mode: RunMode) -> CrossbarTrainSpec:
+    if mode is not RunMode.TRAIN:
+        raise config_error("the requested run mode", "to equal 'train'", mode.value)
+    return CrossbarTrainSpec(
+        experiment_id=document.experiment_id,
+        runtime=document.runtime,
+        data=document.data,
+        model=document.model,
+        source=document.source,
+        device=document.device,
+        mapping=document.mapping,
+        offchip=document.offchip,
+        recovery=document.recovery,
+        transfer=document.transfer,
+        evaluation=document.evaluation,
+        drn_reference=document.drn_reference,
+    )
+
+
+__all__ = [
+    "CrossbarConfig",
+    "CrossbarTrainSpec",
+    "EXPERIMENT_ID",
+    "OffchipSettings",
+    "SCHEMA_VERSION",
+    "parse_crossbar_config",
+    "resolve_crossbar_spec",
+]

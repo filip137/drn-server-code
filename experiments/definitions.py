@@ -35,6 +35,12 @@ from experiments.mnist_relu.config import (
     parse_teacher_config,
     resolve_teacher_spec,
 )
+from experiments.mnist_analog_relu.config import (
+    EXPERIMENT_ID as MNIST_IBM_OM_CROSSBAR_RELU_EXPERIMENT_ID,
+    SCHEMA_VERSION as MNIST_IBM_OM_CROSSBAR_RELU_SCHEMA_VERSION,
+    parse_crossbar_config,
+    resolve_crossbar_spec,
+)
 from experiments.mnist_relu_drn.config import (
     EXPERIMENT_ID as MNIST_RELU_DRN_EXPERIMENT_ID,
     SCHEMA_VERSION as MNIST_RELU_DRN_SCHEMA_VERSION,
@@ -332,6 +338,35 @@ MNIST_RELU_V1 = ExperimentDefinition(
             ),
             "validated",
             "Bias-free digital teacher selected by validation cross-entropy.",
+        ),
+    ),
+)
+
+
+MNIST_IBM_OM_CROSSBAR_RELU_V1 = ExperimentDefinition(
+    experiment_id=MNIST_IBM_OM_CROSSBAR_RELU_EXPERIMENT_ID,
+    schema_version=MNIST_IBM_OM_CROSSBAR_RELU_SCHEMA_VERSION,
+    description=(
+        "Matched IBM-OM standard-crossbar MVM, digital-ReLU, standard-crossbar "
+        "MVM deployment and pulse-recovery comparison against the DRN."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_crossbar_config,
+    resolver=resolve_crossbar_spec,
+    combinations=(
+        ValidatedCombination(
+            ExtensionSelection(
+                "standard_crossbar_fixed_reference",
+                "none",
+                "pulse_adam",
+                "teacher_kl",
+            ),
+            "experimental",
+            (
+                "Model-based AIHWKit 1.1.0 OM control with apparent-forward "
+                "program-and-verify, hidden persistent update state, and "
+                "open-loop pulse recovery."
+            ),
         ),
     ),
 )
@@ -981,6 +1016,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
     MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,
+    MNIST_IBM_OM_CROSSBAR_RELU_V1.experiment_id: MNIST_IBM_OM_CROSSBAR_RELU_V1,
     MNIST_RELU_DRN_KD_V1.experiment_id: MNIST_RELU_DRN_KD_V1,
     MNIST_RELU_DRN_RESET_V1.experiment_id: MNIST_RELU_DRN_RESET_V1,
     MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1,

@@ -757,6 +757,8 @@ def _default_train_handler(request: TrainRequest) -> Optional[int]:
         from experiments.small_network.runtime import run_train
     elif request.definition.experiment_id == "mnist_relu.v1":
         from experiments.mnist_relu.runtime import run_train
+    elif request.definition.experiment_id == "mnist_ibm_om_crossbar_relu.v1":
+        from experiments.mnist_analog_relu.runtime import run_train
     elif request.definition.experiment_id == "mnist_relu_drn_kd.v1":
         from experiments.mnist_relu_drn.runtime import run_train
     elif request.definition.experiment_id == "mnist_ibm_om_winsorized_qat.v1":

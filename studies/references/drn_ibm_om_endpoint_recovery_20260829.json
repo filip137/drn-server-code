@@ -1,0 +1,48 @@
+{
+  "architecture": "four_device_full_G_perfect_diode_drn",
+  "assignment_seed": 87004,
+  "device_model": {
+    "evidence_class": "model_based_aihwkit_preset",
+    "physical_cells": 158800,
+    "preset": "ReRamArrayOMPresetDevice",
+    "winsorization": "counterfactual_per_identity_native_a_bounds_to_[-1,1]"
+  },
+  "endpoint_seeds": [89402, 89403, 89404, 89405],
+  "evidence_tier": "exploratory_noncanonical",
+  "metrics": {
+    "open_loop_adam": {
+      "mean_accuracy": 0.93065,
+      "mean_applied_pulses": 56916.25,
+      "per_endpoint_accuracy": [0.9362, 0.9283, 0.9274, 0.9307]
+    },
+    "persistent_deployment": {
+      "mean_accuracy": 0.6316,
+      "per_endpoint_accuracy": [0.6249, 0.6374, 0.6629, 0.6012]
+    }
+  },
+  "recovery_contract": {
+    "adam_learning_rate_raw_x": 3e-05,
+    "batch_size": 16,
+    "checkpoint_policy": "fixed_final_epoch_no_selection",
+    "data_seed": 42,
+    "epochs": 1,
+    "objective": "teacher_kl",
+    "optimizer": "digital_adam_open_loop_single_pulse",
+    "persistent_plant_is_authoritative": true,
+    "pulse_cap_per_cell": 64,
+    "verify_reads_during_updates": 0
+  },
+  "schema": "ebl.reference.ibm_om_drn_endpoint_recovery",
+  "schema_version": 1,
+  "source": {
+    "common_commit": "6d55eae73ececf1ba6ad71e7fd2f33bb9b096d91",
+    "requested_remap_no_write_accuracy": 0.9202,
+    "source_checkpoint_sha256": "13c7286725f537e2f296fcde24f9b492295a1650574373a2425cb66585f69c96",
+    "source_pretransfer_accuracy": 0.9414,
+    "summary_sha256": "d3356a295beae69c0a687832b9e0135e8c8b2ddbdd4a1d9f5b996cf9dc15c392",
+    "summary_source_sha256_field": "abd79cec6601f3ddedccc43bee78d0ac7e700b1903120317b1262364018d22f4",
+    "study_id": "mnist-ibm-om-winsorized-endpoint-optimizer-recovery-exploratory-20260829-v1",
+    "teacher_accuracy": 0.9736,
+    "teacher_checkpoint_sha256": "9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52"
+  }
+}

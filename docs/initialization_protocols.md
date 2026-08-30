@@ -78,6 +78,36 @@ A later on-chip recovery arm must load the saved persistent deployment bundle.
 It must not remap the logical checkpoint, redraw the physical assignment, or
 start from the apparent endpoint as though it were the persistent state.
 
+### IBM OM standard-crossbar ReLU comparator
+
+The standard-crossbar control starts from the exact bias-free `784-50-10`
+ReLU teacher checkpoint, maps each logical layer once with a shared
+absolute-maximum scale, and preserves that scale across input-sliced tiles.
+It samples one fixed `ReRamArrayOMPresetDevice` population for the resulting
+`392x50`, `392x50`, and `50x10` tile layout. The active state starts at its
+sampled RESET/lower bound and is programmed by the declared P&V endpoint;
+the AIHWKit-style network forward consumes apparent `q=a-r` after write
+noise. The hidden persistent `q` remains authoritative for later pulse
+updates and must be saved and evaluated as a separate diagnostic.
+
+All arms within one bound treatment must reproduce the same source-requested
+and population hashes. Continuous HWA and deterministic QAT fork from that
+source. All QAT-frozen and QAT-plus-recovery arms must reproduce the same
+fixed-final off-chip master, exact realized codebook target, and endpoint-P0
+hashes. Recovery forks only after that P0 state and uses a fixed final epoch,
+so validation cannot choose between the programmed initialization and the
+updated state. The direct no-HWA arm is a separate ladder rung and is not
+required to share the adapted target. The full contract is
+[`ibm_om_crossbar_relu_comparison.md`](ibm_om_crossbar_relu_comparison.md).
+
+Fresh-array redeployment of an off-chip model starts from the frozen FP32
+master, not from the source array's realized codebook or stochastic endpoint.
+Each untouched target assignment rebuilds its own bounds and deterministic
+codebook before programming. Portability of a same-array recovered hidden
+persistent state is a separate transfer contract. Repeated endpoint seeds on
+one assignment measure programming variation; they do not count as
+independent arrays.
+
 ### Four-device and eight-device dual-rail initialization
 
 When comparing the four-device `single` encoding with the eight-device
