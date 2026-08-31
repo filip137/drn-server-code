@@ -1,5 +1,10 @@
 # IBM OM corrupt-array HWA, transfer, and pulse recovery
 
+> **Follow-up:** The three-epoch, single-source HWA limitation diagnosed here
+> was tested in a matched six-epoch factorial with two corrupt training
+> identities and a tuned output-layer learning rate. See
+> [Debugging corrupt-array HWA transfer and pulse recovery](ibm_om_corrupt_multi_source_hwa_tuned_recovery.md).
+
 ## Executive result
 
 This exploratory experiment executes one complete, matched deployment ladder:
