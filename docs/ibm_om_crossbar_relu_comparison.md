@@ -126,7 +126,7 @@ The study advances through the following controls before recovery is interpreted
    128-pulse codebook state on every forward through a straight-through
    estimator. The fixed fifth epoch is the primary HWA-only target.
 7. Stochastic P&V of that QAT target, with a frozen arm that has zero on-chip
-   optimizer updates and separate apparent-forward and hidden-persistent
+   optimizer updates and separate apparent-forward and persistent-`q`
    results.
 8. One fixed epoch of same-array open-loop pulse-Adam on both layers, plus
    input-only and output-only recovery ablations.
@@ -316,7 +316,7 @@ single-assignment deterministic QAT master is array-specific in this smoke,
 whereas the direct and continuous-HWA masters satisfy the predeclared
 two-percentage-point portability screen.
 
-The hidden-persistent diagnostic remains much lower: pooled target means are
+The persistent-`q` diagnostic remains much lower: pooled target means are
 66.975% for direct, 66.783% for continuous HWA, and 55.200% for QAT. This does
 not replace the apparent AIHWKit forward result, but it confirms that the
 one-read P&V controller has not estimated a robust persistent code. The smoke
@@ -346,7 +346,7 @@ and programming-stream changes.
 For every source and target population, report sampled published-corrupt and
 final surviving-corrupt counts and fractions, including per-tile counts and
 mask/fingerprint provenance. Report target-specific no-write accuracy and all
-four apparent-forward and hidden-persistent endpoint accuracies, together with
+four apparent-forward and persistent-`q` diagnostic endpoint accuracies, together with
 corrupt-device acceptance, saturation, budget exhaustion, and pulse counts.
 The paired headline is published-minus-repaired apparent accuracy. Defects are
 called negligible in this smoke only if no-write and mean apparent accuracy
@@ -403,6 +403,133 @@ cell unless later fresh-read, retention, and inference-noise behavior is also
 validated. The result therefore motivates an explicit defect-remapping or
 spare-row/column control before testing whether on-chip updates can compensate
 for surviving defects.
+
+## Planned STAR-inspired local-state-only recovery
+
+This protocol adapts [*STAR: Astrocyte-Inspired State-Augmented Repair for
+Supervised Memristive AI Hardware Systems*](https://arxiv.org/abs/2607.15415)
+(Yusuf Ahmed Khan, Zhuangyu Han, and Abhronil Sengupta, 2026) as a pure-local
+state-repair ablation for the standard crossbar. The paper's update is
+equilibrium-propagation-specific: it adds the stored-state nudge to the task
+nudge and retains a three-phase contrastive update. The feedforward crossbar
+arm below intentionally tests the stored-state idea alone with direct local
+outer-product pulses; it is STAR-inspired rather than a paper-faithful STAR
+implementation.
+
+The first STAR follow-up is predeclared in
+[`studies/mnist-ibm-om-crossbar-star-local-recovery-smoke-20260831-v1.json`](../studies/mnist-ibm-om-crossbar-star-local-recovery-smoke-20260831-v1.json).
+It is a planned smoke, not a completed result. The implementation config is
+[`smoke_star_local_recovery.json`](../examples/mnist_analog_relu/ibm_om_onchip_importance/smoke_star_local_recovery.json);
+neither file supports a recovery claim until the declared run and artifact
+gates pass.
+
+For the crossbar forward
+
+```text
+u = x W1,  h = ReLU(u),  z = h W2,
+```
+
+This STAR-inspired crossbar adaptation uses only class-indexed local state
+errors:
+
+```text
+e_h = rho_h (h - mu_y^h) * 1[u > 0]
+e_o = rho_o (z - mu_y^o)
+g_q1 = alpha_1 x^T e_h
+g_q2 = alpha_2 h^T e_o
+```
+
+Here `W_l = alpha_l q_l`. The label selects row `y` of the stored state
+targets and has no other role. The two outer products drive stochastic
+pulse-SGD directly. For cell `j` in layer `l`, one Bernoulli draw converts
+the local gradient into the ternary physical command
+
+```text
+d_lj = -sign(g_qlj) with probability
+p_lj = min(1, eta_l * abs(g_qlj) / dw_nominal), otherwise d_lj = 0.
+```
+
+The smoke fixes `eta_1 = eta_2 = 6e-5`; `dw_nominal` is the sampled
+population's scalar nominal OM pulse scale and is recorded in the run receipt.
+The probability normalization does not replace the sampled cell-specific
+soft-bounds pulse response, and the per-cell command cap remains 64. There is
+no cross-entropy or softmax error, no
+`W2^T` reverse MVM, and no ordinary end-to-end BP. In particular, the input
+layer update is independent of `W2`; the two rules are gradients of separate
+local state-matching objectives with the inter-layer state stopped. The local
+recovery path must not use a teacher, autograd, BPTT, Adam moments, FP32 shadow
+weights, or a fault map. The teacher is used for source initialization,
+predeployment continuous-HWA teacher-KL adaptation, and post-hoc diagnostics;
+it is outside the post-fault local recovery update.
+
+The experiment is chronological within each programmed endpoint. A matched
+published companion population is sampled and sealed before the endpoint loop,
+but none of its faults is applied before healthy target capture:
+
+1. Program and evaluate one counterfactually repaired, healthy persistent
+   source array.
+2. Stream the fixed labeled calibration cohort through that exact plant using
+   its apparent-`q` forward, and accumulate class means over exactly 1,024
+   deterministic training-calibration examples for the 50 hidden ReLU states
+   and 10 output logits.
+3. Save and validate a versioned target artifact before any fault is applied.
+4. After capture, verify that the sealed same-assignment `published` companion's
+   mask and all non-defect identities match the repaired source, then replay its
+   AIHWKit-sampled corrupt-device states on the same plant. The OM preset's
+   upstream default corruption probability is zero; this companion explicitly
+   enables the published `0.1348` probability while retaining the preset's
+   `0.01` corrupt-device range. Each selected active state has collapsed bounds
+   and zero upward/downward increments. Its persistent
+   `q = a - r` is therefore stuck, while attempted writes continue to resample
+   the configured apparent write-noise term with the same marginal equation as
+   the AIHWKit device. AIHWKit samples corruption during device construction;
+   this chronological experiment replays those sampled identities later as a
+   post-deployment overlay and does not claim bitwise-native RNG-stream parity.
+5. Evaluate the immediate post-fault state, then stream the ordered,
+   hash-bound 16-example repair cohort and apply only the local outer-product
+   pulse rule. This is the same deterministic 16-example subset used for
+   predeployment continuous HWA, with its repair ordering recorded separately;
+   under data seed 42 it is disjoint from the 1,024-example target-calibration
+   cohort.
+6. Evaluate the fixed final state without checkpoint selection or fresh-array
+   remapping.
+
+The target artifact is bound to the population, assignment, endpoint,
+pre-fault apparent and persistent states, deployed checkpoint, state
+representation, gains, calibration cohort hash, and per-class counts. Its
+primary tensors have shapes `[10, 50]` and `[10, 10]`. FP16 storage therefore
+uses exactly `10 * (50 + 10) * 2 = 1,200` tensor bytes, excluding version and
+provenance metadata. The companion fault mask and stuck persistent values
+remain analysis provenance: the plant enforces them, but the learner receives only inputs,
+labels, current local states, target rows, and pulse-update settings.
+
+Local state-error norms are evaluated on the same deterministic first 32
+validation examples at healthy, immediate post-fault, and fixed-final states.
+Accuracy decisions use the separately declared first 1,000 official MNIST test
+examples. The calibration, repair, validation, and test cohorts have separate
+roles and provenance and must not be conflated.
+
+Even if this smoke recovers accuracy, it establishes only an algorithmic
+local-state-repair control under the model-based AIHWKit preset. It does not
+demonstrate physical target SRAM, local subtractors, ReLU-mask storage,
+row/column pulse-coincidence circuitry, fresh-read stability, retention, or a
+fabricated array. The apparent state remains post-write apparent `q`, not an
+independent inference read. Report the healthy-to-fault damage and
+fault-to-final recovery separately for all endpoints; do not infer that a
+truly stuck cell itself moved or that STAR supersedes remapping and spares.
+
+The stronger next target for genuinely local recovery is the DRN. Apply the
+same healthy-capture--fault--repair chronology, make raw physical rail voltages
+the primary state, and use centered equilibrium propagation driven only by
+each layer's label-addressed raw-rail state-error cost. For ten classes, 100
+hidden plus 20 output rail voltages require 1,200 values, or 2,400 FP16 bytes.
+Logical rail differences must be a separately named ablation. The repository
+now has the analytic local nudge primitive, but not a complete DRN recovery
+runtime or study. A paper-faithful centered/three-phase EP arm that combines
+the ordinary task nudge with the repair nudge must be a separately named
+comparator. Both arms must exclude a teacher, autograd/BPTT, Adam state, and a
+learner-visible fault map during recovery before they are described as
+on-chip-compatible.
 
 ## Claim limits
 

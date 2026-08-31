@@ -39,6 +39,7 @@ from training.ibm_reram_program_verify import (
     ControllerSettings,
     OM_PRESET,
     PUBLISHED_CORRUPT_PROBABILITY,
+    PUBLISHED_CORRUPT_RANGE,
     PopulationStepEstimator,
     ProgramVerifyResult,
     derive_seed,
@@ -1966,6 +1967,23 @@ def _sample_tile_hidden(
             f"Provided value: {version!r}."
         )
     device = ReRamArrayOMPresetDevice()
+    preset_default_corrupt_probability = float(device.corrupt_devices_prob)
+    preset_corrupt_range = float(device.corrupt_devices_range)
+    if not math.isclose(
+        preset_default_corrupt_probability,
+        0.0,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ) or not math.isclose(
+        preset_corrupt_range,
+        PUBLISHED_CORRUPT_RANGE[OM_PRESET],
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise RuntimeError(
+            "Expected the pinned AIHWKit OM preset default corruption probability "
+            "and corrupt-device range."
+        )
     device.corrupt_devices_prob = (
         PUBLISHED_CORRUPT_PROBABILITY[OM_PRESET] if published_corruption else 0.0
     )
@@ -2002,7 +2020,7 @@ def _sample_tile_hidden(
     return hidden, metadata
 
 
-def _population_fingerprint(
+def om_array_population_fingerprint(
     *,
     assignment_seed: int,
     corruption_policy: str,
@@ -2038,6 +2056,10 @@ def _population_fingerprint(
         digest.update(str(value.dtype).encode())
         digest.update(value.numpy().tobytes())
     return digest.hexdigest()
+
+
+# Backward-compatible private alias retained for existing analysis helpers.
+_population_fingerprint = om_array_population_fingerprint
 
 
 def _sample_om_array_population_layout(
@@ -2119,7 +2141,7 @@ def _sample_om_array_population_layout(
     joined = {name: torch.cat(values) for name, values in pieces.items()}
     joined["corrupt"] = torch.cat(corrupt_pieces)
     joined["published_corrupt"] = torch.cat(published_pieces)
-    fingerprint = _population_fingerprint(
+    fingerprint = om_array_population_fingerprint(
         assignment_seed=assignment_seed,
         corruption_policy=corruption_policy,
         keys=keys,
@@ -2375,7 +2397,7 @@ def load_om_array_population(path: Path) -> IbmReramArrayPopulation:
     )
     if base_seeds != expected_base_seeds or donor_seeds != expected_donor_seeds:
         raise ValueError("Expected binding seeds derived from the OM assignment seed.")
-    fingerprint = _population_fingerprint(
+    fingerprint = om_array_population_fingerprint(
         assignment_seed=assignment_seed,
         corruption_policy=corruption_policy,
         keys=keys,
@@ -2435,6 +2457,11 @@ def sample_om_array_population_external(
         "preset": OM_PRESET,
         "assignment_seed": assignment_seed,
         "corruption_policy": corruption_policy,
+        "preset_default_corrupt_devices_prob": 0.0,
+        "published_corrupt_devices_prob": PUBLISHED_CORRUPT_PROBABILITY[
+            OM_PRESET
+        ],
+        "corrupt_devices_range": PUBLISHED_CORRUPT_RANGE[OM_PRESET],
         "binding_keys": list(keys),
         "binding_shapes": [list(shape) for shape in shapes],
         "required_aihwkit_version": _REQUIRED_AIHWKIT_VERSION,
@@ -3847,6 +3874,8 @@ __all__ = [
     "commission_ibm_reram_raw_reset_means",
     "load_om_array_population",
     "map_ibm_reram_array_targets",
+    "om_array_population_fingerprint",
+    "_population_fingerprint",
     "sample_om_array_population",
     "sample_om_array_population_external",
     "save_om_array_population",

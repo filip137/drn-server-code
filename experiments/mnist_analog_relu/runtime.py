@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping, TYPE_CHECKING
 import torch
 import torch.nn.functional as F
 
-from experiments.artifacts import RunStore, atomic_write_json, sha256_file
+from experiments.artifacts import RunStore, atomic_write_json, content_hash, sha256_file
 from experiments.mnist_analog_relu.config import CrossbarTrainSpec
 from experiments.mnist_relu.model import BiasFreeReluTeacher
 from experiments.mnist_shared import build_mnist_loaders, limited
@@ -25,14 +25,17 @@ from training.ibm_om_standard_crossbar import (
     CrossbarTileSpec,
     IbmOmEffectiveCrossbarPlant,
     PulseAdam,
+    PulseSGD,
     apply_population_bound_policy,
     build_crossbar_layout,
     build_deterministic_effective_codebook,
     layer_cell_slices,
+    local_star_crossbar_step,
     map_logical_weights,
     project_to_nearest_effective_code,
     project_to_nearest_effective_code_device,
     standard_crossbar_logits,
+    standard_crossbar_forward_states,
     tensor_sha256,
     validate_population_layout,
 )
@@ -43,8 +46,20 @@ from training.ibm_reram_hwa import (
 )
 from training.ibm_reram_program_verify import (
     ControllerSettings,
+    OM_PRESET,
+    PUBLISHED_CORRUPT_PROBABILITY,
+    PUBLISHED_CORRUPT_RANGE,
     derive_seed,
     run_program_verify,
+)
+from training.star_targets import (
+    CROSSBAR_STATE_REPRESENTATION,
+    StarSourceBinding,
+    StarTargetAccumulator,
+    StarTargetBinding,
+    build_calibration_binding,
+    load_star_targets,
+    save_star_targets,
 )
 
 if TYPE_CHECKING:
@@ -398,6 +413,131 @@ def _evaluate_plant_states(
     }
 
 
+def _evaluate_local_star_state_errors(
+    *,
+    plant: IbmOmEffectiveCrossbarPlant,
+    target_bundle: Any,
+    digital_scales: tuple[float, float],
+    layout: tuple[CrossbarTileSpec, ...],
+    loader: Iterable,
+    device: torch.device,
+    maximum_batches: int | None,
+    sample_limit: int | None,
+) -> dict[str, Any]:
+    """Measure label-addressed STAR errors without a teacher or backpropagation."""
+
+    hidden_targets = target_bundle.means("hidden_post_relu").to(
+        device=device,
+        dtype=torch.float32,
+    )
+    output_targets = target_bundle.means("output_logits").to(
+        device=device,
+        dtype=torch.float32,
+    )
+    try:
+        hidden_gain, output_gain = (
+            float(value) for value in target_bundle.binding.component_gains
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("Expected two STAR component gains in the target binding.") from error
+    if (
+        hidden_targets.ndim != 2
+        or output_targets.ndim != 2
+        or hidden_targets.shape[0] != output_targets.shape[0]
+        or not math.isfinite(hidden_gain)
+        or not math.isfinite(output_gain)
+        or hidden_gain < 0.0
+        or output_gain < 0.0
+    ):
+        raise ValueError("Expected finite class-indexed STAR targets and gains.")
+
+    totals = {
+        "hidden_state_squared": 0.0,
+        "output_state_squared": 0.0,
+        "hidden_local_error_squared": 0.0,
+        "output_local_error_squared": 0.0,
+    }
+    examples = 0
+    state = plant.apparent.detach().to(device=device, dtype=torch.float32)
+    with torch.no_grad():
+        for inputs, labels in limited(loader, maximum_batches):
+            if sample_limit is not None:
+                remaining = sample_limit - examples
+                if remaining <= 0:
+                    break
+                inputs = inputs[:remaining]
+                labels = labels[:remaining]
+            inputs = inputs.to(device=device, dtype=torch.float32)
+            labels = labels.to(device=device, dtype=torch.int64)
+            if (
+                bool(torch.any(labels < 0))
+                or bool(torch.any(labels >= hidden_targets.shape[0]))
+            ):
+                raise ValueError("Expected labels addressable by the STAR target table.")
+            states = standard_crossbar_forward_states(
+                inputs,
+                state,
+                layout,
+                digital_scales=digital_scales,
+            )
+            hidden_delta = states.hidden_post_relu - hidden_targets[labels]
+            output_delta = states.output_logits - output_targets[labels]
+            hidden_local_error = (
+                hidden_gain
+                * hidden_delta
+                * (states.hidden_preactivation > 0).to(hidden_delta.dtype)
+            )
+            output_local_error = output_gain * output_delta
+            totals["hidden_state_squared"] += float(hidden_delta.square().sum().item())
+            totals["output_state_squared"] += float(output_delta.square().sum().item())
+            totals["hidden_local_error_squared"] += float(
+                hidden_local_error.square().sum().item()
+            )
+            totals["output_local_error_squared"] += float(
+                output_local_error.square().sum().item()
+            )
+            examples += int(labels.shape[0])
+    if examples == 0:
+        raise ValueError("Expected STAR state-error evaluation to process examples.")
+    hidden_values = examples * hidden_targets.shape[1]
+    output_values = examples * output_targets.shape[1]
+    return {
+        "examples": examples,
+        "network_forward_state": "apparent_q",
+        "teacher_access": False,
+        "hidden_gain": hidden_gain,
+        "output_gain": output_gain,
+        "hidden_state_error_mean_squared_l2": (
+            totals["hidden_state_squared"] / examples
+        ),
+        "output_state_error_mean_squared_l2": (
+            totals["output_state_squared"] / examples
+        ),
+        "hidden_state_error_rms": math.sqrt(
+            totals["hidden_state_squared"] / hidden_values
+        ),
+        "output_state_error_rms": math.sqrt(
+            totals["output_state_squared"] / output_values
+        ),
+        "hidden_local_error_mean_squared_l2": (
+            totals["hidden_local_error_squared"] / examples
+        ),
+        "output_local_error_mean_squared_l2": (
+            totals["output_local_error_squared"] / examples
+        ),
+        "mean_local_objective": (
+            0.5
+            * (
+                hidden_gain * totals["hidden_state_squared"]
+                + output_gain * totals["output_state_squared"]
+            )
+            / examples
+        ),
+        "apparent_q_sha256": tensor_sha256(plant.apparent),
+        "target_semantic_sha256": target_bundle.semantic_sha256,
+    }
+
+
 def _float_summary(value: torch.Tensor) -> dict[str, float]:
     flat = value.detach().cpu().to(torch.float64).reshape(-1)
     if flat.numel() == 0 or not bool(torch.all(torch.isfinite(flat))):
@@ -413,6 +553,45 @@ def _float_summary(value: torch.Tensor) -> dict[str, float]:
         "maximum": float(flat.max().item()),
         "rms": float(flat.square().mean().sqrt().item()),
     }
+
+
+def _ordered_labeled_cohort_report(
+    *,
+    inputs: list[torch.Tensor],
+    labels: list[torch.Tensor],
+    split: str,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Hash an exact ordered update stream and its per-example identities."""
+
+    if not inputs or len(inputs) != len(labels):
+        raise ValueError("Expected non-empty matched cohort input and label batches.")
+    joined_inputs = torch.cat(inputs).detach().cpu().to(torch.float32).contiguous()
+    joined_labels = torch.cat(labels).detach().cpu().to(torch.int64).contiguous()
+    if joined_inputs.shape[0] != joined_labels.numel():
+        raise ValueError("Expected one cohort label per model input.")
+    sample_ids = torch.arange(joined_labels.numel(), dtype=torch.int64)
+    binding = build_calibration_binding(
+        dataset_id="mnist",
+        split=split,
+        ordered_sample_ids=sample_ids,
+        model_inputs=joined_inputs,
+        labels=joined_labels,
+    )
+    identities = tuple(
+        content_hash(
+            {
+                "model_input_sha256": tensor_sha256(joined_inputs[index]),
+                "label": int(joined_labels[index].item()),
+            }
+        )
+        for index in range(joined_labels.numel())
+    )
+    report = to_plain_data(binding)
+    report["ordered_example_identity_sequence_sha256"] = content_hash(
+        list(identities)
+    )
+    report["unique_example_identities"] = len(set(identities))
+    return report, identities
 
 
 def _population_defect_report(
@@ -687,6 +866,107 @@ def _program_endpoint(
     return plant, report
 
 
+def _matched_published_fault_overlay(
+    *,
+    healthy: IbmReramArrayPopulation,
+    published: IbmReramArrayPopulation,
+    preset_default_corrupt_devices_prob: float,
+    enabled_corrupt_devices_prob: float,
+    corrupt_devices_range: float,
+) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    """Bind a repaired healthy identity to its published stuck-cell companion."""
+
+    if (
+        not math.isclose(
+            preset_default_corrupt_devices_prob,
+            0.0,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        or not math.isclose(
+            enabled_corrupt_devices_prob,
+            PUBLISHED_CORRUPT_PROBABILITY[OM_PRESET],
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        or not math.isclose(
+            corrupt_devices_range,
+            PUBLISHED_CORRUPT_RANGE[OM_PRESET],
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+    ):
+        raise ValueError("Expected the pinned AIHWKit OM corrupt-device settings.")
+    if (
+        healthy.assignment_seed != published.assignment_seed
+        or healthy.binding_keys != published.binding_keys
+        or healthy.binding_shapes != published.binding_shapes
+        or healthy.binding_sampling_seeds != published.binding_sampling_seeds
+        or healthy.size != published.size
+        or healthy.nominal_dw_min != published.nominal_dw_min
+        or healthy.dw_min_std != published.dw_min_std
+        or healthy.write_noise_std != published.write_noise_std
+        or healthy.aihwkit_version != published.aihwkit_version
+        or healthy.corruption_policy != "counterfactual_repaired"
+        or published.corruption_policy != "published"
+    ):
+        raise ValueError("Expected matched repaired and published IBM OM populations.")
+    mask = published.corrupt.detach().cpu().to(torch.bool)
+    if (
+        not bool(torch.any(mask))
+        or bool(torch.any(healthy.corrupt.detach().cpu()))
+        or not torch.equal(healthy.published_corrupt.detach().cpu(), mask)
+        or not torch.equal(published.published_corrupt.detach().cpu(), mask)
+    ):
+        raise ValueError("Expected the matched published defect mask to survive only in its companion.")
+    healthy_mask = ~mask
+    for name in (
+        "min_bound",
+        "max_bound",
+        "dwmin_up",
+        "dwmin_down",
+        "reference",
+    ):
+        left = getattr(healthy, name).detach().cpu()[healthy_mask]
+        right = getattr(published, name).detach().cpu()[healthy_mask]
+        if not torch.equal(left, right):
+            raise ValueError(
+                f"Expected non-fault IBM OM field {name!r} to match its published companion."
+            )
+    stuck_persistent_q = published.logical_min.detach().cpu().to(torch.float32)
+    stuck_active = published.min_bound.detach().cpu().to(torch.float32)
+    corrupt_range = corrupt_devices_range
+    if not torch.equal(
+        stuck_persistent_q[mask],
+        published.logical_max.detach().cpu()[mask],
+    ) or bool(torch.any(stuck_active[mask].abs() > corrupt_range + 1e-7)):
+        raise ValueError("Expected every published fault source cell to have collapsed support.")
+    report = {
+        "policy": "post_deployment_published_companion_replay",
+        "healthy_population_fingerprint": healthy.fingerprint,
+        "published_population_fingerprint": published.fingerprint,
+        "assignment_seed": healthy.assignment_seed,
+        "fault_mask_sha256": tensor_sha256(mask),
+        "stuck_persistent_q_sha256": tensor_sha256(stuck_persistent_q[mask]),
+        "stuck_state_source": (
+            "AIHWKit_1.1.0_sampled_corrupt_active_bound_minus_intrinsic_reference"
+        ),
+        "published_corrupt_devices_probability": enabled_corrupt_devices_prob,
+        "preset_default_corrupt_devices_probability": (
+            preset_default_corrupt_devices_prob
+        ),
+        "corrupt_devices_range": corrupt_range,
+        "persistent_pulse_increments": "zero_up_and_down",
+        "apparent_write_noise_retained": True,
+        "faulted_cells": int(mask.sum().item()),
+        "cells": healthy.size,
+        "fault_fraction": float(mask.float().mean().item()),
+        "non_fault_identity_equal": True,
+        "shared_nominal_device_parameters_equal": True,
+    }
+    return mask, stuck_persistent_q, report
+
+
 def _recovery_seed(
     *,
     runtime_seed: int,
@@ -892,13 +1172,22 @@ def _offchip_adapt(
     final_validation = initial_validation
     final_realized = initial_realized
     final_indices = initial_indices
+    first_epoch_inputs: list[torch.Tensor] = []
+    first_epoch_labels: list[torch.Tensor] = []
     for epoch in range(1, spec.offchip.epochs + 1):
         loss_sum = 0.0
         examples = 0
         batches = 0
-        for batch_index, (inputs, _labels) in enumerate(
+        for batch_index, (inputs, labels) in enumerate(
             limited(train_loader, spec.offchip.maximum_batches)
         ):
+            if epoch == 1:
+                first_epoch_inputs.append(
+                    inputs.detach().cpu().to(torch.float32).contiguous()
+                )
+                first_epoch_labels.append(
+                    labels.detach().cpu().to(torch.int64).contiguous()
+                )
             inputs = inputs.to(device=device, dtype=torch.float32)
             with torch.no_grad():
                 teacher_logits = teacher.logits(inputs)
@@ -978,6 +1267,13 @@ def _offchip_adapt(
 
     final_master_cpu = torch.cat(parameters).detach().cpu().clone()
     final_realized_cpu = final_realized.detach().cpu().clone()
+    first_epoch_training_cohort, _first_epoch_identities = (
+        _ordered_labeled_cohort_report(
+            inputs=first_epoch_inputs,
+            labels=first_epoch_labels,
+            split="predeployment_offchip_first_epoch_update_stream",
+        )
+    )
     state = {
         "schema": "ebl.ibm_om_crossbar_offchip_state",
         "schema_version": 1,
@@ -996,6 +1292,7 @@ def _offchip_adapt(
             None if initial_indices is None else tensor_sha256(initial_indices)
         ),
         "initial_validation": initial_validation,
+        "first_epoch_training_cohort": first_epoch_training_cohort,
         "epochs": epoch_reports,
         "fixed_final_epoch": spec.offchip.epochs,
         "fixed_final_master_sha256": tensor_sha256(final_master_cpu),
@@ -1013,6 +1310,333 @@ def _offchip_adapt(
     }, state
 
 
+def _capture_crossbar_star_targets(
+    *,
+    plant: IbmOmEffectiveCrossbarPlant,
+    layout: tuple[CrossbarTileSpec, ...],
+    digital_scales: tuple[float, float],
+    calibration_loader: Iterable,
+    maximum_batches: int | None,
+    device: torch.device,
+    artifact_path: Path,
+    model_checkpoint_sha256: str,
+    healthy_deployment_artifact_sha256: str,
+    hardware_instance_id: str,
+    config_sha256: str,
+    hidden_gain: float,
+    output_gain: float,
+    storage_dtype: str,
+    expected_calibration_examples: int,
+) -> tuple[Any, dict[str, Any], tuple[str, ...]]:
+    """Record endpoint-local healthy states and save a strict STAR artifact."""
+
+    if plant.fault_transition is not None:
+        raise RuntimeError("Expected STAR targets to be captured before the fault transition.")
+    before = plant.state_dict()
+    accumulator = StarTargetAccumulator(CROSSBAR_STATE_REPRESENTATION)
+    observed_inputs: list[torch.Tensor] = []
+    observed_labels: list[torch.Tensor] = []
+    observed_ids: list[torch.Tensor] = []
+    offset = 0
+    for inputs, labels in limited(calibration_loader, maximum_batches):
+        cpu_inputs = inputs.detach().cpu().to(torch.float32).contiguous()
+        cpu_labels = labels.detach().cpu().to(torch.int64).contiguous()
+        sample_ids = torch.arange(
+            offset,
+            offset + cpu_labels.numel(),
+            dtype=torch.int64,
+        )
+        states = standard_crossbar_forward_states(
+            cpu_inputs.to(device=device),
+            plant.apparent,
+            layout,
+            digital_scales=digital_scales,
+        )
+        accumulator.observe(
+            cpu_labels,
+            {
+                "hidden_post_relu": states.hidden_post_relu.detach().cpu(),
+                "output_logits": states.output_logits.detach().cpu(),
+            },
+            inputs=cpu_inputs,
+            sample_ids=sample_ids,
+        )
+        observed_inputs.append(cpu_inputs)
+        observed_labels.append(cpu_labels)
+        observed_ids.append(sample_ids)
+        offset += cpu_labels.numel()
+    if not observed_inputs:
+        raise ValueError("Expected STAR calibration to observe labeled examples.")
+    if offset != expected_calibration_examples:
+        raise ValueError(
+            "Expected STAR calibration to consume exactly the configured cohort size. "
+            f"Provided value: observed={offset}, expected={expected_calibration_examples}."
+        )
+    calibration = build_calibration_binding(
+        dataset_id="mnist",
+        split="training_calibration",
+        ordered_sample_ids=torch.cat(observed_ids),
+        model_inputs=torch.cat(observed_inputs),
+        labels=torch.cat(observed_labels),
+    )
+    calibration_report, calibration_identities = _ordered_labeled_cohort_report(
+        inputs=observed_inputs,
+        labels=observed_labels,
+        split="training_calibration",
+    )
+    if any(
+        calibration_report[name] != getattr(calibration, name)
+        for name in (
+            "dataset_id",
+            "split",
+            "examples",
+            "ordered_sample_ids_sha256",
+            "model_inputs_sha256",
+            "labels_sha256",
+            "cohort_sha256",
+        )
+    ):
+        raise RuntimeError("Expected one exact STAR calibration-cohort binding.")
+    binding = StarTargetBinding(
+        architecture_id="crossbar_784_50_10_digital_relu",
+        state_representation_id=CROSSBAR_STATE_REPRESENTATION,
+        source=StarSourceBinding(
+            model_checkpoint_sha256=model_checkpoint_sha256,
+            healthy_deployment_artifact_sha256=healthy_deployment_artifact_sha256,
+            healthy_persistent_state_sha256=tensor_sha256(plant.persistent),
+            healthy_forward_state_sha256=tensor_sha256(plant.apparent),
+            hardware_instance_id=hardware_instance_id,
+            config_sha256=config_sha256,
+        ),
+        calibration=calibration,
+        component_gains=(hidden_gain, output_gain),
+        storage_dtype=storage_dtype,
+    )
+    bundle = accumulator.finalize(binding)
+    record = save_star_targets(artifact_path, bundle)
+    loaded = load_star_targets(
+        record.artifact_path,
+        record.receipt_path,
+        binding,
+    )
+    after = plant.state_dict()
+    if set(before) != set(after):
+        raise RuntimeError("Expected STAR target capture to preserve the plant schema.")
+    for name in before:
+        left = before[name]
+        right = after[name]
+        equal = (
+            torch.equal(left, right)
+            if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor)
+            else left == right
+        )
+        if not equal:
+            raise RuntimeError("Expected STAR target capture not to mutate the healthy plant.")
+    return loaded, {
+        "schema": "ebl.star.crossbar_target_capture",
+        "schema_version": 1,
+        "lifecycle_phase": "healthy_pre_fault_calibration",
+        "state_representation": CROSSBAR_STATE_REPRESENTATION,
+        "network_forward_state": "apparent_q",
+        "examples": calibration.examples,
+        "class_counts": loaded.class_counts.tolist(),
+        "component_gains": [hidden_gain, output_gain],
+        "storage_dtype": storage_dtype,
+        "stored_values": loaded.stored_value_count,
+        "stored_mean_bytes": loaded.stored_mean_nbytes,
+        "cohort_sha256": calibration.cohort_sha256,
+        "semantic_sha256": loaded.semantic_sha256,
+        "artifact": artifact_path.name,
+        "artifact_sha256": record.artifact_sha256,
+        "receipt": record.receipt_path.name,
+        "receipt_sha256": record.receipt_sha256,
+        "healthy_plant_state_bit_exact_after_capture": True,
+        "fault_mask_stored_in_target_artifact": False,
+    }, calibration_identities
+
+
+def _run_local_star_pulse_recovery(
+    *,
+    update_port: Any,
+    spec: CrossbarTrainSpec,
+    endpoint_seed: int,
+    layout: tuple[CrossbarTileSpec, ...],
+    digital_scales: tuple[float, float],
+    target_bundle: Any,
+    train_loader: Iterable,
+    device: torch.device,
+) -> tuple[list[dict[str, Any]], dict[str, Any], tuple[str, ...]]:
+    """Run teacher-free, no-autograd local STAR outer-product updates."""
+
+    star = spec.recovery.star
+    if star is None:
+        raise RuntimeError("Expected captured targets before STAR recovery.")
+    selection_generator = torch.Generator(device=device.type)
+    selection_generator.manual_seed(
+        _recovery_seed(
+            runtime_seed=spec.runtime.seed,
+            assignment_seed=spec.device.assignment_seed,
+            endpoint_seed=endpoint_seed,
+        )
+    )
+    optimizer = PulseSGD(
+        size=update_port.size,
+        layout=layout,
+        learning_rates=spec.recovery.learning_rates_q,
+        layer_scope=spec.recovery.layer_scope,
+        nominal_dw_min=update_port.nominal_dw_min,
+        pulse_cap_per_cell=spec.recovery.pulse_cap_per_cell,
+        pulse_rule=star.pulse_rule,
+        generator=selection_generator,
+        device=device,
+    )
+    hidden_targets = target_bundle.means("hidden_post_relu").to(device)
+    output_targets = target_bundle.means("output_logits").to(device)
+    epoch_reports: list[dict[str, Any]] = []
+    repair_inputs: list[torch.Tensor] = []
+    repair_labels: list[torch.Tensor] = []
+    for epoch in range(1, spec.recovery.epochs + 1):
+        examples = 0
+        batches = 0
+        hidden_loss_sum = 0.0
+        output_loss_sum = 0.0
+        commanded = 0
+        for batch_index, (inputs, labels) in enumerate(
+            limited(train_loader, spec.recovery.maximum_batches)
+        ):
+            repair_inputs.append(
+                inputs.detach().cpu().to(torch.float32).contiguous()
+            )
+            repair_labels.append(
+                labels.detach().cpu().to(torch.int64).contiguous()
+            )
+            inputs = inputs.to(device=device, dtype=torch.float32)
+            labels = labels.to(device=device, dtype=torch.int64)
+            # Sequential samples model online row/column pulse coincidence and
+            # avoid an undeclared digital minibatch-gradient accumulator.
+            for row in range(inputs.shape[0]):
+                step = local_star_crossbar_step(
+                    inputs[row : row + 1],
+                    labels[row : row + 1],
+                    update_port.apparent,
+                    layout,
+                    digital_scales=digital_scales,
+                    hidden_targets=hidden_targets,
+                    output_targets=output_targets,
+                    hidden_gain=star.hidden_gain,
+                    output_gain=star.output_gain,
+                )
+                pulse = optimizer.step(step.gradient_q, update_port)
+                hidden_loss_sum += float(step.hidden_loss.item())
+                output_loss_sum += float(step.output_loss.item())
+                commanded += int(pulse["commanded_pulses"])
+                examples += 1
+            batches = batch_index + 1
+        if examples == 0:
+            raise ValueError("Expected local STAR recovery to process labeled examples.")
+        state_hashes = update_port.state_hash_receipt()
+        epoch_reports.append(
+            {
+                "epoch": epoch,
+                "batches": batches,
+                "examples": examples,
+                "mean_hidden_local_state_loss": hidden_loss_sum / examples,
+                "mean_output_local_state_loss": output_loss_sum / examples,
+                "commanded_pulses": commanded,
+                **state_hashes,
+            }
+        )
+    repair_cohort, repair_identities = _ordered_labeled_cohort_report(
+        inputs=repair_inputs,
+        labels=repair_labels,
+        split="post_fault_local_repair_update_stream",
+    )
+    optimizer_report = optimizer.report()
+    optimizer_report["repair_cohort"] = repair_cohort
+    return epoch_reports, optimizer_report, repair_identities
+
+
+def _posthoc_local_star_pulse_effects(
+    *,
+    faulted_state: Mapping[str, Any],
+    final_state: Mapping[str, Any],
+    fault_mask: torch.Tensor,
+    layout: tuple[CrossbarTileSpec, ...],
+) -> dict[str, Any]:
+    """Audit command destinations and healthy persistent movement after recovery."""
+
+    names = ("persistent", "upward_pulses", "downward_pulses")
+    if any(
+        not isinstance(faulted_state.get(name), torch.Tensor)
+        or not isinstance(final_state.get(name), torch.Tensor)
+        for name in names
+    ):
+        raise ValueError("Expected complete faulted and final STAR plant states.")
+    initial_pulses = (
+        faulted_state["upward_pulses"] + faulted_state["downward_pulses"]
+    ).detach().cpu()
+    final_pulses = (
+        final_state["upward_pulses"] + final_state["downward_pulses"]
+    ).detach().cpu()
+    commands = final_pulses - initial_pulses
+    mask = fault_mask.detach().cpu().to(torch.bool)
+    before = faulted_state["persistent"].detach().cpu().to(torch.float32)
+    after = final_state["persistent"].detach().cpu().to(torch.float32)
+    if (
+        commands.shape != mask.shape
+        or before.shape != mask.shape
+        or after.shape != mask.shape
+        or bool(torch.any(commands < 0))
+        or not bool(torch.all(torch.isfinite(before)))
+        or not bool(torch.all(torch.isfinite(after)))
+        or not torch.equal(before[mask], after[mask])
+    ):
+        raise RuntimeError("Expected ordered pulse counts and immutable persistent faults.")
+    delta = after - before
+    changed_healthy = (delta != 0.0) & ~mask
+    slices = layer_cell_slices(layout)
+    per_layer = []
+    for layer_index, layer_slice in enumerate(slices):
+        layer_mask = mask[layer_slice]
+        layer_commands = commands[layer_slice]
+        layer_delta = delta[layer_slice]
+        layer_changed = changed_healthy[layer_slice]
+        per_layer.append(
+            {
+                "layer_index": layer_index,
+                "commanded_pulses": int(layer_commands.sum().item()),
+                "commands_to_immutable_cells": int(
+                    layer_commands[layer_mask].sum().item()
+                ),
+                "commands_to_programmable_cells": int(
+                    layer_commands[~layer_mask].sum().item()
+                ),
+                "persistent_changed_healthy_cells": int(
+                    layer_changed.sum().item()
+                ),
+                "persistent_healthy_delta_l1": float(
+                    layer_delta[~layer_mask].abs().sum().item()
+                ),
+                "persistent_healthy_delta_l2": float(
+                    layer_delta[~layer_mask].square().sum().sqrt().item()
+                ),
+            }
+        )
+    return {
+        "analysis_accesses_fault_mask_posthoc": True,
+        "learner_accesses_fault_mask": False,
+        "commanded_pulses": int(commands.sum().item()),
+        "commands_to_immutable_cells": int(commands[mask].sum().item()),
+        "commands_to_programmable_cells": int(commands[~mask].sum().item()),
+        "persistent_changed_healthy_cells": int(changed_healthy.sum().item()),
+        "persistent_healthy_delta_l1": float(delta[~mask].abs().sum().item()),
+        "persistent_healthy_delta_l2": float(
+            delta[~mask].square().sum().sqrt().item()
+        ),
+        "per_layer": per_layer,
+    }
+
+
 def _recover(
     *,
     plant: IbmOmEffectiveCrossbarPlant,
@@ -1024,6 +1648,8 @@ def _recover(
     validation_loader: Iterable,
     train_loader: Iterable,
     device: torch.device,
+    calibration_loader: Iterable | None = None,
+    star_context: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Mapping[str, Any]]:
     initial_state = plant.state_dict()
     initial_evaluation = _evaluate_plant_states(
@@ -1075,6 +1701,231 @@ def _recover(
             "checkpoint_policy": "fixed_p0_no_selection",
         }, final_state
 
+    if spec.recovery.policy == "star_local_pulse_sgd":
+        star = spec.recovery.star
+        required_context = {
+            "artifact_path",
+            "faulted_checkpoint_path",
+            "model_checkpoint_sha256",
+            "healthy_deployment_artifact_sha256",
+            "hardware_instance_id",
+            "config_sha256",
+            "fault_mask",
+            "stuck_persistent_q",
+            "fault_report",
+            "fault_source_population_fingerprint",
+            "predeployment_training_cohort",
+        }
+        if (
+            star is None
+            or calibration_loader is None
+            or not isinstance(star_context, Mapping)
+            or set(star_context) != required_context
+        ):
+            raise ValueError("Expected a complete chronological STAR recovery context.")
+        (
+            target_bundle,
+            target_report,
+            calibration_example_identities,
+        ) = _capture_crossbar_star_targets(
+            plant=plant,
+            layout=layout,
+            digital_scales=digital_scales,
+            calibration_loader=calibration_loader,
+            maximum_batches=star.calibration_maximum_batches,
+            device=device,
+            artifact_path=Path(star_context["artifact_path"]),
+            model_checkpoint_sha256=str(star_context["model_checkpoint_sha256"]),
+            healthy_deployment_artifact_sha256=str(
+                star_context["healthy_deployment_artifact_sha256"]
+            ),
+            hardware_instance_id=str(star_context["hardware_instance_id"]),
+            config_sha256=str(star_context["config_sha256"]),
+            hidden_gain=star.hidden_gain,
+            output_gain=star.output_gain,
+            storage_dtype=star.target_quantization,
+            expected_calibration_examples=star.calibration_examples,
+        )
+        state_error_evaluation = {
+            "target_bundle": target_bundle,
+            "digital_scales": digital_scales,
+            "layout": layout,
+            "loader": validation_loader,
+            "device": device,
+            "maximum_batches": spec.evaluation.maximum_validation_batches,
+            "sample_limit": spec.evaluation.sample_limit,
+        }
+        healthy_state_errors = _evaluate_local_star_state_errors(
+            plant=plant,
+            **state_error_evaluation,
+        )
+        transition = plant.apply_stuck_at_fault_transition(
+            mask=star_context["fault_mask"],
+            stuck_persistent_q=star_context["stuck_persistent_q"],
+            transition_id=(
+                f"assignment-{spec.device.assignment_seed}-endpoint-{endpoint_seed}"
+            ),
+            source_population_fingerprint=str(
+                star_context["fault_source_population_fingerprint"]
+            ),
+        )
+        faulted_state = plant.state_dict()
+        faulted_checkpoint_path = Path(star_context["faulted_checkpoint_path"])
+        atomic_torch_save(faulted_state, faulted_checkpoint_path)
+        damaged_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        damaged_state_errors = _evaluate_local_star_state_errors(
+            plant=plant,
+            **state_error_evaluation,
+        )
+        update_port = plant.local_star_update_port()
+        epoch_reports, optimizer_report, repair_example_identities = (
+            _run_local_star_pulse_recovery(
+                update_port=update_port,
+                spec=spec,
+                endpoint_seed=endpoint_seed,
+                layout=layout,
+                digital_scales=digital_scales,
+                target_bundle=target_bundle,
+                train_loader=train_loader,
+                device=device,
+            )
+        )
+        predeployment_cohort = star_context["predeployment_training_cohort"]
+        repair_cohort = optimizer_report["repair_cohort"]
+        if not isinstance(predeployment_cohort, Mapping) or any(
+            predeployment_cohort.get(name) != repair_cohort[name]
+            for name in (
+                "examples",
+                "ordered_sample_ids_sha256",
+                "model_inputs_sha256",
+                "labels_sha256",
+                "ordered_example_identity_sequence_sha256",
+                "unique_example_identities",
+            )
+        ):
+            raise RuntimeError(
+                "Expected local repair to reuse the exact first predeployment "
+                "training update stream."
+            )
+        calibration_overlap = len(
+            set(calibration_example_identities).intersection(repair_example_identities)
+        )
+        if calibration_overlap != 0:
+            raise RuntimeError(
+                "Expected STAR target calibration and repair cohorts to be disjoint."
+            )
+        repair_cohort["same_as_predeployment_first_epoch_update_stream"] = True
+        repair_cohort["calibration_example_identity_overlap"] = calibration_overlap
+        repair_cohort["disjoint_from_target_calibration"] = True
+        final_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        final_state_errors = _evaluate_local_star_state_errors(
+            plant=plant,
+            **state_error_evaluation,
+        )
+        final_state = plant.state_dict()
+        posthoc_pulse_effects = _posthoc_local_star_pulse_effects(
+            faulted_state=faulted_state,
+            final_state=final_state,
+            fault_mask=star_context["fault_mask"],
+            layout=layout,
+        )
+        if (
+            posthoc_pulse_effects["commanded_pulses"]
+            != optimizer_report["commanded_pulses"]
+        ):
+            raise RuntimeError(
+                "Expected the local optimizer and post-hoc plant command counts to match."
+            )
+        return {
+            "policy": spec.recovery.policy,
+            "objective": "local_star_state_matching",
+            "layer_scope": spec.recovery.layer_scope,
+            "network_forward_state": "apparent_q",
+            "hidden_update_state": "persistent_q",
+            "gradient_handoff": "identity_apparent_local_error_to_persistent_pulse_update",
+            "local_error_contract": {
+                "hidden": "rho_h*(h-mu_y_h)*relu_mask",
+                "output": "rho_o*(z-mu_y_o)",
+                "gradient_q_hidden": (
+                    "alpha_1*x_transpose*[rho_h*(h-mu_y_h)*relu_mask]"
+                ),
+                "gradient_q_output": (
+                    "alpha_2*h_transpose*[rho_o*(z-mu_y_o)]"
+                ),
+                "pulse_direction": "-sign(gradient_q)",
+                "pulse_selection_probability": (
+                    "min(1,eta_layer*abs(gradient_q)/dw_nominal)"
+                ),
+                "learning_rates_q": list(spec.recovery.learning_rates_q),
+                "nominal_dw_min": optimizer_report["nominal_dw_min"],
+                "label_use": "class_conditional_target_address_only",
+                "transpose_mvm": False,
+                "cross_entropy_or_softmax": False,
+                "cross_layer_error_propagation": False,
+                "teacher_access_during_updates": False,
+                "autograd_during_updates": False,
+                "adam_moments": False,
+                "fault_mask_access_during_updates": False,
+                "restricted_update_port": True,
+                "update_port_exposes": [
+                    "apparent_q",
+                    "pulse_application",
+                    "array_size",
+                    "nominal_step",
+                    "state_hash_receipt",
+                ],
+            },
+            "healthy_pre_fault_apparent_validation": initial_evaluation[
+                "apparent_forward"
+            ],
+            "healthy_pre_fault_persistent_validation": initial_evaluation[
+                "persistent_diagnostic"
+            ],
+            "healthy_pre_fault_local_state_errors": healthy_state_errors,
+            "target_capture": target_report,
+            "fault_source": dict(star_context["fault_report"]),
+            "fault_transition": transition,
+            "faulted_pre_recovery_checkpoint": faulted_checkpoint_path.name,
+            "faulted_pre_recovery_checkpoint_sha256": sha256_file(
+                faulted_checkpoint_path
+            ),
+            "faulted_pre_recovery_apparent_validation": damaged_evaluation[
+                "apparent_forward"
+            ],
+            "faulted_pre_recovery_persistent_validation": damaged_evaluation[
+                "persistent_diagnostic"
+            ],
+            "faulted_pre_recovery_local_state_errors": damaged_state_errors,
+            "epochs": epoch_reports,
+            "fixed_final_epoch": spec.recovery.epochs,
+            "fixed_final_apparent_validation": final_evaluation["apparent_forward"],
+            "fixed_final_persistent_validation": final_evaluation[
+                "persistent_diagnostic"
+            ],
+            "fixed_final_local_state_errors": final_state_errors,
+            "optimizer": optimizer_report,
+            "posthoc_pulse_effects": posthoc_pulse_effects,
+            "checkpoint_policy": "fixed_final_epoch_no_selection",
+        }, final_state
+
     selection_generator = torch.Generator(device=device.type)
     selection_generator.manual_seed(
         _recovery_seed(
@@ -1087,8 +1938,8 @@ def _recover(
         size=plant.size,
         layout=layout,
         learning_rates=spec.recovery.learning_rates_q,
-        betas=(spec.recovery.beta_1, spec.recovery.beta_2),
-        epsilon=spec.recovery.epsilon,
+        betas=(float(spec.recovery.beta_1), float(spec.recovery.beta_2)),
+        epsilon=float(spec.recovery.epsilon),
         layer_scope=spec.recovery.layer_scope,
         nominal_dw_min=population_nominal_step(plant.population),
         pulse_cap_per_cell=spec.recovery.pulse_cap_per_cell,
@@ -1461,6 +2312,45 @@ def run_train(request: "TrainRequest") -> int:
             bound_policy=spec.device.bound_policy,
             required_aihwkit_version=spec.runtime.required_aihwkit_version,
         )
+        star_fault_population = None
+        star_fault_overlay = None
+        star_fault_artifact_paths: tuple[tuple[Path, str], ...] = ()
+        if spec.recovery.policy == "star_local_pulse_sgd":
+            (
+                star_fault_population,
+                star_fault_receipt,
+                sampled_fault_artifacts,
+            ) = _sample_population(
+                layout=layout,
+                assignment_seed=spec.device.assignment_seed,
+                corruption_policy="published",
+                sampler=sampler,
+                artifact_root=artifact_root,
+                role="star_post_deployment_fault_source",
+                bound_policy=spec.device.bound_policy,
+                required_aihwkit_version=spec.runtime.required_aihwkit_version,
+            )
+            fault_mask, stuck_persistent_q, fault_report = _matched_published_fault_overlay(
+                healthy=source_population,
+                published=star_fault_population,
+                preset_default_corrupt_devices_prob=(
+                    spec.recovery.star
+                    .fault_source_preset_default_corrupt_devices_prob
+                ),
+                enabled_corrupt_devices_prob=(
+                    spec.recovery.star.fault_source_enabled_corrupt_devices_prob
+                ),
+                corrupt_devices_range=(
+                    spec.recovery.star.fault_source_corrupt_devices_range
+                ),
+            )
+            star_fault_overlay = {
+                "mask": fault_mask,
+                "stuck_persistent_q": stuck_persistent_q,
+                "report": fault_report,
+                "receipt": star_fault_receipt,
+            }
+            star_fault_artifact_paths = tuple(sampled_fault_artifacts)
         codebook = build_deterministic_effective_codebook(
             source_population,
             maximum_pulses=spec.device.deterministic_codebook_pulses,
@@ -1704,8 +2594,17 @@ def run_train(request: "TrainRequest") -> int:
 
         endpoint_rows: list[dict[str, Any]] = []
         checkpoint_paths: list[Path] = []
+        star_runtime_artifact_paths: list[tuple[Path, str]] = []
         for endpoint_index, endpoint_seed in enumerate(spec.device.endpoint_seeds):
-            loaders = build_mnist_loaders(spec.data, data_seed=spec.runtime.data_seed)
+            loaders = build_mnist_loaders(
+                spec.data,
+                data_seed=spec.runtime.data_seed,
+                calibration_examples=(
+                    spec.recovery.star.calibration_examples
+                    if spec.recovery.star is not None
+                    else 1024
+                ),
+            )
             plant, program_report = _program_endpoint(
                 population=source_population,
                 requested=requested,
@@ -1720,6 +2619,45 @@ def run_train(request: "TrainRequest") -> int:
                 ],
             )
             p0_state = plant.state_dict()
+            star_context = None
+            if spec.recovery.policy == "star_local_pulse_sgd":
+                if star_fault_overlay is None or star_fault_population is None:
+                    raise RuntimeError("Expected the matched published STAR fault source.")
+                endpoint_artifact_root = artifact_root / "endpoints" / str(endpoint_seed)
+                healthy_p0_path = endpoint_artifact_root / "healthy_p0.pt"
+                atomic_torch_save(p0_state, healthy_p0_path)
+                star_target_path = endpoint_artifact_root / "star_targets.npz"
+                faulted_checkpoint_path = (
+                    endpoint_artifact_root / "faulted_pre_recovery.pt"
+                )
+                hardware_instance_id = content_hash(
+                    {
+                        "assignment_seed": spec.device.assignment_seed,
+                        "endpoint_seed": endpoint_seed,
+                        "population_fingerprint": source_population.fingerprint,
+                    }
+                )
+                star_context = {
+                    "artifact_path": star_target_path,
+                    "faulted_checkpoint_path": faulted_checkpoint_path,
+                    "model_checkpoint_sha256": sha256_file(offchip_state_path),
+                    "healthy_deployment_artifact_sha256": sha256_file(
+                        healthy_p0_path
+                    ),
+                    "hardware_instance_id": hardware_instance_id,
+                    "config_sha256": str(store.manifest["config"]["sha256"]),
+                    "fault_mask": star_fault_overlay["mask"],
+                    "stuck_persistent_q": star_fault_overlay[
+                        "stuck_persistent_q"
+                    ],
+                    "fault_report": star_fault_overlay["report"],
+                    "fault_source_population_fingerprint": (
+                        star_fault_population.fingerprint
+                    ),
+                    "predeployment_training_cohort": offchip_report[
+                        "first_epoch_training_cohort"
+                    ],
+                }
             p0_evaluation = _evaluate_plant_states(
                 plant=plant,
                 digital_scales=digital_scales,
@@ -1740,8 +2678,32 @@ def run_train(request: "TrainRequest") -> int:
                 validation_loader=loaders.validation,
                 train_loader=loaders.train,
                 device=device,
+                calibration_loader=loaders.calibration,
+                star_context=star_context,
             )
+            if spec.recovery.policy == "star_local_pulse_sgd":
+                if star_context is None:  # pragma: no cover - branch invariant
+                    raise RuntimeError("Expected materialized STAR artifacts.")
+                star_target_path = Path(star_context["artifact_path"])
+                star_runtime_artifact_paths.extend(
+                    [
+                        (
+                            star_target_path.parent / "healthy_p0.pt",
+                            "star_healthy_p0_state",
+                        ),
+                        (star_target_path, "star_state_targets"),
+                        (
+                            star_target_path.with_suffix(".receipt.json"),
+                            "star_state_targets_receipt",
+                        ),
+                        (
+                            Path(star_context["faulted_checkpoint_path"]),
+                            "star_faulted_pre_recovery_state",
+                        ),
+                    ]
+                )
             p0_test_evaluation = None
+            faulted_test_evaluation = None
             final_test_evaluation = None
             if spec.evaluation.evaluate_test:
                 p0_plant_generator = torch.Generator(device=device.type)
@@ -1762,6 +2724,36 @@ def run_train(request: "TrainRequest") -> int:
                     maximum_batches=None,
                     sample_limit=spec.evaluation.sample_limit,
                 )
+                if spec.recovery.policy == "star_local_pulse_sgd":
+                    if star_context is None:
+                        raise RuntimeError("Expected a saved STAR faulted state.")
+                    faulted_state = torch.load(
+                        Path(star_context["faulted_checkpoint_path"]),
+                        map_location="cpu",
+                        weights_only=True,
+                    )
+                    faulted_generator = torch.Generator(device=device.type)
+                    faulted_generator.manual_seed(1)
+                    faulted_plant = IbmOmEffectiveCrossbarPlant(
+                        source_population,
+                        generator=faulted_generator,
+                        device=device,
+                    )
+                    faulted_plant.load_state_dict(
+                        faulted_state,
+                        expected_fault_source_population=star_fault_population,
+                        expected_pre_fault_state=p0_state,
+                    )
+                    faulted_test_evaluation = _evaluate_plant_states(
+                        plant=faulted_plant,
+                        digital_scales=digital_scales,
+                        layout=layout,
+                        teacher=teacher,
+                        loader=loaders.test,
+                        device=device,
+                        maximum_batches=None,
+                        sample_limit=spec.evaluation.sample_limit,
+                    )
                 final_test_evaluation = _evaluate_plant_states(
                     plant=plant,
                     digital_scales=digital_scales,
@@ -1932,6 +2924,16 @@ def run_train(request: "TrainRequest") -> int:
                     if p0_test_evaluation is None
                     else p0_test_evaluation["persistent_diagnostic"]
                 ),
+                "faulted_pre_recovery_apparent_test": (
+                    None
+                    if faulted_test_evaluation is None
+                    else faulted_test_evaluation["apparent_forward"]
+                ),
+                "faulted_pre_recovery_persistent_test": (
+                    None
+                    if faulted_test_evaluation is None
+                    else faulted_test_evaluation["persistent_diagnostic"]
+                ),
                 "recovery": recovery,
                 "fixed_final_apparent_test": (
                     None
@@ -1979,6 +2981,13 @@ def run_train(request: "TrainRequest") -> int:
                             "student_accuracy"
                         ]
                     ),
+                    "faulted_pre_recovery_apparent_test_accuracy": (
+                        None
+                        if faulted_test_evaluation is None
+                        else faulted_test_evaluation["apparent_forward"][
+                            "student_accuracy"
+                        ]
+                    ),
                 }
             )
 
@@ -2005,13 +3014,107 @@ def run_train(request: "TrainRequest") -> int:
             "p0_verify_reads": _aggregate(
                 endpoint_rows, ("programming", "verify_reads")
             ),
-            "recovery_applied_pulses": _aggregate(
-                endpoint_rows, ("recovery", "optimizer", "applied_pulses")
-            ),
-            "recovery_changed_cells": _aggregate(
-                endpoint_rows, ("recovery", "optimizer", "changed_cells")
-            ),
         }
+        if spec.recovery.policy == "star_local_pulse_sgd":
+            aggregates.update(
+                {
+                    "recovery_commanded_pulses": _aggregate(
+                        endpoint_rows,
+                        ("recovery", "optimizer", "commanded_pulses"),
+                    ),
+                    "recovery_commanded_cells": _aggregate(
+                        endpoint_rows,
+                        ("recovery", "optimizer", "commanded_cells"),
+                    ),
+                    "recovery_commands_to_immutable_cells": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "posthoc_pulse_effects",
+                            "commands_to_immutable_cells",
+                        ),
+                    ),
+                    "recovery_persistent_changed_healthy_cells": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "posthoc_pulse_effects",
+                            "persistent_changed_healthy_cells",
+                        ),
+                    ),
+                    "healthy_pre_fault_local_objective": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "healthy_pre_fault_local_state_errors",
+                            "mean_local_objective",
+                        ),
+                    ),
+                    "faulted_pre_recovery_local_objective": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "faulted_pre_recovery_local_state_errors",
+                            "mean_local_objective",
+                        ),
+                    ),
+                    "fixed_final_local_objective": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "fixed_final_local_state_errors",
+                            "mean_local_objective",
+                        ),
+                    ),
+                    "healthy_pre_fault_apparent_validation_accuracy": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "healthy_pre_fault_apparent_validation",
+                            "student_accuracy",
+                        ),
+                    ),
+                    "faulted_pre_recovery_apparent_validation_accuracy": _aggregate(
+                        endpoint_rows,
+                        (
+                            "recovery",
+                            "faulted_pre_recovery_apparent_validation",
+                            "student_accuracy",
+                        ),
+                    ),
+                    "paired_star_validation_recovery_gain_percentage_points": (
+                        _numeric_summary(
+                            100.0
+                            * (
+                                float(
+                                    row["recovery"][
+                                        "fixed_final_apparent_validation"
+                                    ]["student_accuracy"]
+                                )
+                                - float(
+                                    row["recovery"][
+                                        "faulted_pre_recovery_apparent_validation"
+                                    ]["student_accuracy"]
+                                )
+                            )
+                            for row in endpoint_rows
+                        )
+                    ),
+                }
+            )
+        else:
+            aggregates.update(
+                {
+                    "recovery_applied_pulses": _aggregate(
+                        endpoint_rows,
+                        ("recovery", "optimizer", "applied_pulses"),
+                    ),
+                    "recovery_changed_cells": _aggregate(
+                        endpoint_rows,
+                        ("recovery", "optimizer", "changed_cells"),
+                    ),
+                }
+            )
         comparison = None
         if spec.evaluation.evaluate_test:
             aggregates["p0_apparent_test_accuracy"] = _aggregate(
@@ -2026,15 +3129,76 @@ def run_train(request: "TrainRequest") -> int:
             aggregates["fixed_final_persistent_test_accuracy"] = _aggregate(
                 endpoint_rows, ("fixed_final_persistent_test", "student_accuracy")
             )
+            recovery_baseline_key = (
+                "faulted_pre_recovery_apparent_test"
+                if spec.recovery.policy == "star_local_pulse_sgd"
+                else "p0_apparent_test"
+            )
             aggregates["paired_recovery_gain_percentage_points"] = _numeric_summary(
                 100.0
                 * (
                     float(row["fixed_final_apparent_test"]["student_accuracy"])
-                    - float(row["p0_apparent_test"]["student_accuracy"])
+                    - float(row[recovery_baseline_key]["student_accuracy"])
                 )
                 for row in endpoint_rows
             )
-            if spec.evaluation.sample_limit is None:
+            if spec.recovery.policy == "star_local_pulse_sgd":
+                aggregates["faulted_pre_recovery_apparent_test_accuracy"] = _aggregate(
+                    endpoint_rows,
+                    ("faulted_pre_recovery_apparent_test", "student_accuracy"),
+                )
+                aggregates["faulted_pre_recovery_persistent_test_accuracy"] = _aggregate(
+                    endpoint_rows,
+                    ("faulted_pre_recovery_persistent_test", "student_accuracy"),
+                )
+                damages = [
+                    float(row["p0_apparent_test"]["student_accuracy"])
+                    - float(
+                        row["faulted_pre_recovery_apparent_test"][
+                            "student_accuracy"
+                        ]
+                    )
+                    for row in endpoint_rows
+                ]
+                gains = [
+                    float(row["fixed_final_apparent_test"]["student_accuracy"])
+                    - float(
+                        row["faulted_pre_recovery_apparent_test"][
+                            "student_accuracy"
+                        ]
+                    )
+                    for row in endpoint_rows
+                ]
+                positive_damage_fractions = [
+                    gain / damage
+                    for gain, damage in zip(gains, damages, strict=True)
+                    if damage > 0.0
+                ]
+                aggregates.update(
+                    {
+                        "paired_fault_damage_percentage_points": _numeric_summary(
+                            100.0 * value for value in damages
+                        ),
+                        "paired_recovery_fraction": (
+                            None
+                            if not positive_damage_fractions
+                            else _numeric_summary(positive_damage_fractions)
+                        ),
+                        "star_recovery_endpoint_counts": {
+                            "endpoints": len(endpoint_rows),
+                            "positive_gain": sum(value > 0.0 for value in gains),
+                            "zero_gain": sum(value == 0.0 for value in gains),
+                            "negative_gain": sum(value < 0.0 for value in gains),
+                            "loss_greater_than_two_percentage_points": sum(
+                                value < -0.02 for value in gains
+                            ),
+                        },
+                    }
+                )
+            if (
+                spec.evaluation.sample_limit is None
+                and spec.recovery.policy != "star_local_pulse_sgd"
+            ):
                 comparison = _drn_comparison(
                     rows=endpoint_rows,
                     reference=reference,
@@ -2130,7 +3294,20 @@ def run_train(request: "TrainRequest") -> int:
                 "network_forward_state": "apparent_q",
                 "hidden_device_update_state": "persistent_q",
                 "recovery_gradient_handoff": (
-                    "identity_ste_apparent_q_to_persistent_pulse_update"
+                    "identity_apparent_local_error_to_persistent_pulse_update"
+                    if spec.recovery.policy == "star_local_pulse_sgd"
+                    else "identity_ste_apparent_q_to_persistent_pulse_update"
+                ),
+                "star_local_recovery": (
+                    None
+                    if spec.recovery.policy != "star_local_pulse_sgd"
+                    else {
+                        "hidden_error": "rho_h*(h-mu_y_h)*relu_mask",
+                        "output_error": "rho_o*(z-mu_y_o)",
+                        "transpose_mvm": False,
+                        "cross_layer_backpropagation": False,
+                        "label_role": "class_conditional_target_address",
+                    }
                 ),
                 "passive_kcl_denominator": "not_applicable_standard_crossbar_MVM",
             },
@@ -2163,6 +3340,19 @@ def run_train(request: "TrainRequest") -> int:
                 },
                 "absolute_conductance_calibration": None,
                 "power_claim": "not_available_without_absolute_conductance_and_periphery_model",
+                "post_deployment_star_fault_source": (
+                    None
+                    if star_fault_overlay is None
+                    else {
+                        "report": star_fault_overlay["report"],
+                        "population_fingerprint": (
+                            star_fault_population.fingerprint
+                            if star_fault_population is not None
+                            else None
+                        ),
+                        "sampling_receipt": star_fault_overlay["receipt"],
+                    }
+                ),
             },
             "source_mapping": source_mapping_report,
             "source_deterministic_controls": {
@@ -2220,12 +3410,33 @@ def run_train(request: "TrainRequest") -> int:
             "limitations": [
                 "model_based_AIHWKit_OM_preset_not_raw_measured_device_data",
                 "standard_MVM_has_no_DRN_passive_sum_loading_or_equilibrium_voltage",
-                "digital_teacher_KL_gradients_and_Adam_moments_remain_off_array",
                 "open_loop_single_pulse_emulator_not_native_parallel_outer_product_tile",
                 "no_inference_read_noise_retention_line_resistance_or_absolute_power",
                 "source_endpoint_seeds_share_one_assignment_and_are_not_independent_arrays",
                 "target_endpoint_seeds_within_each_target_share_one_assignment",
-                "recovery_gradient_uses_identity_ste_from_apparent_to_hidden_persistent_state",
+                *(
+                    [
+                        "digital_teacher_KL_gradients_and_Adam_moments_remain_off_array",
+                        "recovery_gradient_uses_identity_ste_from_apparent_to_hidden_persistent_state",
+                    ]
+                    if spec.recovery.policy != "star_local_pulse_sgd"
+                    else []
+                ),
+                *(
+                    [
+                        (
+                            f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam_but_the_local_post_fault_update_does_not"
+                            if spec.offchip.policy != "none"
+                            else "teacher_checkpoint_initializes_and_evaluates_the_source_but_is_absent_from_the_local_post_fault_update"
+                        ),
+                        "star_inspired_recovery_is_teacher_free_and_moment_free_but_software_emulates_local_subtraction_relu_mask_and_outer_product_pulses",
+                        "star_fault_transition_replays_explicitly_enabled_AIHWKit_published_OM_corrupt_cells_after_healthy_programming",
+                        "corrupt_persistent_q_is_stuck_but_apparent_q_retains_AIHWKit_write_noise_resampling",
+                        "star_labels_address_sram_targets_and_are_not_generated_on_chip",
+                    ]
+                    if spec.recovery.policy == "star_local_pulse_sgd"
+                    else []
+                ),
                 *(
                     [
                         "same_array_persistent_transfer_uses_hidden_controller_inaccessible_state"
@@ -2239,7 +3450,11 @@ def run_train(request: "TrainRequest") -> int:
         atomic_write_json(summary_path, summary)
         artifacts = [
             store.artifact_record(path, kind=kind)
-            for path, kind in (*source_artifact_paths, *target_artifact_paths)
+            for path, kind in (
+                *source_artifact_paths,
+                *star_fault_artifact_paths,
+                *target_artifact_paths,
+            )
         ]
         artifacts.append(store.artifact_record(summary_path, kind="scientific_summary"))
         artifacts.append(
@@ -2248,6 +3463,10 @@ def run_train(request: "TrainRequest") -> int:
         artifacts.extend(
             store.artifact_record(path, kind="crossbar_endpoint_states")
             for path in checkpoint_paths
+        )
+        artifacts.extend(
+            store.artifact_record(path, kind=kind)
+            for path, kind in star_runtime_artifact_paths
         )
         compact_metrics = {
             "evidence_tier": summary["evidence_tier"],

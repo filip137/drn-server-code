@@ -20,7 +20,11 @@ from training.ibm_reram_hwa import (
     _sample_om_array_population_layout,
     save_om_array_population,
 )
-from training.ibm_reram_program_verify import OM_PRESET
+from training.ibm_reram_program_verify import (
+    OM_PRESET,
+    PUBLISHED_CORRUPT_PROBABILITY,
+    PUBLISHED_CORRUPT_RANGE,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -40,6 +44,9 @@ def _request(raw: str) -> dict[str, Any]:
         "preset",
         "assignment_seed",
         "corruption_policy",
+        "preset_default_corrupt_devices_prob",
+        "published_corrupt_devices_prob",
+        "corrupt_devices_range",
         "binding_keys",
         "binding_shapes",
         "required_aihwkit_version",
@@ -49,11 +56,22 @@ def _request(raw: str) -> dict[str, Any]:
     keys = value["binding_keys"]
     shapes = value["binding_shapes"]
     seed = value["assignment_seed"]
+    scalar_contract = {
+        "preset_default_corrupt_devices_prob": 0.0,
+        "published_corrupt_devices_prob": PUBLISHED_CORRUPT_PROBABILITY[OM_PRESET],
+        "corrupt_devices_range": PUBLISHED_CORRUPT_RANGE[OM_PRESET],
+    }
     if (
         value["preset"] != OM_PRESET
         or value["required_aihwkit_version"] != _REQUIRED_AIHWKIT_VERSION
         or value["corruption_policy"]
         not in {"counterfactual_repaired", "published"}
+        or any(
+            isinstance(value[name], bool)
+            or not isinstance(value[name], (int, float))
+            or float(value[name]) != expected
+            for name, expected in scalar_contract.items()
+        )
         or isinstance(seed, bool)
         or not isinstance(seed, int)
         or not 0 <= seed < 2**63

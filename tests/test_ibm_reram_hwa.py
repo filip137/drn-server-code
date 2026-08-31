@@ -10,6 +10,9 @@ import pytest
 import torch
 
 from experiments.reram_program_verify.hwa_model import CONDITION_KEY
+from experiments.reram_program_verify.hwa_population_sampler import (
+    _request as parse_hwa_population_request,
+)
 from model.resistive.builders import ParameterBinding
 from model.variable.parameter import DenseWeight
 from training.ibm_reram_hwa import (
@@ -30,6 +33,40 @@ from training.ibm_reram_hwa import (
     validate_ibm_reram_target_mapping_preflight,
 )
 from training.ibm_reram_program_verify import PopulationStepEstimator, derive_seed
+
+
+def _population_request() -> dict[str, object]:
+    return {
+        "preset": "reram_array_om",
+        "assignment_seed": 87004,
+        "corruption_policy": "published",
+        "preset_default_corrupt_devices_prob": 0.0,
+        "published_corrupt_devices_prob": 0.1348,
+        "corrupt_devices_range": 0.01,
+        "binding_keys": ["crossbar.layer0.tile0"],
+        "binding_shapes": [[2, 3]],
+        "required_aihwkit_version": "1.1.0",
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("preset_default_corrupt_devices_prob", 0.1348),
+        ("published_corrupt_devices_prob", 0.0),
+        ("corrupt_devices_range", 0.1),
+        ("corrupt_devices_range", True),
+    ],
+)
+def test_external_population_request_pins_aihwkit_corruption_contract(
+    field: str,
+    value: object,
+) -> None:
+    request = _population_request()
+    assert parse_hwa_population_request(json.dumps(request)) == request
+    request[field] = value
+    with pytest.raises(ValueError, match="canonical OM HWA population request"):
+        parse_hwa_population_request(json.dumps(request))
 
 
 def _binding(shape: tuple[int, int] = (2, 2)) -> ParameterBinding:

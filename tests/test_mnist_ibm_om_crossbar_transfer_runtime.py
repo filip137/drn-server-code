@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -197,8 +198,8 @@ def _published_population() -> IbmReramArrayPopulation:
         nominal_dw_min=0.1,
         dw_min_std=0.0,
         write_noise_std=0.0,
-        max_bound=torch.tensor([0.05, 1.0]),
-        min_bound=torch.tensor([0.05, -1.0]),
+        max_bound=torch.tensor([0.005, 1.0]),
+        min_bound=torch.tensor([0.005, -1.0]),
         dwmin_up=torch.tensor([0.0, 0.1]),
         dwmin_down=torch.tensor([0.0, 0.1]),
         reference=torch.zeros(2),
@@ -233,8 +234,8 @@ def test_published_defects_are_explicit_in_mapping_and_programming_reports() -> 
         level_counts=codebook.effective_level_counts,
     )
 
-    assert continuous[0].item() == pytest.approx(0.05)
-    assert deterministic[0].item() == pytest.approx(0.05)
+    assert continuous[0].item() == pytest.approx(0.005)
+    assert deterministic[0].item() == pytest.approx(0.005)
     assert mapping["defects"]["final_corrupt_cells"] == 1
     assert mapping["defects"]["published_corrupt_cells"] == 1
     assert mapping["final_corrupt_one_level_cells"] == 1
@@ -276,7 +277,7 @@ def test_published_defects_are_explicit_in_mapping_and_programming_reports() -> 
         stream_role="published_defect_test",
         random_stream_fingerprint=population.fingerprint,
     )
-    assert plant.persistent[0].item() == pytest.approx(0.05)
+    assert plant.persistent[0].item() == pytest.approx(0.005)
     assert programming["defects"]["final_corrupt_cells"] == 1
     assert programming["defects"]["published_corrupt_cells"] == 1
     assert programming["plant_pulses"]["pulses_to_final_corrupt_cells"] == 3
@@ -296,6 +297,141 @@ def test_published_defects_are_explicit_in_mapping_and_programming_reports() -> 
         "final_saturated_lower": 1,
         "final_saturated_upper": 1,
     }
+
+
+def test_matched_published_companion_defines_post_deployment_fault_overlay() -> None:
+    published = _published_population()
+    repaired = replace(
+        published,
+        corruption_policy="counterfactual_repaired",
+        min_bound=torch.tensor([-1.0, -1.0]),
+        max_bound=torch.tensor([1.0, 1.0]),
+        dwmin_up=torch.tensor([0.1, 0.1]),
+        dwmin_down=torch.tensor([0.1, 0.1]),
+        corrupt=torch.zeros(2, dtype=torch.bool),
+        fingerprint="repaired-runtime-fixture",
+    )
+
+    mask, stuck_persistent_q, report = runtime._matched_published_fault_overlay(
+        healthy=repaired,
+        published=published,
+        preset_default_corrupt_devices_prob=0.0,
+        enabled_corrupt_devices_prob=0.1348,
+        corrupt_devices_range=0.01,
+    )
+
+    assert mask.tolist() == [True, False]
+    assert stuck_persistent_q[0].item() == pytest.approx(0.005)
+    assert report["published_corrupt_devices_probability"] == pytest.approx(0.1348)
+    assert report["preset_default_corrupt_devices_probability"] == pytest.approx(0.0)
+    assert report["corrupt_devices_range"] == pytest.approx(0.01)
+    assert report["apparent_write_noise_retained"] is True
+    assert report["faulted_cells"] == 1
+    assert report["non_fault_identity_equal"] is True
+
+
+def test_local_star_recovery_core_has_no_teacher_autograd_or_adam_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = runtime.build_crossbar_layout((2, 2, 1), maximum_input_size=2)
+    size = sum(tile.cells for tile in layout)
+    population = IbmReramArrayPopulation(
+        assignment_seed=87004,
+        corruption_policy="counterfactual_repaired",
+        binding_keys=tuple(tile.key for tile in layout),
+        binding_shapes=tuple(tile.shape for tile in layout),
+        binding_sampling_seeds=(11, 12),
+        donor_sampling_seeds=(21, 22),
+        nominal_dw_min=0.1,
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        max_bound=torch.ones(size),
+        min_bound=-torch.ones(size),
+        dwmin_up=torch.full((size,), 0.1),
+        dwmin_down=torch.full((size,), 0.1),
+        reference=torch.zeros(size),
+        corrupt=torch.zeros(size, dtype=torch.bool),
+        published_corrupt=torch.zeros(size, dtype=torch.bool),
+        fingerprint="star-local-runtime-fixture",
+        aihwkit_version="1.1.0",
+    )
+    plant = runtime.IbmOmEffectiveCrossbarPlant(
+        population,
+        generator=torch.Generator().manual_seed(7),
+        device="cpu",
+    )
+    fault_mask = torch.zeros(size, dtype=torch.bool)
+    fault_mask[0] = True
+    plant.apply_stuck_at_fault_transition(
+        mask=fault_mask,
+        stuck_persistent_q=torch.zeros(size),
+        transition_id="test-fault",
+        source_population_fingerprint="published-fixture",
+    )
+    spec = SimpleNamespace(
+        recovery=SimpleNamespace(
+            star=SimpleNamespace(
+                pulse_rule="stochastic_pulse_sign_sgd",
+                hidden_gain=1.0,
+                output_gain=1.0,
+            ),
+            learning_rates_q=(0.1, 0.1),
+            layer_scope="all",
+            pulse_cap_per_cell=2,
+            epochs=1,
+            maximum_batches=1,
+        ),
+        runtime=SimpleNamespace(seed=42),
+        device=SimpleNamespace(assignment_seed=87004),
+    )
+    targets = {
+        "hidden_post_relu": torch.tensor([[0.5, 0.25]] * 10),
+        "output_logits": torch.tensor([[0.75]] * 10),
+    }
+    bundle = SimpleNamespace(means=lambda name: targets[name].clone())
+    monkeypatch.setattr(
+        torch.autograd,
+        "grad",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("autograd is forbidden in local STAR recovery")
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "PulseAdam",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Adam is forbidden in local STAR recovery")
+        ),
+    )
+
+    update_port = plant.local_star_update_port()
+    assert not hasattr(update_port, "post_deployment_fault_mask")
+    assert not hasattr(update_port, "post_deployment_stuck_persistent_q")
+    assert not hasattr(update_port, "persistent")
+    assert not hasattr(update_port, "population")
+    epochs, optimizer, repair_identities = runtime._run_local_star_pulse_recovery(
+        update_port=update_port,
+        spec=spec,
+        endpoint_seed=89402,
+        layout=layout,
+        digital_scales=(1.0, 1.0),
+        target_bundle=bundle,
+        train_loader=[
+            (
+                torch.tensor([[1.0, -0.5], [-0.25, 1.0]]),
+                torch.tensor([0, 1]),
+            )
+        ],
+        device=torch.device("cpu"),
+    )
+
+    assert epochs[0]["examples"] == 2
+    assert optimizer["optimizer_steps"] == 2
+    assert optimizer["repair_cohort"]["examples"] == 2
+    assert len(repair_identities) == 2
+    assert optimizer["digital_first_moment_values"] == 0
+    assert optimizer["digital_second_moment_values"] == 0
+    assert plant.persistent[0].item() == pytest.approx(0.0)
 
 
 def test_plant_evaluation_reports_apparent_forward_and_persistent_diagnostic(
@@ -332,6 +468,112 @@ def test_plant_evaluation_reports_apparent_forward_and_persistent_diagnostic(
     assert report["persistent_diagnostic"]["student_accuracy"] == pytest.approx(
         -0.25
     )
+
+
+def test_local_star_state_error_report_is_teacher_free_and_label_addressed() -> None:
+    layout = runtime.build_crossbar_layout((2, 2, 1), maximum_input_size=2)
+    size = sum(tile.cells for tile in layout)
+    population = IbmReramArrayPopulation(
+        assignment_seed=87004,
+        corruption_policy="counterfactual_repaired",
+        binding_keys=tuple(tile.key for tile in layout),
+        binding_shapes=tuple(tile.shape for tile in layout),
+        binding_sampling_seeds=(11, 12),
+        donor_sampling_seeds=(21, 22),
+        nominal_dw_min=0.1,
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        max_bound=torch.ones(size),
+        min_bound=-torch.ones(size),
+        dwmin_up=torch.full((size,), 0.1),
+        dwmin_down=torch.full((size,), 0.1),
+        reference=torch.zeros(size),
+        corrupt=torch.zeros(size, dtype=torch.bool),
+        published_corrupt=torch.zeros(size, dtype=torch.bool),
+        fingerprint="star-state-error-runtime-fixture",
+        aihwkit_version="1.1.0",
+    )
+    plant = runtime.IbmOmEffectiveCrossbarPlant(
+        population,
+        generator=torch.Generator().manual_seed(7),
+        device="cpu",
+    )
+    hidden_targets = torch.zeros((10, 2), dtype=torch.float32)
+    hidden_targets[0] = torch.tensor([1.0, 2.0])
+    hidden_targets[1] = torch.tensor([3.0, 4.0])
+    output_targets = torch.zeros((10, 1), dtype=torch.float32)
+    output_targets[0, 0] = 5.0
+    output_targets[1, 0] = 6.0
+    targets = {
+        "hidden_post_relu": hidden_targets,
+        "output_logits": output_targets,
+    }
+    bundle = SimpleNamespace(
+        means=lambda name: targets[name].clone(),
+        binding=SimpleNamespace(component_gains=(0.5, 0.25)),
+        semantic_sha256="a" * 64,
+    )
+
+    report = runtime._evaluate_local_star_state_errors(
+        plant=plant,
+        target_bundle=bundle,
+        digital_scales=(1.0, 1.0),
+        layout=layout,
+        loader=[
+            (
+                torch.tensor([[1.0, -0.5], [-0.25, 1.0]]),
+                torch.tensor([0, 1]),
+            )
+        ],
+        device=torch.device("cpu"),
+        maximum_batches=1,
+        sample_limit=None,
+    )
+
+    assert report["examples"] == 2
+    assert report["teacher_access"] is False
+    assert report["hidden_state_error_mean_squared_l2"] == pytest.approx(15.0)
+    assert report["output_state_error_mean_squared_l2"] == pytest.approx(30.5)
+    assert report["hidden_state_error_rms"] == pytest.approx((30.0 / 4.0) ** 0.5)
+    assert report["output_state_error_rms"] == pytest.approx((61.0 / 2.0) ** 0.5)
+    assert report["hidden_local_error_mean_squared_l2"] == pytest.approx(0.0)
+    assert report["output_local_error_mean_squared_l2"] == pytest.approx(
+        61.0 * 0.25**2 / 2.0
+    )
+    assert report["mean_local_objective"] == pytest.approx(7.5625)
+    assert report["target_semantic_sha256"] == "a" * 64
+
+
+def test_posthoc_star_audit_separates_commands_from_healthy_state_changes() -> None:
+    layout = runtime.build_crossbar_layout((2, 2, 1), maximum_input_size=2)
+    fault_mask = torch.tensor([True, False, False, True, False, False])
+    initial_counts = torch.zeros(6, dtype=torch.int64)
+    command_counts = torch.tensor([2, 1, 0, 3, 0, 1], dtype=torch.int64)
+    before = torch.zeros(6, dtype=torch.float32)
+    after = torch.tensor([0.0, 0.1, 0.0, 0.0, 0.0, -0.2])
+
+    report = runtime._posthoc_local_star_pulse_effects(
+        faulted_state={
+            "persistent": before,
+            "upward_pulses": initial_counts,
+            "downward_pulses": initial_counts,
+        },
+        final_state={
+            "persistent": after,
+            "upward_pulses": command_counts,
+            "downward_pulses": initial_counts,
+        },
+        fault_mask=fault_mask,
+        layout=layout,
+    )
+
+    assert report["commanded_pulses"] == 7
+    assert report["commands_to_immutable_cells"] == 5
+    assert report["commands_to_programmable_cells"] == 2
+    assert report["persistent_changed_healthy_cells"] == 2
+    assert report["persistent_healthy_delta_l1"] == pytest.approx(0.3)
+    assert report["per_layer"][0]["commanded_pulses"] == 6
+    assert report["per_layer"][1]["commanded_pulses"] == 1
 
 
 def test_recovery_gradient_uses_apparent_forward_with_persistent_pulse_state(

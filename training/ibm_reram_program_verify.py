@@ -29,6 +29,10 @@ PUBLISHED_CORRUPT_PROBABILITY = {
     OM_PRESET: 0.1348,
     HFO2_PRESET: 0.0977,
 }
+PUBLISHED_CORRUPT_RANGE = {
+    OM_PRESET: 0.01,
+    HFO2_PRESET: 0.01,
+}
 
 
 def derive_seed(base_seed: int, *parts: object) -> int:
@@ -1382,6 +1386,7 @@ __all__ = [
     "IbmReramRawActivePlant",
     "OM_PRESET",
     "PUBLISHED_CORRUPT_PROBABILITY",
+    "PUBLISHED_CORRUPT_RANGE",
     "PopulationStepEstimator",
     "ProgramVerifyResult",
     "SUPPORTED_PRESETS",

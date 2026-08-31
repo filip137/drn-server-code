@@ -86,17 +86,37 @@ class OffchipSettings:
 
 
 @dataclass(frozen=True)
+class StarRecoverySettings:
+    state_representation: str
+    capture_forward_state: str
+    target_quantization: str
+    hidden_gain: float
+    output_gain: float
+    calibration_examples: int
+    calibration_maximum_batches: int | None
+    pulse_rule: str
+    update_batching: str
+    fault_transition: str
+    fault_source_corruption_policy: str
+    fault_source_preset_default_corrupt_devices_prob: float
+    fault_source_enabled_corrupt_devices_prob: float
+    fault_source_corrupt_devices_range: float
+    fault_mask_access: str
+
+
+@dataclass(frozen=True)
 class RecoverySettings:
     policy: str
     layer_scope: str
     epochs: int
     learning_rates_q: tuple[float, float]
-    beta_1: float
-    beta_2: float
-    epsilon: float
+    beta_1: float | None
+    beta_2: float | None
+    epsilon: float | None
     objective: str
     pulse_cap_per_cell: int
     maximum_batches: int | None
+    star: StarRecoverySettings | None
 
 
 @dataclass(frozen=True)
@@ -480,49 +500,60 @@ def _parse_offchip(value: Any) -> OffchipSettings:
 def _parse_recovery(value: Any) -> RecoverySettings:
     path = "config.recovery"
     raw = _object(value, path)
-    _keys(
-        raw,
-        path,
-        {
-            "policy",
-            "layer_scope",
-            "epochs",
-            "learning_rates_q",
-            "betas",
-            "epsilon",
-            "objective",
-            "pulse_cap_per_cell",
-            "maximum_batches",
-        },
-    )
-    if raw["policy"] not in {"none", "pulse_adam"}:
-        raise config_error(f"{path}.policy", "to be 'none' or 'pulse_adam'", raw["policy"])
+    policy = raw.get("policy")
+    common = {
+        "policy",
+        "layer_scope",
+        "epochs",
+        "learning_rates_q",
+        "objective",
+        "pulse_cap_per_cell",
+        "maximum_batches",
+    }
+    if policy == "star_local_pulse_sgd":
+        _keys(raw, path, common | {"star"})
+    else:
+        _keys(raw, path, common | {"betas", "epsilon"})
+    if policy not in {"none", "pulse_adam", "star_local_pulse_sgd"}:
+        raise config_error(
+            f"{path}.policy",
+            "to be 'none', 'pulse_adam', or 'star_local_pulse_sgd'",
+            policy,
+        )
     if raw["layer_scope"] not in {"all", "input_only", "output_only"}:
         raise config_error(
             f"{path}.layer_scope", "to be 'all', 'input_only', or 'output_only'", raw["layer_scope"]
         )
     epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=0)
     rates = _pair(raw["learning_rates_q"], f"{path}.learning_rates_q", minimum=0.0)
-    betas = _pair(raw["betas"], f"{path}.betas", minimum=0.0)
-    if any(value >= 1.0 for value in betas):
-        raise config_error(f"{path}.betas", "to contain values in [0, 1)", raw["betas"])
-    epsilon = _number(raw["epsilon"], f"{path}.epsilon")
-    if epsilon <= 0.0:
-        raise config_error(f"{path}.epsilon", "to be positive", epsilon)
-    if betas != (0.9, 0.999) or not math.isclose(
-        float(epsilon), 1e-8, rel_tol=0.0, abs_tol=1e-16
-    ):
-        raise config_error(
-            path,
-            "to use the matched Adam betas [0.9, 0.999] and epsilon 1e-8",
-            dict(raw),
-        )
-    if raw["objective"] != "teacher_kl":
-        raise config_error(f"{path}.objective", "to equal 'teacher_kl'", raw["objective"])
     pulse_cap = _integer(
         raw["pulse_cap_per_cell"], f"{path}.pulse_cap_per_cell", minimum=0
     )
-    if raw["policy"] == "none":
+    star = None
+    beta_1: float | None = None
+    beta_2: float | None = None
+    epsilon: float | None = None
+    if policy in {"none", "pulse_adam"}:
+        betas = _pair(raw["betas"], f"{path}.betas", minimum=0.0)
+        if any(item >= 1.0 for item in betas):
+            raise config_error(f"{path}.betas", "to contain values in [0, 1)", raw["betas"])
+        parsed_epsilon = _number(raw["epsilon"], f"{path}.epsilon")
+        if parsed_epsilon <= 0.0:
+            raise config_error(f"{path}.epsilon", "to be positive", parsed_epsilon)
+        if betas != (0.9, 0.999) or not math.isclose(
+            float(parsed_epsilon), 1e-8, rel_tol=0.0, abs_tol=1e-16
+        ):
+            raise config_error(
+                path,
+                "to use the matched Adam betas [0.9, 0.999] and epsilon 1e-8",
+                dict(raw),
+            )
+        if raw["objective"] != "teacher_kl":
+            raise config_error(f"{path}.objective", "to equal 'teacher_kl'", raw["objective"])
+        beta_1, beta_2 = betas
+        epsilon = float(parsed_epsilon)
+
+    if policy == "none":
         if (
             epochs != 0
             or rates != (0.0, 0.0)
@@ -534,7 +565,9 @@ def _parse_recovery(value: Any) -> RecoverySettings:
                 "to use zero epochs/rates/cap and scope='all' for policy='none'",
                 dict(raw),
             )
-    elif epochs != 1 or rates != (6e-5, 6e-5) or pulse_cap != 64:
+    elif policy == "pulse_adam" and (
+        epochs != 1 or rates != (6e-5, 6e-5) or pulse_cap != 64
+    ):
         raise config_error(
             path,
             (
@@ -543,17 +576,123 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             ),
             dict(raw),
         )
+    elif policy == "star_local_pulse_sgd":
+        if (
+            epochs != 1
+            or any(rate <= 0.0 for rate in rates)
+            or pulse_cap < 1
+            or raw["objective"] != "local_star_state_matching"
+            or raw["layer_scope"] != "all"
+        ):
+            raise config_error(
+                path,
+                (
+                    "to use exactly one epoch, positive rates/cap, scope='all', "
+                    "and objective='local_star_state_matching' for STAR"
+                ),
+                dict(raw),
+            )
+        star_path = f"{path}.star"
+        star_raw = _object(raw["star"], star_path)
+        _keys(
+            star_raw,
+            star_path,
+            {
+                "state_representation",
+                "capture_forward_state",
+                "target_quantization",
+                "hidden_gain",
+                "output_gain",
+                "calibration_examples",
+                "calibration_maximum_batches",
+                "pulse_rule",
+                "update_batching",
+                "fault_transition",
+                "fault_source_corruption_policy",
+                "fault_source_preset_default_corrupt_devices_prob",
+                "fault_source_enabled_corrupt_devices_prob",
+                "fault_source_corrupt_devices_range",
+                "fault_mask_access",
+            },
+        )
+        expected = {
+            "state_representation": "crossbar.post_relu_hidden_and_output_logits.v1",
+            "capture_forward_state": "apparent_q",
+            "target_quantization": "fp16",
+            "pulse_rule": "stochastic_pulse_sgd",
+            "update_batching": "sequential_per_example",
+            "fault_transition": "post_deployment_published_companion_replay",
+            "fault_source_corruption_policy": "published",
+            "fault_mask_access": "forbidden",
+        }
+        for name, expected_value in expected.items():
+            if star_raw[name] != expected_value:
+                raise config_error(
+                    f"{star_path}.{name}", f"to equal {expected_value!r}", star_raw[name]
+                )
+        hidden_gain = _number(star_raw["hidden_gain"], f"{star_path}.hidden_gain", minimum=0.0)
+        output_gain = _number(star_raw["output_gain"], f"{star_path}.output_gain", minimum=0.0)
+        if hidden_gain <= 0.0 or output_gain <= 0.0:
+            raise config_error(star_path, "to use positive hidden and output gains", dict(star_raw))
+        fault_source_scalars = {
+            "fault_source_preset_default_corrupt_devices_prob": 0.0,
+            "fault_source_enabled_corrupt_devices_prob": 0.1348,
+            "fault_source_corrupt_devices_range": 0.01,
+        }
+        for name, expected_value in fault_source_scalars.items():
+            value = _number(star_raw[name], f"{star_path}.{name}", minimum=0.0)
+            if not math.isclose(
+                float(value), expected_value, rel_tol=0.0, abs_tol=1e-12
+            ):
+                raise config_error(
+                    f"{star_path}.{name}",
+                    f"to equal {expected_value!r}",
+                    star_raw[name],
+                )
+        star = StarRecoverySettings(
+            state_representation=expected["state_representation"],
+            capture_forward_state=expected["capture_forward_state"],
+            target_quantization=expected["target_quantization"],
+            hidden_gain=float(hidden_gain),
+            output_gain=float(output_gain),
+            calibration_examples=_integer(
+                star_raw["calibration_examples"],
+                f"{star_path}.calibration_examples",
+                minimum=1,
+            ),
+            calibration_maximum_batches=_optional_positive_integer(
+                star_raw["calibration_maximum_batches"],
+                f"{star_path}.calibration_maximum_batches",
+            ),
+            pulse_rule=expected["pulse_rule"],
+            update_batching=expected["update_batching"],
+            fault_transition=expected["fault_transition"],
+            fault_source_corruption_policy=expected["fault_source_corruption_policy"],
+            fault_source_preset_default_corrupt_devices_prob=(
+                fault_source_scalars[
+                    "fault_source_preset_default_corrupt_devices_prob"
+                ]
+            ),
+            fault_source_enabled_corrupt_devices_prob=(
+                fault_source_scalars["fault_source_enabled_corrupt_devices_prob"]
+            ),
+            fault_source_corrupt_devices_range=fault_source_scalars[
+                "fault_source_corrupt_devices_range"
+            ],
+            fault_mask_access=expected["fault_mask_access"],
+        )
     return RecoverySettings(
-        policy=raw["policy"],
+        policy=policy,
         layer_scope=raw["layer_scope"],
         epochs=epochs,
         learning_rates_q=rates,
-        beta_1=betas[0],
-        beta_2=betas[1],
-        epsilon=float(epsilon),
-        objective="teacher_kl",
+        beta_1=beta_1,
+        beta_2=beta_2,
+        epsilon=epsilon,
+        objective=raw["objective"],
         pulse_cap_per_cell=pulse_cap,
         maximum_batches=_optional_positive_integer(raw["maximum_batches"], f"{path}.maximum_batches"),
+        star=star,
     )
 
 
@@ -693,6 +832,23 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     transfer = _parse_transfer(
         raw["transfer"], endpoint_count=len(device.endpoint_seeds), source_assignment=device.assignment_seed
     )
+    recovery = _parse_recovery(raw["recovery"])
+    offchip = _parse_offchip(raw["offchip"])
+    if recovery.policy == "star_local_pulse_sgd" and (
+        device.corruption_policy != "counterfactual_repaired"
+        or transfer.enabled
+        or offchip.policy != "continuous_hwa"
+        or recovery.maximum_batches != offchip.maximum_batches
+    ):
+        raise config_error(
+            "config",
+            (
+                "to start STAR from a counterfactually repaired healthy array "
+                "after continuous HWA, reuse its first-epoch batch budget, "
+                "and keep fresh-array transfer disabled"
+            ),
+            dict(raw),
+        )
     reference = _parse_drn_reference(raw["drn_reference"])
     if reference.assignment_seed != device.assignment_seed or reference.endpoint_seeds != device.endpoint_seeds:
         raise config_error(
@@ -707,8 +863,8 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
         source=_parse_source(raw["source"]),
         device=device,
         mapping=_parse_mapping(raw["mapping"]),
-        offchip=_parse_offchip(raw["offchip"]),
-        recovery=_parse_recovery(raw["recovery"]),
+        offchip=offchip,
+        recovery=recovery,
         transfer=transfer,
         evaluation=_parse_evaluation(raw["evaluation"]),
         drn_reference=reference,
@@ -740,6 +896,7 @@ __all__ = [
     "EXPERIMENT_ID",
     "OffchipSettings",
     "SCHEMA_VERSION",
+    "StarRecoverySettings",
     "parse_crossbar_config",
     "resolve_crossbar_spec",
 ]

@@ -777,7 +777,16 @@ Exact measurements, limitations, and raw artifact locations are in the
    defect-aware remapping, and spare-row or spare-column deployment, and add
    fresh-read/retention checks. Only after a valid persistent deployment still
    underperforms should a byte-identical frozen-versus-on-chip-recovery fork be
-   introduced; truly stuck cells cannot themselves be updated.
+   introduced; truly stuck cells cannot themselves be updated. The planned
+   [`crossbar STAR-inspired local-state-only recovery smoke`](../studies/mnist-ibm-om-crossbar-star-local-recovery-smoke-20260831-v1.json)
+   now freezes the first such algorithmic control: capture FP16 hidden/output
+   class means on a healthy plant, replay matched published-companion faults on
+   that same plant, and use only local state-error pulse-SGD. The declared
+   workflow study is not completed and supports no recovery or on-chip claim
+   until its chronological, locality, and artifact gates pass. A raw-physical-
+   rail DRN arm using centered EP driven only by the local repair cost is the
+   stronger subsequent target; paper-faithful task-plus-repair EP remains a
+   separate comparator.
 2. Advance the supported fixed-binding local-compensation result through the
    discrete deployment gates before launching on-chip recovery.  Keep the same
    identities and baseline objective while testing standard levels,

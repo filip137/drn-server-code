@@ -145,6 +145,110 @@ def test_direct_frozen_control_has_no_optimizer_updates() -> None:
     assert spec.recovery.epochs == 0
 
 
+def test_star_recovery_contract_is_local_moment_free_and_chronological() -> None:
+    spec = resolve_crossbar_spec(
+        parse_crossbar_config(_payload("smoke_star_local_recovery.json")),
+        RunMode.TRAIN,
+    )
+
+    assert spec.recovery.policy == "star_local_pulse_sgd"
+    assert spec.recovery.objective == "local_star_state_matching"
+    assert spec.recovery.beta_1 is None
+    assert spec.recovery.beta_2 is None
+    assert spec.recovery.epsilon is None
+    assert spec.recovery.star is not None
+    assert spec.recovery.star.pulse_rule == "stochastic_pulse_sgd"
+    assert spec.recovery.star.calibration_examples == 1024
+    assert spec.recovery.star.fault_mask_access == "forbidden"
+    assert spec.recovery.star.update_batching == "sequential_per_example"
+    assert spec.recovery.star.fault_source_preset_default_corrupt_devices_prob == 0.0
+    assert spec.recovery.star.fault_source_enabled_corrupt_devices_prob == 0.1348
+    assert spec.recovery.star.fault_source_corrupt_devices_range == 0.01
+    assert spec.device.corruption_policy == "counterfactual_repaired"
+    assert spec.transfer.enabled is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["device"].__setitem__("corruption_policy", "published"),
+            "counterfactually repaired healthy array",
+        ),
+        (
+            lambda value: value["transfer"].update(
+                {
+                    "enabled": True,
+                    "source_state": "offchip_fixed_final_master",
+                    "targets": [
+                        {
+                            "assignment_seed": 87005,
+                            "endpoint_seeds": [89502, 89503, 89504, 89505],
+                        }
+                    ],
+                }
+            ),
+            "fresh-array transfer disabled",
+        ),
+        (
+            lambda value: value["offchip"].update(
+                {
+                    "policy": "none",
+                    "epochs": 0,
+                    "logical_learning_rates": [0.0, 0.0],
+                }
+            ),
+            "after continuous HWA",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__("epochs", 2),
+            "exactly one epoch",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__("maximum_batches", None),
+            "reuse its first-epoch batch budget",
+        ),
+        (
+            lambda value: value["recovery"]["star"].__setitem__(
+                "fault_mask_access", "available"
+            ),
+            "forbidden",
+        ),
+        (
+            lambda value: value["recovery"]["star"].__setitem__(
+                "fault_source_preset_default_corrupt_devices_prob", 0.1348
+            ),
+            "to equal 0.0",
+        ),
+        (
+            lambda value: value["recovery"]["star"].__setitem__(
+                "fault_source_enabled_corrupt_devices_prob", 0.0
+            ),
+            "to equal 0.1348",
+        ),
+        (
+            lambda value: value["recovery"]["star"].__setitem__(
+                "fault_source_corrupt_devices_range", 0.1
+            ),
+            "to equal 0.01",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__("betas", [0.9, 0.999]),
+            "contain only keys",
+        ),
+    ],
+)
+def test_star_recovery_rejects_nonlocal_or_nonchronological_drift(
+    mutation,
+    message: str,
+) -> None:
+    payload = _payload("smoke_star_local_recovery.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
+
+
 def test_qat_recovery_arms_share_one_offchip_starting_state_contract() -> None:
     names = (
         "matched_winsorized_qat_frozen.json",
