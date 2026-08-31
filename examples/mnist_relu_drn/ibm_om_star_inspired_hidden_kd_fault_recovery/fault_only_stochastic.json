@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_star_inspired_hidden_kd_fault_recovery.v1",
+  "target_assignment_seed": 87004,
+  "development_fault_seed": 91501,
+  "evaluation_fault_seeds": [91502, 91503, 91504, 91505]
+}

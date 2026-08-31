@@ -50,9 +50,18 @@ class BiasFreeReluTeacher:
             )
         )
 
+    def hidden(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Return the frozen teacher's post-ReLU hidden representation."""
+
+        return torch.relu(inputs @ self.input_weight.state)
+
+    def representations(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Alias for :meth:`hidden` used by representation-distillation arms."""
+
+        return self.hidden(inputs)
+
     def logits(self, inputs: torch.Tensor) -> torch.Tensor:
-        hidden = torch.relu(inputs @ self.input_weight.state)
-        return hidden @ self.output_weight.state
+        return self.hidden(inputs) @ self.output_weight.state
 
     def parameters(self) -> tuple[torch.Tensor, torch.Tensor]:
         return self.input_weight.state, self.output_weight.state

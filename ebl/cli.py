@@ -805,6 +805,13 @@ def _default_train_handler(request: TrainRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.ibm_om_winsorized_tt_output_transfer_followup_runtime import (
             run_train,
         )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_star_inspired_hidden_kd_fault_recovery.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_star_inspired_hidden_kd_fault_recovery_runtime import (
+            run_train,
+        )
     elif request.definition.experiment_id in {
         "mnist_relu_drn_reset.v1",
         "mnist_relu_drn_reset_differential.v1",
