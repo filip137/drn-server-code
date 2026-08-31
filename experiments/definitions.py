@@ -84,6 +84,30 @@ from experiments.mnist_relu_drn.ibm_om_winsorized_pv_ensemble_qat_config import 
     parse_winsorized_pv_ensemble_qat_config,
     resolve_winsorized_pv_ensemble_qat_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_winsorized_onchip_adam_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_ONCHIP_ADAM_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_ONCHIP_ADAM_SCHEMA_VERSION,
+    parse_winsorized_onchip_adam_config,
+    resolve_winsorized_onchip_adam_spec,
+)
+from experiments.mnist_relu_drn.ibm_om_winsorized_cross_array_open_loop_adam_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_SCHEMA_VERSION,
+    parse_winsorized_cross_array_open_loop_adam_config,
+    resolve_winsorized_cross_array_open_loop_adam_spec,
+)
+from experiments.mnist_relu_drn.ibm_om_winsorized_endpoint_optimizer_recovery_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_SCHEMA_VERSION,
+    parse_endpoint_optimizer_recovery_config,
+    resolve_endpoint_optimizer_recovery_spec,
+)
+from experiments.mnist_relu_drn.ibm_om_winsorized_tt_output_transfer_followup_config import (
+    EXPERIMENT_ID as IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_SCHEMA_VERSION,
+    parse_tt_output_transfer_followup_config,
+    resolve_tt_output_transfer_followup_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -968,6 +992,58 @@ IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_WINSORIZED_ONCHIP_ADAM_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_ONCHIP_ADAM_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_ONCHIP_ADAM_SCHEMA_VERSION,
+    description=(
+        "Run a staged target-87003 hardware-in-loop pulse-mediated Adam "
+        "screen from one exact persistent post-QAT P0."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_winsorized_onchip_adam_config,
+    resolver=resolve_winsorized_onchip_adam_spec,
+)
+
+
+IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_SCHEMA_VERSION,
+    description=(
+        "Transfer one recovered Winsorized IBM OM state to a fresh array, "
+        "then run fixed column-serial open-loop stochastic-coincidence Adam."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_winsorized_cross_array_open_loop_adam_config,
+    resolver=resolve_winsorized_cross_array_open_loop_adam_spec,
+)
+
+
+IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_SCHEMA_VERSION,
+    description=(
+        "Compare matched open-loop SGD, Adam, and two OM-plant Tiki-Taka "
+        "emulators across four frozen target-array P&V endpoint realizations."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_endpoint_optimizer_recovery_config,
+    resolver=resolve_endpoint_optimizer_recovery_spec,
+)
+
+
+IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_EXPERIMENT_ID,
+    schema_version=IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_SCHEMA_VERSION,
+    description=(
+        "Test matched OM-plant Tiki-Taka output-layer transfer-gain "
+        "follow-ups from frozen target-array P&V endpoint realizations."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_tt_output_transfer_followup_config,
+    resolver=resolve_tt_output_transfer_followup_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
@@ -977,6 +1053,10 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_WINSORIZED_QAT_V1.experiment_id: IBM_OM_WINSORIZED_QAT_V1,
     IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_V1.experiment_id: IBM_OM_WINSORIZED_MULTI_ASSIGNMENT_QAT_V1,
     IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_V1.experiment_id: IBM_OM_WINSORIZED_PV_ENSEMBLE_QAT_V1,
+    IBM_OM_WINSORIZED_ONCHIP_ADAM_V1.experiment_id: IBM_OM_WINSORIZED_ONCHIP_ADAM_V1,
+    IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_V1.experiment_id: IBM_OM_WINSORIZED_CROSS_ARRAY_OPEN_LOOP_ADAM_V1,
+    IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_V1.experiment_id: IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_V1,
+    IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_V1.experiment_id: IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_V1,
     IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,

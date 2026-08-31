@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_winsorized_onchip_adam.v1",
+  "spacing_delta_x_multiplier": 4,
+  "target_assignment_seed": 87003,
+  "p0_endpoint_seed": 89301
+}
