@@ -260,6 +260,168 @@ def test_supervised_retraining_rejects_scientific_drift(
         parse_crossbar_config(payload)
 
 
+def test_supervised_shadow_program_verify_contract_is_strict_and_chronological() -> None:
+    payload = _payload("smoke_supervised_ce_shadow_program_verify_full_epoch.json")
+    spec = resolve_crossbar_spec(parse_crossbar_config(payload), RunMode.TRAIN)
+
+    assert spec.recovery.policy == "supervised_ce_shadow_program_verify"
+    assert spec.recovery.objective == "cross_entropy"
+    assert spec.recovery.layer_scope == "all"
+    assert spec.recovery.epochs == 1
+    assert spec.recovery.maximum_batches == 3_438
+    assert "learning_rates_q" not in payload["recovery"]
+    assert spec.recovery.learning_rates_q == (0.0, 0.0)
+    assert spec.recovery.pulse_cap_per_cell == 128
+    assert spec.recovery.supervised_bp is None
+    settings = spec.recovery.supervised_shadow_pv
+    assert settings is not None
+    assert settings.repair_examples == 55_000
+    assert settings.label_source == "ground_truth"
+    assert settings.update_batching == "minibatch"
+    assert settings.gradient_engine == "autograd_full_network_backprop"
+    assert settings.optimizer_state == "digital_fp32_shadow_and_adam"
+    assert settings.optimizer_coordinate == (
+        "logical_weight_learning_rate_converted_to_q"
+    )
+    assert settings.logical_learning_rates == (1e-3, 1e-3)
+    assert settings.shadow_initial_state == "post_fault_apparent_q"
+    assert settings.shadow_bounds == "healthy_source_population_q_bounds"
+    assert settings.write_schedule == "fixed_final_epoch_program_verify"
+    assert settings.writer == spec.device.controller
+    assert settings.maximum_programming_pulses == (
+        spec.device.maximum_programming_pulses
+    )
+    assert settings.verify_tolerance_x == spec.device.verify_tolerance_x
+    assert settings.fault_transition == (
+        "post_deployment_published_companion_replay"
+    )
+    assert settings.fault_source_corruption_policy == "published"
+    assert settings.fault_source_preset_default_corrupt_devices_prob == 0.0
+    assert settings.fault_source_enabled_corrupt_devices_prob == 0.1348
+    assert settings.fault_source_corrupt_devices_range == 0.01
+    assert settings.fault_mask_access == "forbidden"
+    assert spec.device.corruption_policy == "counterfactual_repaired"
+    assert spec.transfer.enabled is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["recovery"].__setitem__(
+                "objective", "teacher_kl"
+            ),
+            "cross_entropy",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__(
+                "learning_rates_q", [1e-3, 1e-3]
+            ),
+            "contain only keys",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "logical_learning_rates", [6e-5, 6e-5]
+            ),
+            "predeclared logical rates",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "optimizer_coordinate", "q_coordinate"
+            ),
+            "logical_weight_learning_rate_converted_to_q",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "optimizer_state", "device_local"
+            ),
+            "digital_fp32_shadow_and_adam",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "fault_mask_access", "available"
+            ),
+            "forbidden",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "fault_source_preset_default_corrupt_devices_prob", 0.1348
+            ),
+            "to equal 0.0",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "fault_source_enabled_corrupt_devices_prob", 0.0
+            ),
+            "to equal 0.1348",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "fault_source_corrupt_devices_range", 0.1
+            ),
+            "to equal 0.01",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "maximum_programming_pulses", 127
+            ),
+            "128-pulse",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "verify_tolerance_x", 0.02
+            ),
+            "0.023725",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "write_schedule", "after_every_minibatch"
+            ),
+            "fixed_final_epoch_program_verify",
+        ),
+        (
+            lambda value: value["recovery"].update(
+                {"maximum_batches": 1}
+            )
+            or value["recovery"]["supervised_shadow_pv"].__setitem__(
+                "repair_examples", 16
+            ),
+            "complete 55,000-example",
+        ),
+        (
+            lambda value: value["device"].__setitem__(
+                "corruption_policy", "published"
+            ),
+            "counterfactually repaired healthy array",
+        ),
+        (
+            lambda value: value["transfer"].update(
+                {
+                    "enabled": True,
+                    "source_state": "offchip_fixed_final_master",
+                    "targets": [
+                        {
+                            "assignment_seed": 87005,
+                            "endpoint_seeds": [89502, 89503, 89504, 89505],
+                        }
+                    ],
+                }
+            ),
+            "fresh-array transfer disabled",
+        ),
+    ],
+)
+def test_supervised_shadow_program_verify_rejects_scientific_drift(
+    mutation,
+    message: str,
+) -> None:
+    payload = _payload("smoke_supervised_ce_shadow_program_verify_full_epoch.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [

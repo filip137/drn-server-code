@@ -69,7 +69,11 @@ if TYPE_CHECKING:
 
 _ROOT = Path(__file__).resolve().parents[2]
 _POST_DEPLOYMENT_FAULT_POLICIES = frozenset(
-    {"star_local_pulse_sgd", "supervised_ce_pulse_adam"}
+    {
+        "star_local_pulse_sgd",
+        "supervised_ce_pulse_adam",
+        "supervised_ce_shadow_program_verify",
+    }
 )
 
 
@@ -78,6 +82,8 @@ def _post_deployment_fault_settings(spec: CrossbarTrainSpec) -> Any | None:
         return spec.recovery.star
     if spec.recovery.policy == "supervised_ce_pulse_adam":
         return spec.recovery.supervised_bp
+    if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+        return spec.recovery.supervised_shadow_pv
     return None
 
 
@@ -1684,6 +1690,242 @@ def _run_supervised_ce_pulse_recovery(
     return epoch_reports, optimizer_report
 
 
+def _train_supervised_ce_shadow(
+    *,
+    initial_apparent_q: torch.Tensor,
+    logical_minimum: torch.Tensor,
+    logical_maximum: torch.Tensor,
+    layout: tuple[CrossbarTileSpec, ...],
+    digital_scales: tuple[float, float],
+    train_loader: Iterable,
+    repair_examples: int,
+    epochs: int,
+    maximum_batches: int | None,
+    logical_learning_rates: tuple[float, float],
+    betas: tuple[float, float],
+    epsilon: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Train an all-coordinate digital ``q`` shadow with label-only CE.
+
+    This learner deliberately has no plant, teacher, or fault-mask argument.  It
+    starts from the visible post-fault endpoint and treats every coordinate as
+    trainable.  The healthy/source population support is supplied only as a
+    per-coordinate projection after each ordinary Adam step.
+    """
+
+    slices = layer_cell_slices(layout)
+    size = sum(layer_slice.stop - layer_slice.start for layer_slice in slices)
+    initial = initial_apparent_q.detach().to(device=device, dtype=torch.float32)
+    minimum = logical_minimum.detach().to(device=device, dtype=torch.float32)
+    maximum = logical_maximum.detach().to(device=device, dtype=torch.float32)
+    if (
+        initial.shape != (size,)
+        or minimum.shape != (size,)
+        or maximum.shape != (size,)
+        or not bool(torch.all(torch.isfinite(initial)))
+        or not bool(torch.all(torch.isfinite(minimum)))
+        or not bool(torch.all(torch.isfinite(maximum)))
+        or bool(torch.any(minimum > maximum))
+    ):
+        raise ValueError(
+            "Expected finite shadow initialization and healthy support for every cell."
+        )
+    if (
+        len(digital_scales) != len(slices)
+        or len(logical_learning_rates) != len(slices)
+        or any(not math.isfinite(value) or value <= 0.0 for value in digital_scales)
+        or any(
+            not math.isfinite(value) or value <= 0.0
+            for value in logical_learning_rates
+        )
+        or epochs < 1
+        or repair_examples < 1
+        or epsilon <= 0.0
+    ):
+        raise ValueError("Expected a complete positive supervised-shadow contract.")
+    effective_rates = tuple(
+        logical_rate / digital_scale
+        for logical_rate, digital_scale in zip(
+            logical_learning_rates,
+            digital_scales,
+            strict=True,
+        )
+    )
+    parameters = [
+        torch.nn.Parameter(initial[layer_slice].clone()) for layer_slice in slices
+    ]
+    optimizer = torch.optim.Adam(
+        [
+            {"params": [parameter], "lr": rate}
+            for parameter, rate in zip(parameters, effective_rates, strict=True)
+        ],
+        betas=betas,
+        eps=epsilon,
+    )
+    epoch_reports: list[dict[str, Any]] = []
+    all_inputs: list[torch.Tensor] = []
+    all_labels: list[torch.Tensor] = []
+    epoch_cohorts: list[dict[str, Any]] = []
+    optimizer_steps = 0
+    for epoch in range(1, epochs + 1):
+        epoch_inputs: list[torch.Tensor] = []
+        epoch_labels: list[torch.Tensor] = []
+        examples = 0
+        batches = 0
+        loss_sum = 0.0
+        correct = 0
+        for batch_index, (inputs, labels) in enumerate(
+            limited(train_loader, maximum_batches)
+        ):
+            cpu_inputs = inputs.detach().cpu().to(torch.float32).contiguous()
+            cpu_labels = labels.detach().cpu().to(torch.int64).contiguous()
+            epoch_inputs.append(cpu_inputs)
+            epoch_labels.append(cpu_labels)
+            all_inputs.append(cpu_inputs)
+            all_labels.append(cpu_labels)
+            inputs = cpu_inputs.to(device=device)
+            labels = cpu_labels.to(device=device)
+            optimizer.zero_grad(set_to_none=True)
+            shadow_q = torch.cat(parameters)
+            logits = standard_crossbar_logits(
+                inputs,
+                shadow_q,
+                layout,
+                digital_scales=digital_scales,
+            )
+            loss = F.cross_entropy(logits, labels)
+            loss.backward()
+            optimizer.step()
+            with torch.no_grad():
+                for parameter, layer_slice in zip(parameters, slices, strict=True):
+                    parameter.copy_(
+                        torch.maximum(
+                            torch.minimum(parameter, maximum[layer_slice]),
+                            minimum[layer_slice],
+                        )
+                    )
+            batch_examples = int(labels.numel())
+            examples += batch_examples
+            batches = batch_index + 1
+            loss_sum += float(loss.item()) * batch_examples
+            correct += int((logits.argmax(dim=1) == labels).sum().item())
+            optimizer_steps += 1
+        if examples != repair_examples:
+            raise ValueError(
+                "Expected supervised shadow Adam to consume exactly its declared "
+                f"repair cohort each epoch. Provided value: observed={examples}, "
+                f"expected={repair_examples}."
+            )
+        if any(
+            not bool(torch.all(torch.isfinite(parameter)))
+            for parameter in parameters
+        ):
+            raise RuntimeError("Expected finite supervised-shadow weights.")
+        epoch_cohort, _ = _ordered_labeled_cohort_report(
+            inputs=epoch_inputs,
+            labels=epoch_labels,
+            split=f"post_fault_supervised_shadow_epoch_{epoch}_update_stream",
+        )
+        epoch_cohorts.append(epoch_cohort)
+        current = torch.cat(parameters).detach()
+        epoch_reports.append(
+            {
+                "epoch": epoch,
+                "batches": batches,
+                "examples": examples,
+                "train_cross_entropy": loss_sum / examples,
+                "train_pre_update_accuracy": correct / examples,
+                "shadow_q_sha256": tensor_sha256(current),
+                "repair_cohort": epoch_cohort,
+            }
+        )
+    target = torch.cat(parameters).detach().cpu().clone()
+    repair_cohort, _ = _ordered_labeled_cohort_report(
+        inputs=all_inputs,
+        labels=all_labels,
+        split="post_fault_supervised_shadow_full_update_stream",
+    )
+    initial_cpu = initial.detach().cpu().clone()
+    minimum_cpu = minimum.detach().cpu()
+    maximum_cpu = maximum.detach().cpu()
+    optimizer_report = {
+        "optimizer": "torch.optim.Adam",
+        "optimizer_steps": optimizer_steps,
+        "digital_first_moment_values": size,
+        "digital_second_moment_values": size,
+        "trainable_cells": size,
+        "frozen_cells": 0,
+        "learner_accesses_fault_mask": False,
+        "teacher_access_during_updates": False,
+        "initial_state": "post_fault_apparent_q",
+        "projection_bounds": "healthy_source_population_logical_support",
+        "logical_learning_rates": list(logical_learning_rates),
+        "effective_q_learning_rates": list(effective_rates),
+        "adam_betas": list(betas),
+        "adam_epsilon": epsilon,
+        "initial_apparent_q_sha256": tensor_sha256(initial_cpu),
+        "shadow_target_q_sha256": tensor_sha256(target),
+        "shadow_target_q": _float_summary(target),
+        "changed_shadow_cells": int((target != initial_cpu).sum().item()),
+        "shadow_target_below_healthy_support": int(
+            (target < minimum_cpu).sum().item()
+        ),
+        "shadow_target_above_healthy_support": int(
+            (target > maximum_cpu).sum().item()
+        ),
+        "repair_cohort": repair_cohort,
+        "per_epoch_repair_cohorts": epoch_cohorts,
+    }
+    state = {
+        "schema": "ebl.ibm_om_crossbar_supervised_shadow_state",
+        "schema_version": 1,
+        "initial_post_fault_apparent_q": initial_cpu,
+        "fixed_final_shadow_q": target.clone(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    }
+    return target, epoch_reports, optimizer_report, state
+
+
+def _program_shadow_target(
+    *,
+    controller_port: Any,
+    shadow_target_q: torch.Tensor,
+    maximum_programming_pulses: int,
+    verify_tolerance_x: float,
+) -> dict[str, Any]:
+    """Program a shadow target through the fault-blind apparent-verify port."""
+
+    target = shadow_target_q.detach().to(torch.float32)
+    result = run_program_verify(
+        controller_port,
+        targets=(target + 1.0) / 2.0,
+        tolerance=verify_tolerance_x,
+        maximum_pulses=maximum_programming_pulses,
+        settings=ControllerSettings(kind="one_pulse"),
+    )
+    total = result.total_pulses.detach().cpu()
+    return {
+        "writer": "one_pulse_apparent_verify_persistent_handoff",
+        "controller_accesses_fault_mask": False,
+        "eligible_mask_supplied": False,
+        "target_q_sha256": tensor_sha256(target),
+        "cells": int(target.numel()),
+        "apparent_accepted": int(result.accepted.sum().item()),
+        "budget_exhausted": int(result.budget_exhausted.sum().item()),
+        "nonfinite": int(result.nonfinite.sum().item()),
+        "commanded_pulses": int(total.sum().item()),
+        "commanded_cells": int((total > 0).sum().item()),
+        "verify_reads": int(result.verify_count.sum().item()),
+        "direction_reversals": int(result.reversals.sum().item()),
+        "maximum_programming_pulses_per_cell": int(total.max().item()),
+        "maximum_programming_pulses": maximum_programming_pulses,
+        "verify_tolerance_x": verify_tolerance_x,
+        "verify_tolerance_q": 2.0 * verify_tolerance_x,
+        "apparent_endpoint_x_sha256": tensor_sha256(result.apparent_endpoint),
+    }
+
+
 def _posthoc_recovery_pulse_effects(
     *,
     faulted_state: Mapping[str, Any],
@@ -2058,6 +2300,271 @@ def _recover(
             "optimizer": optimizer_report,
             "posthoc_pulse_effects": posthoc_pulse_effects,
             "checkpoint_policy": "fixed_final_epoch_no_selection",
+        }, final_state
+
+    if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+        settings = spec.recovery.supervised_shadow_pv
+        required_context = {
+            "faulted_checkpoint_path",
+            "shadow_target_path",
+            "fault_mask",
+            "stuck_persistent_q",
+            "fault_report",
+            "fault_source_population_fingerprint",
+            "predeployment_training_cohort",
+        }
+        if (
+            settings is None
+            or spec.recovery.beta_1 is None
+            or spec.recovery.beta_2 is None
+            or spec.recovery.epsilon is None
+            or not isinstance(post_fault_context, Mapping)
+            or set(post_fault_context) != required_context
+        ):
+            raise ValueError(
+                "Expected a complete chronological supervised-shadow recovery context."
+            )
+        transition = plant.apply_stuck_at_fault_transition(
+            mask=post_fault_context["fault_mask"],
+            stuck_persistent_q=post_fault_context["stuck_persistent_q"],
+            transition_id=(
+                f"assignment-{spec.device.assignment_seed}-endpoint-{endpoint_seed}"
+            ),
+            source_population_fingerprint=str(
+                post_fault_context["fault_source_population_fingerprint"]
+            ),
+        )
+        faulted_state = plant.state_dict()
+        faulted_checkpoint_path = Path(post_fault_context["faulted_checkpoint_path"])
+        atomic_torch_save(faulted_state, faulted_checkpoint_path)
+        damaged_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        initial_apparent_q = plant.apparent.detach().cpu().clone()
+        (
+            shadow_target_q,
+            epoch_reports,
+            optimizer_report,
+            shadow_state,
+        ) = _train_supervised_ce_shadow(
+            initial_apparent_q=initial_apparent_q,
+            logical_minimum=plant.population.logical_min,
+            logical_maximum=plant.population.logical_max,
+            layout=layout,
+            digital_scales=digital_scales,
+            train_loader=train_loader,
+            repair_examples=settings.repair_examples,
+            epochs=spec.recovery.epochs,
+            maximum_batches=spec.recovery.maximum_batches,
+            logical_learning_rates=settings.logical_learning_rates,
+            betas=(spec.recovery.beta_1, spec.recovery.beta_2),
+            epsilon=spec.recovery.epsilon,
+            device=device,
+        )
+        repair_cohort = optimizer_report["repair_cohort"]
+        predeployment_cohort = post_fault_context["predeployment_training_cohort"]
+        if not isinstance(predeployment_cohort, Mapping):
+            raise RuntimeError("Expected a bound predeployment training cohort.")
+        comparison_fields = (
+            "examples",
+            "ordered_sample_ids_sha256",
+            "model_inputs_sha256",
+            "labels_sha256",
+            "ordered_example_identity_sequence_sha256",
+            "unique_example_identities",
+        )
+        same_predeployment_stream = all(
+            predeployment_cohort.get(name) == repair_cohort[name]
+            for name in comparison_fields
+        )
+        if (
+            settings.repair_examples == spec.data.num_points
+            and spec.recovery.epochs == 1
+            and not same_predeployment_stream
+        ):
+            raise RuntimeError(
+                "Expected the matched supervised-shadow arm to reuse the exact "
+                "predeployment update stream."
+            )
+        repair_cohort["same_as_predeployment_first_epoch_update_stream"] = (
+            same_predeployment_stream
+        )
+        repair_cohort["predeployment_first_epoch_update_stream"] = {
+            name: predeployment_cohort.get(name) for name in comparison_fields
+        }
+        shadow_evaluation = _evaluate(
+            effective_state=shadow_target_q,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        shadow_target_path = Path(post_fault_context["shadow_target_path"])
+        shadow_state.update(
+            {
+                "assignment_seed": spec.device.assignment_seed,
+                "endpoint_seed": endpoint_seed,
+                "healthy_population_fingerprint": plant.population.fingerprint,
+                "faulted_checkpoint_sha256": sha256_file(faulted_checkpoint_path),
+                "fixed_final_shadow_q_sha256": tensor_sha256(shadow_target_q),
+            }
+        )
+        atomic_torch_save(shadow_state, shadow_target_path)
+        pre_program_persistent_q_sha256 = tensor_sha256(plant.persistent)
+        pre_program_apparent_q_sha256 = tensor_sha256(plant.apparent)
+        programming_report = _program_shadow_target(
+            controller_port=plant.controller_port(),
+            shadow_target_q=shadow_target_q,
+            maximum_programming_pulses=settings.maximum_programming_pulses,
+            verify_tolerance_x=settings.verify_tolerance_x,
+        )
+        post_program_apparent_x_sha256 = tensor_sha256(
+            (plant.apparent.detach() + 1.0) / 2.0
+        )
+        if (
+            programming_report["apparent_endpoint_x_sha256"]
+            != post_program_apparent_x_sha256
+        ):
+            raise RuntimeError(
+                "Expected the controller endpoint to equal the final plant apparent state."
+            )
+        programming_report.update(
+            {
+                "pre_program_persistent_q_sha256": pre_program_persistent_q_sha256,
+                "pre_program_apparent_q_sha256": pre_program_apparent_q_sha256,
+                "post_program_persistent_q_sha256": tensor_sha256(
+                    plant.persistent
+                ),
+                "post_program_apparent_q_sha256": tensor_sha256(plant.apparent),
+                "apparent_endpoint_q_sha256": tensor_sha256(plant.apparent),
+                "apparent_endpoint_matches_final_plant_apparent": True,
+            }
+        )
+        final_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        final_state = plant.state_dict()
+        posthoc_pulse_effects = _posthoc_recovery_pulse_effects(
+            faulted_state=faulted_state,
+            final_state=final_state,
+            fault_mask=post_fault_context["fault_mask"],
+            layout=layout,
+        )
+        if (
+            posthoc_pulse_effects["commanded_pulses"]
+            != programming_report["commanded_pulses"]
+        ):
+            raise RuntimeError(
+                "Expected program-and-verify and post-hoc plant command counts to match."
+            )
+        mask = post_fault_context["fault_mask"].detach().cpu().to(torch.bool)
+        stuck_shadow_delta = shadow_target_q[mask] - initial_apparent_q[mask]
+        optimizer_report.update(
+            {
+                "commanded_pulses": programming_report["commanded_pulses"],
+                "commanded_cells": programming_report["commanded_cells"],
+                "writer": programming_report,
+            }
+        )
+        return {
+            "policy": spec.recovery.policy,
+            "objective": "cross_entropy",
+            "layer_scope": spec.recovery.layer_scope,
+            "network_forward_state": "apparent_q",
+            "hidden_update_state": "persistent_q",
+            "gradient_handoff": (
+                "ordinary_adam_on_digital_q_shadow_then_final_closed_loop_program_verify"
+            ),
+            "ordinary_backprop_contract": {
+                "loss": "ground_truth_label_cross_entropy",
+                "output_error": "softmax_logits_minus_onehot_label",
+                "hidden_error": "output_error_times_W2_transpose_times_relu_mask",
+                "transpose_mvm": True,
+                "cross_layer_backpropagation": True,
+                "autograd_during_updates": True,
+                "digital_fp32_shadow": True,
+                "digital_adam_moments": True,
+                "teacher_access_during_updates": False,
+                "fault_mask_access_during_updates": False,
+                "all_q_coordinates_trainable": True,
+                "initial_shadow_state": settings.shadow_initial_state,
+                "shadow_bounds": settings.shadow_bounds,
+                "logical_learning_rates": list(settings.logical_learning_rates),
+                "effective_q_learning_rates": optimizer_report[
+                    "effective_q_learning_rates"
+                ],
+                "adam_betas": [spec.recovery.beta_1, spec.recovery.beta_2],
+                "adam_epsilon": spec.recovery.epsilon,
+                "write_schedule": settings.write_schedule,
+                "writer": settings.writer,
+                "controller_fault_mask_access": False,
+            },
+            "healthy_pre_fault_apparent_validation": initial_evaluation[
+                "apparent_forward"
+            ],
+            "healthy_pre_fault_persistent_validation": initial_evaluation[
+                "persistent_diagnostic"
+            ],
+            "fault_source": dict(post_fault_context["fault_report"]),
+            "fault_transition": transition,
+            "faulted_pre_recovery_checkpoint": faulted_checkpoint_path.name,
+            "faulted_pre_recovery_checkpoint_sha256": sha256_file(
+                faulted_checkpoint_path
+            ),
+            "faulted_pre_recovery_apparent_validation": damaged_evaluation[
+                "apparent_forward"
+            ],
+            "faulted_pre_recovery_persistent_validation": damaged_evaluation[
+                "persistent_diagnostic"
+            ],
+            "shadow_target_checkpoint": shadow_target_path.name,
+            "shadow_target_checkpoint_sha256": sha256_file(shadow_target_path),
+            "shadow_initial_apparent_q_sha256": tensor_sha256(initial_apparent_q),
+            "shadow_target_q_sha256": tensor_sha256(shadow_target_q),
+            "shadow_target_validation": shadow_evaluation,
+            "posthoc_shadow_fault_analysis": {
+                "analysis_accesses_fault_mask_posthoc": True,
+                "learner_accesses_fault_mask": False,
+                "fault_cells": int(mask.sum().item()),
+                "changed_fault_cell_targets": int(
+                    (stuck_shadow_delta != 0.0).sum().item()
+                ),
+                "fault_cell_target_delta_l1": float(
+                    stuck_shadow_delta.abs().sum().item()
+                ),
+                "fault_cell_target_delta_l2": float(
+                    stuck_shadow_delta.square().sum().sqrt().item()
+                ),
+            },
+            "epochs": epoch_reports,
+            "fixed_final_epoch": spec.recovery.epochs,
+            "fixed_final_apparent_validation": final_evaluation["apparent_forward"],
+            "fixed_final_persistent_validation": final_evaluation[
+                "persistent_diagnostic"
+            ],
+            "optimizer": optimizer_report,
+            "program_verify": programming_report,
+            "posthoc_pulse_effects": posthoc_pulse_effects,
+            "checkpoint_policy": (
+                "fixed_final_epoch_then_single_program_verify_no_selection"
+            ),
         }, final_state
 
     if spec.recovery.policy == "supervised_ce_pulse_adam":
@@ -2916,17 +3423,24 @@ def run_train(request: "TrainRequest") -> int:
                 ),
             )
             recovery_train_loader = loaders.train
-            if spec.recovery.policy == "supervised_ce_pulse_adam":
-                bp_settings = spec.recovery.supervised_bp
-                if bp_settings is None:  # pragma: no cover - parser invariant
-                    raise RuntimeError("Expected supervised-BP recovery settings.")
+            if spec.recovery.policy in {
+                "supervised_ce_pulse_adam",
+                "supervised_ce_shadow_program_verify",
+            }:
+                supervised_settings = (
+                    spec.recovery.supervised_bp
+                    if spec.recovery.policy == "supervised_ce_pulse_adam"
+                    else spec.recovery.supervised_shadow_pv
+                )
+                if supervised_settings is None:  # pragma: no cover - parser invariant
+                    raise RuntimeError("Expected supervised recovery settings.")
                 full_training_examples = 60_000 - spec.data.validation_points
                 repair_data = replace(
                     spec.data,
                     num_points=(
                         None
-                        if bp_settings.repair_examples == full_training_examples
-                        else bp_settings.repair_examples
+                        if supervised_settings.repair_examples == full_training_examples
+                        else supervised_settings.repair_examples
                     ),
                 )
                 recovery_train_loader = build_mnist_loaders(
@@ -2973,6 +3487,10 @@ def run_train(request: "TrainRequest") -> int:
                         "first_epoch_training_cohort"
                     ],
                 }
+                if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+                    post_fault_context["shadow_target_path"] = (
+                        endpoint_artifact_root / "supervised_shadow_state.pt"
+                    )
                 post_fault_runtime_artifact_paths.append(
                     (
                         healthy_p0_path,
@@ -3056,9 +3574,17 @@ def run_train(request: "TrainRequest") -> int:
                         ),
                     )
                 )
+                if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+                    post_fault_runtime_artifact_paths.append(
+                        (
+                            Path(post_fault_context["shadow_target_path"]),
+                            "supervised_shadow_optimizer_state",
+                        )
+                    )
             p0_test_evaluation = None
             faulted_test_evaluation = None
             final_test_evaluation = None
+            shadow_target_test_evaluation = None
             if spec.evaluation.evaluate_test:
                 p0_plant_generator = torch.Generator(device=device.type)
                 p0_plant_generator.manual_seed(1)
@@ -3108,6 +3634,30 @@ def run_train(request: "TrainRequest") -> int:
                         maximum_batches=None,
                         sample_limit=spec.evaluation.sample_limit,
                     )
+                if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+                    if post_fault_context is None:
+                        raise RuntimeError("Expected a saved supervised shadow state.")
+                    saved_shadow = torch.load(
+                        Path(post_fault_context["shadow_target_path"]),
+                        map_location="cpu",
+                        weights_only=True,
+                    )
+                    shadow_q = saved_shadow.get("fixed_final_shadow_q")
+                    if not isinstance(shadow_q, torch.Tensor):
+                        raise RuntimeError(
+                            "Expected the supervised shadow artifact to contain its target."
+                        )
+                    shadow_target_test_evaluation = _evaluate(
+                        effective_state=shadow_q,
+                        digital_scales=digital_scales,
+                        layout=layout,
+                        teacher=teacher,
+                        loader=loaders.test,
+                        device=device,
+                        maximum_batches=None,
+                        sample_limit=spec.evaluation.sample_limit,
+                    )
+                    recovery["shadow_target_test"] = shadow_target_test_evaluation
                 final_test_evaluation = _evaluate_plant_states(
                     plant=plant,
                     digital_scales=digital_scales,
@@ -3466,6 +4016,31 @@ def run_train(request: "TrainRequest") -> int:
                         ),
                     }
                 )
+            if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+                aggregates.update(
+                    {
+                        "shadow_target_validation_accuracy": _aggregate(
+                            endpoint_rows,
+                            (
+                                "recovery",
+                                "shadow_target_validation",
+                                "student_accuracy",
+                            ),
+                        ),
+                        "shadow_program_verify_apparent_accepted": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "program_verify", "apparent_accepted"),
+                        ),
+                        "shadow_program_verify_budget_exhausted": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "program_verify", "budget_exhausted"),
+                        ),
+                        "shadow_program_verify_reads": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "program_verify", "verify_reads"),
+                        ),
+                    }
+                )
         else:
             aggregates.update(
                 {
@@ -3563,6 +4138,11 @@ def run_train(request: "TrainRequest") -> int:
                     aggregates["star_recovery_endpoint_counts"] = aggregates[
                         "post_fault_recovery_endpoint_counts"
                     ]
+                if spec.recovery.policy == "supervised_ce_shadow_program_verify":
+                    aggregates["shadow_target_test_accuracy"] = _aggregate(
+                        endpoint_rows,
+                        ("recovery", "shadow_target_test", "student_accuracy"),
+                    )
             if (
                 spec.evaluation.sample_limit is None
                 and spec.recovery.policy not in _POST_DEPLOYMENT_FAULT_POLICIES
@@ -3667,7 +4247,12 @@ def run_train(request: "TrainRequest") -> int:
                     else (
                         "autograd_backprop_apparent_q_to_persistent_pulse_update"
                         if spec.recovery.policy == "supervised_ce_pulse_adam"
-                        else "identity_ste_apparent_q_to_persistent_pulse_update"
+                        else (
+                            "ordinary_adam_on_digital_q_shadow_then_final_closed_loop_program_verify"
+                            if spec.recovery.policy
+                            == "supervised_ce_shadow_program_verify"
+                            else "identity_ste_apparent_q_to_persistent_pulse_update"
+                        )
                     )
                 ),
                 "star_local_recovery": (
@@ -3683,7 +4268,11 @@ def run_train(request: "TrainRequest") -> int:
                 ),
                 "ordinary_supervised_bp_recovery": (
                     None
-                    if spec.recovery.policy != "supervised_ce_pulse_adam"
+                    if spec.recovery.policy
+                    not in {
+                        "supervised_ce_pulse_adam",
+                        "supervised_ce_shadow_program_verify",
+                    }
                     else {
                         "loss": "ground_truth_label_cross_entropy",
                         "transpose_mvm": True,
@@ -3691,6 +4280,12 @@ def run_train(request: "TrainRequest") -> int:
                         "autograd": True,
                         "digital_adam_moments": True,
                         "teacher_access_during_updates": False,
+                        "implementation": (
+                            "open_loop_bernoulli_one_pulse_adam"
+                            if spec.recovery.policy == "supervised_ce_pulse_adam"
+                            else "continuous_shadow_adam_then_final_same_array_program_verify"
+                        ),
+                        "fault_mask_access_during_updates": False,
                     }
                 ),
                 "passive_kcl_denominator": "not_applicable_standard_crossbar_MVM",
@@ -3846,6 +4441,20 @@ def run_train(request: "TrainRequest") -> int:
                         "corrupt_persistent_q_is_stuck_but_apparent_q_retains_AIHWKit_write_noise_resampling",
                     ]
                     if spec.recovery.policy == "supervised_ce_pulse_adam"
+                    else []
+                ),
+                *(
+                    [
+                        f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam",
+                        "post_fault_shadow_retraining_uses_ground_truth_cross_entropy_full_network_autograd_and_digital_Adam",
+                        "continuous_shadow_and_Adam_moments_are_privileged_off_array_state_not_fully_on_chip_learning",
+                        "the_fault_mask_is_hidden_from_the_learner_and_program_verify_controller_but_available_to_posthoc_audits",
+                        "post_deployment_fault_transition_replays_explicitly_enabled_AIHWKit_published_OM_corrupt_cells_after_healthy_programming",
+                        "final_accuracy_uses_the_apparent_program_verify_endpoint_while_persistent_q_is_reported_separately",
+                        "corrupt_persistent_q_is_stuck_but_apparent_q_retains_AIHWKit_write_noise_resampling",
+                    ]
+                    if spec.recovery.policy
+                    == "supervised_ce_shadow_program_verify"
                     else []
                 ),
                 *(

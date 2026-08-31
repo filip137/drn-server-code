@@ -119,6 +119,29 @@ class SupervisedBpRecoverySettings:
 
 
 @dataclass(frozen=True)
+class SupervisedShadowPvRecoverySettings:
+    repair_examples: int
+    label_source: str
+    update_batching: str
+    gradient_engine: str
+    optimizer_state: str
+    optimizer_coordinate: str
+    logical_learning_rates: tuple[float, float]
+    shadow_initial_state: str
+    shadow_bounds: str
+    write_schedule: str
+    writer: str
+    maximum_programming_pulses: int
+    verify_tolerance_x: float
+    fault_transition: str
+    fault_source_corruption_policy: str
+    fault_source_preset_default_corrupt_devices_prob: float
+    fault_source_enabled_corrupt_devices_prob: float
+    fault_source_corrupt_devices_range: float
+    fault_mask_access: str
+
+
+@dataclass(frozen=True)
 class RecoverySettings:
     policy: str
     layer_scope: str
@@ -132,6 +155,7 @@ class RecoverySettings:
     maximum_batches: int | None
     star: StarRecoverySettings | None
     supervised_bp: SupervisedBpRecoverySettings | None
+    supervised_shadow_pv: SupervisedShadowPvRecoverySettings | None
 
 
 @dataclass(frozen=True)
@@ -520,28 +544,49 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         "policy",
         "layer_scope",
         "epochs",
-        "learning_rates_q",
         "objective",
-        "pulse_cap_per_cell",
         "maximum_batches",
     }
     if policy == "star_local_pulse_sgd":
-        _keys(raw, path, common | {"star"})
+        _keys(raw, path, common | {"learning_rates_q", "pulse_cap_per_cell", "star"})
     elif policy == "supervised_ce_pulse_adam":
-        _keys(raw, path, common | {"betas", "epsilon", "supervised_bp"})
+        _keys(
+            raw,
+            path,
+            common
+            | {
+                "learning_rates_q",
+                "pulse_cap_per_cell",
+                "betas",
+                "epsilon",
+                "supervised_bp",
+            },
+        )
+    elif policy == "supervised_ce_shadow_program_verify":
+        _keys(
+            raw,
+            path,
+            common | {"betas", "epsilon", "supervised_shadow_pv"},
+        )
     else:
-        _keys(raw, path, common | {"betas", "epsilon"})
+        _keys(
+            raw,
+            path,
+            common | {"learning_rates_q", "pulse_cap_per_cell", "betas", "epsilon"},
+        )
     if policy not in {
         "none",
         "pulse_adam",
         "star_local_pulse_sgd",
         "supervised_ce_pulse_adam",
+        "supervised_ce_shadow_program_verify",
     }:
         raise config_error(
             f"{path}.policy",
             (
-                "to be 'none', 'pulse_adam', 'star_local_pulse_sgd', or "
-                "'supervised_ce_pulse_adam'"
+                "to be 'none', 'pulse_adam', 'star_local_pulse_sgd', "
+                "'supervised_ce_pulse_adam', or "
+                "'supervised_ce_shadow_program_verify'"
             ),
             policy,
         )
@@ -550,16 +595,28 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             f"{path}.layer_scope", "to be 'all', 'input_only', or 'output_only'", raw["layer_scope"]
         )
     epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=0)
-    rates = _pair(raw["learning_rates_q"], f"{path}.learning_rates_q", minimum=0.0)
-    pulse_cap = _integer(
-        raw["pulse_cap_per_cell"], f"{path}.pulse_cap_per_cell", minimum=0
-    )
+    if policy == "supervised_ce_shadow_program_verify":
+        # The physical-coordinate rates depend on the deployed layer scales and
+        # are therefore derived by the runtime from the declared logical rates.
+        rates = (0.0, 0.0)
+        pulse_cap = 0
+    else:
+        rates = _pair(raw["learning_rates_q"], f"{path}.learning_rates_q", minimum=0.0)
+        pulse_cap = _integer(
+            raw["pulse_cap_per_cell"], f"{path}.pulse_cap_per_cell", minimum=0
+        )
     star = None
     supervised_bp = None
+    supervised_shadow_pv = None
     beta_1: float | None = None
     beta_2: float | None = None
     epsilon: float | None = None
-    if policy in {"none", "pulse_adam", "supervised_ce_pulse_adam"}:
+    if policy in {
+        "none",
+        "pulse_adam",
+        "supervised_ce_pulse_adam",
+        "supervised_ce_shadow_program_verify",
+    }:
         betas = _pair(raw["betas"], f"{path}.betas", minimum=0.0)
         if any(item >= 1.0 for item in betas):
             raise config_error(f"{path}.betas", "to contain values in [0, 1)", raw["betas"])
@@ -576,7 +633,10 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             )
         expected_objective = (
             "cross_entropy"
-            if policy == "supervised_ce_pulse_adam"
+            if policy in {
+                "supervised_ce_pulse_adam",
+                "supervised_ce_shadow_program_verify",
+            }
             else "teacher_kl"
         )
         if raw["objective"] != expected_objective:
@@ -807,6 +867,154 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             ],
             fault_mask_access=expected["fault_mask_access"],
         )
+    elif policy == "supervised_ce_shadow_program_verify":
+        if epochs != 1 or raw["layer_scope"] != "all":
+            raise config_error(
+                path,
+                (
+                    "to use exactly one epoch and scope='all' for supervised "
+                    "continuous-shadow retraining with final program-and-verify"
+                ),
+                dict(raw),
+            )
+        shadow_path = f"{path}.supervised_shadow_pv"
+        shadow_raw = _object(raw["supervised_shadow_pv"], shadow_path)
+        _keys(
+            shadow_raw,
+            shadow_path,
+            {
+                "repair_examples",
+                "label_source",
+                "update_batching",
+                "gradient_engine",
+                "optimizer_state",
+                "optimizer_coordinate",
+                "logical_learning_rates",
+                "shadow_initial_state",
+                "shadow_bounds",
+                "write_schedule",
+                "writer",
+                "maximum_programming_pulses",
+                "verify_tolerance_x",
+                "fault_transition",
+                "fault_source_corruption_policy",
+                "fault_source_preset_default_corrupt_devices_prob",
+                "fault_source_enabled_corrupt_devices_prob",
+                "fault_source_corrupt_devices_range",
+                "fault_mask_access",
+            },
+        )
+        expected = {
+            "label_source": "ground_truth",
+            "update_batching": "minibatch",
+            "gradient_engine": "autograd_full_network_backprop",
+            "optimizer_state": "digital_fp32_shadow_and_adam",
+            "optimizer_coordinate": (
+                "logical_weight_learning_rate_converted_to_q"
+            ),
+            "shadow_initial_state": "post_fault_apparent_q",
+            "shadow_bounds": "healthy_source_population_q_bounds",
+            "write_schedule": "fixed_final_epoch_program_verify",
+            "writer": "one_pulse_apparent_verify_persistent_handoff",
+            "fault_transition": "post_deployment_published_companion_replay",
+            "fault_source_corruption_policy": "published",
+            "fault_mask_access": "forbidden",
+        }
+        for name, expected_value in expected.items():
+            if shadow_raw[name] != expected_value:
+                raise config_error(
+                    f"{shadow_path}.{name}",
+                    f"to equal {expected_value!r}",
+                    shadow_raw[name],
+                )
+        logical_rates = _pair(
+            shadow_raw["logical_learning_rates"],
+            f"{shadow_path}.logical_learning_rates",
+            minimum=0.0,
+        )
+        if logical_rates != (1e-3, 1e-3):
+            raise config_error(
+                f"{shadow_path}.logical_learning_rates",
+                "to equal the predeclared logical rates [0.001, 0.001]",
+                shadow_raw["logical_learning_rates"],
+            )
+        maximum_programming_pulses = _integer(
+            shadow_raw["maximum_programming_pulses"],
+            f"{shadow_path}.maximum_programming_pulses",
+            minimum=1,
+        )
+        if maximum_programming_pulses != 128:
+            raise config_error(
+                f"{shadow_path}.maximum_programming_pulses",
+                "to equal the predeclared 128-pulse program-and-verify cap",
+                shadow_raw["maximum_programming_pulses"],
+            )
+        verify_tolerance_x = _number(
+            shadow_raw["verify_tolerance_x"],
+            f"{shadow_path}.verify_tolerance_x",
+            minimum=0.0,
+        )
+        if not math.isclose(
+            float(verify_tolerance_x), 0.023725, rel_tol=0.0, abs_tol=1e-12
+        ):
+            raise config_error(
+                f"{shadow_path}.verify_tolerance_x",
+                "to equal the predeclared apparent-x tolerance 0.023725",
+                shadow_raw["verify_tolerance_x"],
+            )
+        fault_source_scalars = {
+            "fault_source_preset_default_corrupt_devices_prob": 0.0,
+            "fault_source_enabled_corrupt_devices_prob": 0.1348,
+            "fault_source_corrupt_devices_range": 0.01,
+        }
+        for name, expected_value in fault_source_scalars.items():
+            parsed = _number(shadow_raw[name], f"{shadow_path}.{name}", minimum=0.0)
+            if not math.isclose(
+                float(parsed), expected_value, rel_tol=0.0, abs_tol=1e-12
+            ):
+                raise config_error(
+                    f"{shadow_path}.{name}",
+                    f"to equal {expected_value!r}",
+                    shadow_raw[name],
+                )
+        supervised_shadow_pv = SupervisedShadowPvRecoverySettings(
+            repair_examples=_integer(
+                shadow_raw["repair_examples"],
+                f"{shadow_path}.repair_examples",
+                minimum=1,
+            ),
+            label_source=expected["label_source"],
+            update_batching=expected["update_batching"],
+            gradient_engine=expected["gradient_engine"],
+            optimizer_state=expected["optimizer_state"],
+            optimizer_coordinate=expected["optimizer_coordinate"],
+            logical_learning_rates=logical_rates,
+            shadow_initial_state=expected["shadow_initial_state"],
+            shadow_bounds=expected["shadow_bounds"],
+            write_schedule=expected["write_schedule"],
+            writer=expected["writer"],
+            maximum_programming_pulses=maximum_programming_pulses,
+            verify_tolerance_x=float(verify_tolerance_x),
+            fault_transition=expected["fault_transition"],
+            fault_source_corruption_policy=expected[
+                "fault_source_corruption_policy"
+            ],
+            fault_source_preset_default_corrupt_devices_prob=(
+                fault_source_scalars[
+                    "fault_source_preset_default_corrupt_devices_prob"
+                ]
+            ),
+            fault_source_enabled_corrupt_devices_prob=(
+                fault_source_scalars[
+                    "fault_source_enabled_corrupt_devices_prob"
+                ]
+            ),
+            fault_source_corrupt_devices_range=fault_source_scalars[
+                "fault_source_corrupt_devices_range"
+            ],
+            fault_mask_access=expected["fault_mask_access"],
+        )
+        pulse_cap = maximum_programming_pulses
     return RecoverySettings(
         policy=policy,
         layer_scope=raw["layer_scope"],
@@ -820,6 +1028,7 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         maximum_batches=_optional_positive_integer(raw["maximum_batches"], f"{path}.maximum_batches"),
         star=star,
         supervised_bp=supervised_bp,
+        supervised_shadow_pv=supervised_shadow_pv,
     )
 
 
@@ -977,7 +1186,10 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
             ),
             dict(raw),
         )
-    if recovery.policy == "supervised_ce_pulse_adam" and (
+    if recovery.policy in {
+        "supervised_ce_pulse_adam",
+        "supervised_ce_shadow_program_verify",
+    } and (
         device.corruption_policy != "counterfactual_repaired"
         or transfer.enabled
         or offchip.policy != "continuous_hwa"
@@ -1009,6 +1221,46 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
                     f"ceil(repair_examples/{data.batch_size})"
                 ),
                 dict(raw["recovery"]),
+            )
+    if recovery.policy == "supervised_ce_shadow_program_verify":
+        shadow_settings = recovery.supervised_shadow_pv
+        if shadow_settings is None:  # pragma: no cover - parser invariant
+            raise RuntimeError("Expected supervised shadow/P&V settings after parsing.")
+        available = 60_000 - data.validation_points
+        expected_batches = math.ceil(
+            shadow_settings.repair_examples / data.batch_size
+        )
+        if (
+            shadow_settings.repair_examples != available
+            or recovery.maximum_batches != expected_batches
+        ):
+            raise config_error(
+                "config.recovery",
+                (
+                    "to consume exactly one complete 55,000-example supervised "
+                    "repair epoch with maximum_batches="
+                    f"ceil(55000/{data.batch_size})"
+                ),
+                dict(raw["recovery"]),
+            )
+        if (
+            shadow_settings.maximum_programming_pulses
+            != device.maximum_programming_pulses
+            or not math.isclose(
+                shadow_settings.verify_tolerance_x,
+                device.verify_tolerance_x,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or shadow_settings.writer != device.controller
+        ):
+            raise config_error(
+                "config.recovery.supervised_shadow_pv",
+                (
+                    "to use the same program-and-verify cap, apparent-x "
+                    "tolerance, and writer as config.device"
+                ),
+                dict(raw["recovery"]["supervised_shadow_pv"]),
             )
     reference = _parse_drn_reference(raw["drn_reference"])
     if reference.assignment_seed != device.assignment_seed or reference.endpoint_seeds != device.endpoint_seeds:

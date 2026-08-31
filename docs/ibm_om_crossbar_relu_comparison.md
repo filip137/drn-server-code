@@ -404,9 +404,9 @@ validated. The result therefore motivates an explicit defect-remapping or
 spare-row/column control before testing whether on-chip updates can compensate
 for surviving defects.
 
-## Ordinary supervised-BP post-fault repair control
+## Open-loop supervised-BP pulse control and corrected retraining follow-up
 
-The matched ordinary-retraining control is predeclared in
+The first supervised-BP control is declared in
 [`studies/mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json`](../studies/mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json).
 It asks whether the same chronological post-deployment damage is compensable
 at all before interpreting failure of a local recovery objective. It is not
@@ -425,10 +425,19 @@ The update helper receives labels, inputs, current apparent `q`, and a
 restricted pulse port. It receives neither teacher logits nor the fault mask.
 Ordinary BP nevertheless propagates the output error through `W2^T`, uses
 autograd, and retains FP32 first and second Adam moments outside the array.
-This is therefore a privileged normal-retraining ceiling, not a fully local or
-fully on-chip learning claim. The plant alone enforces the immutable sampled
-faults; post-hoc analysis separates commands sent to stuck sites from actual
-persistent movement of healthy sites.
+The plant alone enforces the immutable sampled faults; post-hoc analysis
+separates commands sent to stuck sites from actual persistent movement of
+healthy sites.
+
+This policy is now classified precisely as **open-loop Bernoulli one-pulse
+Adam**, not ordinary continuous Adam retraining. For every minibatch it maps a
+digital Adam command `c_j` independently to at most one physical pulse with
+probability `min(1, |c_j|/dw_nominal)`. It has neither a sub-pulse residual nor
+a continuous weight shadow. In addition, every selected IBM-OM write refreshes
+the apparent state with write-noise standard deviation
+`1.4113*0.0949 = 0.13393 q`, larger than the nominal `0.0949 q` pulse. The
+algorithm can therefore erase a favorable P&V-conditioned apparent endpoint
+while attempting to improve its hidden persistent state.
 
 Two budgets are frozen before results are inspected. The matched control uses
 the same one shuffled 16-example minibatch and `6e-5` effective-`q` learning
@@ -442,15 +451,62 @@ examples (`3,438` minibatches). It retains `[6e-5,6e-5]`, Adam
 `[0.9,0.999]`, epsilon `1e-8`, all layers, the 64-command per-cell cap, and
 fixed-final evaluation with no learning-rate tuning or checkpoint selection.
 
-Both arms must reproduce bit-exact healthy P0 and immediate faulted states on
+Both arms reproduced bit-exact healthy P0 and immediate faulted states on
 assignment `87004` and endpoints `89402-89405`. Primary accuracy uses the
 first 1,000 official test examples and reports healthy-to-fault damage,
 fault-to-final recovery gain, and recovery fraction per endpoint. The full
 epoch is promising only if mean gain is positive, at least three endpoints
 improve, no endpoint loses more than two percentage points, and mean recovery
 fraction reaches `0.25`. Four programming streams on one assignment are not
-four independent arrays, and the declared study remains a plan until its
-artifacts are run, verified, and reviewed.
+four independent arrays.
+
+The artifact-verified but not yet reviewed study reached `95.775%` healthy,
+`82.050%` immediately after the fault, and `89.175%` after the full open-loop
+epoch. It recovered `7.125` percentage points, but narrowly missed its separate
+strong threshold. The 16-example control recovered `0.000` points on average.
+These numbers establish that the old writer can compensate part of the damage;
+they do not establish the ceiling of normal BP.
+
+Exact replay on endpoint `89402` exposed the failure mechanism. The open-loop
+writer peaked at `93.0%` after 1,000 minibatches and fell to `89.8%` at the
+forced end of the epoch, even as persistent accuracy initially improved. The
+same labels, order, faulted state, and scaled crossbar gradients under bounded
+continuous Adam reached `96.3%`. Training every coordinate without access to
+the fault mask and then applying one closed-loop program-and-verify pass to the
+same faulted plant reached `95.7%` apparent accuracy (`39,685/39,700` cells
+accepted). This is a development diagnostic, not workflow evidence.
+
+The corrected matched study is declared in
+[`studies/mnist-ibm-om-crossbar-shadow-program-verify-retraining-debug-20260831-v1.json`](../studies/mnist-ibm-om-crossbar-shadow-program-verify-retraining-debug-20260831-v1.json).
+It preserves the open-loop arm and adds
+`supervised_ce_shadow_program_verify`:
+
+```text
+healthy programmed P0
+-> identical published-companion fault transition
+-> copy faulted apparent q into an FP32 digital shadow
+-> one 55,000-example epoch of label-CE Adam on every shadow coordinate
+-> clamp only to the healthy array support, without a defect map
+-> one final same-array closed-loop apparent-verify programming pass
+```
+
+The ordinary Adam learning rate is `1e-3` in logical-weight coordinates and is
+converted per layer to the corresponding `q` coordinate using the frozen
+digital scales. Adam uses `[0.9,0.999]`, epsilon `1e-8`, and no checkpoint
+selection. Programming occurs only after the fixed final epoch, uses the same
+one-pulse controller and verify tolerance as deployment, and raises the cap to
+`128` pulses per cell. The recovery learner receives labels but neither teacher
+logits nor the fault mask; all shadow coordinates remain trainable, while only
+the plant enforces stuck persistent cells.
+
+Because endpoint `89402` was used to diagnose and choose this fixed correction,
+it is development evidence. Endpoints `89403-89405` are the untouched primary
+cohort. The correction passes only if their mean final apparent accuracy is at
+least `95%`, all three improve from the immediate fault, and their mean remains
+within two percentage points of their healthy mean. This is a privileged
+off-array retrain-then-reprogram ceiling, not fully on-chip learning. Apparent
+post-write accuracy remains primary; persistent-q, fresh-read, retention, and
+independent-array durability remain separate requirements.
 
 ## Planned STAR-inspired local-state-only recovery
 
