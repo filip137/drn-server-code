@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_corrupt_source_hwa_cross_array_pulse_adam.v1",
+  "source_assignment_seed": 93001,
+  "source_train_endpoint_seeds": [93201, 93202, 93203, 93204],
+  "source_selection_endpoint_seeds": [93221, 93222, 93223, 93224],
+  "target_assignment_seed": 93002,
+  "target_endpoint_seeds": [93301, 93302, 93303, 93304, 93305],
+  "p0_endpoint_seed": 93301
+}

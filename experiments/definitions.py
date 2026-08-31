@@ -114,6 +114,12 @@ from experiments.mnist_relu_drn.ibm_om_star_inspired_hidden_kd_fault_recovery_co
     parse_star_inspired_hidden_kd_fault_recovery_config,
     resolve_star_inspired_hidden_kd_fault_recovery_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_corrupt_source_hwa_cross_array_pulse_adam_config import (
+    EXPERIMENT_ID as IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_SCHEMA_VERSION,
+    parse_corrupt_source_hwa_cross_array_pulse_adam_config,
+    resolve_corrupt_source_hwa_cross_array_pulse_adam_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -1063,6 +1069,25 @@ IBM_OM_STAR_INSPIRED_HIDDEN_KD_FAULT_RECOVERY_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_V1 = ExperimentDefinition(
+    experiment_id=(
+        IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_EXPERIMENT_ID
+    ),
+    schema_version=(
+        IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_SCHEMA_VERSION
+    ),
+    description=(
+        "Start a DRN from frozen ReLU weights, train through noisy persistent "
+        "IBM OM endpoints with native published corrupt cells, deploy the "
+        "logical master to a fresh published-corrupt array, and recover one "
+        "exact persistent target state with open-loop stochastic-pulse Adam."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_corrupt_source_hwa_cross_array_pulse_adam_config,
+    resolver=resolve_corrupt_source_hwa_cross_array_pulse_adam_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
@@ -1077,6 +1102,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_V1.experiment_id: IBM_OM_WINSORIZED_ENDPOINT_OPTIMIZER_RECOVERY_V1,
     IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_V1.experiment_id: IBM_OM_WINSORIZED_TT_OUTPUT_TRANSFER_FOLLOWUP_V1,
     IBM_OM_STAR_INSPIRED_HIDDEN_KD_FAULT_RECOVERY_V1.experiment_id: IBM_OM_STAR_INSPIRED_HIDDEN_KD_FAULT_RECOVERY_V1,
+    IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_V1.experiment_id: IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_V1,
     IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
