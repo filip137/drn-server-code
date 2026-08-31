@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_corrupt_multi_source_hwa_tuned_recovery.v1",
+  "training_assignment_seeds": [94001, 94002],
+  "training_endpoint_seeds": [
+    [94101, 94102, 94103, 94104],
+    [94111, 94112, 94113, 94114]
+  ],
+  "development_assignment_seed": 94003,
+  "development_endpoint_seeds": [94201, 94202, 94203, 94204],
+  "target_assignment_seed": 94004,
+  "target_endpoint_seeds": [94301, 94302, 94303, 94304, 94305],
+  "p0_endpoint_seed": 94301,
+  "recovery_pulse_selection_seed": 94401,
+  "recovery_data_order_seed": 94402,
+  "arms": [
+    "single_w2_x1",
+    "single_w2_x30",
+    "multi_w2_x1",
+    "multi_w2_x30"
+  ]
+}
