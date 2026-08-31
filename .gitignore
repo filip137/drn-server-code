@@ -50,6 +50,7 @@ labs/mnist_pytorch/
 
 # Images (generated outputs)
 *.png
+!docs/figures/ibm_om_headroom_distribution.png
 
 # Data / reports
 *.pdf
