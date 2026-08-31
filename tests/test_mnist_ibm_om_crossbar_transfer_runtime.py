@@ -11,6 +11,7 @@ import torch
 from experiments.mnist_analog_relu.config import parse_crossbar_config
 from experiments.mnist_analog_relu import runtime
 from experiments.schema import ConfigError
+from training.ibm_reram_hwa import IbmReramArrayPopulation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,6 +183,119 @@ def test_same_array_transfer_pairs_hidden_persistent_state_not_apparent() -> Non
         "identity_source_final_hidden_persistent_q"
     )
     assert report["copied_source_persistent_state"] is True
+
+
+def _published_population() -> IbmReramArrayPopulation:
+    corrupt = torch.tensor([True, False])
+    return IbmReramArrayPopulation(
+        assignment_seed=87004,
+        corruption_policy="published",
+        binding_keys=("crossbar.layer0.tile0", "crossbar.layer1.tile0"),
+        binding_shapes=((1, 1), (1, 1)),
+        binding_sampling_seeds=(11, 12),
+        donor_sampling_seeds=(21, 22),
+        nominal_dw_min=0.1,
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        max_bound=torch.tensor([0.05, 1.0]),
+        min_bound=torch.tensor([0.05, -1.0]),
+        dwmin_up=torch.tensor([0.0, 0.1]),
+        dwmin_down=torch.tensor([0.0, 0.1]),
+        reference=torch.zeros(2),
+        corrupt=corrupt,
+        published_corrupt=corrupt.clone(),
+        fingerprint="published-runtime-fixture",
+        aihwkit_version="1.1.0",
+    )
+
+
+def test_published_defects_are_explicit_in_mapping_and_programming_reports() -> None:
+    population = _published_population()
+    codebook = runtime.build_deterministic_effective_codebook(
+        population,
+        maximum_pulses=3,
+    )
+    requested = torch.tensor([0.8, 0.8])
+    continuous = torch.maximum(
+        torch.minimum(requested, population.logical_max),
+        population.logical_min,
+    )
+    deterministic, indices = runtime.project_to_nearest_effective_code(
+        codebook,
+        requested,
+    )
+    mapping = runtime._mapping_report(
+        population=population,
+        requested=requested,
+        continuous=continuous,
+        codebook=deterministic,
+        pulse_indices=indices,
+        level_counts=codebook.effective_level_counts,
+    )
+
+    assert continuous[0].item() == pytest.approx(0.05)
+    assert deterministic[0].item() == pytest.approx(0.05)
+    assert mapping["defects"]["final_corrupt_cells"] == 1
+    assert mapping["defects"]["published_corrupt_cells"] == 1
+    assert mapping["final_corrupt_one_level_cells"] == 1
+    assert mapping["defects"]["per_binding"] == [
+        {
+            "binding_key": "crossbar.layer0.tile0",
+            "binding_shape": [1, 1],
+            "cell_offset_start": 0,
+            "cell_offset_stop": 1,
+            "cells": 1,
+            "final_corrupt_cells": 1,
+            "published_corrupt_cells": 1,
+            "repaired_published_corrupt_cells": 0,
+            "unattributed_final_corrupt_cells": 0,
+            "collapsed_zero_step_cells": 1,
+        },
+        {
+            "binding_key": "crossbar.layer1.tile0",
+            "binding_shape": [1, 1],
+            "cell_offset_start": 1,
+            "cell_offset_stop": 2,
+            "cells": 1,
+            "final_corrupt_cells": 0,
+            "published_corrupt_cells": 0,
+            "repaired_published_corrupt_cells": 0,
+            "unattributed_final_corrupt_cells": 0,
+            "collapsed_zero_step_cells": 0,
+        },
+    ]
+
+    plant, programming = runtime._program_endpoint(
+        population=population,
+        requested=requested,
+        assignment_seed=87004,
+        endpoint_seed=89402,
+        maximum_pulses=3,
+        tolerance_x=0.01,
+        device=torch.device("cpu"),
+        stream_role="published_defect_test",
+        random_stream_fingerprint=population.fingerprint,
+    )
+    assert plant.persistent[0].item() == pytest.approx(0.05)
+    assert programming["defects"]["final_corrupt_cells"] == 1
+    assert programming["defects"]["published_corrupt_cells"] == 1
+    assert programming["plant_pulses"]["pulses_to_final_corrupt_cells"] == 3
+    assert programming["final_corrupt_endpoint"] == {
+        "cells": 1,
+        "exact_target_in_support": 0,
+        "exact_target_outside_support": 1,
+        "verify_window_intersects_support": 0,
+        "verify_window_disjoint_support": 1,
+        "apparent_accepted": 0,
+        "persistent_within_tolerance": 0,
+        "apparent_accepted_persistent_outside_tolerance": 0,
+        "budget_exhausted": 1,
+        "nonfinite": 0,
+        "verify_reads": 4,
+        "programming_pulses": 3,
+        "final_saturated_lower": 1,
+        "final_saturated_upper": 1,
+    }
 
 
 def test_plant_evaluation_reports_apparent_forward_and_persistent_diagnostic(

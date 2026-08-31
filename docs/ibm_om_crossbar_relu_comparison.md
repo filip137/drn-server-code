@@ -322,6 +322,86 @@ uses only 16 off-chip training examples and 1,000 test examples, so a full
 multi-assignment training/test study is still required before a production
 claim.
 
+### Published-defect fresh-array extension
+
+The matched defect-inclusive extension is predeclared in
+[`studies/mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1.json`](../studies/mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1.json).
+It repeats the direct, continuous-HWA, and deterministic-QAT transfer arms
+without modifying or reusing the completed repaired study. Each new config is
+identical to its repaired counterpart except that `corruption_policy` is
+`published` rather than `counterfactual_repaired`. Consequently, sampled
+stuck/corrupt identities remain at their physical addresses instead of being
+replaced by healthy donor parameters.
+
+The extension retains source assignment `87004`, targets `87005-87007`, all
+source and target endpoint seeds, the 16-example off-chip adaptation budget,
+and the first-1,000-test-example evaluation cohort. The sampled intrinsic
+reference remains active through `q=a-r`; this subtraction does not make a
+stuck active state programmable. Pairing by assignment and endpoint position
+therefore isolates the corruption-policy intervention from ordinary identity
+and programming-stream changes.
+
+For every source and target population, report sampled published-corrupt and
+final surviving-corrupt counts and fractions, including per-tile counts and
+mask/fingerprint provenance. Report target-specific no-write accuracy and all
+four apparent-forward and hidden-persistent endpoint accuracies, together with
+corrupt-device acceptance, saturation, budget exhaustion, and pulse counts.
+The paired headline is published-minus-repaired apparent accuracy. Defects are
+called negligible in this smoke only if no-write and mean apparent accuracy
+are each no more than two percentage points below the repaired result for
+every arm and assignment. The original target-versus-source two-point
+portability criterion is applied separately within the published-defect
+population. This remains a model-based operational smoke, with no defect-aware
+remapping, spares, or fabricated-array claim.
+
+The artifact-verified extension completed with every sampled defect retained:
+`5,366/39,700` cells on source `87004`, followed by `5,480`, `5,446`, and
+`5,284` cells on targets `87005-87007`. These are defect fractions of
+`13.31-13.80%`. Exact artifact comparison proves that each published-corrupt
+mask and every healthy cell's sampled parameters match the paired repaired
+assignment; only the corrupt sites use donor parameters in the repaired
+control. Per-tile counts and endpoint-level defect outcomes are retained in
+the run summaries.
+
+Mean apparent-forward accuracies on the first 1,000 test examples are:
+
+| Frozen master | Published source `87004` | Target `87005` | Target `87006` | Target `87007` | Pooled target | Pooled published-minus-repaired | Published portability gate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Direct teacher | 93.850% | 89.600% | 87.225% | 92.450% | 89.758% | -5.783 pp | fail |
+| Continuous HWA | 85.650% | 80.200% | 82.725% | 87.125% | 83.350% | -11.950 pp | fail |
+| Deterministic QAT | 76.000% | 73.300% | 72.275% | 83.325% | 76.300% | -6.967 pp | fail |
+
+No arm satisfies the original two-point fresh-array criterion. Target-minus-
+source changes are `-4.250/-6.625/-1.400` points for direct deployment,
+`-5.450/-2.925/+1.475` for continuous HWA, and
+`-2.700/-3.725/+7.325` for QAT. The defects are also non-negligible under the
+paired repaired-control criterion: source apparent accuracy changes by
+`-2.000`, `-10.125`, and `-12.650` points for direct, HWA, and QAT,
+respectively.
+
+Most HWA/QAT loss is present before stochastic programming. The source
+no-write maps change from `97.200%` to `88.300%` for continuous HWA and from
+`91.000%` to `78.600%` for QAT. Fresh-target HWA no-write accuracy is
+`82.600/89.600/89.600%`, while QAT reaches
+`74.800/73.800/85.000%`. These policies use the exact one-state support of a
+collapsed cell, so every defective weight is mapped to its immutable stuck
+`q`; P&V then accepts all of those persistent targets. For HWA and QAT the
+paired comparison is the complete corruption-policy path, including rerunning
+off-chip adaptation against the defective source array, not deployment of an
+identical adapted master.
+
+Direct deployment behaves differently. Its no-write metric remains the ideal
+unconstrained master at `97.700%`; defects enter when that target is sent to
+P&V. No corrupt direct target is exactly in support. Nevertheless, repeated
+zero-motion pulse attempts resample the preset's apparent write-noise term,
+so roughly `95-98%` of corrupt sites eventually pass apparent verification
+even though most persistent states remain outside tolerance. This is the
+literal modeled AIHWKit-style endpoint, but it is optimistic for a defective
+cell unless later fresh-read, retention, and inference-noise behavior is also
+validated. The result therefore motivates an explicit defect-remapping or
+spare-row/column control before testing whether on-chip updates can compensate
+for surviving defects.
+
 ## Claim limits
 
 The implementation does not model inference read noise, retention, ADC/DAC

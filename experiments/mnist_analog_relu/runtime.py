@@ -415,6 +415,79 @@ def _float_summary(value: torch.Tensor) -> dict[str, float]:
     }
 
 
+def _population_defect_report(
+    population: IbmReramArrayPopulation,
+) -> dict[str, Any]:
+    """Report the sampled defect intervention without inferring it from levels."""
+
+    final = population.corrupt.detach().cpu()
+    published = population.published_corrupt.detach().cpu()
+    collapsed_zero_step = (
+        (torch.abs(population.max_bound.detach().cpu() - population.min_bound.detach().cpu()) <= 1e-12)
+        & (population.dwmin_up.detach().cpu() == 0.0)
+        & (population.dwmin_down.detach().cpu() == 0.0)
+    )
+    if not torch.equal(final, collapsed_zero_step):
+        raise RuntimeError(
+            "Expected final corrupt cells to remain exactly the collapsed "
+            "zero-step IBM OM identities."
+        )
+    if population.corruption_policy == "published" and not torch.equal(
+        final, published
+    ):
+        raise RuntimeError(
+            "Expected the published corruption policy to retain every sampled defect."
+        )
+    cells = population.size
+    final_count = int(final.sum().item())
+    published_count = int(published.sum().item())
+    per_binding = []
+    offset = 0
+    for key, shape in zip(
+        population.binding_keys,
+        population.binding_shapes,
+        strict=True,
+    ):
+        binding_cells = math.prod(shape)
+        stop = offset + binding_cells
+        binding_final = final[offset:stop]
+        binding_published = published[offset:stop]
+        binding_collapsed = collapsed_zero_step[offset:stop]
+        per_binding.append(
+            {
+                "binding_key": key,
+                "binding_shape": list(shape),
+                "cell_offset_start": offset,
+                "cell_offset_stop": stop,
+                "cells": binding_cells,
+                "final_corrupt_cells": int(binding_final.sum().item()),
+                "published_corrupt_cells": int(binding_published.sum().item()),
+                "repaired_published_corrupt_cells": int(
+                    (binding_published & ~binding_final).sum().item()
+                ),
+                "unattributed_final_corrupt_cells": int(
+                    (binding_final & ~binding_published).sum().item()
+                ),
+                "collapsed_zero_step_cells": int(binding_collapsed.sum().item()),
+            }
+        )
+        offset = stop
+    if offset != cells:  # pragma: no cover - population validation is upstream
+        raise RuntimeError("Expected IBM OM binding offsets to cover every cell.")
+    return {
+        "corruption_policy": population.corruption_policy,
+        "cells": cells,
+        "final_corrupt_cells": final_count,
+        "published_corrupt_cells": published_count,
+        "repaired_published_corrupt_cells": int((published & ~final).sum().item()),
+        "unattributed_final_corrupt_cells": int((final & ~published).sum().item()),
+        "collapsed_zero_step_cells": int(collapsed_zero_step.sum().item()),
+        "final_corrupt_fraction": final_count / cells,
+        "published_corrupt_fraction": published_count / cells,
+        "per_binding": per_binding,
+    }
+
+
 def _mapping_report(
     *,
     population: IbmReramArrayPopulation,
@@ -457,6 +530,11 @@ def _mapping_report(
         ),
         "pulse_indices": _float_summary(pulse_indices.to(torch.float32)),
         "effective_level_counts": _float_summary(level_counts.to(torch.float32)),
+        "one_level_cells": int((level_counts == 1).sum().item()),
+        "final_corrupt_one_level_cells": int(
+            ((level_counts == 1) & population.corrupt.detach().cpu()).sum().item()
+        ),
+        "defects": _population_defect_report(population),
         "tie_rule": "lowest_pulse_index",
         "reference_projection_count": 0,
         "reference_reassignment_count": 0,
@@ -510,12 +588,32 @@ def _program_endpoint(
     )
     persistent_within_tolerance = torch.abs(persistent - target) <= tolerance_q
     apparent_q = apparent
+    final_corrupt = population.corrupt.detach().cpu()
+    result_accepted = result.accepted.detach().cpu()
+    result_budget_exhausted = result.budget_exhausted.detach().cpu()
+    result_nonfinite = result.nonfinite.detach().cpu()
+    result_verify_count = result.verify_count.detach().cpu()
+    result_total_pulses = result.total_pulses.detach().cpu()
+    final_active = persistent + population.reference.detach().cpu()
+    final_saturated_lower = torch.isclose(
+        final_active,
+        population.min_bound.detach().cpu(),
+        atol=1e-7,
+        rtol=0.0,
+    )
+    final_saturated_upper = torch.isclose(
+        final_active,
+        population.max_bound.detach().cpu(),
+        atol=1e-7,
+        rtol=0.0,
+    )
     report = {
         "endpoint_seed": endpoint_seed,
         "random_stream_population_fingerprint": random_stream_fingerprint,
         "persistent_sha256": tensor_sha256(persistent),
         "apparent_sha256": tensor_sha256(apparent),
         "cells": population.size,
+        "defects": _population_defect_report(population),
         "exact_target_in_support": int(exact_in_support.sum().item()),
         "exact_target_outside_support": int((~exact_in_support).sum().item()),
         "verify_window_intersects_support": int(
@@ -524,7 +622,7 @@ def _program_endpoint(
         "apparent_accepted": int(result.accepted.sum().item()),
         "persistent_within_tolerance": int(persistent_within_tolerance.sum().item()),
         "apparent_accepted_persistent_outside_tolerance": int(
-            (result.accepted.detach().cpu() & ~persistent_within_tolerance).sum().item()
+            (result_accepted & ~persistent_within_tolerance).sum().item()
         ),
         "budget_exhausted": int(result.budget_exhausted.sum().item()),
         "nonfinite": int(result.nonfinite.sum().item()),
@@ -543,6 +641,48 @@ def _program_endpoint(
         "hidden_update_state": "persistent_q",
         "apparent_endpoint_applied_to_network": True,
         "plant_pulses": plant.pulse_statistics(),
+        "final_corrupt_endpoint": {
+            "cells": int(final_corrupt.sum().item()),
+            "exact_target_in_support": int(
+                (final_corrupt & exact_in_support).sum().item()
+            ),
+            "exact_target_outside_support": int(
+                (final_corrupt & ~exact_in_support).sum().item()
+            ),
+            "verify_window_intersects_support": int(
+                (final_corrupt & verify_window_intersects_support).sum().item()
+            ),
+            "verify_window_disjoint_support": int(
+                (final_corrupt & ~verify_window_intersects_support).sum().item()
+            ),
+            "apparent_accepted": int(
+                (final_corrupt & result_accepted).sum().item()
+            ),
+            "persistent_within_tolerance": int(
+                (final_corrupt & persistent_within_tolerance).sum().item()
+            ),
+            "apparent_accepted_persistent_outside_tolerance": int(
+                (
+                    final_corrupt
+                    & result_accepted
+                    & ~persistent_within_tolerance
+                ).sum().item()
+            ),
+            "budget_exhausted": int(
+                (final_corrupt & result_budget_exhausted).sum().item()
+            ),
+            "nonfinite": int((final_corrupt & result_nonfinite).sum().item()),
+            "verify_reads": int(result_verify_count[final_corrupt].sum().item()),
+            "programming_pulses": int(
+                result_total_pulses[final_corrupt].sum().item()
+            ),
+            "final_saturated_lower": int(
+                (final_corrupt & final_saturated_lower).sum().item()
+            ),
+            "final_saturated_upper": int(
+                (final_corrupt & final_saturated_upper).sum().item()
+            ),
+        },
     }
     return plant, report
 
@@ -2010,6 +2150,7 @@ def run_train(request: "TrainRequest") -> int:
                 "assignment_seed": spec.device.assignment_seed,
                 "population_fingerprint": source_population.fingerprint,
                 "population_sampling_receipt": source_receipt,
+                "defects": _population_defect_report(source_population),
                 "deterministic_codebook": {
                     "maximum_set_pulses": codebook.maximum_pulses,
                     "values_sha256": tensor_sha256(codebook.values),
@@ -2065,6 +2206,9 @@ def run_train(request: "TrainRequest") -> int:
                         "endpoint_seeds": list(context["settings"].endpoint_seeds),
                         "fingerprint": context["population"].fingerprint,
                         "sampling_receipt": context["receipt"],
+                        "defects": _population_defect_report(
+                            context["population"]
+                        ),
                         "deterministic_codebook_values_sha256": tensor_sha256(
                             context["codebook"].values
                         ),

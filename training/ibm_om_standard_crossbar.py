@@ -348,6 +348,14 @@ def build_deterministic_effective_codebook(
     ):
         raise RuntimeError("Expected finite monotone deterministic OM codebooks.")
     counts = 1 + (values[1:] != values[:-1]).sum(dim=0).to(torch.int64)
+    corrupt = population.corrupt.detach().cpu()
+    if bool(torch.any(counts[corrupt] != 1)) or bool(
+        torch.any(values[:, corrupt] != values[0, corrupt].unsqueeze(0))
+    ):
+        raise RuntimeError(
+            "Expected every collapsed zero-step IBM OM cell to retain one "
+            "immutable deterministic code."
+        )
     return DeterministicEffectiveCodebook(values=values, effective_level_counts=counts)
 
 
@@ -574,11 +582,29 @@ class IbmOmEffectiveCrossbarPlant:
     def pulse_statistics(self) -> dict[str, Any]:
         total = self.upward_pulses + self.downward_pulses
         active = self.persistent + self.population.reference
+        commanded = total > 0
+        corrupt = self.population.corrupt
         return {
             "total": int(total.sum().item()),
             "upward": int(self.upward_pulses.sum().item()),
             "downward": int(self.downward_pulses.sum().item()),
-            "changed_cells": int((total > 0).sum().item()),
+            # Retain the historical key, but make its command semantics explicit.
+            "changed_cells": int(commanded.sum().item()),
+            "commanded_cells": int(commanded.sum().item()),
+            "persistent_moved_from_reset_cells": int(
+                (~torch.isclose(
+                    active,
+                    self.population.min_bound,
+                    atol=1e-7,
+                    rtol=0.0,
+                )).sum().item()
+            ),
+            "final_corrupt_cells": int(corrupt.sum().item()),
+            "published_corrupt_cells": int(
+                self.population.published_corrupt.sum().item()
+            ),
+            "commanded_final_corrupt_cells": int((commanded & corrupt).sum().item()),
+            "pulses_to_final_corrupt_cells": int(total[corrupt].sum().item()),
             "maximum_per_cell": int(total.max().item()) if total.numel() else 0,
             "saturated_lower": int(
                 torch.isclose(active, self.population.min_bound, atol=1e-7, rtol=0.0).sum().item()

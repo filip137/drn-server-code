@@ -50,6 +50,31 @@ def _population(
     )
 
 
+def _published_population(layout) -> IbmReramArrayPopulation:
+    population = _population(layout)
+    corrupt = torch.zeros(population.size, dtype=torch.bool)
+    corrupt[0] = True
+    minimum = population.min_bound.clone()
+    maximum = population.max_bound.clone()
+    upward = population.dwmin_up.clone()
+    downward = population.dwmin_down.clone()
+    minimum[corrupt] = 0.05
+    maximum[corrupt] = 0.05
+    upward[corrupt] = 0.0
+    downward[corrupt] = 0.0
+    return replace(
+        population,
+        corruption_policy="published",
+        min_bound=minimum,
+        max_bound=maximum,
+        dwmin_up=upward,
+        dwmin_down=downward,
+        corrupt=corrupt,
+        published_corrupt=corrupt.clone(),
+        fingerprint="published-crossbar-fixture",
+    )
+
+
 def test_layout_matches_aihwkit_balanced_512_input_tiling() -> None:
     layout = build_crossbar_layout((784, 50, 10), maximum_input_size=512)
 
@@ -153,6 +178,38 @@ def test_deterministic_codebook_uses_effective_q_and_low_pulse_ties() -> None:
     )
     assert torch.equal(cached_indices, indices)
     torch.testing.assert_close(cached_realized, realized)
+
+
+def test_published_corrupt_cell_has_one_immutable_code_and_persistent_state() -> None:
+    layout = build_crossbar_layout((1, 1, 1), maximum_input_size=1)
+    population = _published_population(layout)
+    codebook = build_deterministic_effective_codebook(
+        population,
+        maximum_pulses=4,
+    )
+
+    assert codebook.effective_level_counts.tolist() == [1, 5]
+    torch.testing.assert_close(
+        codebook.values[:, 0],
+        codebook.values[0, 0].expand(5),
+    )
+    plant = IbmOmEffectiveCrossbarPlant(
+        population,
+        generator=torch.Generator().manual_seed(17),
+        device="cpu",
+    )
+    initial_corrupt = plant.persistent[0].clone()
+    for _ in range(3):
+        plant.pulse(torch.ones(population.size, dtype=torch.int8))
+
+    torch.testing.assert_close(plant.persistent[0], initial_corrupt)
+    assert plant.persistent[1] > population.logical_min[1]
+    statistics = plant.pulse_statistics()
+    assert statistics["final_corrupt_cells"] == 1
+    assert statistics["published_corrupt_cells"] == 1
+    assert statistics["commanded_final_corrupt_cells"] == 1
+    assert statistics["pulses_to_final_corrupt_cells"] == 3
+    assert statistics["persistent_moved_from_reset_cells"] == 1
 
 
 def test_plant_checkpoint_replays_cycle_and_write_noise_exactly() -> None:

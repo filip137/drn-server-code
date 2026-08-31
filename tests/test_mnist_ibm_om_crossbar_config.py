@@ -33,6 +33,11 @@ STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-relu-onchip-importance-20260830-v1.json"
 )
+PUBLISHED_DEFECT_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
@@ -55,6 +60,59 @@ def test_all_declared_crossbar_configs_parse_and_resolve(path: Path) -> None:
     assert spec.model.dims == (784, 50, 10)
     assert spec.device.endpoint_seeds == (89402, 89403, 89404, 89405)
     assert spec.drn_reference.endpoint_seeds == spec.device.endpoint_seeds
+
+
+@pytest.mark.parametrize(
+    ("repaired_name", "published_name"),
+    [
+        (
+            "smoke_matched_winsorized_frozen.json",
+            "smoke_published_defects_matched_winsorized_frozen.json",
+        ),
+        (
+            "smoke_matched_winsorized_continuous_hwa_frozen.json",
+            "smoke_published_defects_matched_winsorized_continuous_hwa_frozen.json",
+        ),
+        (
+            "smoke_matched_winsorized_qat_frozen.json",
+            "smoke_published_defects_matched_winsorized_qat_frozen.json",
+        ),
+    ],
+)
+def test_published_defect_smokes_change_only_corruption_policy(
+    repaired_name: str,
+    published_name: str,
+) -> None:
+    repaired = _payload(repaired_name)
+    published = _payload(published_name)
+
+    assert repaired["device"].pop("corruption_policy") == "counterfactual_repaired"
+    assert published["device"].pop("corruption_policy") == "published"
+    assert published == repaired
+
+
+def test_published_defect_transfer_study_declares_three_matched_arms() -> None:
+    plan = load_study_plan(PUBLISHED_DEFECT_STUDY_PATH)
+
+    assert len(plan["arms"]) == 3
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "direct-frozen-master-transfer-published-defects-smoke",
+        "continuous-hwa-frozen-master-transfer-published-defects-smoke",
+        "qat-frozen-master-transfer-published-defects-smoke",
+    ]
+    for arm in plan["arms"]:
+        assert len(arm["configs"]) == 1
+        _, spec = resolve_experiment_config(
+            arm["configs"][0]["resolved_path"],
+            RunMode.TRAIN,
+        )
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.device.corruption_policy == "published"
+        assert tuple(target.assignment_seed for target in spec.transfer.targets) == (
+            87005,
+            87006,
+            87007,
+        )
 
 
 def test_coordinate_matched_recovery_contract_is_frozen() -> None:
