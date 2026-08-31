@@ -404,6 +404,54 @@ validated. The result therefore motivates an explicit defect-remapping or
 spare-row/column control before testing whether on-chip updates can compensate
 for surviving defects.
 
+## Ordinary supervised-BP post-fault repair control
+
+The matched ordinary-retraining control is predeclared in
+[`studies/mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json`](../studies/mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json).
+It asks whether the same chronological post-deployment damage is compensable
+at all before interpreting failure of a local recovery objective. It is not
+the older `pulse_adam` arm: that arm uses teacher KL and does not apply the
+post-deployment fault. The new `supervised_ce_pulse_adam` policy performs:
+
+```text
+healthy programmed P0
+-> matched published-companion corrupt-device transition
+-> ground-truth cross-entropy BP on apparent q
+-> digital Adam command
+-> stochastic physical pulse on persistent q
+```
+
+The update helper receives labels, inputs, current apparent `q`, and a
+restricted pulse port. It receives neither teacher logits nor the fault mask.
+Ordinary BP nevertheless propagates the output error through `W2^T`, uses
+autograd, and retains FP32 first and second Adam moments outside the array.
+This is therefore a privileged normal-retraining ceiling, not a fully local or
+fully on-chip learning claim. The plant alone enforces the immutable sampled
+faults; post-hoc analysis separates commands sent to stuck sites from actual
+persistent movement of healthy sites.
+
+Two budgets are frozen before results are inspected. The matched control uses
+the same one shuffled 16-example minibatch and `6e-5` effective-`q` learning
+rate as the local STAR smoke. Its expected pulse count is only on the order of
+tens, so it matches the example cohort and learning rate but not STAR's
+sequential update mechanism; it is not a meaningful reparability test. The
+primary control keeps the healthy predeployment HWA restricted to
+that original 16-example stream, but constructs a separate repair loader and
+runs exactly one shuffled epoch over all 55,000 post-split MNIST training
+examples (`3,438` minibatches). It retains `[6e-5,6e-5]`, Adam
+`[0.9,0.999]`, epsilon `1e-8`, all layers, the 64-command per-cell cap, and
+fixed-final evaluation with no learning-rate tuning or checkpoint selection.
+
+Both arms must reproduce bit-exact healthy P0 and immediate faulted states on
+assignment `87004` and endpoints `89402-89405`. Primary accuracy uses the
+first 1,000 official test examples and reports healthy-to-fault damage,
+fault-to-final recovery gain, and recovery fraction per endpoint. The full
+epoch is promising only if mean gain is positive, at least three endpoints
+improve, no endpoint loses more than two percentage points, and mean recovery
+fraction reaches `0.25`. Four programming streams on one assignment are not
+four independent arrays, and the declared study remains a plan until its
+artifacts are run, verified, and reviewed.
+
 ## Planned STAR-inspired local-state-only recovery
 
 This protocol adapts [*STAR: Astrocyte-Inspired State-Augmented Repair for

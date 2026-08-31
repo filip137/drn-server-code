@@ -813,14 +813,19 @@ class IbmOmEffectiveCrossbarPlant:
     def controller_port(self) -> "_EffectiveControllerPort":
         return _EffectiveControllerPort(self)
 
-    def local_star_update_port(self) -> "_LocalStarUpdatePort":
-        """Expose only the state and write operations needed by local recovery."""
+    def restricted_recovery_update_port(self) -> "_LocalStarUpdatePort":
+        """Expose apparent state and pulse writes without fault or persistent state."""
 
         if self.fault_transition is None:
             raise RuntimeError(
-                "Expected the post-deployment fault before opening the STAR update port."
+                "Expected the post-deployment fault before opening the recovery update port."
             )
         return _LocalStarUpdatePort(self)
+
+    def local_star_update_port(self) -> "_LocalStarUpdatePort":
+        """Backward-compatible name for the restricted recovery update port."""
+
+        return self.restricted_recovery_update_port()
 
     def state_dict(self) -> dict[str, Any]:
         return {
@@ -1564,6 +1569,7 @@ class PulseAdam:
         plant.pulse(direction)
         return {
             "requested_nonzero_commands": requested,
+            "commanded_pulses": applied,
             "applied_pulses": applied,
             "probability_clipped": clipped_count,
             "blocked_at_cap": blocked_count,
@@ -1578,6 +1584,7 @@ class PulseAdam:
         return {
             "optimizer_steps": self.step_index,
             "requested_nonzero_commands": self.requested,
+            "commanded_pulses": self.applied,
             "applied_pulses": self.applied,
             "applied_pulses_by_layer": layer_counts,
             "probability_clipped": self.probability_clipped,
@@ -1586,6 +1593,7 @@ class PulseAdam:
             "cells_at_cap": int(
                 (self.pulse_count >= self.pulse_cap_per_cell).sum().item()
             ),
+            "commanded_cells": int((self.pulse_count > 0).sum().item()),
             "changed_cells": int((self.pulse_count > 0).sum().item()),
             "maximum_pulses_per_cell": int(self.pulse_count.max().item()),
             "enabled_cells": int(self.enabled.sum().item()),

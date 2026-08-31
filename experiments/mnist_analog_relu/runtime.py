@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 import math
@@ -67,6 +68,17 @@ if TYPE_CHECKING:
 
 
 _ROOT = Path(__file__).resolve().parents[2]
+_POST_DEPLOYMENT_FAULT_POLICIES = frozenset(
+    {"star_local_pulse_sgd", "supervised_ce_pulse_adam"}
+)
+
+
+def _post_deployment_fault_settings(spec: CrossbarTrainSpec) -> Any | None:
+    if spec.recovery.policy == "star_local_pulse_sgd":
+        return spec.recovery.star
+    if spec.recovery.policy == "supervised_ce_pulse_adam":
+        return spec.recovery.supervised_bp
+    return None
 
 
 def _input(role: str, path: Path) -> dict[str, Any]:
@@ -1556,7 +1568,123 @@ def _run_local_star_pulse_recovery(
     return epoch_reports, optimizer_report, repair_identities
 
 
-def _posthoc_local_star_pulse_effects(
+def _run_supervised_ce_pulse_recovery(
+    *,
+    update_port: Any,
+    spec: CrossbarTrainSpec,
+    endpoint_seed: int,
+    layout: tuple[CrossbarTileSpec, ...],
+    digital_scales: tuple[float, float],
+    train_loader: Iterable,
+    device: torch.device,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run ordinary label-supervised BP with digital Adam and physical pulses."""
+
+    settings = spec.recovery.supervised_bp
+    if settings is None:
+        raise RuntimeError("Expected supervised-BP recovery settings.")
+    selection_generator = torch.Generator(device=device.type)
+    selection_generator.manual_seed(
+        _recovery_seed(
+            runtime_seed=spec.runtime.seed,
+            assignment_seed=spec.device.assignment_seed,
+            endpoint_seed=endpoint_seed,
+        )
+    )
+    optimizer = PulseAdam(
+        size=update_port.size,
+        layout=layout,
+        learning_rates=spec.recovery.learning_rates_q,
+        betas=(float(spec.recovery.beta_1), float(spec.recovery.beta_2)),
+        epsilon=float(spec.recovery.epsilon),
+        layer_scope=spec.recovery.layer_scope,
+        nominal_dw_min=update_port.nominal_dw_min,
+        pulse_cap_per_cell=spec.recovery.pulse_cap_per_cell,
+        generator=selection_generator,
+        device=device,
+    )
+    epoch_reports: list[dict[str, Any]] = []
+    all_inputs: list[torch.Tensor] = []
+    all_labels: list[torch.Tensor] = []
+    epoch_cohorts: list[dict[str, Any]] = []
+    for epoch in range(1, spec.recovery.epochs + 1):
+        epoch_inputs: list[torch.Tensor] = []
+        epoch_labels: list[torch.Tensor] = []
+        examples = 0
+        batches = 0
+        loss_sum = 0.0
+        correct = 0
+        commanded = 0
+        for batch_index, (inputs, labels) in enumerate(
+            limited(train_loader, spec.recovery.maximum_batches)
+        ):
+            cpu_inputs = inputs.detach().cpu().to(torch.float32).contiguous()
+            cpu_labels = labels.detach().cpu().to(torch.int64).contiguous()
+            epoch_inputs.append(cpu_inputs)
+            epoch_labels.append(cpu_labels)
+            all_inputs.append(cpu_inputs)
+            all_labels.append(cpu_labels)
+            inputs = cpu_inputs.to(device=device)
+            labels = cpu_labels.to(device=device)
+            apparent_q = update_port.apparent.to(device).requires_grad_(True)
+            logits = standard_crossbar_logits(
+                inputs,
+                apparent_q,
+                layout,
+                digital_scales=digital_scales,
+            )
+            loss = F.cross_entropy(logits, labels)
+            gradient = torch.autograd.grad(loss, apparent_q, only_inputs=True)[0]
+            pulse = optimizer.step(gradient, update_port)
+            batch_examples = int(inputs.shape[0])
+            examples += batch_examples
+            batches = batch_index + 1
+            loss_sum += float(loss.item()) * batch_examples
+            correct += int((logits.argmax(dim=1) == labels).sum().item())
+            commanded += int(
+                (
+                    pulse["commanded_pulses"]
+                    if "commanded_pulses" in pulse
+                    else pulse["applied_pulses"]
+                )
+            )
+        if examples != settings.repair_examples:
+            raise ValueError(
+                "Expected supervised BP to consume exactly its declared repair "
+                f"cohort each epoch. Provided value: observed={examples}, "
+                f"expected={settings.repair_examples}."
+            )
+        epoch_cohort, _ = _ordered_labeled_cohort_report(
+            inputs=epoch_inputs,
+            labels=epoch_labels,
+            split=f"post_fault_supervised_bp_epoch_{epoch}_update_stream",
+        )
+        epoch_cohorts.append(epoch_cohort)
+        epoch_reports.append(
+            {
+                "epoch": epoch,
+                "batches": batches,
+                "examples": examples,
+                "train_cross_entropy": loss_sum / examples,
+                "train_pre_update_accuracy": correct / examples,
+                "commanded_pulses": commanded,
+                "repair_cohort": epoch_cohort,
+                **update_port.state_hash_receipt(),
+            }
+        )
+    repair_cohort, _ = _ordered_labeled_cohort_report(
+        inputs=all_inputs,
+        labels=all_labels,
+        split="post_fault_supervised_bp_full_update_stream",
+    )
+    optimizer_report = optimizer.report()
+    optimizer_report["repair_cohort"] = repair_cohort
+    optimizer_report["per_epoch_repair_cohorts"] = epoch_cohorts
+    optimizer_report["nominal_dw_min"] = update_port.nominal_dw_min
+    return epoch_reports, optimizer_report
+
+
+def _posthoc_recovery_pulse_effects(
     *,
     faulted_state: Mapping[str, Any],
     final_state: Mapping[str, Any],
@@ -1571,7 +1699,7 @@ def _posthoc_local_star_pulse_effects(
         or not isinstance(final_state.get(name), torch.Tensor)
         for name in names
     ):
-        raise ValueError("Expected complete faulted and final STAR plant states.")
+        raise ValueError("Expected complete faulted and final post-fault plant states.")
     initial_pulses = (
         faulted_state["upward_pulses"] + faulted_state["downward_pulses"]
     ).detach().cpu()
@@ -1637,6 +1765,12 @@ def _posthoc_local_star_pulse_effects(
     }
 
 
+def _posthoc_local_star_pulse_effects(**kwargs: Any) -> dict[str, Any]:
+    """Compatibility alias for the generalized post-fault pulse audit."""
+
+    return _posthoc_recovery_pulse_effects(**kwargs)
+
+
 def _recover(
     *,
     plant: IbmOmEffectiveCrossbarPlant,
@@ -1649,7 +1783,7 @@ def _recover(
     train_loader: Iterable,
     device: torch.device,
     calibration_loader: Iterable | None = None,
-    star_context: Mapping[str, Any] | None = None,
+    post_fault_context: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Mapping[str, Any]]:
     initial_state = plant.state_dict()
     initial_evaluation = _evaluate_plant_states(
@@ -1719,8 +1853,8 @@ def _recover(
         if (
             star is None
             or calibration_loader is None
-            or not isinstance(star_context, Mapping)
-            or set(star_context) != required_context
+            or not isinstance(post_fault_context, Mapping)
+            or set(post_fault_context) != required_context
         ):
             raise ValueError("Expected a complete chronological STAR recovery context.")
         (
@@ -1734,13 +1868,13 @@ def _recover(
             calibration_loader=calibration_loader,
             maximum_batches=star.calibration_maximum_batches,
             device=device,
-            artifact_path=Path(star_context["artifact_path"]),
-            model_checkpoint_sha256=str(star_context["model_checkpoint_sha256"]),
+            artifact_path=Path(post_fault_context["artifact_path"]),
+            model_checkpoint_sha256=str(post_fault_context["model_checkpoint_sha256"]),
             healthy_deployment_artifact_sha256=str(
-                star_context["healthy_deployment_artifact_sha256"]
+                post_fault_context["healthy_deployment_artifact_sha256"]
             ),
-            hardware_instance_id=str(star_context["hardware_instance_id"]),
-            config_sha256=str(star_context["config_sha256"]),
+            hardware_instance_id=str(post_fault_context["hardware_instance_id"]),
+            config_sha256=str(post_fault_context["config_sha256"]),
             hidden_gain=star.hidden_gain,
             output_gain=star.output_gain,
             storage_dtype=star.target_quantization,
@@ -1760,17 +1894,17 @@ def _recover(
             **state_error_evaluation,
         )
         transition = plant.apply_stuck_at_fault_transition(
-            mask=star_context["fault_mask"],
-            stuck_persistent_q=star_context["stuck_persistent_q"],
+            mask=post_fault_context["fault_mask"],
+            stuck_persistent_q=post_fault_context["stuck_persistent_q"],
             transition_id=(
                 f"assignment-{spec.device.assignment_seed}-endpoint-{endpoint_seed}"
             ),
             source_population_fingerprint=str(
-                star_context["fault_source_population_fingerprint"]
+                post_fault_context["fault_source_population_fingerprint"]
             ),
         )
         faulted_state = plant.state_dict()
-        faulted_checkpoint_path = Path(star_context["faulted_checkpoint_path"])
+        faulted_checkpoint_path = Path(post_fault_context["faulted_checkpoint_path"])
         atomic_torch_save(faulted_state, faulted_checkpoint_path)
         damaged_evaluation = _evaluate_plant_states(
             plant=plant,
@@ -1799,7 +1933,7 @@ def _recover(
                 device=device,
             )
         )
-        predeployment_cohort = star_context["predeployment_training_cohort"]
+        predeployment_cohort = post_fault_context["predeployment_training_cohort"]
         repair_cohort = optimizer_report["repair_cohort"]
         if not isinstance(predeployment_cohort, Mapping) or any(
             predeployment_cohort.get(name) != repair_cohort[name]
@@ -1844,7 +1978,7 @@ def _recover(
         posthoc_pulse_effects = _posthoc_local_star_pulse_effects(
             faulted_state=faulted_state,
             final_state=final_state,
-            fault_mask=star_context["fault_mask"],
+            fault_mask=post_fault_context["fault_mask"],
             layout=layout,
         )
         if (
@@ -1901,7 +2035,7 @@ def _recover(
             ],
             "healthy_pre_fault_local_state_errors": healthy_state_errors,
             "target_capture": target_report,
-            "fault_source": dict(star_context["fault_report"]),
+            "fault_source": dict(post_fault_context["fault_report"]),
             "fault_transition": transition,
             "faulted_pre_recovery_checkpoint": faulted_checkpoint_path.name,
             "faulted_pre_recovery_checkpoint_sha256": sha256_file(
@@ -1921,6 +2055,176 @@ def _recover(
                 "persistent_diagnostic"
             ],
             "fixed_final_local_state_errors": final_state_errors,
+            "optimizer": optimizer_report,
+            "posthoc_pulse_effects": posthoc_pulse_effects,
+            "checkpoint_policy": "fixed_final_epoch_no_selection",
+        }, final_state
+
+    if spec.recovery.policy == "supervised_ce_pulse_adam":
+        required_context = {
+            "faulted_checkpoint_path",
+            "fault_mask",
+            "stuck_persistent_q",
+            "fault_report",
+            "fault_source_population_fingerprint",
+            "predeployment_training_cohort",
+        }
+        if (
+            spec.recovery.supervised_bp is None
+            or not isinstance(post_fault_context, Mapping)
+            or set(post_fault_context) != required_context
+        ):
+            raise ValueError(
+                "Expected a complete chronological supervised-BP recovery context."
+            )
+        transition = plant.apply_stuck_at_fault_transition(
+            mask=post_fault_context["fault_mask"],
+            stuck_persistent_q=post_fault_context["stuck_persistent_q"],
+            transition_id=(
+                f"assignment-{spec.device.assignment_seed}-endpoint-{endpoint_seed}"
+            ),
+            source_population_fingerprint=str(
+                post_fault_context["fault_source_population_fingerprint"]
+            ),
+        )
+        faulted_state = plant.state_dict()
+        faulted_checkpoint_path = Path(
+            post_fault_context["faulted_checkpoint_path"]
+        )
+        atomic_torch_save(faulted_state, faulted_checkpoint_path)
+        damaged_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        update_port = plant.restricted_recovery_update_port()
+        epoch_reports, optimizer_report = _run_supervised_ce_pulse_recovery(
+            update_port=update_port,
+            spec=spec,
+            endpoint_seed=endpoint_seed,
+            layout=layout,
+            digital_scales=digital_scales,
+            train_loader=train_loader,
+            device=device,
+        )
+        repair_cohort = optimizer_report["repair_cohort"]
+        predeployment_cohort = post_fault_context["predeployment_training_cohort"]
+        if not isinstance(predeployment_cohort, Mapping):
+            raise RuntimeError("Expected a bound predeployment training cohort.")
+        comparison_fields = (
+            "examples",
+            "ordered_sample_ids_sha256",
+            "model_inputs_sha256",
+            "labels_sha256",
+            "ordered_example_identity_sequence_sha256",
+            "unique_example_identities",
+        )
+        same_predeployment_stream = all(
+            predeployment_cohort.get(name) == repair_cohort[name]
+            for name in comparison_fields
+        )
+        if (
+            spec.recovery.supervised_bp.repair_examples == spec.data.num_points
+            and spec.recovery.epochs == 1
+            and not same_predeployment_stream
+        ):
+            raise RuntimeError(
+                "Expected the matched supervised-BP arm to reuse the exact "
+                "predeployment update stream."
+            )
+        repair_cohort["same_as_predeployment_first_epoch_update_stream"] = (
+            same_predeployment_stream
+        )
+        repair_cohort["predeployment_first_epoch_update_stream"] = {
+            name: predeployment_cohort.get(name) for name in comparison_fields
+        }
+        final_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        final_state = plant.state_dict()
+        posthoc_pulse_effects = _posthoc_recovery_pulse_effects(
+            faulted_state=faulted_state,
+            final_state=final_state,
+            fault_mask=post_fault_context["fault_mask"],
+            layout=layout,
+        )
+        if (
+            posthoc_pulse_effects["commanded_pulses"]
+            != optimizer_report["commanded_pulses"]
+        ):
+            raise RuntimeError(
+                "Expected supervised BP and post-hoc plant command counts to match."
+            )
+        return {
+            "policy": spec.recovery.policy,
+            "objective": "cross_entropy",
+            "layer_scope": spec.recovery.layer_scope,
+            "network_forward_state": "apparent_q",
+            "hidden_update_state": "persistent_q",
+            "gradient_handoff": (
+                "autograd_backprop_apparent_q_to_persistent_pulse_update"
+            ),
+            "ordinary_backprop_contract": {
+                "loss": "ground_truth_label_cross_entropy",
+                "output_error": "softmax_logits_minus_onehot_label",
+                "hidden_error": "output_error_times_W2_transpose_times_relu_mask",
+                "transpose_mvm": True,
+                "cross_layer_backpropagation": True,
+                "autograd_during_updates": True,
+                "digital_adam_moments": True,
+                "teacher_access_during_updates": False,
+                "fault_mask_access_during_updates": False,
+                "restricted_update_port": True,
+                "update_port_exposes": [
+                    "apparent_q",
+                    "pulse_application",
+                    "array_size",
+                    "nominal_step",
+                    "state_hash_receipt",
+                ],
+                "learning_rates_q": list(spec.recovery.learning_rates_q),
+                "adam_betas": [spec.recovery.beta_1, spec.recovery.beta_2],
+                "adam_epsilon": spec.recovery.epsilon,
+                "nominal_dw_min": optimizer_report["nominal_dw_min"],
+            },
+            "healthy_pre_fault_apparent_validation": initial_evaluation[
+                "apparent_forward"
+            ],
+            "healthy_pre_fault_persistent_validation": initial_evaluation[
+                "persistent_diagnostic"
+            ],
+            "fault_source": dict(post_fault_context["fault_report"]),
+            "fault_transition": transition,
+            "faulted_pre_recovery_checkpoint": faulted_checkpoint_path.name,
+            "faulted_pre_recovery_checkpoint_sha256": sha256_file(
+                faulted_checkpoint_path
+            ),
+            "faulted_pre_recovery_apparent_validation": damaged_evaluation[
+                "apparent_forward"
+            ],
+            "faulted_pre_recovery_persistent_validation": damaged_evaluation[
+                "persistent_diagnostic"
+            ],
+            "epochs": epoch_reports,
+            "fixed_final_epoch": spec.recovery.epochs,
+            "fixed_final_apparent_validation": final_evaluation[
+                "apparent_forward"
+            ],
+            "fixed_final_persistent_validation": final_evaluation[
+                "persistent_diagnostic"
+            ],
             "optimizer": optimizer_report,
             "posthoc_pulse_effects": posthoc_pulse_effects,
             "checkpoint_policy": "fixed_final_epoch_no_selection",
@@ -2312,13 +2616,16 @@ def run_train(request: "TrainRequest") -> int:
             bound_policy=spec.device.bound_policy,
             required_aihwkit_version=spec.runtime.required_aihwkit_version,
         )
-        star_fault_population = None
-        star_fault_overlay = None
-        star_fault_artifact_paths: tuple[tuple[Path, str], ...] = ()
-        if spec.recovery.policy == "star_local_pulse_sgd":
+        post_fault_population = None
+        post_fault_overlay = None
+        post_fault_artifact_paths: tuple[tuple[Path, str], ...] = ()
+        fault_settings = _post_deployment_fault_settings(spec)
+        if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
+            if fault_settings is None:
+                raise RuntimeError("Expected post-deployment fault settings.")
             (
-                star_fault_population,
-                star_fault_receipt,
+                post_fault_population,
+                post_fault_receipt,
                 sampled_fault_artifacts,
             ) = _sample_population(
                 layout=layout,
@@ -2326,31 +2633,34 @@ def run_train(request: "TrainRequest") -> int:
                 corruption_policy="published",
                 sampler=sampler,
                 artifact_root=artifact_root,
-                role="star_post_deployment_fault_source",
+                role=(
+                    "star_post_deployment_fault_source"
+                    if spec.recovery.policy == "star_local_pulse_sgd"
+                    else "post_deployment_fault_source"
+                ),
                 bound_policy=spec.device.bound_policy,
                 required_aihwkit_version=spec.runtime.required_aihwkit_version,
             )
             fault_mask, stuck_persistent_q, fault_report = _matched_published_fault_overlay(
                 healthy=source_population,
-                published=star_fault_population,
+                published=post_fault_population,
                 preset_default_corrupt_devices_prob=(
-                    spec.recovery.star
-                    .fault_source_preset_default_corrupt_devices_prob
+                    fault_settings.fault_source_preset_default_corrupt_devices_prob
                 ),
                 enabled_corrupt_devices_prob=(
-                    spec.recovery.star.fault_source_enabled_corrupt_devices_prob
+                    fault_settings.fault_source_enabled_corrupt_devices_prob
                 ),
                 corrupt_devices_range=(
-                    spec.recovery.star.fault_source_corrupt_devices_range
+                    fault_settings.fault_source_corrupt_devices_range
                 ),
             )
-            star_fault_overlay = {
+            post_fault_overlay = {
                 "mask": fault_mask,
                 "stuck_persistent_q": stuck_persistent_q,
                 "report": fault_report,
-                "receipt": star_fault_receipt,
+                "receipt": post_fault_receipt,
             }
-            star_fault_artifact_paths = tuple(sampled_fault_artifacts)
+            post_fault_artifact_paths = tuple(sampled_fault_artifacts)
         codebook = build_deterministic_effective_codebook(
             source_population,
             maximum_pulses=spec.device.deterministic_codebook_pulses,
@@ -2594,7 +2904,7 @@ def run_train(request: "TrainRequest") -> int:
 
         endpoint_rows: list[dict[str, Any]] = []
         checkpoint_paths: list[Path] = []
-        star_runtime_artifact_paths: list[tuple[Path, str]] = []
+        post_fault_runtime_artifact_paths: list[tuple[Path, str]] = []
         for endpoint_index, endpoint_seed in enumerate(spec.device.endpoint_seeds):
             loaders = build_mnist_loaders(
                 spec.data,
@@ -2605,6 +2915,24 @@ def run_train(request: "TrainRequest") -> int:
                     else 1024
                 ),
             )
+            recovery_train_loader = loaders.train
+            if spec.recovery.policy == "supervised_ce_pulse_adam":
+                bp_settings = spec.recovery.supervised_bp
+                if bp_settings is None:  # pragma: no cover - parser invariant
+                    raise RuntimeError("Expected supervised-BP recovery settings.")
+                full_training_examples = 60_000 - spec.data.validation_points
+                repair_data = replace(
+                    spec.data,
+                    num_points=(
+                        None
+                        if bp_settings.repair_examples == full_training_examples
+                        else bp_settings.repair_examples
+                    ),
+                )
+                recovery_train_loader = build_mnist_loaders(
+                    repair_data,
+                    data_seed=spec.runtime.data_seed,
+                ).train
             plant, program_report = _program_endpoint(
                 population=source_population,
                 requested=requested,
@@ -2619,45 +2947,66 @@ def run_train(request: "TrainRequest") -> int:
                 ],
             )
             p0_state = plant.state_dict()
-            star_context = None
-            if spec.recovery.policy == "star_local_pulse_sgd":
-                if star_fault_overlay is None or star_fault_population is None:
-                    raise RuntimeError("Expected the matched published STAR fault source.")
+            post_fault_context = None
+            if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
+                if post_fault_overlay is None or post_fault_population is None:
+                    raise RuntimeError(
+                        "Expected the matched published post-deployment fault source."
+                    )
                 endpoint_artifact_root = artifact_root / "endpoints" / str(endpoint_seed)
                 healthy_p0_path = endpoint_artifact_root / "healthy_p0.pt"
                 atomic_torch_save(p0_state, healthy_p0_path)
-                star_target_path = endpoint_artifact_root / "star_targets.npz"
                 faulted_checkpoint_path = (
                     endpoint_artifact_root / "faulted_pre_recovery.pt"
                 )
-                hardware_instance_id = content_hash(
-                    {
-                        "assignment_seed": spec.device.assignment_seed,
-                        "endpoint_seed": endpoint_seed,
-                        "population_fingerprint": source_population.fingerprint,
-                    }
-                )
-                star_context = {
-                    "artifact_path": star_target_path,
+                post_fault_context = {
                     "faulted_checkpoint_path": faulted_checkpoint_path,
-                    "model_checkpoint_sha256": sha256_file(offchip_state_path),
-                    "healthy_deployment_artifact_sha256": sha256_file(
-                        healthy_p0_path
-                    ),
-                    "hardware_instance_id": hardware_instance_id,
-                    "config_sha256": str(store.manifest["config"]["sha256"]),
-                    "fault_mask": star_fault_overlay["mask"],
-                    "stuck_persistent_q": star_fault_overlay[
+                    "fault_mask": post_fault_overlay["mask"],
+                    "stuck_persistent_q": post_fault_overlay[
                         "stuck_persistent_q"
                     ],
-                    "fault_report": star_fault_overlay["report"],
+                    "fault_report": post_fault_overlay["report"],
                     "fault_source_population_fingerprint": (
-                        star_fault_population.fingerprint
+                        post_fault_population.fingerprint
                     ),
                     "predeployment_training_cohort": offchip_report[
                         "first_epoch_training_cohort"
                     ],
                 }
+                post_fault_runtime_artifact_paths.append(
+                    (
+                        healthy_p0_path,
+                        (
+                            "star_healthy_p0_state"
+                            if spec.recovery.policy == "star_local_pulse_sgd"
+                            else "post_fault_healthy_p0_state"
+                        ),
+                    )
+                )
+                if spec.recovery.policy == "star_local_pulse_sgd":
+                    star_target_path = endpoint_artifact_root / "star_targets.npz"
+                    hardware_instance_id = content_hash(
+                        {
+                            "assignment_seed": spec.device.assignment_seed,
+                            "endpoint_seed": endpoint_seed,
+                            "population_fingerprint": source_population.fingerprint,
+                        }
+                    )
+                    post_fault_context.update(
+                        {
+                            "artifact_path": star_target_path,
+                            "model_checkpoint_sha256": sha256_file(
+                                offchip_state_path
+                            ),
+                            "healthy_deployment_artifact_sha256": sha256_file(
+                                healthy_p0_path
+                            ),
+                            "hardware_instance_id": hardware_instance_id,
+                            "config_sha256": str(
+                                store.manifest["config"]["sha256"]
+                            ),
+                        }
+                    )
             p0_evaluation = _evaluate_plant_states(
                 plant=plant,
                 digital_scales=digital_scales,
@@ -2676,31 +3025,36 @@ def run_train(request: "TrainRequest") -> int:
                 digital_scales=digital_scales,
                 teacher=teacher,
                 validation_loader=loaders.validation,
-                train_loader=loaders.train,
+                train_loader=recovery_train_loader,
                 device=device,
                 calibration_loader=loaders.calibration,
-                star_context=star_context,
+                post_fault_context=post_fault_context,
             )
             if spec.recovery.policy == "star_local_pulse_sgd":
-                if star_context is None:  # pragma: no cover - branch invariant
+                if post_fault_context is None:  # pragma: no cover - branch invariant
                     raise RuntimeError("Expected materialized STAR artifacts.")
-                star_target_path = Path(star_context["artifact_path"])
-                star_runtime_artifact_paths.extend(
+                star_target_path = Path(post_fault_context["artifact_path"])
+                post_fault_runtime_artifact_paths.extend(
                     [
-                        (
-                            star_target_path.parent / "healthy_p0.pt",
-                            "star_healthy_p0_state",
-                        ),
                         (star_target_path, "star_state_targets"),
                         (
                             star_target_path.with_suffix(".receipt.json"),
                             "star_state_targets_receipt",
                         ),
-                        (
-                            Path(star_context["faulted_checkpoint_path"]),
-                            "star_faulted_pre_recovery_state",
-                        ),
                     ]
+                )
+            if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
+                if post_fault_context is None:  # pragma: no cover - branch invariant
+                    raise RuntimeError("Expected materialized post-fault artifacts.")
+                post_fault_runtime_artifact_paths.append(
+                    (
+                        Path(post_fault_context["faulted_checkpoint_path"]),
+                        (
+                            "star_faulted_pre_recovery_state"
+                            if spec.recovery.policy == "star_local_pulse_sgd"
+                            else "post_fault_pre_recovery_state"
+                        ),
+                    )
                 )
             p0_test_evaluation = None
             faulted_test_evaluation = None
@@ -2724,11 +3078,11 @@ def run_train(request: "TrainRequest") -> int:
                     maximum_batches=None,
                     sample_limit=spec.evaluation.sample_limit,
                 )
-                if spec.recovery.policy == "star_local_pulse_sgd":
-                    if star_context is None:
-                        raise RuntimeError("Expected a saved STAR faulted state.")
+                if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
+                    if post_fault_context is None:
+                        raise RuntimeError("Expected a saved post-fault state.")
                     faulted_state = torch.load(
-                        Path(star_context["faulted_checkpoint_path"]),
+                        Path(post_fault_context["faulted_checkpoint_path"]),
                         map_location="cpu",
                         weights_only=True,
                     )
@@ -2741,7 +3095,7 @@ def run_train(request: "TrainRequest") -> int:
                     )
                     faulted_plant.load_state_dict(
                         faulted_state,
-                        expected_fault_source_population=star_fault_population,
+                        expected_fault_source_population=post_fault_population,
                         expected_pre_fault_state=p0_state,
                     )
                     faulted_test_evaluation = _evaluate_plant_states(
@@ -3015,7 +3369,7 @@ def run_train(request: "TrainRequest") -> int:
                 endpoint_rows, ("programming", "verify_reads")
             ),
         }
-        if spec.recovery.policy == "star_local_pulse_sgd":
+        if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
             aggregates.update(
                 {
                     "recovery_commanded_pulses": _aggregate(
@@ -3042,30 +3396,6 @@ def run_train(request: "TrainRequest") -> int:
                             "persistent_changed_healthy_cells",
                         ),
                     ),
-                    "healthy_pre_fault_local_objective": _aggregate(
-                        endpoint_rows,
-                        (
-                            "recovery",
-                            "healthy_pre_fault_local_state_errors",
-                            "mean_local_objective",
-                        ),
-                    ),
-                    "faulted_pre_recovery_local_objective": _aggregate(
-                        endpoint_rows,
-                        (
-                            "recovery",
-                            "faulted_pre_recovery_local_state_errors",
-                            "mean_local_objective",
-                        ),
-                    ),
-                    "fixed_final_local_objective": _aggregate(
-                        endpoint_rows,
-                        (
-                            "recovery",
-                            "fixed_final_local_state_errors",
-                            "mean_local_objective",
-                        ),
-                    ),
                     "healthy_pre_fault_apparent_validation_accuracy": _aggregate(
                         endpoint_rows,
                         (
@@ -3082,7 +3412,7 @@ def run_train(request: "TrainRequest") -> int:
                             "student_accuracy",
                         ),
                     ),
-                    "paired_star_validation_recovery_gain_percentage_points": (
+                    "paired_post_fault_validation_recovery_gain_percentage_points": (
                         _numeric_summary(
                             100.0
                             * (
@@ -3102,6 +3432,40 @@ def run_train(request: "TrainRequest") -> int:
                     ),
                 }
             )
+            if spec.recovery.policy == "star_local_pulse_sgd":
+                aggregates.update(
+                    {
+                        "paired_star_validation_recovery_gain_percentage_points": (
+                            aggregates[
+                                "paired_post_fault_validation_recovery_gain_percentage_points"
+                            ]
+                        ),
+                        "healthy_pre_fault_local_objective": _aggregate(
+                            endpoint_rows,
+                            (
+                                "recovery",
+                                "healthy_pre_fault_local_state_errors",
+                                "mean_local_objective",
+                            ),
+                        ),
+                        "faulted_pre_recovery_local_objective": _aggregate(
+                            endpoint_rows,
+                            (
+                                "recovery",
+                                "faulted_pre_recovery_local_state_errors",
+                                "mean_local_objective",
+                            ),
+                        ),
+                        "fixed_final_local_objective": _aggregate(
+                            endpoint_rows,
+                            (
+                                "recovery",
+                                "fixed_final_local_state_errors",
+                                "mean_local_objective",
+                            ),
+                        ),
+                    }
+                )
         else:
             aggregates.update(
                 {
@@ -3131,7 +3495,7 @@ def run_train(request: "TrainRequest") -> int:
             )
             recovery_baseline_key = (
                 "faulted_pre_recovery_apparent_test"
-                if spec.recovery.policy == "star_local_pulse_sgd"
+                if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES
                 else "p0_apparent_test"
             )
             aggregates["paired_recovery_gain_percentage_points"] = _numeric_summary(
@@ -3142,7 +3506,7 @@ def run_train(request: "TrainRequest") -> int:
                 )
                 for row in endpoint_rows
             )
-            if spec.recovery.policy == "star_local_pulse_sgd":
+            if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
                 aggregates["faulted_pre_recovery_apparent_test_accuracy"] = _aggregate(
                     endpoint_rows,
                     ("faulted_pre_recovery_apparent_test", "student_accuracy"),
@@ -3184,7 +3548,7 @@ def run_train(request: "TrainRequest") -> int:
                             if not positive_damage_fractions
                             else _numeric_summary(positive_damage_fractions)
                         ),
-                        "star_recovery_endpoint_counts": {
+                        "post_fault_recovery_endpoint_counts": {
                             "endpoints": len(endpoint_rows),
                             "positive_gain": sum(value > 0.0 for value in gains),
                             "zero_gain": sum(value == 0.0 for value in gains),
@@ -3195,9 +3559,13 @@ def run_train(request: "TrainRequest") -> int:
                         },
                     }
                 )
+                if spec.recovery.policy == "star_local_pulse_sgd":
+                    aggregates["star_recovery_endpoint_counts"] = aggregates[
+                        "post_fault_recovery_endpoint_counts"
+                    ]
             if (
                 spec.evaluation.sample_limit is None
-                and spec.recovery.policy != "star_local_pulse_sgd"
+                and spec.recovery.policy not in _POST_DEPLOYMENT_FAULT_POLICIES
             ):
                 comparison = _drn_comparison(
                     rows=endpoint_rows,
@@ -3296,7 +3664,11 @@ def run_train(request: "TrainRequest") -> int:
                 "recovery_gradient_handoff": (
                     "identity_apparent_local_error_to_persistent_pulse_update"
                     if spec.recovery.policy == "star_local_pulse_sgd"
-                    else "identity_ste_apparent_q_to_persistent_pulse_update"
+                    else (
+                        "autograd_backprop_apparent_q_to_persistent_pulse_update"
+                        if spec.recovery.policy == "supervised_ce_pulse_adam"
+                        else "identity_ste_apparent_q_to_persistent_pulse_update"
+                    )
                 ),
                 "star_local_recovery": (
                     None
@@ -3307,6 +3679,18 @@ def run_train(request: "TrainRequest") -> int:
                         "transpose_mvm": False,
                         "cross_layer_backpropagation": False,
                         "label_role": "class_conditional_target_address",
+                    }
+                ),
+                "ordinary_supervised_bp_recovery": (
+                    None
+                    if spec.recovery.policy != "supervised_ce_pulse_adam"
+                    else {
+                        "loss": "ground_truth_label_cross_entropy",
+                        "transpose_mvm": True,
+                        "cross_layer_backpropagation": True,
+                        "autograd": True,
+                        "digital_adam_moments": True,
+                        "teacher_access_during_updates": False,
                     }
                 ),
                 "passive_kcl_denominator": "not_applicable_standard_crossbar_MVM",
@@ -3340,17 +3724,31 @@ def run_train(request: "TrainRequest") -> int:
                 },
                 "absolute_conductance_calibration": None,
                 "power_claim": "not_available_without_absolute_conductance_and_periphery_model",
-                "post_deployment_star_fault_source": (
+                "post_deployment_fault_source": (
                     None
-                    if star_fault_overlay is None
+                    if post_fault_overlay is None
                     else {
-                        "report": star_fault_overlay["report"],
+                        "report": post_fault_overlay["report"],
                         "population_fingerprint": (
-                            star_fault_population.fingerprint
-                            if star_fault_population is not None
+                            post_fault_population.fingerprint
+                            if post_fault_population is not None
                             else None
                         ),
-                        "sampling_receipt": star_fault_overlay["receipt"],
+                        "sampling_receipt": post_fault_overlay["receipt"],
+                    }
+                ),
+                "post_deployment_star_fault_source": (
+                    None
+                    if spec.recovery.policy != "star_local_pulse_sgd"
+                    or post_fault_overlay is None
+                    else {
+                        "report": post_fault_overlay["report"],
+                        "population_fingerprint": (
+                            post_fault_population.fingerprint
+                            if post_fault_population is not None
+                            else None
+                        ),
+                        "sampling_receipt": post_fault_overlay["receipt"],
                     }
                 ),
             },
@@ -3419,7 +3817,8 @@ def run_train(request: "TrainRequest") -> int:
                         "digital_teacher_KL_gradients_and_Adam_moments_remain_off_array",
                         "recovery_gradient_uses_identity_ste_from_apparent_to_hidden_persistent_state",
                     ]
-                    if spec.recovery.policy != "star_local_pulse_sgd"
+                    if spec.recovery.policy
+                    not in _POST_DEPLOYMENT_FAULT_POLICIES
                     else []
                 ),
                 *(
@@ -3439,6 +3838,18 @@ def run_train(request: "TrainRequest") -> int:
                 ),
                 *(
                     [
+                        f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam",
+                        "post_fault_retraining_uses_ground_truth_cross_entropy_full_network_autograd_backprop_and_digital_Adam",
+                        "teacher_is_used_for_source_initialization_predeployment_HWA_and_diagnostics_but_not_post_fault_updates",
+                        "ordinary_BP_recovery_is_a_privileged_algorithmic_control_not_fully_on_chip",
+                        "post_deployment_fault_transition_replays_explicitly_enabled_AIHWKit_published_OM_corrupt_cells_after_healthy_programming",
+                        "corrupt_persistent_q_is_stuck_but_apparent_q_retains_AIHWKit_write_noise_resampling",
+                    ]
+                    if spec.recovery.policy == "supervised_ce_pulse_adam"
+                    else []
+                ),
+                *(
+                    [
                         "same_array_persistent_transfer_uses_hidden_controller_inaccessible_state"
                     ]
                     if spec.transfer.source_state == "same_array_persistent"
@@ -3452,7 +3863,7 @@ def run_train(request: "TrainRequest") -> int:
             store.artifact_record(path, kind=kind)
             for path, kind in (
                 *source_artifact_paths,
-                *star_fault_artifact_paths,
+                *post_fault_artifact_paths,
                 *target_artifact_paths,
             )
         ]
@@ -3466,7 +3877,7 @@ def run_train(request: "TrainRequest") -> int:
         )
         artifacts.extend(
             store.artifact_record(path, kind=kind)
-            for path, kind in star_runtime_artifact_paths
+            for path, kind in post_fault_runtime_artifact_paths
         )
         compact_metrics = {
             "evidence_tier": summary["evidence_tier"],

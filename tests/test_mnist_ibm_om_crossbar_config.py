@@ -38,6 +38,11 @@ PUBLISHED_DEFECT_STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1.json"
 )
+SUPERVISED_RETRAINING_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
@@ -166,6 +171,93 @@ def test_star_recovery_contract_is_local_moment_free_and_chronological() -> None
     assert spec.recovery.star.fault_source_corrupt_devices_range == 0.01
     assert spec.device.corruption_policy == "counterfactual_repaired"
     assert spec.transfer.enabled is False
+
+
+@pytest.mark.parametrize(
+    ("name", "repair_examples", "maximum_batches"),
+    [
+        ("smoke_supervised_ce_retraining_matched_16.json", 16, 1),
+        ("smoke_supervised_ce_retraining_full_epoch.json", 55_000, 3_438),
+    ],
+)
+def test_supervised_retraining_contract_is_label_bp_and_chronological(
+    name: str,
+    repair_examples: int,
+    maximum_batches: int,
+) -> None:
+    spec = resolve_crossbar_spec(parse_crossbar_config(_payload(name)), RunMode.TRAIN)
+
+    assert spec.recovery.policy == "supervised_ce_pulse_adam"
+    assert spec.recovery.objective == "cross_entropy"
+    assert spec.recovery.layer_scope == "all"
+    assert spec.recovery.learning_rates_q == (6e-5, 6e-5)
+    assert spec.recovery.supervised_bp is not None
+    assert spec.recovery.supervised_bp.repair_examples == repair_examples
+    assert spec.recovery.supervised_bp.label_source == "ground_truth"
+    assert spec.recovery.supervised_bp.gradient_engine == (
+        "autograd_full_network_backprop"
+    )
+    assert spec.recovery.supervised_bp.fault_mask_access == "forbidden"
+    assert spec.recovery.maximum_batches == maximum_batches
+    assert spec.data.num_points == 16
+    assert spec.offchip.maximum_batches == 1
+    assert spec.device.corruption_policy == "counterfactual_repaired"
+    assert spec.transfer.enabled is False
+
+
+def test_supervised_retraining_study_declares_matched_and_full_budget_arms() -> None:
+    plan = load_study_plan(SUPERVISED_RETRAINING_STUDY_PATH)
+
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "supervised-ce-pulse-adam-matched-16",
+        "supervised-ce-pulse-adam-full-55000",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["recovery"].__setitem__(
+                "objective", "teacher_kl"
+            ),
+            "cross_entropy",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_bp"].__setitem__(
+                "fault_mask_access", "available"
+            ),
+            "forbidden",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_bp"].__setitem__(
+                "fault_source_enabled_corrupt_devices_prob", 0.0
+            ),
+            "0.1348",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__(
+                "maximum_batches", 2
+            ),
+            "complete declared supervised repair cohort",
+        ),
+        (
+            lambda value: value["device"].__setitem__(
+                "corruption_policy", "published"
+            ),
+            "counterfactually repaired healthy array",
+        ),
+    ],
+)
+def test_supervised_retraining_rejects_scientific_drift(
+    mutation,
+    message: str,
+) -> None:
+    payload = _payload("smoke_supervised_ce_retraining_matched_16.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
 
 
 @pytest.mark.parametrize(

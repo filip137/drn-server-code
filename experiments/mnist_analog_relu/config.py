@@ -105,6 +105,20 @@ class StarRecoverySettings:
 
 
 @dataclass(frozen=True)
+class SupervisedBpRecoverySettings:
+    repair_examples: int
+    label_source: str
+    update_batching: str
+    gradient_engine: str
+    fault_transition: str
+    fault_source_corruption_policy: str
+    fault_source_preset_default_corrupt_devices_prob: float
+    fault_source_enabled_corrupt_devices_prob: float
+    fault_source_corrupt_devices_range: float
+    fault_mask_access: str
+
+
+@dataclass(frozen=True)
 class RecoverySettings:
     policy: str
     layer_scope: str
@@ -117,6 +131,7 @@ class RecoverySettings:
     pulse_cap_per_cell: int
     maximum_batches: int | None
     star: StarRecoverySettings | None
+    supervised_bp: SupervisedBpRecoverySettings | None
 
 
 @dataclass(frozen=True)
@@ -512,12 +527,22 @@ def _parse_recovery(value: Any) -> RecoverySettings:
     }
     if policy == "star_local_pulse_sgd":
         _keys(raw, path, common | {"star"})
+    elif policy == "supervised_ce_pulse_adam":
+        _keys(raw, path, common | {"betas", "epsilon", "supervised_bp"})
     else:
         _keys(raw, path, common | {"betas", "epsilon"})
-    if policy not in {"none", "pulse_adam", "star_local_pulse_sgd"}:
+    if policy not in {
+        "none",
+        "pulse_adam",
+        "star_local_pulse_sgd",
+        "supervised_ce_pulse_adam",
+    }:
         raise config_error(
             f"{path}.policy",
-            "to be 'none', 'pulse_adam', or 'star_local_pulse_sgd'",
+            (
+                "to be 'none', 'pulse_adam', 'star_local_pulse_sgd', or "
+                "'supervised_ce_pulse_adam'"
+            ),
             policy,
         )
     if raw["layer_scope"] not in {"all", "input_only", "output_only"}:
@@ -530,10 +555,11 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         raw["pulse_cap_per_cell"], f"{path}.pulse_cap_per_cell", minimum=0
     )
     star = None
+    supervised_bp = None
     beta_1: float | None = None
     beta_2: float | None = None
     epsilon: float | None = None
-    if policy in {"none", "pulse_adam"}:
+    if policy in {"none", "pulse_adam", "supervised_ce_pulse_adam"}:
         betas = _pair(raw["betas"], f"{path}.betas", minimum=0.0)
         if any(item >= 1.0 for item in betas):
             raise config_error(f"{path}.betas", "to contain values in [0, 1)", raw["betas"])
@@ -548,8 +574,17 @@ def _parse_recovery(value: Any) -> RecoverySettings:
                 "to use the matched Adam betas [0.9, 0.999] and epsilon 1e-8",
                 dict(raw),
             )
-        if raw["objective"] != "teacher_kl":
-            raise config_error(f"{path}.objective", "to equal 'teacher_kl'", raw["objective"])
+        expected_objective = (
+            "cross_entropy"
+            if policy == "supervised_ce_pulse_adam"
+            else "teacher_kl"
+        )
+        if raw["objective"] != expected_objective:
+            raise config_error(
+                f"{path}.objective",
+                f"to equal {expected_objective!r}",
+                raw["objective"],
+            )
         beta_1, beta_2 = betas
         epsilon = float(parsed_epsilon)
 
@@ -681,6 +716,97 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             ],
             fault_mask_access=expected["fault_mask_access"],
         )
+    elif policy == "supervised_ce_pulse_adam":
+        if (
+            epochs < 1
+            or any(rate <= 0.0 for rate in rates)
+            or pulse_cap < 1
+            or raw["layer_scope"] != "all"
+        ):
+            raise config_error(
+                path,
+                (
+                    "to use positive epochs/rates/cap and scope='all' for "
+                    "supervised cross-entropy retraining"
+                ),
+                dict(raw),
+            )
+        bp_path = f"{path}.supervised_bp"
+        bp_raw = _object(raw["supervised_bp"], bp_path)
+        _keys(
+            bp_raw,
+            bp_path,
+            {
+                "repair_examples",
+                "label_source",
+                "update_batching",
+                "gradient_engine",
+                "fault_transition",
+                "fault_source_corruption_policy",
+                "fault_source_preset_default_corrupt_devices_prob",
+                "fault_source_enabled_corrupt_devices_prob",
+                "fault_source_corrupt_devices_range",
+                "fault_mask_access",
+            },
+        )
+        expected = {
+            "label_source": "ground_truth",
+            "update_batching": "minibatch",
+            "gradient_engine": "autograd_full_network_backprop",
+            "fault_transition": "post_deployment_published_companion_replay",
+            "fault_source_corruption_policy": "published",
+            "fault_mask_access": "forbidden",
+        }
+        for name, expected_value in expected.items():
+            if bp_raw[name] != expected_value:
+                raise config_error(
+                    f"{bp_path}.{name}",
+                    f"to equal {expected_value!r}",
+                    bp_raw[name],
+                )
+        fault_source_scalars = {
+            "fault_source_preset_default_corrupt_devices_prob": 0.0,
+            "fault_source_enabled_corrupt_devices_prob": 0.1348,
+            "fault_source_corrupt_devices_range": 0.01,
+        }
+        for name, expected_value in fault_source_scalars.items():
+            parsed = _number(bp_raw[name], f"{bp_path}.{name}", minimum=0.0)
+            if not math.isclose(
+                float(parsed), expected_value, rel_tol=0.0, abs_tol=1e-12
+            ):
+                raise config_error(
+                    f"{bp_path}.{name}",
+                    f"to equal {expected_value!r}",
+                    bp_raw[name],
+                )
+        supervised_bp = SupervisedBpRecoverySettings(
+            repair_examples=_integer(
+                bp_raw["repair_examples"],
+                f"{bp_path}.repair_examples",
+                minimum=1,
+            ),
+            label_source=expected["label_source"],
+            update_batching=expected["update_batching"],
+            gradient_engine=expected["gradient_engine"],
+            fault_transition=expected["fault_transition"],
+            fault_source_corruption_policy=expected[
+                "fault_source_corruption_policy"
+            ],
+            fault_source_preset_default_corrupt_devices_prob=(
+                fault_source_scalars[
+                    "fault_source_preset_default_corrupt_devices_prob"
+                ]
+            ),
+            fault_source_enabled_corrupt_devices_prob=(
+                fault_source_scalars[
+                    "fault_source_enabled_corrupt_devices_prob"
+                ]
+            ),
+            fault_source_corrupt_devices_range=fault_source_scalars[
+                "fault_source_corrupt_devices_range"
+            ],
+            fault_mask_access=expected["fault_mask_access"],
+        )
     return RecoverySettings(
         policy=policy,
         layer_scope=raw["layer_scope"],
@@ -693,6 +819,7 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         pulse_cap_per_cell=pulse_cap,
         maximum_batches=_optional_positive_integer(raw["maximum_batches"], f"{path}.maximum_batches"),
         star=star,
+        supervised_bp=supervised_bp,
     )
 
 
@@ -834,6 +961,7 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     )
     recovery = _parse_recovery(raw["recovery"])
     offchip = _parse_offchip(raw["offchip"])
+    data = _parse_data(raw["data"])
     if recovery.policy == "star_local_pulse_sgd" and (
         device.corruption_policy != "counterfactual_repaired"
         or transfer.enabled
@@ -849,6 +977,39 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
             ),
             dict(raw),
         )
+    if recovery.policy == "supervised_ce_pulse_adam" and (
+        device.corruption_policy != "counterfactual_repaired"
+        or transfer.enabled
+        or offchip.policy != "continuous_hwa"
+    ):
+        raise config_error(
+            "config",
+            (
+                "to start supervised post-fault retraining from a "
+                "counterfactually repaired healthy array after continuous HWA "
+                "and keep fresh-array transfer disabled"
+            ),
+            dict(raw),
+        )
+    if recovery.policy == "supervised_ce_pulse_adam":
+        settings = recovery.supervised_bp
+        if settings is None:  # pragma: no cover - parser invariant
+            raise RuntimeError("Expected supervised-BP settings after parsing.")
+        available = 60_000 - data.validation_points
+        expected_batches = math.ceil(settings.repair_examples / data.batch_size)
+        if (
+            settings.repair_examples > available
+            or recovery.maximum_batches != expected_batches
+        ):
+            raise config_error(
+                "config.recovery",
+                (
+                    "to consume the complete declared supervised repair cohort: "
+                    f"repair_examples <= {available} and maximum_batches="
+                    f"ceil(repair_examples/{data.batch_size})"
+                ),
+                dict(raw["recovery"]),
+            )
     reference = _parse_drn_reference(raw["drn_reference"])
     if reference.assignment_seed != device.assignment_seed or reference.endpoint_seeds != device.endpoint_seeds:
         raise config_error(
@@ -858,7 +1019,7 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
         schema_version=1,
         experiment_id=EXPERIMENT_ID,
         runtime=_parse_runtime(raw["runtime"]),
-        data=_parse_data(raw["data"]),
+        data=data,
         model=_parse_model(raw["model"]),
         source=_parse_source(raw["source"]),
         device=device,
@@ -897,6 +1058,7 @@ __all__ = [
     "OffchipSettings",
     "SCHEMA_VERSION",
     "StarRecoverySettings",
+    "SupervisedBpRecoverySettings",
     "parse_crossbar_config",
     "resolve_crossbar_spec",
 ]

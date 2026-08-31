@@ -686,3 +686,94 @@ def test_recovery_gradient_uses_apparent_forward_with_persistent_pulse_state(
     assert report["gradient_handoff"] == (
         "identity_ste_apparent_q_to_persistent_pulse_update"
     )
+
+
+def test_supervised_ce_recovery_uses_labels_without_teacher_or_fault_mask(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RestrictedPort:
+        size = 1
+        nominal_dw_min = 0.1
+
+        def __init__(self) -> None:
+            self._apparent = torch.tensor([0.25], dtype=torch.float32)
+
+        @property
+        def apparent(self) -> torch.Tensor:
+            return self._apparent.clone()
+
+        def state_hash_receipt(self) -> dict[str, str]:
+            return {"apparent_sha256": "apparent", "persistent_sha256": "persistent"}
+
+    gradients: list[torch.Tensor] = []
+
+    class FakePulseAdam:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def step(self, gradient: torch.Tensor, _port: RestrictedPort) -> dict:
+            gradients.append(gradient.detach().clone())
+            return {"commanded_pulses": 1, "applied_pulses": 1}
+
+        def report(self) -> dict:
+            return {
+                "optimizer_steps": 1,
+                "commanded_pulses": 1,
+                "commanded_cells": 1,
+            }
+
+    def fake_logits(
+        inputs: torch.Tensor,
+        state: torch.Tensor,
+        _layout,
+        *,
+        digital_scales,
+    ) -> torch.Tensor:
+        del digital_scales
+        classes = torch.arange(10, dtype=state.dtype, device=state.device)
+        return state[0] * classes.unsqueeze(0).expand(inputs.shape[0], -1)
+
+    monkeypatch.setattr(runtime, "PulseAdam", FakePulseAdam)
+    monkeypatch.setattr(runtime, "standard_crossbar_logits", fake_logits)
+    spec = SimpleNamespace(
+        recovery=SimpleNamespace(
+            supervised_bp=SimpleNamespace(repair_examples=2),
+            learning_rates_q=(6e-5, 6e-5),
+            beta_1=0.9,
+            beta_2=0.999,
+            epsilon=1e-8,
+            layer_scope="all",
+            pulse_cap_per_cell=64,
+            epochs=1,
+            maximum_batches=1,
+        ),
+        runtime=SimpleNamespace(seed=42),
+        device=SimpleNamespace(assignment_seed=87004),
+    )
+    inputs = torch.ones((2, 1), dtype=torch.float32)
+    labels = torch.tensor([0, 9], dtype=torch.int64)
+    expected_state = torch.tensor([0.25], requires_grad=True)
+    expected_loss = torch.nn.functional.cross_entropy(
+        fake_logits(inputs, expected_state, (), digital_scales=(1.0, 1.0)),
+        labels,
+    )
+    expected_gradient = torch.autograd.grad(expected_loss, expected_state)[0]
+    port = RestrictedPort()
+
+    epochs, optimizer = runtime._run_supervised_ce_pulse_recovery(
+        update_port=port,
+        spec=spec,
+        endpoint_seed=89402,
+        layout=(),
+        digital_scales=(1.0, 1.0),
+        train_loader=[(inputs, labels)],
+        device=torch.device("cpu"),
+    )
+
+    assert not hasattr(port, "post_deployment_fault_mask")
+    assert not hasattr(port, "persistent")
+    assert len(gradients) == 1
+    assert torch.allclose(gradients[0], expected_gradient)
+    assert epochs[0]["examples"] == 2
+    assert epochs[0]["train_cross_entropy"] == pytest.approx(expected_loss.item())
+    assert optimizer["repair_cohort"]["labels_sha256"]
