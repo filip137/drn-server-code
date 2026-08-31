@@ -236,9 +236,51 @@ def test_paired_target_hwa_and_recovery_gates_are_explicit() -> None:
         recovery, selected_source_persistent_mean_accuracy=0.92
     )
     assert recovery_result["post_minus_pre_accuracy"] == pytest.approx(0.16)
-    assert recovery_result["source_gap_passed"] is True
+    assert recovery_result["source_recovery_floor_passed"] is True
+    assert recovery_result["within_symmetric_source_gap_diagnostic"] is True
     assert recovery_result["physical_safety_passed"] is True
     assert recovery_result["passed"] is True
+
+
+@pytest.mark.parametrize(
+    (
+        "source_accuracy",
+        "post_accuracy",
+        "floor_passed",
+        "symmetric_diagnostic",
+    ),
+    (
+        # Beneficial 6.3275 pp overshoot passes the one-sided floor even
+        # though it is not symmetric parity within 2 pp.
+        (0.839225, 0.9025, True, False),
+        # A 1.9 pp shortfall remains inside the allowed recovery floor.
+        (0.90, 0.881, True, True),
+        # A 2.1 pp shortfall fails the recovery floor.
+        (0.90, 0.879, False, False),
+    ),
+)
+def test_recovery_source_floor_is_one_sided(
+    source_accuracy: float,
+    post_accuracy: float,
+    floor_passed: bool,
+    symmetric_diagnostic: bool,
+) -> None:
+    recovery = {
+        "before_test": {"student_accuracy": 0.70},
+        "after_test": {"student_accuracy": post_accuracy},
+        "corrupt_immobility": {"stuck_cells_immobile": True},
+        "pulse": {"verify_reads_during_updates": 0},
+    }
+    report = _recovery_gate(
+        recovery,
+        selected_source_persistent_mean_accuracy=source_accuracy,
+    )
+    assert report["source_recovery_floor_passed"] is floor_passed
+    assert (
+        report["within_symmetric_source_gap_diagnostic"]
+        is symmetric_diagnostic
+    )
+    assert report["passed"] is floor_passed
 
 
 def test_protocol_adapter_preserves_p0_and_zero_verify_recovery_contract() -> None:

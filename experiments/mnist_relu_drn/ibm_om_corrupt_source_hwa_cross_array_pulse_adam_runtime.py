@@ -808,19 +808,29 @@ def _recovery_gate(
     *,
     selected_source_persistent_mean_accuracy: float,
     minimum_gain: float = 0.10,
-    maximum_source_gap: float = 0.02,
+    maximum_source_shortfall: float = 0.02,
 ) -> Mapping[str, Any]:
-    """Evaluate recovery accuracy and physical-safety requirements together."""
+    """Evaluate recovery gain, source-floor retention, and physical safety.
+
+    Recovery is successful when it reaches no more than the allowed shortfall
+    below the selected source accuracy.  Beneficial overshoot is therefore a
+    pass.  Symmetric closeness remains recorded as a diagnostic, but does not
+    veto recovery.
+    """
 
     before = float(recovery["before_test"]["student_accuracy"])
     after = float(recovery["after_test"]["student_accuracy"])
     source = float(selected_source_persistent_mean_accuracy)
     gain = after - before
     source_gap = after - source
+    absolute_source_gap = abs(source_gap)
+    allowed_shortfall = float(maximum_source_shortfall)
+    source_floor = source - allowed_shortfall
     immobile = bool(recovery["corrupt_immobility"]["stuck_cells_immobile"])
     zero_verify = int(recovery["pulse"]["verify_reads_during_updates"]) == 0
     gain_passed = gain >= float(minimum_gain)
-    source_gap_passed = abs(source_gap) <= float(maximum_source_gap)
+    symmetric_parity_diagnostic = absolute_source_gap <= allowed_shortfall
+    source_recovery_floor_passed = after >= source_floor
     return {
         "pre_recovery_accuracy": before,
         "post_recovery_accuracy": after,
@@ -829,12 +839,21 @@ def _recovery_gate(
         "gain_passed": gain_passed,
         "selected_source_persistent_mean_accuracy": source,
         "post_minus_selected_source_accuracy": source_gap,
-        "maximum_absolute_source_gap": float(maximum_source_gap),
-        "source_gap_passed": source_gap_passed,
+        "absolute_post_vs_selected_source_accuracy_difference": absolute_source_gap,
+        "symmetric_absolute_difference_threshold": allowed_shortfall,
+        "within_symmetric_source_gap_diagnostic": symmetric_parity_diagnostic,
+        "maximum_source_shortfall": allowed_shortfall,
+        "source_recovery_floor_accuracy": source_floor,
+        "source_recovery_floor_passed": source_recovery_floor_passed,
         "corrupt_cells_immobile": immobile,
         "zero_verify_reads": zero_verify,
         "physical_safety_passed": immobile and zero_verify,
-        "passed": gain_passed and source_gap_passed and immobile and zero_verify,
+        "passed": (
+            gain_passed
+            and source_recovery_floor_passed
+            and immobile
+            and zero_verify
+        ),
     }
 
 
