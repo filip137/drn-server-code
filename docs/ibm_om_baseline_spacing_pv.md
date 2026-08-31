@@ -573,3 +573,318 @@ absolute-conductance calibration. It does not test four versus eight devices,
 a fixed intrinsic reference, inference read noise, retention, drift, repeated
 logical rewrites, BPTT, QAT, HWA, replacement-hardware transfer, or on-chip
 recovery.
+
+## Nominal-bound-Winsorized IBM OM counterfactual
+
+- Result ID:
+  `mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v2`
+- Experiment ID:
+  `mnist_ibm_om_baseline_spacing_pv_truncated_nominal.v1`
+- Lifecycle: `exploratory_noncanonical`; direct local CUDA, not a prepared,
+  reviewed, or finalized workflow-managed study
+- Exact configs:
+  `examples/mnist_relu_drn/ibm_om_baseline_spacing_pv_truncated_nominal/`
+- Frozen source/teacher: `data/mnist_relu_teacher_fixed_init_20260816.pt`,
+  SHA-256
+  `9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52`
+
+This run tests the proposed normalized workaround, but it must not be called
+the default IBM OM model. AIHWKit 1.1.0 declares nominal means
+`w_min=-1`, `w_max=1`, with device-to-device variations
+`w_min_dtod=0.5695` and `w_max_dtod=0.3499`. Its C++ population code samples
+each cell's two bounds with independent Gaussian factors and, under
+`enforce_consistency`, forces only their signs and ordering. It does **not**
+cap the sampled values at `-1` and `+1`. AIHWKit also documents these as
+abstract signed weight bounds which may physically be implemented by the
+difference of two resistive elements. The OM preset is a
+`SoftBoundsReferenceDevice` with symmetry-point subtraction enabled, so it
+does not supply a unique absolute single-device conductance origin for the
+passive DRN.
+
+The counterfactual therefore freezes the same repaired identities first and
+then Winsorizes their sampled pulse bounds:
+
+```text
+a_min' = max(a_min, -1)
+a_max' = min(a_max, +1)
+x = (a+1)/2
+G = a+1 = 2x.
+```
+
+The source audit is reproducible from the official
+[`ReRamArrayOMPresetDevice` definition](https://aihwkit.readthedocs.io/en/latest/_modules/aihwkit/simulator/presets/devices.html#ReRamArrayOMPresetDevice),
+the official
+[`PulsedDevice`/`SoftBoundsReferenceDevice` documentation](https://aihwkit.readthedocs.io/en/latest/_modules/aihwkit/simulator/configs/devices.html#SoftBoundsReferenceDevice),
+and the AIHWKit 1.1.0
+[`PulsedRPUDevice::populate` implementation](https://github.com/IBM/aihwkit/blob/v1.1.0/src/rpucuda/rpu_pulsed_device.cpp#L593-L640).
+
+This is Winsorization, not truncation by rejection or resampling. It creates
+point masses at `a=-1` and `a=+1` and changes the soft-bound pulse response of
+affected cells. After transforming the bounds, the runtime repeats the full
+eight RESET/read commissioning sequence and runs P&V against the transformed
+pulse plant. Persistent endpoints are deployed directly through `G=a+1`;
+there is no circuit-handoff clipping and the apparent verify endpoint remains
+controller-side only.
+
+For each destination pair, the requested zero is the larger of its two fresh
+commissioned RESET estimates. Four pairs among 238,200 unique held-out pairs
+placed that noisy request just above their partner's exact SET ceiling. Those
+four requested baselines were moved downward once into the exact common
+support before quantization or P&V; the largest movement was `0.034773` in
+raw `x`. This target-construction adjustment is recorded separately from
+endpoint projection. There were zero target-handoff projections, zero
+persistent-endpoint projections, and zero persistent support violations.
+
+### Coverage and Winsorization magnitude
+
+All 27 configurations completed, covering nine designs, three held-out
+assignments, and five P&V endpoint seeds per assignment: 135 persistent
+deployments. The held-out sampled-bound changes were large:
+
+| Assignment | Lower bound Winsorized | Upper bound Winsorized | Either | Both |
+| ---: | ---: | ---: | ---: | ---: |
+| 87001 | 50.13% | 49.97% | 75.11% | 24.99% |
+| 87002 | 50.33% | 49.70% | 75.02% | 25.01% |
+| 87003 | 50.39% | 50.02% | 75.21% | 25.20% |
+
+The intervention is consequently not a tail-only cleanup. Roughly three
+quarters of identities have at least one changed bound, and about one quarter
+have both bounds changed.
+
+### Winsorized 3-by-3 accuracy matrix
+
+Continuous and ideal values are arithmetic means over the three held-out
+assignments. Persistent P&V is the arithmetic mean over all 15 matched
+endpoints in each design.
+
+| `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | `1 delta_x` | 94.9800% | 94.5267% | 74.7913% |
+| 0.00 | `2 delta_x` | 94.9800% | 93.0933% | **75.7860%** |
+| 0.00 | `4 delta_x` | 94.9800% | 87.8867% | 71.7620% |
+| 0.25 | `1 delta_x` | 95.0667% | **94.9933%** | 67.9993% |
+| 0.25 | `2 delta_x` | 95.0667% | 88.7467% | 58.6040% |
+| 0.25 | `4 delta_x` | 95.0667% | 77.6333% | 54.9020% |
+| 0.50 | `1 delta_x` | 94.6900% | 22.7767% | 11.9080% |
+| 0.50 | `2 delta_x` | 94.6900% | 12.7867% | 10.3027% |
+| 0.50 | `4 delta_x` | 94.6900% | 13.1533% | 8.9993% |
+
+The best ideal-mapped result is `alpha=0.25,h=delta_x` at 94.9933%.
+The best observed persistent result is instead `alpha=0,h=2 delta_x` at
+75.7860%. Its assignment-level persistent range is 74.444--76.504%. This is
+an approximately 21-point recovery over the global-extreme affine stress
+test's best 54.7013%, but it remains about one point below the historical
+public-range `alpha=0,h=2 delta_x` control and is not usable deployment
+accuracy. The apparent one-point lead over `h=delta_x` is not a robust spacing
+selection: it wins only 9 of 15 paired endpoint seeds, its paired deltas range
+from -13.34 to +14.19 points, and a naive endpoint-level standard error is
+1.72 points.
+
+The `alpha=0` spacing tradeoff is now informative. Moving from one to two
+`delta_x` raises requested-code correctness from 49.63% to 71.26% while the
+persistent raw-`x` RMSE stays essentially fixed at 0.05533 versus 0.05523.
+That robustness gain narrowly outweighs the ideal-resolution loss from
+94.53% to 93.09%. At four `delta_x`, code correctness reaches 93.87%, but
+ideal accuracy falls to 87.89%; the lost weight resolution dominates. Thus a
+larger spacing can make the *code label* more reliable while making the
+network worse.
+
+The midpoint rows require a separate calibration caveat. `alpha=0` and
+`alpha=0.25` both selected `[1.0,1.0]` layer fractions, with fitted gains
+14.125 and 70.795. `alpha=0.5` selected `[1.0,0.125]` by only one development
+example over several larger-W2 candidates and hit the gain ceiling of 1000.
+That choice erases 93.33% of W2 at one-delta spacing and 99.67--100% at the
+larger spacings, even though W2 has ample physical capacity. The 9--23% midpoint
+quantized accuracies therefore combine high-baseline loading with an unstable
+continuous-only scale selection; they are not a clean baseline-position
+effect.
+
+### Full-conductance and programming diagnosis
+
+For `alpha=0,h=delta_x`, mean W1/W2 baseline quad loading is 1.598/1.619 in
+the declared normalized full-`G` units, and the ideal full-load means are
+1.856/2.229. Persistent RMS contrast divided by mean load is 0.0969/0.1624.
+These ratios and voltage levels are close to the historical capped screen and
+far healthier than the global-extreme affine stress test, where the same
+ratios fell to about 0.016/0.017. The recovery therefore comes from removing
+the extreme common-mode translation, not from subtracting the baseline: every
+complete `G` remains in both signed transfer and denominator loading.
+
+P&V remains the limiting stage. In the persistent winner
+`alpha=0,h=2 delta_x`, apparent acceptance is 99.955%, persistent-window
+success is 35.98%, requested-code correctness is 71.26%, and mean cost is
+6.054 pulses per cell. Persistent target RMSE is 0.05523 raw `x`, nearly the
+same absolute error as at one and four spacings. At one `delta_x`, ideal
+DRN-versus-ReLU relative-L2 error is 0.306/0.270 in W1/W2 and rises after P&V
+to 0.689/0.395. At two `delta_x`, the corresponding ideal errors are
+0.417/0.299 and persistent errors are 0.725/0.409. The network-level
+programming gap is therefore not explained by endpoint clipping or stuck
+cells; it is the interaction of finite persistent write error, quantization,
+and full-conductance circuit sensitivity.
+
+### Comparison and interpretation
+
+For `alpha=0,h=delta_x`, this counterfactual gives 94.53% ideal and 74.79%
+persistent accuracy. The historical public-range run gave 94.77%/78.16%,
+while the global-extreme affine no-clipping stress test gave 93.70%/54.70%.
+The Winsorized result shows that the catastrophic global-affine loss was
+largely caused by treating the most negative abstract OM weight bound as a
+literal absolute-conductance origin. It does **not** show that IBM intended
+hard clipping at nominal `[-1,1]`, nor that this is a fabricated-device
+model: default AIHWKit samples beyond those nominal values, and this control
+changes the bound and update distribution for most cells.
+
+The practical conclusion is two-part:
+
+1. In a deliberately normalized single-device `w=a` model, bound
+   Winsorization plus `G=a+1` is a coherent no-post-handoff-clipping
+   sensitivity control and preserves high ideal-mapped accuracy.
+2. It still leaves persistent deployment near 76%, below the 90% progression
+   criterion, so P&V/controller work remains necessary before QAT, HWA, BPTT,
+   or on-chip recovery is informative.
+
+The full local analysis is in
+[`post_run_analysis.md`](../results/mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v2/analysis/post_run_analysis.md),
+[`exploratory_summary.json`](../results/mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v2/analysis/exploratory_summary.json),
+and
+[`accuracy_by_assignment.csv`](../results/mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v2/analysis/accuracy_by_assignment.csv).
+
+### Winsorized-control claim boundary
+
+This is a complete exploratory model-based sensitivity screen, not default
+IBM behavior, measured-device evidence, or an absolute conductance
+calibration. It uses counterfactually repaired identities, analyst-imposed
+bound Winsorization, one-pulse P&V, three assignments and five endpoint seeds.
+It excludes inference read noise, retention, drift, repeated logical writes,
+QAT, HWA, BPTT, replacement-hardware transfer after training, and on-chip
+recovery.
+
+## Multi-assignment deterministic QAT exploratory follow-up
+
+Evidence tier: `exploratory_noncanonical`. This follow-up deliberately tests
+whether deterministic codebook adaptation can make the nominal-bound-
+Winsorized control less assignment-specific. It is not default IBM behavior,
+measured-device evidence, or a workflow-reviewed study.
+
+One normalized FP32 logical master was trained for ten epochs while the
+forward codebook alternated, minibatch by minibatch, between Winsorized
+assignments 86001 and 87001. Assignment 87002 was reserved for fixed-epoch-10
+spacing selection, and assignment 87003 was excluded until all epoch-10
+checkpoints had been written. Training used the exact full-conductance
+`G=a+1=2x` mapper and a deterministic straight-through codebook forward. It
+did **not** sample P&V or read noise during minibatch training. The fixed
+hardware templates still inherit their one frozen eight-read RESET
+commissioning receipts, which were generated with the preset's stochastic
+commissioning/read process before QAT.
+
+Spacing was selected only by assignment-87002 correct count at the declared
+epoch 10, with lower KL as the tie-breaker:
+
+| Spacing | 87002 epoch 0 | 87002 epoch 10 | Change | Epoch-10 KL |
+| ---: | ---: | ---: | ---: | ---: |
+| `1 delta_x` | 4710/5000 (94.20%) | **4671/5000 (93.42%)** | -0.78 pp | 0.122207 |
+| `2 delta_x` | 4548/5000 (90.96%) | 4598/5000 (91.96%) | +1.00 pp | 0.181462 |
+| `4 delta_x` | 4128/5000 (82.56%) | 4280/5000 (85.60%) | +3.04 pp | 0.450342 |
+
+The selected one-delta checkpoint is
+`a070d0369a93201ac3abd4e36019cc1d66c1a8cf0a325ccdda5439b08cded75b`.
+The diagnostic best epoch was never substituted for the fixed epoch-10
+headline.
+
+After selection was frozen, each spacing was mapped onto assignment 87003.
+Five stochastic persistent P&V deployments used matched endpoint seeds
+89301--89305:
+
+| Spacing | Ideal epoch 0 | Ideal epoch 10 | P&V epoch 0 mean | P&V epoch 10 mean | P&V change |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| `1 delta_x` | 94.88% | **94.47%** | 68.998% | **70.380%** | +1.382 pp |
+| `2 delta_x` | 94.14% | 92.67% | 76.504% | 77.122% | +0.618 pp |
+| `4 delta_x` | 89.19% | 86.20% | 71.892% | 69.524% | -2.368 pp |
+
+For the selected one-delta arm, the five epoch-10 endpoint accuracies were
+58.90%, 75.61%, 72.96%, 64.29%, and 80.14%; their arithmetic mean is 70.38%.
+Here, a **P&V mean** is the mean over independent stochastic programming and
+verify streams on the same logical target and physical assignment. It is not
+the mean over five independently sampled arrays. P&V includes stochastic
+pulse response and noisy apparent verify observations, while network accuracy
+uses the saved persistent endpoint with no additional inference-read noise.
+
+The deterministic QAT result is modest and assignment-sensitive. It reduces
+ideal accuracy on 87003 for every spacing and improves the selected arm's P&V
+mean by only 1.382 points. Although two-delta has the largest observed 87003
+P&V mean, choosing it after seeing that target would violate the frozen
+selection rule. The result therefore selects one-delta for the downstream
+recovery control and does not establish broad replacement-array recovery.
+
+The verified local analysis is in
+[`report.md`](../results/mnist-ibm-om-winsorized-multi-assignment-qat-exploratory-20260829-v1/analysis/report.md)
+and
+[`summary.json`](../results/mnist-ibm-om-winsorized-multi-assignment-qat-exploratory-20260829-v1/analysis/summary.json).
+
+## Persistent pulse-mediated Adam exploratory follow-up
+
+The selected one-delta epoch-10 checkpoint was then programmed once onto
+assignment 87003 with endpoint seed 89301. This named persistent starting
+state, `P0`, was saved with its apparent state and RNG continuation and cloned
+byte-for-byte for every recovery arm. There was no target remapping after
+`P0`, and no floating-point weight shadow replaced the persistent cell state.
+Its SHA-256 is
+`c807b3f1f08b140473a07a3f438594e9ae742750bcb8c0f53c57a885d1cb0b0e`.
+
+This `P0` is a newly programmed realization, not a reload of the nominally
+same 89301 repeat in the preceding five-seed QAT table. The recovery plant
+preallocated 385 random draws per cell so its trajectory could continue,
+whereas the QAT evaluator preallocated 257. CPU `torch.randn` streams are
+shape-dependent, so the same nominal seed does not make the shorter vector a
+prefix of the longer vector. The exact saved `P0` state, rather than the seed
+label alone, is therefore the authoritative recovery initializer.
+
+The experiment is accurately described as **hardware-in-loop pulse-mediated
+Adam**, not fully autonomous on-chip Adam. Forward inference always used the
+plant's current persistent full conductances. BPTT, teacher logits, Adam
+moments, and the Bernoulli pulse-selection RNG remained digital; the only
+weight mutation after `P0` was a capability-limited SET or RESET pulse applied
+to the persistent plant.
+
+Technique and learning rate were selected on 5,000 validation examples before
+the 10,000-example test labels were opened:
+
+| Arm | Validation | Pulses | Pulses/cell | Changed cells | Test |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Frozen `P0` | 2910/5000 (58.20%) | 0 | 0 | 0 | 5920/10000 (59.20%) |
+| Direct rail, `1e-4` | 4636/5000 (92.72%) | 186,489 | 1.174 | 105,931 | not opened |
+| Coordinated contrast, `1e-4` | 4530/5000 (90.60%) | 206,512 | 1.300 | 111,277 | not opened |
+| **Direct rail, `3e-5`** | **4674/5000 (93.48%)** | **54,834** | **0.345** | **44,398** | **9414/10000 (94.14%)** |
+| Direct rail, `3e-4` | 4643/5000 (92.86%) | 512,568 | 3.228 | 148,059 | not opened |
+
+The selected arm recovers **34.94 percentage points**, from 59.20% to 94.14%,
+and finishes only 0.33 point below the corresponding deterministic ideal-
+mapped accuracy of 94.47%. It used 27,217 SET and 27,617 RESET pulses, touched
+27.96% of cells, required at most six pulses on any cell, and hit the 64-pulse
+recovery cap zero times. The full-`G` quad-mean loading-change bias/RMS was
+0.02767/0.06721, while signed-contrast change bias/RMS was
+-0.000085/0.12108. The selected recovery checkpoint SHA-256 is
+`13c7286725f537e2f296fcde24f9b492295a1650574373a2425cb66585f69c96`.
+
+The coordinated four-rail contrast arm balanced pulse counts exactly, but it
+did not preserve common loading: pulse increments are state-dependent,
+asymmetric, and bound-limited. It used more pulses and produced larger loading
+and contrast drift than independent rail control. The low-rate direct arm was
+therefore both the most accurate and the least invasive trained arm.
+
+This recovery **does include device-update noise**. `P0` was created by
+stochastic pulse programming stopped by noisy apparent verify observations,
+and Adam continued the same stochastic persistent pulse plant. The recovery
+updates themselves were open-loop pulse decisions; Adam did not perform an
+apparent verify-and-correct loop after every update pulse. The experiment does
+not include additional read noise during final inference, retention, drift,
+aging, or measured-array variability. The 94.14% result is one exact
+assignment-87003/seed-89301 trajectory, not a five-seed P&V mean. It supports
+recoverability of that named simulated state only; replication from multiple
+predeclared persistent endpoints is required before a robust same-hardware or
+on-chip-recovery claim.
+
+The complete mechanism report is in
+[`post_run_analysis.md`](../results/mnist-ibm-om-winsorized-onchip-adam-exploratory-20260829-v1/analysis/post_run_analysis.md)
+and the machine summary is in
+[`summary.json`](../results/mnist-ibm-om-winsorized-onchip-adam-exploratory-20260829-v1/analysis/summary.json).

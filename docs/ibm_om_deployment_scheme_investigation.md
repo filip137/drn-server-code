@@ -1,13 +1,21 @@
 # IBM OM deployment-scheme investigation
 
-- Status: shared-zero baseline grouping and the corrected no-clipping 3-by-3
-  baseline-position-by-spacing CUDA screen are complete. Only
-  `B=L,h=delta_x` passes the ideal gate, but its 54.7013% persistent accuracy
-  and 49.9727% requested-code correctness fail the persistent-code gate. The
-  active stage is a fixed `[1.0,1.0]` scale diagnostic at the corrected
-  physical handoff, followed by controller/state estimation if needed; HWA,
-  BPTT, and on-chip recovery remain blocked
-- Date: 2026-08-28
+- Status: shared-zero baseline grouping, the global-affine no-clipping stress
+  test, and the nominal-bound-Winsorized 3-by-3 counterfactual are complete.
+  Exploratory successors now include deterministic and persistent-endpoint
+  QAT, one independent target-array transfer, pulse-mediated SGD/Adam and two
+  qualified Tiki-Taka emulators, and five endpoint-specific Adam recoveries on
+  that target identity. Mean-two/tail-four QAT raised the final five-endpoint
+  P&V mean from 70.51% to about 78%; fixed one-epoch Adam recovered five
+  individually programmed endpoints to about 93%. These results support
+  tolerance training and endpoint adaptation as complementary mechanisms, but
+  do not constitute a matched across-array factorial or canonical on-chip
+  evidence. The integrated review is in
+  [`ibm_om_winsorized_training_recovery.md`](ibm_om_winsorized_training_recovery.md).
+  Default AIHWKit does not perform the Winsorization, the OM preset supplies
+  no absolute conductance origin, and physical calibration and controller
+  qualification remain unresolved.
+- Date: 2026-08-31
 - Device source: AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
 - Evidence class: normalized hardware-derived fitted model, not raw measured
   conductance traces and not an absolute conductance calibration
@@ -100,6 +108,105 @@ statistics barely change, so the immediate matched diagnostic is fixed
 five endpoint seeds. Controller/state estimation follows only if that scale
 control leaves the persistent gap.
 
+### Nominal-bound-Winsorized counterfactual
+
+The follow-up tests the proposed normalized workaround directly. After frozen
+identities are sampled and jointly assigned, every cell's abstract pulse bounds
+are Winsorized to `a in [-1,1]`. RESET is then recommissioned on the modified
+pulse plant, and persistent endpoints enter the circuit as `G=a+1=2x` without
+post-handoff clipping or reference subtraction.
+
+This is not default IBM behavior. In AIHWKit 1.1.0,
+`ReRamArrayOMPresetDevice` sets nominal means `w_min=-1,w_max=1` together with
+large Gaussian device-to-device bound variations. The C++ sampler draws those
+cell bounds and only enforces their sign/order; it does not cap them at the
+nominal means. The underlying `SoftBoundsReferenceDevice` is an abstract
+differential signed-weight model, not an absolute single-device conductance
+calibration. Winsorization changes at least one bound for about 75% of cells
+and both bounds for about 25%, so it is a substantial analyst intervention.
+
+All 27 CUDA configurations and 135 persistent endpoints completed. There were
+zero target/persistent handoff projections and zero persistent support
+violations. Four of 238,200 unique destination pairs required their noisy
+commissioned RESET-max request to be moved once into the exact pairwise common
+support before quantization and P&V; the largest movement was 0.034773 raw
+`x`.
+
+| `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | `1 delta_x` | 94.9800% | 94.5267% | 74.7913% |
+| 0.00 | `2 delta_x` | 94.9800% | 93.0933% | **75.7860%** |
+| 0.00 | `4 delta_x` | 94.9800% | 87.8867% | 71.7620% |
+| 0.25 | `1 delta_x` | 95.0667% | **94.9933%** | 67.9993% |
+| 0.25 | `2 delta_x` | 95.0667% | 88.7467% | 58.6040% |
+| 0.25 | `4 delta_x` | 95.0667% | 77.6333% | 54.9020% |
+| 0.50 | `1 delta_x` | 94.6900% | 22.7767% | 11.9080% |
+| 0.50 | `2 delta_x` | 94.6900% | 12.7867% | 10.3027% |
+| 0.50 | `4 delta_x` | 94.6900% | 13.1533% | 8.9993% |
+
+The control restores most of the capped screen's useful contrast/loading
+ratio and recovers about 21 points over the global-affine stress test at its
+best persistent design. It does not solve programming. At
+`alpha=0,h=2 delta_x`, apparent acceptance is 99.955%, persistent-window
+success is 35.98%, requested-code correctness is 71.26%, and persistent target
+RMSE is 0.05523 raw `x`. One-delta spacing has better ideal resolution but only
+49.63% requested-code correctness; four-delta spacing reaches 93.87% code
+correctness by erasing too much logical resolution. The 75.7860% persistent
+maximum therefore remains below the progression gate.
+
+The `alpha=0.5` rows are additionally confounded by a continuous calibration
+that selected `[1.0,0.125]` and hit the gain ceiling of 1000. Their quantized
+collapse must not be assigned to baseline position alone: W2 erasure is
+93.33% already at one-delta spacing despite adequate physical capacity. The
+observed `h=2 delta_x` persistent lead over `h=delta_x` is also only 0.995
+point, wins 9/15 paired endpoints, and is smaller than the naive endpoint-level
+standard error. Full artifacts,
+comparisons, and limitations are recorded in
+[`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md).
+
+### Exploratory downstream exception: QAT and persistent pulse recovery
+
+To test mechanisms without promoting the normalized control, one direct CUDA
+follow-up deliberately crossed the progression gate. A single logical master
+alternated deterministic Winsorized codebooks from assignments 86001 and
+87001 for ten QAT epochs. Assignment 87002 alone selected spacing at the fixed
+epoch 10: one-, two-, and four-delta obtained 4671, 4598, and 4280 correct out
+of 5,000. The selected one-delta checkpoint had SHA-256
+`a070d0369a93201ac3abd4e36019cc1d66c1a8cf0a325ccdda5439b08cded75b`.
+
+On the excluded assignment 87003, that checkpoint changed ideal accuracy from
+94.88% to 94.47% and the mean of five persistent P&V endpoints from 68.998% to
+70.380%. Training contained no P&V or read noise. Each final P&V endpoint did
+contain stochastic pulse response and noisy apparent verification, but its
+network accuracy used the saved persistent state without extra inference-read
+noise. Two-delta's higher observed 77.122% target P&V mean is descriptive only
+and cannot replace the development-selected spacing.
+
+The selected checkpoint was then programmed once on assignment 87003 with
+endpoint seed 89301. Every recovery arm cloned that exact 59.20% persistent
+state. Direct physical-rail Adam at `3e-5`, selected on validation only,
+reached 94.14% test accuracy after 54,834 persistent SET/RESET pulses, touching
+44,398 cells with a maximum of six pulses per cell and zero cap hits. The
+recovery continued the stochastic pulse plant and used full persistent
+`G=a+1`; it did not remap the target, deploy the apparent endpoint, or replace
+the plant with a digital weight shadow.
+
+The Adam `P0` was newly programmed and separately saved; it is not the 58.90%
+QAT-table repeat carrying the same nominal 89301 label. Recovery reserved 385
+random draws per cell rather than the evaluator's 257, and the resulting
+shape-dependent `torch.randn` stream changed. The saved `P0` hash/state, not
+the seed label by itself, is the authoritative starting point. Exact cloning
+after `P0` remains valid across all recovery arms.
+
+This is **hardware-in-loop pulse-mediated Adam**: teacher logits, BPTT, Adam
+moments, and pulse-selection RNG are digital. It is one previously inspected
+model assignment, one endpoint seed, and one epoch, with no inference read
+noise, retention, or drift. The result establishes that this exact simulated
+persistent state is recoverable. It does not establish a robust on-chip
+method, clear the formal P&V progression gate, or supply the missing absolute
+conductance calibration. Full tables and noise semantics are in
+[`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md).
+
 ## Standard headline accuracies
 
 Use the following three accuracy names for this investigation. Do not call
@@ -108,9 +215,9 @@ of a cell or device group.
 
 | Order | Metric | Question answered | Current status |
 | --- | --- | --- | --- |
-| 1 | `ideal_mapped_init_accuracy` | How accurate is the frozen logical model immediately after deterministic mapping into one hardware instance's physical bounds and discrete codebook? | `B=L,h=delta_x` passes the exploratory corrected gate at 93.6967%; all other tested designs fail |
-| 2 | `same_hardware_bptt_accuracy` | How much can BPTT recover when it adapts the exact mapped state against the same hardware instance? | blocked by the pending `[1.0,1.0]` scale diagnostic, the 49.9727% persistent-code result, and the missing physical HWA writer |
-| 3 | `cross_hardware_deployment_accuracy` | How much of the source-hardware BPTT result survives when its frozen logical checkpoint is mapped onto untouched hardware? | blocked until metrics 1 and 2 are valid |
+| 1 | `ideal_mapped_init_accuracy` | How accurate is the frozen logical model immediately after deterministic mapping into one hardware instance's physical bounds and discrete codebook? | The analyst-Winsorized control reaches 94.9933%, but an absolute-conductance device contract is still missing |
+| 2 | `same_hardware_bptt_accuracy` | How much can BPTT recover when it adapts the exact mapped state against the same hardware instance? | not canonically evaluated; an exploratory pulse-mediated Adam upper control recovered one named persistent state from 59.20% to 94.14% |
+| 3 | `cross_hardware_deployment_accuracy` | How much of the source-hardware BPTT result survives when its frozen logical checkpoint is mapped onto untouched hardware? | not canonically evaluated; deterministic multi-assignment QAT gave only a modest five-seed P&V change on the previously inspected target assignment |
 
 All three metrics obey one physical-conductance invariant. Each branch enters
 the circuit as its full nonnegative conductance
@@ -1150,32 +1257,51 @@ No Tiki-Taka, LoRA, or direct-pulse recovery arm should be launched until a
 deployment scheme passes this transfer gate. On-chip recovery must then start
 from the same explicitly named persistent deployed bundle.
 
+The Winsorized QAT/Adam runs above are a deliberate exploratory mechanism
+exception to this ordering, not evidence that the gate passed. They show that
+one named simulated persistent state can be repaired when digital BPTT and
+Adam are allowed to issue physical pulses. They do not qualify the controller,
+establish replacement-array robustness, or promote the normalized
+Winsorization to a deployable conductance model.
+
 ## Immediate implementation order
 
 1. Retain the completed Stage 0E result only for its structural conclusion:
    use a baseline shared by the four-cell quad or by each two-cell destination
    column. Preserve its clipped numerical results as historical controls.
-2. Keep the completed study-wide affine map fixed at
-   `G=0.00011*(x_raw+1.3759248719940185)`. Do not restore the `[0,1]` clip,
-   rescale by assignment, or omit the translated baseline from loading.
-3. Carry forward the corrected physical-target and endpoint artifacts with raw
-   bounds, raw RESET estimates, raw P&V endpoints, affine provenance, and
-   explicit `B`, `d`, and `G=B+d`.
-4. Treat `B=L,h=delta_x` as the sole ideal-gate-passing design in the completed
-   exploratory matrix, not yet as a deployment-ready codebook.
-5. At fixed `alpha=0,h=delta_x`, affine map, identities, and endpoint seeds,
-   evaluate `[1.0,1.0]` across all three held-out assignments to remove the
-   one-example development-scale confound.
-6. If that matched scale control still fails, test a controller/state estimator
-   or spacing rule that can raise persistent requested-code correctness from
-   49.9727% to the declared 90% progression criterion.
+2. Retain the global-extreme affine run as a conservative loading stress test,
+   not as an absolute-conductance correction. Retain the nominal-bound
+   Winsorized run as a normalized sensitivity control, not as default IBM
+   behavior or fabricated-device evidence.
+3. For a deployable claim, supply a versioned absolute HRS/LRS conductance
+   calibration or measured distribution. Do not infer the physical zero from
+   the abstract OM signed-weight bounds.
+4. Within the normalized Winsorized control, carry forward `alpha=0` as the
+   P&V-favored baseline. Treat `h=delta_x` as the ideal-resolution endpoint and
+   `h=2 delta_x` as the observed persistent endpoint; their one-point mean
+   difference is not a formal unique-winner result.
+5. Test a controller/state estimator or repeated-verify rule that can raise
+   persistent requested-code correctness from 71.26% to the declared 90%
+   progression criterion without changing the frozen target map.
+6. Freeze `[1.0,1.0]` or otherwise predeclare a quantization-aware scale rule
+   before drawing conclusions from `alpha=0.5`; its current `[1.0,0.125]`
+   continuous selection destroys the discrete output codebook.
 7. Preserve apparent acceptance, persistent correctness, and any fresh-read
    correctness as different metrics; never deploy the apparent endpoint as a
    substitute for persistent state.
-8. Only after the persistent-code gate passes, implement the
+8. Treat the completed multi-assignment QAT and one-state pulse-mediated Adam
+   runs as exploratory upper controls only. Their 70.380% five-seed QAT P&V
+   mean and 59.20% to 94.14% single-state recovery do not clear the
+   persistent-code or transfer gates.
+9. Replicate the selected one-delta, direct-rail, `3e-5`, one-epoch recovery
+   protocol without retuning from several predeclared persistent endpoints
+   and assignments. Save byte-identical paired frozen/update initializers and
+   report endpoint-level recovery, pulse cost, saturation, loading, and
+   contrast drift.
+10. Only after the persistent-code gate passes, implement the canonical
    full-physical-`G` HWA/BPTT path, followed by untouched-hardware transfer and
    any predeclared on-chip recovery comparison.
-9. Keep every scheme blocked from absolute fabricated-device claims until OM
+11. Keep every scheme blocked from absolute fabricated-device claims until OM
    conductance traces or a versioned normalized-to-conductance calibration are
    supplied.
 
