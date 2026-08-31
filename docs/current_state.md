@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-28
+Last updated: 2026-08-31
 
 ## Purpose
 
@@ -48,6 +48,19 @@ The strongest current interpretation is:
   helps, but much of its compensation is array-specific. The transfer loss is
   therefore a concrete starting gap for deployed-array, on-chip-compatible
   quantized adaptation.
+- The standard analog-crossbar--digital-ReLU--analog-crossbar comparator now
+  exposes a sharper defect boundary. With sampled corrupt identities
+  counterfactually repaired, continuous HWA reached `95.775%` apparent
+  accuracy on the source and `95.300%` pooled across three fresh arrays,
+  effectively tied with direct deployment at `95.542%`; every target stayed
+  within two points of the source. Retaining the preset's `13.31--13.80%`
+  published stuck/corrupt cells reduced continuous-HWA pooled target accuracy
+  to `83.350%`, a paired `-11.950`-point penalty, and broke fresh-array
+  portability. Continuous HWA therefore handles ordinary healthy-cell
+  variation in this smoke but not surviving stuck-cell and defect-map
+  mismatch. Defect-distribution training and defect-aware deployment are the
+  next question; this result does not yet establish that on-chip recovery is
+  necessary or capable of repairing stuck cells.
 - Ideal IBM OM baseline controls now isolate zero-state contrast as a major
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
@@ -329,6 +342,24 @@ and fine-tuning updates must remain separately measurable.
   mostly sub-pulse correction can be programmed or that reference anchoring
   improves persistent on-chip updates.  These studies are grouped under the
   [symmetry-reference-anchored umbrella](ibm_om_reference_anchored_studies.md).
+
+### IBM OM standard crossbars with digital ReLU
+
+- **Fresh-array continuous HWA:** On counterfactually repaired IBM-OM
+  populations, continuous HWA in the `784-50-10` analog-crossbar--digital-
+  ReLU--analog-crossbar comparator achieved `95.775%` mean apparent-forward
+  source accuracy and `96.225/94.100/95.575%` on three untouched assignments,
+  or `95.300%` pooled. Direct deployment reached `95.542%` pooled, so HWA
+  worked well but did not improve on direct deployment. Both passed the
+  predeclared two-point portability gate; deterministic QAT failed it.
+- **Published stuck-cell boundary:** Keeping the identical assignments and
+  programming streams but retaining `13.31--13.80%` published stuck/corrupt
+  cells lowered continuous-HWA source accuracy to `85.650%` and pooled target
+  accuracy to `83.350%`. The `-11.950`-point paired target penalty and failure
+  on two of three target portability checks support studying defect-map
+  mismatch next. These are exploratory AIHWKit-preset smokes with 16
+  adaptation examples and 1,000 test examples; they exclude defect remapping,
+  spares, fresh-read retention, and on-chip updates.
 
 ### Cell-specific IBM OM QAT and held-out-array transfer
 
@@ -739,7 +770,15 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Advance the supported fixed-binding local-compensation result through the
+1. Run a predeclared full-scale standard-crossbar defect-mismatch study that
+   compares single-array continuous HWA with HWA trained across multiple
+   published defect masks, then evaluates both frozen masters on several
+   untouched arrays. Cross that training comparison with no remapping,
+   defect-aware remapping, and spare-row or spare-column deployment, and add
+   fresh-read/retention checks. Only after a valid persistent deployment still
+   underperforms should a byte-identical frozen-versus-on-chip-recovery fork be
+   introduced; truly stuck cells cannot themselves be updated.
+2. Advance the supported fixed-binding local-compensation result through the
    discrete deployment gates before launching on-chip recovery.  Keep the same
    identities and baseline objective while testing standard levels,
    deterministic pulse reachability, persistent code distinguishability, and
@@ -751,7 +790,7 @@ Exact measurements, limitations, and raw artifact locations are in the
    [`ibm_om_reference_anchored_studies.md`](ibm_om_reference_anchored_studies.md)
    and
    [`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md).
-2. Only after one deployment scheme passes its transfer gate, define and
+3. Only after one deployment scheme passes its transfer gate, define and
    predeclare a deployed-array QAT recovery study. Start every arm from the
    same preserved apparent/persistent deployment, keep a frozen no-update
    control, and define an oracle STE-QAT recovery arm only as an upper bound.
@@ -761,35 +800,35 @@ Exact measurements, limitations, and raw artifact locations are in the
    gradients become available SET/RESET pulses and which bounds or verify
    measurements the controller may use. Do not regenerate a fresh deployment
    between recovery arms.
-3. Run the declared 128-pulse IBM ReRAM successor and compare it with the
+4. Run the declared 128-pulse IBM ReRAM successor and compare it with the
    immutable 512-pulse endpoint model. Select the deployment cap explicitly,
    then integrate that empirical endpoint kernel with its separate
    target-conditioned failure, corruption, saturation, and cost models.
    Preserve each sampled programmed endpoint as the common starting state for
    a predeclared HWA-only versus on-chip-recovery comparison; do not redraw
    endpoints between arms.
-4. Start a separate Tiki-Taka pulsed-device study using measured incremental
+5. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify
    HWA models as pulse-update models unless their source papers provide the
    required per-pulse trajectories. Measure write count, update noise, energy,
    and endurance alongside accuracy.
-5. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
+6. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
    seeds and add a direct ideal-map-to-device-to-BPTT arm. This separates
    whether HWA is necessary for recovery from whether it merely improves the
    first write. Then compare the generic 3% modifier with device-matched HWA,
    without tuning either choice on the final test set.
-6. Compare three targeted post-HWA interventions on the same deployment:
+7. Compare three targeted post-HWA interventions on the same deployment:
    rank-4 LoRA, W2-plus-bias fine-tuning, and full-model fine-tuning. This
    tests whether the full rewrite is actually needed.
-7. Train a perfect-diode DRN from initialization through the affine CMO
+8. Train a perfect-diode DRN from initialization through the affine CMO
    mapping and endpoint noise. Track voltage/noise margin and conductance
    loading as well as accuracy.
-8. Test the current passive LoRA branch on conductance-loss errors such as
+9. Test the current passive LoRA branch on conductance-loss errors such as
    drift or stuck-low devices, where an added conductance path can compensate
    the failure direction.
-9. Design a differential physical LoRA branch and compare it with the
+10. Design a differential physical LoRA branch and compare it with the
    positive-only branch on identical signed perturbations.
-10. Compare active denominator calibration, full rank-one KCL cancellation,
+11. Compare active denominator calibration, full rank-one KCL cancellation,
    and a validation-trained selector mask under matched mismatch and read
    noise. Ordinary numerator-only crossbar subtraction is not an exact DRN
    control.

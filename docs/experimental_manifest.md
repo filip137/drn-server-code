@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-08-28
+Last updated: 2026-08-31
 
 ## Program goal
 
@@ -1277,6 +1277,58 @@ P&V — no-clipping direct exploratory CUDA screen**
 - **Raw artifacts:** `results/mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1/`
 - **Workflow summary:** `results/mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-local-reference-compensation-ideal-init-20260828-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-fresh-array-smoke-20260830-v1 -->
+### mnist-ibm-om-crossbar-fresh-array-smoke-20260830-v1
+
+**IBM OM standard-crossbar frozen-master transfer smoke**
+
+- **Finished:** 2026-08-31
+- **Evidence class:** `exploratory_model_based_aihwkit_preset_smoke`
+- **Outcome:** mixed
+- **Initial hypothesis:** When a frozen off-chip master is independently remapped and programmed onto untouched IBM-OM assignments, its AIHWKit-style apparent-forward accuracy will remain within two percentage points of the source-assignment mean for the direct, continuous-HWA, and deterministic-QAT controls.
+- **Completion criteria:**
+  - All three declared configs complete exactly once and record the identical teacher, source assignment 87004, source endpoint seeds 89402-89405, and frozen-master hash appropriate to the arm.
+  - Every arm samples three distinct untouched target assignments 87005, 87006, and 87007, with four programming seeds per target, and proves distinct target population fingerprints.
+  - Frozen-master transfer remaps the FP32 master separately through every target population: direct mapping retains the requested master, continuous HWA applies the target support, and QAT projects onto the target's own deterministic codebook.
+  - Every source and target endpoint reports AIHWKit-style apparent-forward accuracy and the hidden-persistent diagnostic separately on the first 1000 official MNIST test examples.
+  - This smoke performs no on-chip optimizer update and is not finalized as production evidence about on-chip-learning necessity.
+- **Coverage:** 3 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared all-arm hypothesis has a mixed outcome. On counterfactually repaired IBM-OM populations, direct deployment and continuous hardware-aware training in the analog-crossbar--digital-ReLU--analog-crossbar architecture both passed the plus-or-minus-two-percentage-point fresh-array portability gate. Continuous HWA reached 95.775% mean apparent-forward accuracy on source assignment 87004 and 96.225%, 94.100%, and 95.575% on targets 87005--87007, for 95.300% pooled target accuracy. It was effectively tied with direct deployment at 95.542% pooled. This supports the user's conclusion that continuous HWA works well for this architecture under ordinary healthy-cell device variation and stochastic programming when sampled corrupt identities are repaired. Deterministic QAT did not transfer: its 88.650% source mean became 83.650%, 73.700%, and 92.450% on the three targets, so that part of the hypothesis failed. The paired published-defect successor is reviewed separately and shows that this favorable continuous-HWA result does not extend to retained stuck/corrupt cells.
+- **Main limitations:** This is exploratory model-based AIHWKit 1.1.0 preset evidence, not raw measured traces or fabricated-array evidence. It uses one frozen ReLU teacher, 16 off-chip adaptation examples, five one-minibatch HWA epochs, the first 1,000 test examples, one source assignment, and three target assignments. Four endpoint writes per assignment measure programming variation and are not independent arrays. The counterfactual-repair policy replaces every sampled stuck/corrupt identity with healthy donor parameters, although ordinary healthy-cell variation and stochastic programming remain. Apparent q is the primary AIHWKit-style network state; the continuous-HWA pooled persistent diagnostic was only 66.783%. The study excludes inference read noise, retention, drift, line resistance, converter/peripheral effects, defect-aware remapping, spare cells, and every on-chip optimizer update. It therefore does not establish that HWA improves over direct deployment or that on-chip learning is necessary.
+- **Next steps:**
+  - Scale the continuous-HWA comparison to larger adaptation and full-test cohorts with multiple independently sampled source and target assignments, and retain published stuck/corrupt identities so healthy-device variation, defect fraction, and defect-map relocation can be analyzed separately.
+  - Compare single-array HWA with HWA that resamples several published-defect training arrays, then evaluate both frozen masters on untouched published-defect arrays using nested programming seeds.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-fresh-array-smoke-20260830-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-fresh-array-smoke-20260830-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-fresh-array-smoke-20260830-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1 -->
+### mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1
+
+**IBM OM standard-crossbar fresh-array smoke with published defective cells**
+
+- **Finished:** 2026-08-31
+- **Evidence class:** `exploratory_model_based_aihwkit_preset_smoke`
+- **Outcome:** supported
+- **Initial hypothesis:** Retaining the IBM-OM preset's published stuck/corrupt cells instead of replacing them with healthy donor identities will cause a greater-than-two-percentage-point apparent-forward loss against the matched repaired-array smoke in at least one source or target assignment, even though every active state continues to use its sampled intrinsic reference through q=a-r.
+- **Completion criteria:**
+  - All three declared configs complete exactly once and record the identical teacher, source assignment 87004, source endpoint seeds 89402-89405, target assignments 87005-87007, target endpoint seeds 89502-89705, data limit of 16 off-chip examples, and evaluation limit of the first 1000 official MNIST test examples used by the repaired smoke.
+  - Each published-defect config is semantically identical to its matched repaired config except that device.corruption_policy changes from counterfactual_repaired to published; model, mapping, training, recovery, transfer, and evaluation settings must match exactly.
+  - For every source and target assignment, the run records the sampled published-corrupt mask and count, final surviving-corrupt mask and count, total active-state count, defect fraction, population fingerprint, and per-tile counts; published policy must leave the sampled corrupt identities in the final population rather than drawing repair donors.
+  - The sampled published-corrupt masks and base binding-construction seeds match those of the same assignments in repaired study mnist-ibm-om-crossbar-fresh-array-smoke-20260830-v1, while the effective population fingerprints reflect the declared corruption-policy intervention.
+  - Every source and target reports target-specific no-write mapped accuracy and all four post-write apparent-forward and hidden-persistent accuracies separately, together with programming acceptance, saturation, corrupt-device acceptance, budget-exhaustion, pulse-count, and requested/realized hash diagnostics.
+  - This smoke performs no on-chip optimizer update, does not alter the completed repaired study or its artifacts, and is not finalized as production evidence about fabricated defect rates or on-chip-learning necessity.
+- **Coverage:** 3 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is supported. Retaining the IBM-OM preset's published stuck/corrupt identities caused non-negligible losses even though every effective weight continued to use the intrinsic reference through q=a-r. For continuous HWA, source apparent-forward accuracy fell from 95.775% with repaired cells to 85.650% with published defects, a loss of 10.125 percentage points. Pooled fresh-target accuracy fell from 95.300% to 83.350%, a loss of 11.950 points; target means were 80.200%, 82.725%, and 87.125%, and the arm failed the plus-or-minus-two-point portability gate. All three deployment methods failed that gate with published defects. Thus continuous HWA works well for the standard crossbar plus digital ReLU under ordinary healthy-cell mismatch, but it is not robust in this smoke when stuck/corrupt cells survive and their defect masks relocate on fresh arrays. This retained-defect mismatch is the next research question. Intrinsic-reference subtraction centers the effective state but cannot make a collapsed zero-step cell programmable.
+- **Main limitations:** This is exploratory model-based AIHWKit 1.1.0 preset evidence, not a measured fabricated defect rate. The source and three targets retain 5,366, 5,480, 5,446, and 5,284 stuck/corrupt cells out of 39,700, or 13.31--13.80%. The study uses one frozen teacher, 16 off-chip adaptation examples, five one-minibatch HWA epochs, the first 1,000 test examples, one source assignment, three target assignments, and four programming repeats per assignment. The HWA repaired-versus-published comparison reruns the complete off-chip adaptation path under each corruption policy, so it is not deployment of one identical adapted master. It excludes inference read noise, retention, drift, line resistance, converters, defect-aware remapping, spare rows or columns, and on-chip recovery. Direct apparent P&V can be optimistic because pulses that cannot move a stuck persistent state still resample apparent write noise. These results do not show that on-chip learning is necessary or that it can repair truly stuck cells.
+- **Next steps:**
+  - Run a predeclared full-scale continuous-HWA defect-mismatch study across multiple independent source and target assignments, comparing one-array HWA with training that resamples a distribution of published defect masks and evaluating on untouched arrays.
+  - Add matched no-remapping, defect-aware remapping, and spare-row or spare-column controls so failure from immutable cells is separated from what HWA can compensate through healthy cells.
+  - Add fresh-read and retention checks for accepted apparent endpoints; only after a valid persistent deployment remains below the frozen control should a same-deployment on-chip-recovery arm be tested.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1 -->
 
 ## Shared validity notes
 

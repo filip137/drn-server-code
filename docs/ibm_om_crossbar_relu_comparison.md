@@ -292,8 +292,10 @@ python -m ebl study prepare \
 ```
 
 Run each declared smoke config once in its prepared arm directory, then use
-`python -m ebl study summarize` to check exact three-arm coverage. Do not
-finalize this operational smoke into the experimental manifest.
+`python -m ebl study summarize` to check exact three-arm coverage. Following
+artifact verification and human review, record this smoke in the experimental
+manifest only as exploratory model-based evidence; do not promote it to
+production evidence about on-chip-learning necessity.
 
 The artifact-verified smoke completed with three distinct target-population
 fingerprints and four programming streams per population. Values below are
