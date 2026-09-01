@@ -10,15 +10,25 @@ the same order, and kept the complete conductance tensor in every forward
 solve. The intervention was only which logical weights could accumulate Adam
 target changes and receive pulses.
 
-The main result is a useful but negative sparsity result. None of the three
-500-logical-weight arms reached the predeclared accuracy gate of being within
-one validation percentage point of full fine-tuning. The complete output
-layer, `w2_only`, was nevertheless the best tested 500-quad mask: it reached
-87.62% test accuracy using 17,844 recovery pulses, compared with 93.34% and
-303,231 pulses for full fine-tuning. Thus it retained 88.30% of the full arm's
-aggregate accuracy recovery while issuing 5.88% as many pulses. It was both
-more accurate and less pulse-intensive than either static gradient-ranked
-500-quad mask.
+The staged search found a useful partial-update frontier. None of the original
+500-logical-weight arms reached the full-recovery accuracy gate, but the
+complete output layer, `w2_only`, was a strong sparse anchor: it reached 87.62%
+test accuracy with 17,844 recovery pulses. Nested follow-ups then kept every W2
+weight trainable and added progressively larger W1 prefixes from the same
+frozen P0-gradient ranking. The selected final mask contains all 500 W2 weights
+and 2,000 ranked W1 weights. It reached **90.50%** test accuracy with **51,708**
+recovery pulses, compared with **93.34%** and **303,231** pulses for full
+fine-tuning. It therefore retained **94.19%** of the full arm's aggregate
+accuracy recovery while issuing **17.05%** as many recovery pulses.
+
+The selected mask makes 10,000 of 158,800 physical cells eligible for updates
+(6.30%); 4,376 cells actually ended in a persistent state different from P0.
+Its remaining test gap to full fine-tuning is 2.84 percentage points. A larger
+4,000-W1 prefix reached slightly higher validation accuracy but crossed the
+predeclared 25% pulse ceiling, while a same-cardinality random-2,000 W1 mask was
+0.80 validation points worse and issued 15,381 more pulses. These results make
+the ranked 2,000-W1 union the best tested point under the declared recovery
+pulse budget, not a generally optimal mask.
 
 The layer ablation is also informative. Updating all 39,200 W1 weights but no
 W2 weights reached 93.13%, only 0.21 percentage points below full fine-tuning,
@@ -28,13 +38,12 @@ subsequent nonlinear optimization trajectory. It does show that, in this
 particular simulated damaged endpoint, permitting the small W2 layer to adapt
 made recovery both slightly more accurate and less pulse-intensive.
 
-The narrow claim supported by this run is:
+The narrow claim supported by this staged exploratory evidence is:
 
-> On one previously inspected simulated IBM-OM target endpoint, complete
-> W2-only projected closed-loop Adam was the best tested 500-quad recovery
-> mask. It reached 87.62% test accuracy with 17,844 recovery pulses, whereas
-> neither tested static gradient-ranked 500-quad mask approached the full
-> arm's 93.34% accuracy.
+> On one previously inspected simulated IBM-OM target endpoint, projected
+> closed-loop Adam restricted to all 500 W2 weights plus 2,000 ranked W1
+> weights reached 90.50% test accuracy with 51,708 recovery pulses, versus
+> 93.34% and 303,231 pulses for full fine-tuning.
 
 This is an `exploratory_noncanonical` hardware-model result. It is not a
 fabricated-device result, not an autonomous on-chip-learning demonstration,
@@ -438,75 +447,133 @@ artifact checks, and diagnostic plot sources are in
 directories remain ignored exploratory artifacts and are not promoted by this
 report into the canonical experimental manifest.
 
+The Stage-2 hybrid-fraction implementation was committed as
+`1370fd5b3e39533c4f04ecc2e67f7fca022c8d17`; its run completed in 575.029
+seconds and its scientific-summary SHA-256 is
+`f633568529acd09fb2e2b9c42b6d7c71ebc7d01ffdf8f7aeb33016a3db27a8c2`.
+The Stage-3 extension was committed as
+`ea0eeafc79725322f732e0cb78e4cee613363d8f`; its run completed in 584.773
+seconds and its scientific-summary SHA-256 is
+`481ec105c37282fde49769b9c1fe4a3c080ba3877926c251ec36a5890a1097c9`.
+Both manifests record the same known unrelated dirty-tree hash
+`c7debc34bb5139806c7a9d770eeeedb303f3ae551d6e0916fcdf44e29c99e7a1`.
+Each follow-up pinned and replayed its predecessor anchor exactly before
+extending the fraction sweep.
+
 ## Interpretation
 
 Three observations matter most.
 
-First, the partial-update frontier is promising but not yet close enough at
-500 logical weights. W2-only moves from 44.45% to 87.62% with fewer than
-18,000 pulses, so a very small trainable subspace can repair most of the
-aggregate accuracy loss. However, the remaining 5.72-point test gap and
-6.14-point validation gap to full are substantial. Calling this equivalent to
-full recovery would be misleading.
+First, the small W2 layer is a strong base but not a sufficient endpoint.
+Updating all 500 W2 weights raises test accuracy from 44.45% to 87.62% with
+17,844 pulses, yet leaves a 5.72-point gap to full recovery. Keeping W2 intact
+and adding ranked W1 capacity closes that gap gradually: top-500 W1 reaches
+89.39%, and top-2,000 W1 reaches 90.50%. This supports a structured hybrid
+mask, not a claim that output-only tuning is enough.
 
-Second, layer completeness mattered more than the tested static score mass.
-All 500 W2 weights outperformed a mixed global top-500 mask even though the
-mixed mask captured more P0 gradient-score mass. A plausible interpretation
-is that broad output-layer coordination is more valuable than choosing only
-the largest individual output and hidden-layer gradients. The result could
-also arise from ranking staleness as optimization moves away from P0. Both
-remain hypotheses.
+Second, layer completeness and ranking both matter. Complete W2 beat the
+mixed global top-500 mask even though the latter captured more frozen P0 score
+mass. Within masks that all contain W2, however, ranked W1 additions beat the
+same-cardinality random controls: ranked top-500 exceeded random-500 by 0.70
+validation points with 2,475 fewer pulses, and ranked top-2,000 exceeded
+random-2,000 by 0.80 points with 15,381 fewer pulses. These are directional
+results from one deterministic random seed, not population estimates.
 
-Third, physical pulse sparsity and system-level training sparsity are not the
-same. W2-only reduces issued pulses drastically, but dense BPTT, digital Adam,
-and the current full-vector verify API remain. The experiment demonstrates a
-simulated physical-write reduction under this software controller. It does
-not yet demonstrate proportional read, energy, latency, memory, or autonomous
+Third, physical write sparsity and system-level training sparsity are not the
+same. The selected top-2,000 union issues only 17.05% as many recovery pulses
+as full fine-tuning, but dense BPTT and digital Adam remain, and its 9,939
+full-port verify calls are 96.36% of the full arm's 10,314. The experiment
+demonstrates a simulated physical-write reduction under this controller. It
+does not establish proportional read, energy, latency, memory, or autonomous
 on-chip-training reductions.
 
-## Stage-2 rationale: complete W2 plus a small W1 prefix
+## Completed hybrid fraction follow-ups
 
-The next targeted screen should preserve the strongest Stage-1 structure—all
-500 W2 quads—while adding a small, nested amount of W1 capacity. The proposed
-frontier is:
+Two validation-first follow-ups extended the Stage-1 frontier. Every arm
+started again from exact P0, retained all 500 W2 quads, and added a nested
+prefix of the same frozen P0-gradient ranking within W1. The Stage-2 run was
+`20260901T114836.063168Z-93bc30a9-0f3f22c2`; the Stage-3 run was
+`20260901T122213.464888Z-f944f57d-a5d112eb`.
 
-| Stage-2 arm | Added W1 quads | Total logical quads | Physical cells |
-| --- | ---: | ---: | ---: |
-| W2 only | 0 | 500 | 2,000 |
-| W2 + W1 top-125 | 125 | 625 | 2,500 |
-| W2 + W1 top-250 | 250 | 750 | 3,000 |
-| W2 + W1 top-500 | 500 | 1,000 | 4,000 |
-| W2 + W1 random-500 control | 500 | 1,000 | 4,000 |
+### Stage 2: locating the first useful W1 supplement
 
-This design is motivated directly by the Stage-1 shape of the frontier:
+| Arm | Added W1 quads | Validation accuracy | Validation KL | Recovery pulses | Test accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| W2 only | 0 | 86.56% | 0.397773 | 17,844 | 87.62% |
+| W2 + W1 top-125 | 125 | 87.08% | 0.383742 | 21,430 | sealed |
+| W2 + W1 top-250 | 250 | 87.22% | 0.377240 | 24,743 | sealed |
+| W2 + W1 top-500 | 500 | 88.04% | 0.348499 | 30,346 | 89.39% |
+| W2 + random W1-500 | 500 | 87.34% | 0.371876 | 32,821 | sealed |
 
-- complete W2 already recovers 88.30% of the full aggregate accuracy gain at
-  only 5.88% of the full pulse count;
-- full versus W2-only leaves a clear residual gap, so some hidden-layer
-  adaptation may supply missing representational compensation;
-- W1-only nearly matches full, confirming that W1 has enough capacity, but its
-  39,200-weight search space is unnecessarily broad and pulse-expensive for a
-  first follow-up;
-- global top-500 contains only 183 of 500 W2 weights and performs worse than
-  complete W2, so Stage 2 should not trade away output-layer completeness; and
-- nested W1 prefixes measure the marginal accuracy and pulse return of added
-  hidden-layer capacity without changing the W2 base.
+The predeclared gate required at least 50 additional correct validation
+examples over W2-only, lower KL, and no more than 25% of the full arm's pulse
+count. Top-125 and top-250 did not reach the accuracy threshold. Ranked
+top-500 did, and was therefore the smallest Stage-2 qualifier. Its test gain
+over W2-only was 1.77 points.
 
-The W1 top-125, top-250, and top-500 masks should be nested prefixes of the
-same frozen P0 W1 ranking used here. A deterministic random-500 W1 control is
-essential because W1 top-500 alone performed poorly and the ranking is static.
-That control separates the value of adding 500 W1 addresses from the value of
-the particular P0-gradient ordering. All Stage-2 arms should again start from
-the same exact P0—not from the trained W2-only checkpoint—so that the masks
-remain matched interventions rather than sequential curricula.
+![Stage-2 validation learning curves](figures/ibm_om_partial_pv/stage2_accuracy_kl_learning_curves.png)
 
-Stage 2 should keep selected-checkpoint and executed-horizon cost separate,
-report pulse-local observations independently from full-port verify
-materialization, and log pre-mask gradient or Adam-command demand if practical.
-Because the endpoint and MNIST test set are already inspected, Stage 2 remains
-exploratory even with proper within-run test sealing. Replication across fresh
-target assignments and endpoint seeds is required before treating any hybrid
-frontier as robust.
+![Stage-2 accuracy and recovery-write frontier](figures/ibm_om_partial_pv/stage2_accuracy_vs_cost_frontier.png)
+
+![Stage-2 ranked versus random W1 supplement](figures/ibm_om_partial_pv/stage2_topk_vs_random.png)
+
+### Stage 3: extending the ranked W1 fraction
+
+Stage 3 replayed the top-500 anchor exactly, then tested larger nested W1
+prefixes and one same-cardinality random-2,000 control. Qualification was
+measured against the top-500 anchor using the same one-point validation-gain,
+lower-KL, and 25%-of-full-pulses rules.
+
+| Arm | Total logical quads | Eligible physical cells | Validation accuracy | Validation KL | Recovery pulses | Fraction of full pulses | Test accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| W2 + W1 top-500 | 1,000 | 4,000 | 88.04% | 0.348499 | 30,346 | 10.01% | 89.39% |
+| W2 + W1 top-1,000 | 1,500 | 6,000 | 88.78% | 0.326623 | 38,064 | 12.55% | sealed |
+| W2 + W1 top-2,000 | 2,500 | 10,000 | 89.64% | 0.300360 | 51,708 | 17.05% | 90.50% |
+| W2 + W1 top-4,000 | 4,500 | 18,000 | 89.96% | 0.279942 | 76,720 | 25.30% | sealed |
+| W2 + random W1-2,000 | 2,500 | 10,000 | 88.84% | 0.338892 | 67,089 | 22.12% | sealed |
+
+![Stage-3 validation learning curves](figures/ibm_om_partial_pv/stage3_accuracy_kl_learning_curves.png)
+
+![Stage-3 accuracy against recovery-cost denominators](figures/ibm_om_partial_pv/stage3_accuracy_vs_cost_frontier.png)
+
+![Stage-3 ranked prefixes versus random W1 control](figures/ibm_om_partial_pv/stage3_topk_vs_random.png)
+
+Top-1,000 missed the one-point accuracy threshold. Top-2,000 passed every
+gate and was selected. Top-4,000 improved validation by only another 0.32
+points while adding 25,012 pulses and narrowly exceeded the 25% ceiling.
+Thus top-2,000 is the best tested point under the declared recovery-write
+budget, rather than an accuracy optimum.
+
+At the same 2,000-W1 cardinality, the ranked prefix captured 21.90% of total
+W1 score mass versus 5.17% for the random mask. Their selected corrupt-cell
+fractions were similar (13.59% versus 13.45%), so explicit fault-mask exposure
+does not explain the ranked advantage; the selector never received that mask.
+This supports concentration of the frozen P0-gradient score as a plausible
+mechanism, subject to the one-mask and static-ranking limits.
+
+The selected mask contains 2,500 of 39,700 logical weights and makes 10,000
+of 158,800 physical cells eligible. Of those, 5,291 received at least one
+command and 4,376 ended in a persistent state different from P0. It issued
+51,708 commands, produced 40,238 persistent state-change events, and sent
+11,019 commands to immutable corrupt cells; no corrupt cell moved. Test
+accuracy was 90.50% (9,050/10,000), 2.84 points below full fine-tuning, while
+retaining 94.19% of the P0-to-full aggregate accuracy gain.
+
+The recovery-only pulse ratio is favorable, but the lifecycle denominator is
+less dramatic. Including the common 2,819,260-pulse deployment, the selected
+path uses 2,870,968 pulses versus 3,122,491 for full recovery, an 8.06%
+end-to-end reduction. Its 9,939 vectorized full-port verify calls are 96.36%
+of full. Selective-read hardware and a read-energy model would be needed to
+turn the write result into an energy or latency claim.
+
+![Stage-3 controller activity](figures/ibm_om_partial_pv/stage3_controller_activity.png)
+
+Both follow-ups preserved validation-first selection: every candidate's epoch
+was frozen before test access, random controls remained validation-only, and
+only the parity anchor plus the smallest qualifying ranked union opened test.
+Nevertheless, the same target endpoint and MNIST test set had already been
+inspected in earlier stages. The staged frontier is therefore adaptive
+exploratory evidence, not a fresh confirmatory test.
 
 ## Limitations and claim boundary
 
@@ -516,7 +583,10 @@ This report does not support claims beyond the matched run because:
 - the device is a model-based, analyst-Winsorized AIHWKit IBM-OM simulator,
   not raw measured pulse traces or fabricated hardware;
 - the P0 gradient ranking is static and may miss later update turnover;
-- there is no Stage-1 random-500 control or fraction curve;
+- the two same-cardinality random controls each use one deterministic mask
+  seed, so their ranked-versus-random differences are directional only;
+- the staged mask sizes and test openings were adaptively chosen after earlier
+  results on this same target endpoint;
 - three epochs are a fixed horizon, not demonstrated convergence;
 - dense digital BPTT, teacher logits, global selector gradients, and digital
   Adam moments are not autonomous local on-chip learning;
@@ -531,7 +601,9 @@ This report does not support claims beyond the matched run because:
 - there is no target-assignment, endpoint-seed, or mask-seed replication.
 
 Accordingly, the defensible conclusion is that partial P&V fine-tuning is a
-promising write-cost direction and complete W2 is the strongest sparse anchor
-found at this one simulated endpoint. The current 500-quad masks are not a
-replacement for full recovery, and cross-array replication is needed before
+promising write-cost direction and complete W2 plus a modest ranked W1 prefix
+is the strongest tested structure at this one simulated endpoint. The selected
+6.30%-eligible mask recovers most, but not all, of the full accuracy gain while
+substantially reducing recovery writes. It is not a replacement for full
+recovery, and fresh target-assignment and endpoint replication is needed before
 making a deployment claim.
