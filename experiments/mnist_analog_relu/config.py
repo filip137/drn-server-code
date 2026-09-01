@@ -72,6 +72,18 @@ class MappingSettings:
 
 
 @dataclass(frozen=True)
+class OffchipForwardNoiseSettings:
+    model: str
+    base_state: str
+    equation: str
+    resampling: str
+    samples_per_minibatch: int
+    relative_scale: float
+    seed: int
+    gradient_estimator: str
+
+
+@dataclass(frozen=True)
 class OffchipSettings:
     policy: str
     epochs: int
@@ -83,6 +95,7 @@ class OffchipSettings:
     master_q_bounds: tuple[float, float]
     maximum_batches: int | None
     checkpoint_policy: str
+    forward_noise: OffchipForwardNoiseSettings | None
 
 
 @dataclass(frozen=True)
@@ -508,6 +521,57 @@ def _parse_mapping(value: Any) -> MappingSettings:
     )
 
 
+def _parse_offchip_forward_noise(
+    value: Any,
+    path: str,
+) -> OffchipForwardNoiseSettings:
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "model",
+            "base_state",
+            "equation",
+            "resampling",
+            "samples_per_minibatch",
+            "relative_scale",
+            "seed",
+            "gradient_estimator",
+        },
+    )
+    expected = {
+        "model": "aihwkit_1_1_0_softbounds_reference_additive_write_noise",
+        "base_state": "support_clamped_persistent_q",
+        "equation": (
+            "q_apparent_equals_q_persistent_plus_write_noise_std_times_"
+            "nominal_dw_min_times_standard_normal"
+        ),
+        "resampling": "independent_full_array_draw_per_minibatch",
+        "samples_per_minibatch": 1,
+        "relative_scale": 1.0,
+        "gradient_estimator": "identity_straight_through",
+    }
+    for key, expected_value in expected.items():
+        if raw[key] != expected_value:
+            raise config_error(
+                f"{path}.{key}",
+                f"to equal {expected_value!r}",
+                raw[key],
+            )
+    seed = _integer(raw["seed"], f"{path}.seed", minimum=1)
+    return OffchipForwardNoiseSettings(
+        model=expected["model"],
+        base_state=expected["base_state"],
+        equation=expected["equation"],
+        resampling=expected["resampling"],
+        samples_per_minibatch=1,
+        relative_scale=1.0,
+        seed=seed,
+        gradient_estimator=expected["gradient_estimator"],
+    )
+
+
 def _parse_offchip(value: Any) -> OffchipSettings:
     path = "config.offchip"
     raw = _object(value, path)
@@ -525,11 +589,19 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             "maximum_batches",
             "checkpoint_policy",
         },
+        {"forward_noise"},
     )
-    if raw["policy"] not in {"none", "continuous_hwa", "deterministic_qat"}:
+    supported_policies = {
+        "none",
+        "support_clamped_no_update",
+        "continuous_hwa",
+        "stochastic_apparent_hwa",
+        "deterministic_qat",
+    }
+    if raw["policy"] not in supported_policies:
         raise config_error(
             f"{path}.policy",
-            "to be 'none', 'continuous_hwa', or 'deterministic_qat'",
+            f"to be one of {sorted(supported_policies)!r}",
             raw["policy"],
         )
     epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=0)
@@ -556,11 +628,18 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             ),
             dict(raw),
         )
-    if raw["policy"] == "none":
+    forward_noise = (
+        None
+        if raw.get("forward_noise") is None
+        else _parse_offchip_forward_noise(
+            raw["forward_noise"], f"{path}.forward_noise"
+        )
+    )
+    if raw["policy"] in {"none", "support_clamped_no_update"}:
         if epochs != 0 or rates != (0.0, 0.0):
             raise config_error(
                 path,
-                "to use zero epochs and rates for offchip policy='none'",
+                "to use zero epochs and rates for a no-update offchip policy",
                 dict(raw),
             )
     elif epochs != 5 or rates != (1e-4, 1e-4):
@@ -571,6 +650,19 @@ def _parse_offchip(value: Any) -> OffchipSettings:
                 "rates [1e-4, 1e-4] for HWA/QAT"
             ),
             dict(raw),
+        )
+    if raw["policy"] == "stochastic_apparent_hwa":
+        if forward_noise is None:
+            raise config_error(
+                f"{path}.forward_noise",
+                "to be present for stochastic_apparent_hwa",
+                raw.get("forward_noise"),
+            )
+    elif forward_noise is not None:
+        raise config_error(
+            f"{path}.forward_noise",
+            "to be null or absent outside stochastic_apparent_hwa",
+            raw["forward_noise"],
         )
     return OffchipSettings(
         policy=raw["policy"],
@@ -585,6 +677,7 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             raw["maximum_batches"], f"{path}.maximum_batches"
         ),
         checkpoint_policy=raw["checkpoint_policy"],
+        forward_noise=forward_noise,
     )
 
 

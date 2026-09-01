@@ -128,7 +128,9 @@ def _mapping_fixture() -> tuple[dict, SimpleNamespace, SimpleNamespace, SimpleNa
     ("policy", "expected", "rule"),
     [
         ("none", [0.4, 0.4], "identity_master_q"),
+        ("support_clamped_no_update", [0.25, 0.4], "target_support_clamp"),
         ("continuous_hwa", [0.25, 0.4], "target_support_clamp"),
+        ("stochastic_apparent_hwa", [0.25, 0.4], "target_support_clamp"),
         (
             "deterministic_qat",
             [0.25, 0.5],

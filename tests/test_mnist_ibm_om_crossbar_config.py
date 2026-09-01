@@ -48,6 +48,11 @@ STOCHASTIC_TIKI_TAKA_STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1.json"
 )
+STOCHASTIC_HWA_DIAGNOSTIC_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-stochastic-apparent-hwa-diagnostic-20260901-v1.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
@@ -153,6 +158,136 @@ def test_direct_frozen_control_has_no_optimizer_updates() -> None:
     assert spec.offchip.logical_learning_rates == (0.0, 0.0)
     assert spec.recovery.policy == "none"
     assert spec.recovery.epochs == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "policy", "epochs", "rates", "maximum_batches"),
+    [
+        (
+            "hwa_noise_diagnostic_repaired_exact_no_hwa.json",
+            "none",
+            0,
+            (0.0, 0.0),
+            None,
+        ),
+        (
+            "hwa_noise_diagnostic_repaired_support_only.json",
+            "support_clamped_no_update",
+            0,
+            (0.0, 0.0),
+            None,
+        ),
+        (
+            "hwa_noise_diagnostic_repaired_deterministic_hwa.json",
+            "continuous_hwa",
+            5,
+            (1e-4, 1e-4),
+            256,
+        ),
+        (
+            "hwa_noise_diagnostic_repaired_stochastic_hwa.json",
+            "stochastic_apparent_hwa",
+            5,
+            (1e-4, 1e-4),
+            256,
+        ),
+    ],
+)
+def test_hwa_noise_diagnostic_contract(
+    name: str,
+    policy: str,
+    epochs: int,
+    rates: tuple[float, float],
+    maximum_batches: int | None,
+) -> None:
+    spec = resolve_crossbar_spec(parse_crossbar_config(_payload(name)), RunMode.TRAIN)
+
+    assert spec.data.num_points == 4096
+    assert spec.offchip.policy == policy
+    assert spec.offchip.epochs == epochs
+    assert spec.offchip.logical_learning_rates == rates
+    assert spec.offchip.maximum_batches == maximum_batches
+    assert spec.recovery.policy == "none"
+    assert spec.transfer.enabled is True
+    if policy == "stochastic_apparent_hwa":
+        noise = spec.offchip.forward_noise
+        assert noise is not None
+        assert noise.model == (
+            "aihwkit_1_1_0_softbounds_reference_additive_write_noise"
+        )
+        assert noise.base_state == "support_clamped_persistent_q"
+        assert noise.resampling == "independent_full_array_draw_per_minibatch"
+        assert noise.samples_per_minibatch == 1
+        assert noise.relative_scale == 1.0
+        assert noise.seed == 88042
+        assert noise.gradient_estimator == "identity_straight_through"
+    else:
+        assert spec.offchip.forward_noise is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["exact_no_hwa", "support_only", "deterministic_hwa", "stochastic_hwa"],
+)
+def test_hwa_noise_diagnostic_corruption_pair_changes_only_policy(role: str) -> None:
+    repaired = _payload(f"hwa_noise_diagnostic_repaired_{role}.json")
+    published = _payload(f"hwa_noise_diagnostic_published_{role}.json")
+
+    assert repaired["device"].pop("corruption_policy") == "counterfactual_repaired"
+    assert published["device"].pop("corruption_policy") == "published"
+    assert repaired == published
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["offchip"].pop("forward_noise"),
+            "present for stochastic_apparent_hwa",
+        ),
+        (
+            lambda value: value["offchip"]["forward_noise"].__setitem__(
+                "relative_scale", 0.5
+            ),
+            "to equal 1.0",
+        ),
+        (
+            lambda value: value["offchip"]["forward_noise"].__setitem__(
+                "resampling", "once_per_epoch"
+            ),
+            "independent_full_array_draw_per_minibatch",
+        ),
+    ],
+)
+def test_stochastic_hwa_rejects_noise_contract_drift(mutation, message: str) -> None:
+    payload = _payload("hwa_noise_diagnostic_repaired_stochastic_hwa.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
+
+
+def test_stochastic_hwa_diagnostic_study_declares_complete_factorial() -> None:
+    plan = load_study_plan(STOCHASTIC_HWA_DIAGNOSTIC_STUDY_PATH)
+
+    assert len(plan["arms"]) == 8
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "repaired-exact-no-hwa",
+        "repaired-support-clamped-no-update",
+        "repaired-deterministic-support-hwa",
+        "repaired-stochastic-apparent-hwa",
+        "published-exact-no-hwa",
+        "published-support-clamped-no-update",
+        "published-deterministic-support-hwa",
+        "published-stochastic-apparent-hwa",
+    ]
+    for arm in plan["arms"]:
+        _, spec = resolve_experiment_config(
+            arm["configs"][0]["resolved_path"], RunMode.TRAIN
+        )
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.data.num_points == 4096
+        assert spec.transfer.enabled is True
 
 
 def test_star_recovery_contract_is_local_moment_free_and_chronological() -> None:

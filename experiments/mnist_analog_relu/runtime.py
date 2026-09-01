@@ -1035,7 +1035,11 @@ def _offchip_realized_state(
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     if policy == "none":
         return master, None
-    if policy == "continuous_hwa":
+    if policy in {
+        "support_clamped_no_update",
+        "continuous_hwa",
+        "stochastic_apparent_hwa",
+    }:
         return torch.maximum(torch.minimum(master, logical_maximum), logical_minimum), None
     if policy == "deterministic_qat":
         return project_to_nearest_effective_code_device(
@@ -1045,6 +1049,46 @@ def _offchip_realized_state(
             validate=validate_codebook,
         )
     raise ValueError(f"Unsupported off-chip policy: {policy!r}.")
+
+
+def _sample_aihwkit_om_apparent_write_noise(
+    *,
+    persistent_q: torch.Tensor,
+    nominal_dw_min: float,
+    write_noise_std: float,
+    relative_scale: float,
+    generator: torch.Generator,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample AIHWKit 1.1 OM apparent ``q`` from persistent ``q``.
+
+    ``SoftBoundsReferenceDevice`` uses
+    ``q_app = q_persistent + write_noise_std * dw_min * N(0, 1)``.  The
+    intrinsic reference is already included in the effective ``q=a-r`` state,
+    so it is not sampled again here.  This helper intentionally uses an
+    explicit PyTorch generator for replayability; it claims equation and
+    distribution parity, not native C++ RNG-stream parity.
+    """
+
+    if persistent_q.dtype != torch.float32 or not bool(torch.all(torch.isfinite(persistent_q))):
+        raise ValueError("Expected finite float32 persistent q for apparent-noise sampling.")
+    values = (float(nominal_dw_min), float(write_noise_std), float(relative_scale))
+    if (
+        not all(math.isfinite(value) for value in values)
+        or nominal_dw_min <= 0.0
+        or write_noise_std < 0.0
+        or relative_scale <= 0.0
+    ):
+        raise ValueError("Expected finite positive OM write-noise parameters.")
+    standard_normal = torch.randn(
+        persistent_q.shape,
+        dtype=torch.float32,
+        device=persistent_q.device,
+        generator=generator,
+    )
+    noise = standard_normal * (
+        float(nominal_dw_min) * float(write_noise_std) * float(relative_scale)
+    )
+    return persistent_q + noise, noise
 
 
 def _map_transfer_source_state(
@@ -1080,7 +1124,9 @@ def _map_transfer_source_state(
         )
         mapping_rule = {
             "none": "identity_master_q",
+            "support_clamped_no_update": "target_support_clamp",
             "continuous_hwa": "target_support_clamp",
+            "stochastic_apparent_hwa": "target_support_clamp",
             "deterministic_qat": "target_deterministic_codebook_projection",
         }[offchip_policy]
         source_role = "logical_offchip_fixed_final_master_q"
@@ -1122,14 +1168,18 @@ def _offchip_adapt(
     train_loader: Iterable,
     device: torch.device,
 ) -> tuple[torch.Tensor, dict[str, Any], Mapping[str, Any]]:
-    """Run fixed-final continuous HWA or deterministic-codebook QAT.
+    """Run fixed-final deterministic/stochastic HWA or codebook QAT.
 
     Adam acts on two effective-``q`` shadow tensors.  Dividing each parameter
     group's rate by its fixed digital layer scale makes the Adam displacement
     correspond to the declared logical-weight displacement (up to Adam's
     epsilon term).  The forward pass uses a straight-through estimator; only
     the continuous support clamp or deterministic codebook state reaches the
-    network.
+    network.  ``stochastic_apparent_hwa`` additionally samples the AIHWKit
+    1.1.0 ``SoftBoundsReferenceDevice`` additive apparent-write-noise equation
+    once per minibatch.  This is equation/distribution parity with an explicit
+    PyTorch RNG, not native AIHWKit RNG-stream parity and not a P&V-conditioned
+    endpoint sampler.
     """
 
     slices = layer_cell_slices(layout)
@@ -1166,18 +1216,21 @@ def _offchip_adapt(
     )
     initial_master = master.detach().cpu().clone()
     initial_realized_cpu = initial_realized.detach().cpu().clone()
-    if spec.offchip.policy == "none":
+    if spec.offchip.policy in {"none", "support_clamped_no_update"}:
+        policy = spec.offchip.policy
         state = {
             "schema": "ebl.ibm_om_crossbar_offchip_state",
             "schema_version": 1,
-            "policy": "none",
+            "policy": policy,
             "initial_master_q": initial_master,
             "fixed_final_master_q": initial_master.clone(),
             "fixed_final_realized_q": initial_realized_cpu,
             "optimizer_state_dict": None,
+            "forward_noise_generator_initial_state": None,
+            "forward_noise_generator_final_state": None,
         }
         return initial_realized_cpu, {
-            "policy": "none",
+            "policy": policy,
             "objective": spec.offchip.objective,
             "initial_master_sha256": tensor_sha256(initial_master),
             "initial_realized_sha256": tensor_sha256(initial_realized_cpu),
@@ -1192,9 +1245,15 @@ def _offchip_adapt(
             "optimizer_steps": 0,
             "logical_learning_rates": [0.0, 0.0],
             "effective_q_learning_rates": [0.0, 0.0],
-            "checkpoint_policy": "fixed_source_no_selection",
+            "checkpoint_policy": (
+                "fixed_source_no_selection"
+                if policy == "none"
+                else "fixed_source_support_clamp_no_selection"
+            ),
             "stochastic_programming_during_training": False,
+            "stochastic_apparent_forward_noise_during_training": False,
             "persistent_state_updates_during_training": False,
+            "forward_noise": None,
         }, state
 
     effective_rates = tuple(
@@ -1213,6 +1272,27 @@ def _offchip_adapt(
         betas=(spec.offchip.beta_1, spec.offchip.beta_2),
         eps=spec.offchip.epsilon,
     )
+    noise_settings = spec.offchip.forward_noise
+    noise_generator: torch.Generator | None = None
+    noise_resolved_seed: int | None = None
+    noise_initial_state: torch.Tensor | None = None
+    noise_scale_q: float | None = None
+    if spec.offchip.policy == "stochastic_apparent_hwa":
+        if noise_settings is None:
+            raise RuntimeError("Expected stochastic HWA forward-noise settings.")
+        noise_resolved_seed = derive_seed(
+            noise_settings.seed,
+            population.assignment_seed,
+            "offchip_stochastic_apparent_hwa",
+        )
+        noise_generator = torch.Generator(device=device)
+        noise_generator.manual_seed(noise_resolved_seed)
+        noise_initial_state = noise_generator.get_state().detach().cpu().clone()
+        noise_scale_q = float(
+            population.write_noise_std
+            * population.nominal_dw_min
+            * noise_settings.relative_scale
+        )
     epoch_reports: list[dict[str, Any]] = []
     optimizer_steps = 0
     final_validation = initial_validation
@@ -1224,6 +1304,17 @@ def _offchip_adapt(
         loss_sum = 0.0
         examples = 0
         batches = 0
+        noise_value_count = 0
+        noise_sum = 0.0
+        noise_square_sum = 0.0
+        noise_minimum = math.inf
+        noise_maximum = -math.inf
+        noise_sequence_digest = sha256()
+        noise_generator_before = (
+            None
+            if noise_generator is None
+            else noise_generator.get_state().detach().cpu().clone()
+        )
         for batch_index, (inputs, labels) in enumerate(
             limited(train_loader, spec.offchip.maximum_batches)
         ):
@@ -1249,7 +1340,27 @@ def _offchip_adapt(
                 codebook_rows=codebook_rows,
                 validate_codebook=False,
             )
-            straight_through = master + (realized - master).detach()
+            forward_state = realized
+            if noise_generator is not None:
+                if noise_settings is None:
+                    raise RuntimeError("Expected stochastic HWA noise settings.")
+                forward_state, noise = _sample_aihwkit_om_apparent_write_noise(
+                    persistent_q=realized,
+                    nominal_dw_min=population.nominal_dw_min,
+                    write_noise_std=population.write_noise_std,
+                    relative_scale=noise_settings.relative_scale,
+                    generator=noise_generator,
+                )
+                noise64 = noise.detach().to(torch.float64)
+                noise_value_count += int(noise.numel())
+                noise_sum += float(noise64.sum().item())
+                noise_square_sum += float(torch.square(noise64).sum().item())
+                noise_minimum = min(noise_minimum, float(noise.min().item()))
+                noise_maximum = max(noise_maximum, float(noise.max().item()))
+                noise_sequence_digest.update(
+                    bytes.fromhex(tensor_sha256(noise.detach()))
+                )
+            straight_through = master + (forward_state - master).detach()
             student_logits = standard_crossbar_logits(
                 inputs,
                 straight_through,
@@ -1296,8 +1407,7 @@ def _offchip_adapt(
             maximum_batches=spec.evaluation.maximum_validation_batches,
             sample_limit=spec.evaluation.sample_limit,
         )
-        epoch_reports.append(
-            {
+        epoch_report: dict[str, Any] = {
                 "epoch": epoch,
                 "batches": batches,
                 "examples": examples,
@@ -1308,8 +1418,32 @@ def _offchip_adapt(
                     None if final_indices is None else tensor_sha256(final_indices)
                 ),
                 "validation": final_validation,
+                "forward_noise": None,
             }
-        )
+        if noise_generator is not None:
+            if noise_value_count <= 0 or noise_scale_q is None:
+                raise RuntimeError("Expected stochastic HWA to draw forward noise.")
+            observed_mean = noise_sum / noise_value_count
+            observed_variance = max(
+                0.0,
+                noise_square_sum / noise_value_count - observed_mean**2,
+            )
+            generator_after = noise_generator.get_state().detach().cpu().clone()
+            epoch_report["forward_noise"] = {
+                "full_array_draws": batches,
+                "scalar_values": noise_value_count,
+                "configured_sigma_q": noise_scale_q,
+                "observed_mean_q": observed_mean,
+                "observed_std_q": math.sqrt(observed_variance),
+                "observed_minimum_q": noise_minimum,
+                "observed_maximum_q": noise_maximum,
+                "noise_tensor_sequence_sha256": noise_sequence_digest.hexdigest(),
+                "generator_state_before_sha256": tensor_sha256(
+                    noise_generator_before
+                ),
+                "generator_state_after_sha256": tensor_sha256(generator_after),
+            }
+        epoch_reports.append(epoch_report)
 
     final_master_cpu = torch.cat(parameters).detach().cpu().clone()
     final_realized_cpu = final_realized.detach().cpu().clone()
@@ -1328,6 +1462,12 @@ def _offchip_adapt(
         "fixed_final_master_q": final_master_cpu,
         "fixed_final_realized_q": final_realized_cpu,
         "optimizer_state_dict": optimizer.state_dict(),
+        "forward_noise_generator_initial_state": noise_initial_state,
+        "forward_noise_generator_final_state": (
+            None
+            if noise_generator is None
+            else noise_generator.get_state().detach().cpu().clone()
+        ),
     }
     return final_realized_cpu, {
         "policy": spec.offchip.policy,
@@ -1352,7 +1492,31 @@ def _offchip_adapt(
         "effective_q_learning_rates": list(effective_rates),
         "checkpoint_policy": spec.offchip.checkpoint_policy,
         "stochastic_programming_during_training": False,
+        "stochastic_apparent_forward_noise_during_training": (
+            noise_generator is not None
+        ),
         "persistent_state_updates_during_training": False,
+        "forward_noise": (
+            None
+            if noise_settings is None
+            else {
+                **to_plain_data(noise_settings),
+                "configured_seed": noise_settings.seed,
+                "resolved_seed": noise_resolved_seed,
+                "nominal_dw_min": float(population.nominal_dw_min),
+                "write_noise_std": float(population.write_noise_std),
+                "sigma_q": noise_scale_q,
+                "intrinsic_reference_semantics": "effective_q_equals_active_a_minus_fixed_r",
+                "native_rng_stream_parity": False,
+                "program_verify_conditioned_endpoint_sampling": False,
+                "generator_initial_state_sha256": tensor_sha256(
+                    noise_initial_state
+                ),
+                "generator_final_state_sha256": tensor_sha256(
+                    noise_generator.get_state().detach().cpu()
+                ),
+            }
+        ),
     }, state
 
 
@@ -3957,11 +4121,15 @@ def run_train(request: "TrainRequest") -> int:
             codebook,
             requested,
         )
-        if spec.offchip.policy == "continuous_hwa" and not torch.equal(
-            requested,
-            continuous,
-        ):
-            raise RuntimeError("Expected continuous HWA to deploy its exact support-clamped state.")
+        if spec.offchip.policy in {
+            "support_clamped_no_update",
+            "continuous_hwa",
+            "stochastic_apparent_hwa",
+        } and not torch.equal(requested, continuous):
+            raise RuntimeError(
+                "Expected support-aware off-chip policy to deploy its exact "
+                "support-clamped persistent target."
+            )
         if spec.offchip.policy == "deterministic_qat" and not torch.equal(
             requested,
             deterministic,
@@ -5250,11 +5418,36 @@ def run_train(request: "TrainRequest") -> int:
                 "target_endpoint_seeds_within_each_target_share_one_assignment",
                 *(
                     [
-                        "digital_teacher_KL_gradients_and_Adam_moments_remain_off_array",
-                        "recovery_gradient_uses_identity_ste_from_apparent_to_hidden_persistent_state",
+                        *(
+                            [
+                                "digital_teacher_KL_gradients_and_Adam_moments_remain_off_array"
+                            ]
+                            if spec.offchip.policy
+                            in {
+                                "continuous_hwa",
+                                "stochastic_apparent_hwa",
+                                "deterministic_qat",
+                            }
+                            else [
+                                "predeployment_offchip_policy_performs_no_optimizer_updates"
+                            ]
+                        ),
+                        (
+                            "no_postdeployment_recovery_updates"
+                            if spec.recovery.policy == "none"
+                            else "recovery_gradient_uses_identity_ste_from_apparent_to_hidden_persistent_state"
+                        ),
                     ]
                     if spec.recovery.policy
                     not in _POST_DEPLOYMENT_FAULT_POLICIES
+                    else []
+                ),
+                *(
+                    [
+                        "stochastic_HWA_uses_AIHWKit_1_1_write_noise_equation_with_replayable_PyTorch_RNG_not_native_RNG_stream_parity",
+                        "stochastic_HWA_noise_is_unconditional_per_minibatch_and_not_program_verify_acceptance_conditioned",
+                    ]
+                    if spec.offchip.policy == "stochastic_apparent_hwa"
                     else []
                 ),
                 *(
