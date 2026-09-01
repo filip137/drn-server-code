@@ -826,6 +826,13 @@ def _default_train_handler(request: TrainRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.ibm_om_corrupt_multi_source_hwa_tuned_recovery_runtime import (
             run_train,
         )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_exact_p0_open_vs_closed_loop_adam.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_exact_p0_open_vs_closed_loop_adam_runtime import (
+            run_train,
+        )
     elif request.definition.experiment_id in {
         "mnist_relu_drn_reset.v1",
         "mnist_relu_drn_reset_differential.v1",
