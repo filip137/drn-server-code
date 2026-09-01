@@ -172,7 +172,9 @@ def _rank_partial_masks(
     teacher: Any,
     loaders: Any,
     protocol: Any,
-) -> tuple[Mapping[str, StructuredPartialUpdateMask], Mapping[str, Any]]:
+    mask_builder: Any = build_structured_partial_update_masks,
+    mask_builder_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     """Rank logical quads at exact P0 on the frozen train-only cohort."""
 
     before_train_state = _generator_state_record(loaders.train_generator.get_state())
@@ -231,11 +233,16 @@ def _rank_partial_masks(
     )
     if not train_state_unchanged or not _state_equal(before_plant, after_plant):
         raise RuntimeError("Mask ranking changed the P0 plant or training data RNG.")
-    masks = build_structured_partial_update_masks(
+    builder_kwargs = (
+        {"matched_logical_count": protocol.partial.matched_logical_count}
+        if mask_builder_kwargs is None
+        else dict(mask_builder_kwargs)
+    )
+    masks = mask_builder(
         scores,
         binding_shapes=population.binding_shapes,
         layouts=LAYOUTS,
-        matched_logical_count=protocol.partial.matched_logical_count,
+        **builder_kwargs,
     )
     ranking = {
         "cohort": protocol.partial.ranking.cohort,
