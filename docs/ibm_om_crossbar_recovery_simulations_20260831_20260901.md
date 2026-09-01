@@ -31,20 +31,22 @@ mapped and programmed onto A or a fresh array.
 | --- | --- | --- | ---: | ---: | --- |
 | Digital reference | FP32 ReLU teacher inference | none | **97.700%** | same teacher | cohort reference |
 | No HWA | Teacher weights deployed directly with P&V | A (`87004`) | **95.850%** | **93.850%** | reviewed |
-| After HWA, before P&V | Fixed-final HWA master mapped to A support | A (`87004`) | **97.200%** | **88.300%** | reviewed deterministic diagnostic |
-| After HWA | Fixed-final HWA master deployed with P&V | A (`87004`) | **95.775%** | **85.650%** | reviewed |
+| After original HWA, before P&V | Five-minibatch fixed-final HWA master mapped to A support | A (`87004`) | **97.200%** | **88.300%** | reviewed deterministic diagnostic |
+| After original HWA | Five-minibatch fixed-final HWA master deployed with P&V | A (`87004`) | **95.775%** | **85.650%** | reviewed |
 | No HWA, fresh deployment | Teacher weights deployed directly with P&V | B (`87005`) | **96.675%** | **89.600%** | reviewed |
-| After HWA, fresh deployment | Frozen HWA master deployed with P&V | B (`87005`) | **96.225%** | **80.200%** | reviewed |
+| After original HWA, fresh deployment | Five-minibatch HWA master deployed with P&V | B (`87005`) | **96.225%** | **80.200%** | reviewed |
+| Long stochastic HWA on repaired A | Ten-epoch repaired-A master deployed with P&V | B (`87005`) | **95.575%** | **91.650%** | full artifacts; ready for review |
+| Long stochastic HWA on published-defect A | Ten-epoch published-A master deployed with P&V | B (`87005`) | **92.525%** | **87.025%** | full artifacts; ready for review |
 | On-chip training (a) | Train the same persistent B state with stochastic pulses | B (`87005`) | **Not run** | **Not run** | required matched experiment |
 | Continuous control (b) | Train from the same B state with continuous updates | B (`87005`) | **Not run** | **Not run** | required matched experiment |
 
 “No stuck cells” is the `counterfactual_repaired` control: the sampled defect
 locations are recorded, but their device parameters are replaced by healthy
 donors. “Published stuck cells” explicitly enables the OM rate `0.1348` and
-retains the sampled collapsed, zero-step devices. The repaired and published
-HWA columns currently use separately trained HWA masters, because HWA was
-rerun under each device policy. They are matched policy-level results, not one
-bit-identical master evaluated with and without defects.
+retains the sampled collapsed, zero-step devices. In the original-HWA rows,
+the two columns use separately trained masters because HWA was rerun under
+each device policy. The two long-HWA rows explicitly cross each fixed master
+with both deployment policies.
 
 For context, the same frozen models were also deployed on two more fresh
 arrays. These values again average four P&V writes per array:
@@ -99,6 +101,54 @@ This follow-up study is artifact-verified and `ready_for_review`; it has not
 yet been scientifically finalized. Its generated report is
 [`results/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1/analysis/report.md`](../results/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1/analysis/report.md).
 
+### Crossed HWA training and deployment defects
+
+The missing off-diagonal deployments are now complete. The table below holds
+the ten-epoch stochastic-HWA recipe fixed and crosses the device policy used
+to train the FP32 master against Array A with the device policy present on
+fresh arrays B--D. This is **not** training B--D; it is P&V deployment of a
+frozen HWA master. Values are `apparent accuracy / teacher KL`.
+
+| HWA device model on A | Fresh B--D device policy | B (`87005`) | C (`87006`) | D (`87007`) | B--D pooled |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Repaired A | Repaired targets | 95.575% / 0.0904 | 94.925% / 0.1136 | 95.250% / 0.0969 | **95.250% / 0.1003** |
+| Repaired A | Published-defect targets | 91.650% / 0.2252 | 90.775% / 0.2516 | 89.825% / 0.2970 | **90.750% / 0.2580** |
+| Published-defect A | Repaired targets | 92.525% / 0.2390 | 92.250% / 0.2467 | 92.075% / 0.2356 | **92.283% / 0.2405** |
+| Published-defect A | Published-defect targets | 87.025% / 0.4089 | 88.500% / 0.3546 | 89.050% / 0.3665 | **88.192% / 0.3767** |
+
+On the same published-defect B--D populations, training HWA against repaired
+A instead of published-defect A raises the array means by
+`+4.625/+2.275/+0.775` percentage points and the pooled mean by `+2.558`
+points. Teacher KL falls on every array, from `0.3767` to `0.2580` pooled.
+This passes the study's predeclared numerical gate: at least `+1` pooled
+point, lower KL, improvement on at least two arrays, and no array more than
+`2` points worse.
+
+The reverse cross reinforces the same pattern. On repaired B--D, the repaired-A
+master reaches `95.250% / 0.1003`, while the published-defect-A master reaches
+only `92.283% / 0.2405`. Thus exposing HWA to one fixed source defect map did
+not produce reusable defect robustness; the result is consistent with fitting
+Array A's particular missing connections.
+
+The comparison with no HWA is more modest. On published B--D, repaired-A HWA
+reaches `90.750% / 0.2580`, versus `89.758% / 0.3621` for direct teacher
+deployment: `+0.992` pooled points and substantially lower KL. B and C improve
+by `+2.050` and `+3.550` points, but D falls by `-2.625` points. HWA without
+source defects therefore helps on average in this three-array smoke, but it
+is not yet uniformly robust across target arrays. On repaired B--D, it remains
+slightly below no HWA (`95.250%` versus `95.542%`) and has higher KL (`0.1003`
+versus `0.0750`).
+
+The pooled persistent-q diagnostic follows the same source-policy ordering:
+`86.483%` for repaired-A to repaired targets, `77.658%` for repaired-A to
+published targets, `83.800%` for published-A to repaired targets, and
+`75.267%` for published-A to published targets. Apparent post-P&V accuracy
+remains the primary inference metric.
+
+This crossed study is artifact-verified and `ready_for_review`; its scientific
+outcome remains a human decision. Its generated report is
+[`results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md`](../results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md).
+
 ## Plain-language conclusion
 
 - The digital ReLU teacher scores `97.700%` on this cohort.
@@ -111,15 +161,23 @@ yet been scientifically finalized. Its generated report is
   B falls to `89.600%`, while the separately trained HWA path falls to
   `80.200%`. Pooled HWA accuracy across B--D falls from `95.300%` to
   `83.350%`.
+- With ten full stochastic-HWA epochs, training against repaired A and then
+  deploying onto published-defect B--D reaches `90.750%`, compared with
+  `88.192%` when HWA uses published-defect A and `89.758%` with no HWA. The
+  paired result supports an Array-A defect-map fitting mechanism, while the
+  heterogeneous comparison with no HWA shows that this is not yet universal
+  target-array robustness.
 - The two values needed to answer the on-chip-training question on Array B do
   not exist yet. Existing recovery numbers must not be inserted into those
   cells because they trained Array A after a different chronological fault
   transition.
 
-This makes the present conclusion narrower and clearer: continuous HWA works
-well for the repaired-array control, but the tested HWA path is not robust to
-retained stuck devices. Whether training the already deployed Array B can
-recover that loss remains an open experiment.
+This makes the present conclusion narrower and clearer: HWA works well for the
+repaired-array control, while fitting one fixed source defect map is actively
+harmful to fresh-array transfer. Training against repaired A helps on
+published-defect targets on average, but is not uniformly better than no HWA.
+Whether training the already deployed Array B can recover the remaining loss
+remains an open experiment.
 
 ## Existing recovery evidence is from Array A, not Array B
 
@@ -189,12 +247,12 @@ Every result should appear in the top ledger and report:
 - stuck-state immutability and actual movement of programmable cells; and
 - pulse count, saturation, and any final target-reprogramming cost.
 
-For the complete defect study, cross the HWA-training policy on A
-(`repaired` versus `published`) with the defect policy on B (`repaired` versus
-`published`). The current diagonal comparison bundles those two effects. A
-minimal first run can use the published-aware HWA master on published Array B,
-but the full `2x2` is required to isolate defect-aware HWA from deployment
-defects.
+The frozen-HWA deployment `2x2`--HWA against repaired or published-defect A,
+then P&V on repaired or published-defect B--D--is now complete above. The
+remaining matched `2x2` concerns **training the deployed B state itself**: fork
+the exact same repaired or published B-P0 checkpoint into stochastic-pulse and
+continuous-update recovery arms. That experiment is still required to isolate
+the writer from the B starting state.
 
 The current runtime cannot execute this comparison directly: it forbids
 recovery together with fresh-array transfer and does not persist the target
@@ -408,20 +466,25 @@ write-noise resampling caused by commands to immutable cells.
    matched smoke, continuous HWA remained near `95%` across repaired fresh
    arrays but fell by about `12` points when published defects were retained on
    the targets.
-3. **The simulator admits a post-write apparent compensation ceiling.**
+3. **Training HWA on a fixed defect map hurts transfer.** Repaired-A HWA beats
+   published-defect-A HWA on both repaired and published B--D. On published
+   targets the paired gain is `+2.558` points with lower KL on every array.
+   Relative to no HWA, however, the gain is only `+0.992` pooled points and one
+   target array is worse, so the benefit is not yet uniformly robust.
+4. **The simulator admits a post-write apparent compensation ceiling.**
    Continuous shadow Adam found a high-accuracy target without a fault map.
    Persistent changes during final P&V occurred only in programmable cells,
    while the apparent endpoint may additionally include resampled write noise
    at immutable cells. This does not prove a durable fresh-read state.
-4. **The evidence implicates the tested physical-pulse writers.** Exact replay
+5. **The evidence implicates the tested physical-pulse writers.** Exact replay
    separates their open-loop Bernoulli rounding, coarse OM pulses, and
    write-noise resampling from the successful continuous optimizer. Direct
    stochastic SGD can improve persistent state while degrading the apparent
    forward endpoint.
-5. **Tiki-Taka improves the update mechanism but not enough.** Its fast array
+6. **Tiki-Taka improves the update mechanism but not enough.** Its fast array
    integrates many more pulses and clearly beats direct stochastic SGD, yet it
    recovers only one quarter of the apparent damage with repaired fast cells.
-6. **Apparent and persistent state must remain separate.** The apparent state
+7. **Apparent and persistent state must remain separate.** The apparent state
    is the modeled AIHWKit network state, but the large final gaps and lack of a
    fresh read mean that post-write apparent recovery is not yet durability
    evidence.
@@ -436,18 +499,22 @@ write-noise resampling caused by commands to immutable cells.
 | Supervised open-loop pulse retraining | 2026-08-31 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1/analysis/report.md) |
 | Shadow-Adam/P&V writer debug | 2026-08-31 | full artifacts; ready for review; one failed attempt retained | [plan](../studies/mnist-ibm-om-crossbar-shadow-program-verify-retraining-debug-20260831-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-shadow-program-verify-retraining-debug-20260831-v1/analysis/report.md) |
 | Stochastic SGD and Tiki-Taka v1 | 2026-09-01 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1/analysis/report.md) |
+| Long-HWA exact-P&V comparison | 2026-09-01 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1/analysis/report.md) |
+| Crossed HWA/target defect policies | 2026-09-01 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md) |
 
 Artifact verification reports exact declared coverage for all workflow studies.
-No simulations are currently active. The three recovery studies marked
-`ready for review` do not yet have a human `review.json`, `final.json`, or
-experimental-manifest entry. Their numerical gates are reported above, but
-their schema-level scientific outcomes remain pending human review.
+No simulations are currently active. Studies marked `ready for review` do not
+yet have a human `review.json`, `final.json`, or experimental-manifest entry.
+Their numerical gates are reported above, but their schema-level scientific
+outcomes remain pending human review.
 
-The 1 September formal runs all bind source commit
+The earlier 1 September formal runs bind source commit
 `f8733a0ed2a7afcf25acd79f2f10b131d903ce64`. The direct run was clean. The two
 Tiki-Taka manifests recorded an identical dirty hash caused only by the
 watchdog-generated `docs/current_simulations.md` update; executable, config,
-study, and test sources were unchanged and all artifact checks passed.
+study, and test sources were unchanged and all artifact checks passed. Both
+crossed-HWA arms bind clean source commit
+`d542bbeadb972ecb64711796e9d15df611ac3ca0`.
 
 ## Limitations and open decisions
 
@@ -456,8 +523,9 @@ study, and test sources were unchanged and all artifact checks passed.
 - Recovery used one slow-array assignment and repeated programming streams;
   it does not establish independent-array or independent-fault-mask
   generalization.
-- Accuracy uses only the first `1,000` test examples. Predeployment continuous
-  HWA used only 16 examples for five one-minibatch epochs.
+- Accuracy uses only the first `1,000` test examples. The original reviewed
+  HWA comparator used only 16 examples for five one-minibatch epochs; the long
+  stochastic-HWA studies used ten complete `55,000`-example epochs.
 - There is no independent fresh-read, retention, drift, inference-noise,
   endurance, line-resistance, ADC/DAC, peripheral-energy, or absolute-
   conductance validation.
