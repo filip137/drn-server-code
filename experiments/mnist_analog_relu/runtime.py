@@ -307,6 +307,20 @@ def _sample_population(
     return population, provenance, artifacts
 
 
+def _resolve_transfer_target_corruption_policy(
+    *, source_corruption_policy: str, target_corruption_policy: str
+) -> str:
+    """Resolve a fresh-array defect policy without changing the source array."""
+
+    if source_corruption_policy not in {"published", "counterfactual_repaired"}:
+        raise ValueError("Expected a supported source corruption policy.")
+    if target_corruption_policy == "inherit_source":
+        return source_corruption_policy
+    if target_corruption_policy not in {"published", "counterfactual_repaired"}:
+        raise ValueError("Expected a supported transfer-target corruption policy.")
+    return target_corruption_policy
+
+
 def _load_teacher(
     path: Path,
     *,
@@ -4303,10 +4317,14 @@ def run_train(request: "TrainRequest") -> int:
         if spec.transfer.enabled:
             for target_index, target in enumerate(spec.transfer.targets):
                 role = f"transfer_target_{target_index}_assignment_{target.assignment_seed}"
+                target_corruption_policy = _resolve_transfer_target_corruption_policy(
+                    source_corruption_policy=spec.device.corruption_policy,
+                    target_corruption_policy=target.corruption_policy,
+                )
                 population, receipt, artifact_paths = _sample_population(
                     layout=layout,
                     assignment_seed=target.assignment_seed,
-                    corruption_policy=spec.device.corruption_policy,
+                    corruption_policy=target_corruption_policy,
                     sampler=sampler,
                     artifact_root=artifact_root,
                     role=role,
@@ -4324,6 +4342,8 @@ def run_train(request: "TrainRequest") -> int:
                         "population": population,
                         "receipt": receipt,
                         "codebook": codebook_value,
+                        "configured_corruption_policy": target.corruption_policy,
+                        "resolved_corruption_policy": target_corruption_policy,
                     }
                 )
                 target_artifact_paths.extend(artifact_paths)
@@ -5487,6 +5507,12 @@ def run_train(request: "TrainRequest") -> int:
                         "target_index": context["index"],
                         "assignment_seed": context["settings"].assignment_seed,
                         "endpoint_seeds": list(context["settings"].endpoint_seeds),
+                        "configured_corruption_policy": context[
+                            "configured_corruption_policy"
+                        ],
+                        "resolved_corruption_policy": context[
+                            "resolved_corruption_policy"
+                        ],
                         "fingerprint": context["population"].fingerprint,
                         "sampling_receipt": context["receipt"],
                         "defects": _population_defect_report(

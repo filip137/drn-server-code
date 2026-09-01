@@ -230,6 +230,7 @@ class RecoverySettings:
 class TransferTargetSettings:
     assignment_seed: int
     endpoint_seeds: tuple[int, ...]
+    corruption_policy: str
 
 
 @dataclass(frozen=True)
@@ -1646,7 +1647,12 @@ def _parse_transfer(value: Any, *, endpoint_count: int, source_assignment: int) 
         for index, item in enumerate(targets_raw):
             target_path = f"{path}.targets[{index}]"
             target = _object(item, target_path)
-            _keys(target, target_path, {"assignment_seed", "endpoint_seeds"})
+            _keys(
+                target,
+                target_path,
+                {"assignment_seed", "endpoint_seeds"},
+                {"corruption_policy"},
+            )
             assignment = _integer(
                 target["assignment_seed"],
                 f"{target_path}.assignment_seed",
@@ -1668,8 +1674,24 @@ def _parse_transfer(value: Any, *, endpoint_count: int, source_assignment: int) 
                     "to contain one target endpoint per source endpoint",
                     target["endpoint_seeds"],
                 )
+            corruption_policy = target.get("corruption_policy", "inherit_source")
+            if corruption_policy not in {
+                "inherit_source",
+                "published",
+                "counterfactual_repaired",
+            }:
+                raise config_error(
+                    f"{target_path}.corruption_policy",
+                    (
+                        "to be 'inherit_source', 'published', or "
+                        "'counterfactual_repaired'"
+                    ),
+                    corruption_policy,
+                )
             assignments.append(assignment)
-            targets.append(TransferTargetSettings(assignment, endpoints))
+            targets.append(
+                TransferTargetSettings(assignment, endpoints, corruption_policy)
+            )
         if len(set(assignments)) != len(assignments):
             raise config_error(
                 f"{path}.targets",

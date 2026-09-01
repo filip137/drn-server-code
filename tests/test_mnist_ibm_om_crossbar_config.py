@@ -58,6 +58,11 @@ LONG_HWA_EXACT_PV_STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1.json"
 )
+LONG_HWA_CROSS_DEFECT_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
@@ -399,6 +404,106 @@ def test_long_hwa_exact_pv_study_declares_six_matched_arms() -> None:
         assert isinstance(spec, CrossbarTrainSpec)
         assert spec.offchip.deployment_target == "fixed_final_master_fault_blind_pv"
         assert spec.transfer.enabled is True
+
+
+@pytest.mark.parametrize(
+    ("name", "source_policy", "target_policy"),
+    [
+        (
+            "hwa_long_repaired_stochastic_hwa_to_published_targets.json",
+            "counterfactual_repaired",
+            "published",
+        ),
+        (
+            "hwa_long_published_stochastic_hwa_to_repaired_targets.json",
+            "published",
+            "counterfactual_repaired",
+        ),
+    ],
+)
+def test_long_hwa_cross_defect_configs_separate_source_and_target_policy(
+    name: str, source_policy: str, target_policy: str
+) -> None:
+    spec = resolve_crossbar_spec(parse_crossbar_config(_payload(name)), RunMode.TRAIN)
+
+    assert spec.device.corruption_policy == source_policy
+    assert spec.offchip.policy == "stochastic_apparent_hwa"
+    assert spec.offchip.training_protocol == "full_mnist_ten_epoch_fixed_final"
+    assert spec.offchip.deployment_target == "fixed_final_master_fault_blind_pv"
+    assert all(
+        target.corruption_policy == target_policy
+        for target in spec.transfer.targets
+    )
+
+
+def test_long_hwa_cross_defect_configs_change_only_crossed_policies() -> None:
+    repaired = _payload(
+        "hwa_long_repaired_stochastic_hwa_to_published_targets.json"
+    )
+    published = _payload(
+        "hwa_long_published_stochastic_hwa_to_repaired_targets.json"
+    )
+
+    assert repaired["device"].pop("corruption_policy") == "counterfactual_repaired"
+    assert published["device"].pop("corruption_policy") == "published"
+    repaired_target_policies = {
+        target.pop("corruption_policy")
+        for target in repaired["transfer"]["targets"]
+    }
+    published_target_policies = {
+        target.pop("corruption_policy")
+        for target in published["transfer"]["targets"]
+    }
+    assert repaired_target_policies == {"published"}
+    assert published_target_policies == {"counterfactual_repaired"}
+    assert repaired == published
+
+
+@pytest.mark.parametrize(
+    ("cross_name", "diagonal_name", "expected_target_policy"),
+    [
+        (
+            "hwa_long_repaired_stochastic_hwa_to_published_targets.json",
+            "hwa_long_repaired_stochastic_hwa.json",
+            "published",
+        ),
+        (
+            "hwa_long_published_stochastic_hwa_to_repaired_targets.json",
+            "hwa_long_published_stochastic_hwa.json",
+            "counterfactual_repaired",
+        ),
+    ],
+)
+def test_long_hwa_cross_config_preserves_diagonal_training_contract(
+    cross_name: str, diagonal_name: str, expected_target_policy: str
+) -> None:
+    cross = _payload(cross_name)
+    diagonal = _payload(diagonal_name)
+
+    assert {
+        target.pop("corruption_policy")
+        for target in cross["transfer"]["targets"]
+    } == {expected_target_policy}
+    assert cross == diagonal
+
+
+def test_long_hwa_cross_defect_study_declares_two_off_diagonal_arms() -> None:
+    plan = load_study_plan(LONG_HWA_CROSS_DEFECT_STUDY_PATH)
+
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "repaired-a-stochastic-hwa-to-published-bd",
+        "published-a-stochastic-hwa-to-repaired-bd",
+    ]
+    for arm in plan["arms"]:
+        _, spec = resolve_experiment_config(
+            arm["configs"][0]["resolved_path"], RunMode.TRAIN
+        )
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.offchip.policy == "stochastic_apparent_hwa"
+        assert all(
+            target.corruption_policy != "inherit_source"
+            for target in spec.transfer.targets
+        )
 
 
 def test_star_recovery_contract_is_local_moment_free_and_chronological() -> None:

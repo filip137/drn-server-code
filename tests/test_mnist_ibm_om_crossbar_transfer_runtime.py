@@ -43,6 +43,51 @@ def test_transfer_config_parses_explicit_source_and_multiple_fresh_arrays() -> N
         len(target.endpoint_seeds) == len(spec.device.endpoint_seeds)
         for target in spec.transfer.targets
     )
+    assert all(
+        target.corruption_policy == "inherit_source"
+        for target in spec.transfer.targets
+    )
+
+
+def test_transfer_target_can_override_source_corruption_policy() -> None:
+    payload = _payload()
+    payload["device"]["corruption_policy"] = "counterfactual_repaired"
+    for target in payload["transfer"]["targets"]:
+        target["corruption_policy"] = "published"
+
+    spec = parse_crossbar_config(payload)
+
+    assert spec.device.corruption_policy == "counterfactual_repaired"
+    assert all(
+        target.corruption_policy == "published"
+        for target in spec.transfer.targets
+    )
+    assert runtime._resolve_transfer_target_corruption_policy(
+        source_corruption_policy=spec.device.corruption_policy,
+        target_corruption_policy=spec.transfer.targets[0].corruption_policy,
+    ) == "published"
+
+
+@pytest.mark.parametrize(
+    ("source", "target", "expected"),
+    [
+        ("published", "inherit_source", "published"),
+        (
+            "counterfactual_repaired",
+            "inherit_source",
+            "counterfactual_repaired",
+        ),
+        ("published", "counterfactual_repaired", "counterfactual_repaired"),
+        ("counterfactual_repaired", "published", "published"),
+    ],
+)
+def test_transfer_target_corruption_policy_resolution(
+    source: str, target: str, expected: str
+) -> None:
+    assert runtime._resolve_transfer_target_corruption_policy(
+        source_corruption_policy=source,
+        target_corruption_policy=target,
+    ) == expected
 
 
 def test_disabled_transfer_requires_none_source_and_no_targets() -> None:
@@ -84,6 +129,12 @@ def test_disabled_transfer_requires_none_source_and_no_targets() -> None:
         (
             lambda transfer: transfer.__setitem__("source_state", "apparent"),
             "offchip_fixed_final_master",
+        ),
+        (
+            lambda transfer: transfer["targets"][0].__setitem__(
+                "corruption_policy", "repair_if_needed"
+            ),
+            "inherit_source",
         ),
     ],
 )

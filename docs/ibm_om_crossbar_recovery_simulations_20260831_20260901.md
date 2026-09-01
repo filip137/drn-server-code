@@ -56,6 +56,49 @@ arrays. These values again average four P&V writes per array:
 | D (`87007`) | 95.750% / 92.450% | 95.575% / 87.125% |
 | **Pooled over B–D** | **95.542% / 89.758%** | **95.300% / 83.350%** |
 
+### Long-HWA exact-master follow-up: accuracy and teacher KL
+
+The later matched ten-epoch study measures both top-1 accuracy and
+
+```text
+D_KL(teacher || deployed crossbar),
+```
+
+on the same first `1,000` test examples. Lower KL is better; the teacher
+compared with itself has KL `0`. Each array entry below is the mean of four
+P&V programming streams, and the B--D entry pools all twelve fresh-array
+writes. Values are written as `accuracy / KL`.
+
+| Device policy | Training | A (`87004`) | B (`87005`) | C (`87006`) | D (`87007`) | B–D pooled |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Repaired | No HWA | 95.850% / 0.0505 | 96.675% / 0.0257 | 94.200% / 0.1462 | 95.750% / 0.0530 | **95.542% / 0.0750** |
+| Repaired | Deterministic HWA | 96.300% / 0.0437 | 95.925% / 0.0703 | 93.625% / 0.1845 | 94.875% / 0.1011 | **94.808% / 0.1186** |
+| Repaired | Stochastic HWA | 96.225% / 0.0687 | 95.575% / 0.0904 | 94.925% / 0.1136 | 95.250% / 0.0969 | **95.250% / 0.1003** |
+| Published stuck cells | No HWA | 93.850% / 0.1216 | 89.600% / 0.3233 | 87.225% / 0.5974 | 92.450% / 0.1655 | **89.758% / 0.3621** |
+| Published stuck cells | Deterministic HWA | 91.275% / 0.2223 | 70.250% / 1.3437 | 75.500% / 1.4245 | 79.975% / 0.7943 | **75.242% / 1.1875** |
+| Published stuck cells | Stochastic HWA | 94.575% / 0.1290 | 87.025% / 0.4089 | 88.500% / 0.3546 | 89.050% / 0.3665 | **88.192% / 0.3767** |
+
+These KL values expose an important distinction. On the fixed published
+Array-A training proxy, stochastic HWA improves support-forward accuracy from
+`87.3%` to `96.1%` and reduces teacher KL from `0.3162` to `0.0595`. After
+actual P&V, however, KL is `0.1290` on A and `0.3767` on fresh B--D, slightly
+worse than the no-HWA fresh-array KL of `0.3621`. Deterministic HWA makes the
+same mismatch more extreme: its final Array-A proxy KL is only `0.0133`, but
+its fresh-array P&V KL is `1.1875`.
+
+Thus Adam successfully optimizes the model used inside HWA. The failure is in
+generalization from that proxy to deployment: training holds Array A's device
+identities, support, references, and stuck-cell map fixed, and stochastic HWA
+resamples only unconditioned additive apparent-write noise. Actual deployment
+uses a P&V-conditioned apparent endpoint and fresh arrays have different
+device identities and defect locations. The current stochastic-HWA arm is
+therefore equation-compatible with the IBM-OM write-noise term, but it is not
+a sample from the complete P&V deployment distribution.
+
+This follow-up study is artifact-verified and `ready_for_review`; it has not
+yet been scientifically finalized. Its generated report is
+[`results/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1/analysis/report.md`](../results/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1/analysis/report.md).
+
 ## Plain-language conclusion
 
 - The digital ReLU teacher scores `97.700%` on this cohort.
