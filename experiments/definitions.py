@@ -144,6 +144,12 @@ from experiments.mnist_relu_drn.ibm_om_exact_p0_hybrid_fraction_pv_adam_config i
     parse_exact_p0_hybrid_fraction_pv_adam_config,
     resolve_exact_p0_hybrid_fraction_pv_adam_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_exact_p0_hybrid_extension_pv_adam_config import (
+    EXPERIMENT_ID as IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_SCHEMA_VERSION,
+    parse_exact_p0_hybrid_extension_pv_adam_config,
+    resolve_exact_p0_hybrid_extension_pv_adam_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -1174,6 +1180,20 @@ IBM_OM_EXACT_P0_HYBRID_FRACTION_PV_ADAM_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_EXPERIMENT_ID,
+    schema_version=IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_SCHEMA_VERSION,
+    description=(
+        "Extend the exact W2-plus-W1 P&V frontier from the stage-2 top-500 "
+        "parity anchor through nested W1 prefixes of 1,000, 2,000, and 4,000 "
+        "logical quads, with a deterministic random-2,000 validation control."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_exact_p0_hybrid_extension_pv_adam_config,
+    resolver=resolve_exact_p0_hybrid_extension_pv_adam_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
@@ -1193,6 +1213,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_EXACT_P0_OPEN_VS_CLOSED_LOOP_ADAM_V1.experiment_id: IBM_OM_EXACT_P0_OPEN_VS_CLOSED_LOOP_ADAM_V1,
     IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_V1.experiment_id: IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_V1,
     IBM_OM_EXACT_P0_HYBRID_FRACTION_PV_ADAM_V1.experiment_id: IBM_OM_EXACT_P0_HYBRID_FRACTION_PV_ADAM_V1,
+    IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_V1.experiment_id: IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_V1,
     IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
