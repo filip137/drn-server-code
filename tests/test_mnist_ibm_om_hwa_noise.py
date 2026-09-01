@@ -35,8 +35,8 @@ def _population(size: int, layout) -> IbmReramArrayPopulation:
         nominal_dw_min=0.0949,
         dw_min_std=0.009,
         write_noise_std=1.4113,
-        max_bound=torch.ones(size),
-        min_bound=-torch.ones(size),
+        max_bound=torch.full((size,), 0.25),
+        min_bound=torch.full((size,), -0.25),
         dwmin_up=torch.full((size,), 0.0949),
         dwmin_down=torch.full((size,), 0.0949),
         reference=torch.zeros(size),
@@ -163,6 +163,25 @@ def test_stochastic_hwa_replays_noise_and_deploys_persistent_support_state() -> 
         population.logical_min,
     )
     assert torch.equal(first_requested, expected_deployment)
+
+    exact_requested, exact_report, exact_state = run(
+        replace(
+            spec.offchip,
+            deployment_target="fixed_final_master_fault_blind_pv",
+        )
+    )
+    assert torch.equal(exact_requested, exact_state["fixed_final_master_q"])
+    assert torch.equal(
+        exact_state["fixed_final_deployment_q"],
+        exact_state["fixed_final_master_q"],
+    )
+    assert not torch.equal(
+        exact_requested,
+        exact_state["fixed_final_realized_q"],
+    )
+    assert exact_report["deployment_target"] == (
+        "fixed_final_master_fault_blind_pv"
+    )
 
     changed_noise = replace(spec.offchip.forward_noise, seed=88043)
     changed_requested, changed_report, _changed_state = run(

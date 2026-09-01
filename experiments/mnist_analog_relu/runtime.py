@@ -1051,6 +1051,21 @@ def _offchip_realized_state(
     raise ValueError(f"Unsupported off-chip policy: {policy!r}.")
 
 
+def _offchip_deployment_state(
+    *,
+    master: torch.Tensor,
+    realized: torch.Tensor,
+    deployment_target: str,
+) -> torch.Tensor:
+    """Select the state requested from P&V without changing training forwards."""
+
+    if deployment_target == "policy_realized_state":
+        return realized
+    if deployment_target == "fixed_final_master_fault_blind_pv":
+        return master
+    raise ValueError(f"Unsupported off-chip deployment target: {deployment_target!r}.")
+
+
 def _sample_aihwkit_om_apparent_write_noise(
     *,
     persistent_q: torch.Tensor,
@@ -1099,6 +1114,7 @@ def _map_transfer_source_state(
     source_plant: IbmOmEffectiveCrossbarPlant,
     target_population: IbmReramArrayPopulation,
     target_codebook: Any,
+    deployment_target: str = "policy_realized_state",
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """Resolve and target-map the declared source of a fresh-array transfer."""
 
@@ -1107,28 +1123,33 @@ def _map_transfer_source_state(
         if not isinstance(source, torch.Tensor):
             raise ValueError("Expected the off-chip checkpoint to contain fixed_final_master_q.")
         source = source.detach().cpu().to(torch.float32).clone()
-        codebook_rows = (
-            target_codebook.values.detach()
-            .cpu()
-            .to(torch.float32)
-            .transpose(0, 1)
-            .contiguous()
-        )
-        mapped, indices = _offchip_realized_state(
-            master=source,
-            policy=offchip_policy,
-            logical_minimum=target_population.logical_min.detach().cpu(),
-            logical_maximum=target_population.logical_max.detach().cpu(),
-            codebook_rows=codebook_rows,
-            validate_codebook=True,
-        )
-        mapping_rule = {
-            "none": "identity_master_q",
-            "support_clamped_no_update": "target_support_clamp",
-            "continuous_hwa": "target_support_clamp",
-            "stochastic_apparent_hwa": "target_support_clamp",
-            "deterministic_qat": "target_deterministic_codebook_projection",
-        }[offchip_policy]
+        if deployment_target == "fixed_final_master_fault_blind_pv":
+            mapped = source.clone()
+            indices = None
+            mapping_rule = "identity_fixed_final_master_fault_blind_pv_request"
+        else:
+            codebook_rows = (
+                target_codebook.values.detach()
+                .cpu()
+                .to(torch.float32)
+                .transpose(0, 1)
+                .contiguous()
+            )
+            mapped, indices = _offchip_realized_state(
+                master=source,
+                policy=offchip_policy,
+                logical_minimum=target_population.logical_min.detach().cpu(),
+                logical_maximum=target_population.logical_max.detach().cpu(),
+                codebook_rows=codebook_rows,
+                validate_codebook=True,
+            )
+            mapping_rule = {
+                "none": "identity_master_q",
+                "support_clamped_no_update": "target_support_clamp",
+                "continuous_hwa": "target_support_clamp",
+                "stochastic_apparent_hwa": "target_support_clamp",
+                "deterministic_qat": "target_deterministic_codebook_projection",
+            }[offchip_policy]
         source_role = "logical_offchip_fixed_final_master_q"
     elif source_state == "same_array_persistent":
         source = source_plant.persistent.detach().cpu().to(torch.float32).clone()
@@ -1143,6 +1164,7 @@ def _map_transfer_source_state(
         "source_state": source_state,
         "source_role": source_role,
         "offchip_policy": offchip_policy,
+        "deployment_target": deployment_target,
         "target_mapping_rule": mapping_rule,
         "source_q_sha256": tensor_sha256(source),
         "target_mapped_q_sha256": tensor_sha256(mapped),
@@ -1167,6 +1189,7 @@ def _offchip_adapt(
     validation_loader: Iterable,
     train_loader: Iterable,
     device: torch.device,
+    test_loader: Iterable | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any], Mapping[str, Any]]:
     """Run fixed-final deterministic/stochastic HWA or codebook QAT.
 
@@ -1214,34 +1237,63 @@ def _offchip_adapt(
         maximum_batches=spec.evaluation.maximum_validation_batches,
         sample_limit=spec.evaluation.sample_limit,
     )
+    evaluate_epoch_test = spec.offchip.epoch_evaluation == "validation_and_test"
+    if evaluate_epoch_test and test_loader is None:
+        raise ValueError(
+            "Expected a test loader for off-chip validation-and-test epoch diagnostics."
+        )
+    initial_test = (
+        None
+        if not evaluate_epoch_test
+        else _evaluate(
+            effective_state=initial_realized,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=test_loader,
+            device=device,
+            maximum_batches=None,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+    )
     initial_master = master.detach().cpu().clone()
     initial_realized_cpu = initial_realized.detach().cpu().clone()
     if spec.offchip.policy in {"none", "support_clamped_no_update"}:
         policy = spec.offchip.policy
+        deployment = _offchip_deployment_state(
+            master=initial_master,
+            realized=initial_realized_cpu,
+            deployment_target=spec.offchip.deployment_target,
+        ).detach().cpu().clone()
         state = {
             "schema": "ebl.ibm_om_crossbar_offchip_state",
-            "schema_version": 1,
+            "schema_version": 2,
             "policy": policy,
             "initial_master_q": initial_master,
             "fixed_final_master_q": initial_master.clone(),
             "fixed_final_realized_q": initial_realized_cpu,
+            "fixed_final_deployment_q": deployment,
             "optimizer_state_dict": None,
             "forward_noise_generator_initial_state": None,
             "forward_noise_generator_final_state": None,
         }
-        return initial_realized_cpu, {
+        return deployment, {
             "policy": policy,
+            "training_protocol": spec.offchip.training_protocol,
             "objective": spec.offchip.objective,
             "initial_master_sha256": tensor_sha256(initial_master),
             "initial_realized_sha256": tensor_sha256(initial_realized_cpu),
             "initial_codebook_index_sha256": None,
             "initial_validation": initial_validation,
+            "initial_test": initial_test,
             "epochs": [],
             "fixed_final_epoch": 0,
             "fixed_final_master_sha256": tensor_sha256(initial_master),
             "fixed_final_realized_sha256": tensor_sha256(initial_realized_cpu),
+            "fixed_final_deployment_sha256": tensor_sha256(deployment),
             "fixed_final_codebook_index_sha256": None,
             "fixed_final_validation": initial_validation,
+            "fixed_final_test": initial_test,
             "optimizer_steps": 0,
             "logical_learning_rates": [0.0, 0.0],
             "effective_q_learning_rates": [0.0, 0.0],
@@ -1250,6 +1302,7 @@ def _offchip_adapt(
                 if policy == "none"
                 else "fixed_source_support_clamp_no_selection"
             ),
+            "deployment_target": spec.offchip.deployment_target,
             "stochastic_programming_during_training": False,
             "stochastic_apparent_forward_noise_during_training": False,
             "persistent_state_updates_during_training": False,
@@ -1296,6 +1349,7 @@ def _offchip_adapt(
     epoch_reports: list[dict[str, Any]] = []
     optimizer_steps = 0
     final_validation = initial_validation
+    final_test = initial_test
     final_realized = initial_realized
     final_indices = initial_indices
     first_epoch_inputs: list[torch.Tensor] = []
@@ -1407,19 +1461,34 @@ def _offchip_adapt(
             maximum_batches=spec.evaluation.maximum_validation_batches,
             sample_limit=spec.evaluation.sample_limit,
         )
+        final_test = (
+            None
+            if not evaluate_epoch_test
+            else _evaluate(
+                effective_state=final_realized,
+                digital_scales=digital_scales,
+                layout=layout,
+                teacher=teacher,
+                loader=test_loader,
+                device=device,
+                maximum_batches=None,
+                sample_limit=spec.evaluation.sample_limit,
+            )
+        )
         epoch_report: dict[str, Any] = {
-                "epoch": epoch,
-                "batches": batches,
-                "examples": examples,
-                "train_kl_teacher_student": loss_sum / examples,
-                "master_sha256": tensor_sha256(master),
-                "realized_sha256": tensor_sha256(final_realized),
-                "codebook_index_sha256": (
-                    None if final_indices is None else tensor_sha256(final_indices)
-                ),
-                "validation": final_validation,
-                "forward_noise": None,
-            }
+            "epoch": epoch,
+            "batches": batches,
+            "examples": examples,
+            "train_kl_teacher_student": loss_sum / examples,
+            "master_sha256": tensor_sha256(master),
+            "realized_sha256": tensor_sha256(final_realized),
+            "codebook_index_sha256": (
+                None if final_indices is None else tensor_sha256(final_indices)
+            ),
+            "validation": final_validation,
+            "test": final_test,
+            "forward_noise": None,
+        }
         if noise_generator is not None:
             if noise_value_count <= 0 or noise_scale_q is None:
                 raise RuntimeError("Expected stochastic HWA to draw forward noise.")
@@ -1447,6 +1516,11 @@ def _offchip_adapt(
 
     final_master_cpu = torch.cat(parameters).detach().cpu().clone()
     final_realized_cpu = final_realized.detach().cpu().clone()
+    final_deployment_cpu = _offchip_deployment_state(
+        master=final_master_cpu,
+        realized=final_realized_cpu,
+        deployment_target=spec.offchip.deployment_target,
+    ).detach().cpu().clone()
     first_epoch_training_cohort, _first_epoch_identities = (
         _ordered_labeled_cohort_report(
             inputs=first_epoch_inputs,
@@ -1456,11 +1530,12 @@ def _offchip_adapt(
     )
     state = {
         "schema": "ebl.ibm_om_crossbar_offchip_state",
-        "schema_version": 1,
+        "schema_version": 2,
         "policy": spec.offchip.policy,
         "initial_master_q": initial_master,
         "fixed_final_master_q": final_master_cpu,
         "fixed_final_realized_q": final_realized_cpu,
+        "fixed_final_deployment_q": final_deployment_cpu,
         "optimizer_state_dict": optimizer.state_dict(),
         "forward_noise_generator_initial_state": noise_initial_state,
         "forward_noise_generator_final_state": (
@@ -1469,8 +1544,9 @@ def _offchip_adapt(
             else noise_generator.get_state().detach().cpu().clone()
         ),
     }
-    return final_realized_cpu, {
+    return final_deployment_cpu, {
         "policy": spec.offchip.policy,
+        "training_protocol": spec.offchip.training_protocol,
         "objective": spec.offchip.objective,
         "initial_master_sha256": tensor_sha256(initial_master),
         "initial_realized_sha256": tensor_sha256(initial_realized_cpu),
@@ -1478,19 +1554,23 @@ def _offchip_adapt(
             None if initial_indices is None else tensor_sha256(initial_indices)
         ),
         "initial_validation": initial_validation,
+        "initial_test": initial_test,
         "first_epoch_training_cohort": first_epoch_training_cohort,
         "epochs": epoch_reports,
         "fixed_final_epoch": spec.offchip.epochs,
         "fixed_final_master_sha256": tensor_sha256(final_master_cpu),
         "fixed_final_realized_sha256": tensor_sha256(final_realized_cpu),
+        "fixed_final_deployment_sha256": tensor_sha256(final_deployment_cpu),
         "fixed_final_codebook_index_sha256": (
             None if final_indices is None else tensor_sha256(final_indices)
         ),
         "fixed_final_validation": final_validation,
+        "fixed_final_test": final_test,
         "optimizer_steps": optimizer_steps,
         "logical_learning_rates": list(spec.offchip.logical_learning_rates),
         "effective_q_learning_rates": list(effective_rates),
         "checkpoint_policy": spec.offchip.checkpoint_policy,
+        "deployment_target": spec.offchip.deployment_target,
         "stochastic_programming_during_training": False,
         "stochastic_apparent_forward_noise_during_training": (
             noise_generator is not None
@@ -4109,6 +4189,7 @@ def run_train(request: "TrainRequest") -> int:
             validation_loader=offchip_loaders.validation,
             train_loader=offchip_loaders.train,
             device=device,
+            test_loader=diagnostic_loaders.test,
         )
         offchip_state_path = artifact_root / "offchip_state.pt"
         atomic_torch_save(offchip_state, offchip_state_path)
@@ -4121,14 +4202,23 @@ def run_train(request: "TrainRequest") -> int:
             codebook,
             requested,
         )
-        if spec.offchip.policy in {
-            "support_clamped_no_update",
-            "continuous_hwa",
-            "stochastic_apparent_hwa",
-        } and not torch.equal(requested, continuous):
+        if spec.offchip.deployment_target == "policy_realized_state":
+            if spec.offchip.policy in {
+                "support_clamped_no_update",
+                "continuous_hwa",
+                "stochastic_apparent_hwa",
+            } and not torch.equal(requested, continuous):
+                raise RuntimeError(
+                    "Expected support-aware off-chip policy to deploy its exact "
+                    "support-clamped persistent target."
+                )
+        elif not torch.equal(
+            requested,
+            offchip_state["fixed_final_master_q"],
+        ):
             raise RuntimeError(
-                "Expected support-aware off-chip policy to deploy its exact "
-                "support-clamped persistent target."
+                "Expected the fault-blind P&V handoff to request the exact "
+                "fixed-final FP32 master."
             )
         if spec.offchip.policy == "deterministic_qat" and not torch.equal(
             requested,
@@ -4567,6 +4657,7 @@ def run_train(request: "TrainRequest") -> int:
                         source_plant=plant,
                         target_population=target_population,
                         target_codebook=target_codebook,
+                        deployment_target=spec.offchip.deployment_target,
                     )
                     transfer_continuous = torch.maximum(
                         torch.minimum(

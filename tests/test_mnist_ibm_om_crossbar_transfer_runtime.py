@@ -166,6 +166,30 @@ def test_offchip_transfer_maps_master_separately_on_target_population(
     assert not torch.equal(mapped, source_plant.persistent)
 
 
+def test_exact_master_handoff_is_fault_blind_on_every_target_population() -> None:
+    offchip_state, source_plant, target_population, target_codebook = (
+        _mapping_fixture()
+    )
+
+    mapped, report = runtime._map_transfer_source_state(
+        source_state="offchip_fixed_final_master",
+        offchip_policy="stochastic_apparent_hwa",
+        offchip_state=offchip_state,
+        source_plant=source_plant,
+        target_population=target_population,
+        target_codebook=target_codebook,
+        deployment_target="fixed_final_master_fault_blind_pv",
+    )
+
+    assert torch.equal(mapped, offchip_state["fixed_final_master_q"])
+    assert mapped.tolist() == pytest.approx([0.4, 0.4])
+    assert report["target_mapping_rule"] == (
+        "identity_fixed_final_master_fault_blind_pv_request"
+    )
+    assert report["target_codebook_index_sha256"] is None
+    assert report["deployment_target"] == "fixed_final_master_fault_blind_pv"
+
+
 def test_same_array_transfer_pairs_hidden_persistent_state_not_apparent() -> None:
     offchip_state, source_plant, target_population, target_codebook = (
         _mapping_fixture()

@@ -53,6 +53,11 @@ STOCHASTIC_HWA_DIAGNOSTIC_STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-stochastic-apparent-hwa-diagnostic-20260901-v1.json"
 )
+LONG_HWA_EXACT_PV_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
@@ -287,6 +292,112 @@ def test_stochastic_hwa_diagnostic_study_declares_complete_factorial() -> None:
         )
         assert isinstance(spec, CrossbarTrainSpec)
         assert spec.data.num_points == 4096
+        assert spec.transfer.enabled is True
+
+
+@pytest.mark.parametrize(
+    ("name", "policy", "epochs", "maximum_batches"),
+    [
+        ("hwa_long_repaired_exact_no_hwa.json", "none", 0, None),
+        (
+            "hwa_long_repaired_deterministic_hwa.json",
+            "continuous_hwa",
+            10,
+            3438,
+        ),
+        (
+            "hwa_long_repaired_stochastic_hwa.json",
+            "stochastic_apparent_hwa",
+            10,
+            3438,
+        ),
+    ],
+)
+def test_long_hwa_exact_pv_contract(
+    name: str,
+    policy: str,
+    epochs: int,
+    maximum_batches: int | None,
+) -> None:
+    spec = resolve_crossbar_spec(parse_crossbar_config(_payload(name)), RunMode.TRAIN)
+
+    assert spec.data.num_points is None
+    assert spec.offchip.policy == policy
+    assert spec.offchip.epochs == epochs
+    assert spec.offchip.maximum_batches == maximum_batches
+    assert spec.offchip.deployment_target == "fixed_final_master_fault_blind_pv"
+    assert spec.offchip.epoch_evaluation == "validation_and_test"
+    assert spec.evaluation.sample_limit == 1000
+    assert spec.evaluation.maximum_validation_batches == 63
+    assert spec.transfer.enabled is True
+    if epochs:
+        assert spec.offchip.training_protocol == "full_mnist_ten_epoch_fixed_final"
+        assert spec.offchip.logical_learning_rates == (1e-4, 1e-4)
+    else:
+        assert spec.offchip.training_protocol == "no_update"
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["exact_no_hwa", "deterministic_hwa", "stochastic_hwa"],
+)
+def test_long_hwa_corruption_pair_changes_only_policy(role: str) -> None:
+    repaired = _payload(f"hwa_long_repaired_{role}.json")
+    published = _payload(f"hwa_long_published_{role}.json")
+
+    assert repaired["device"].pop("corruption_policy") == "counterfactual_repaired"
+    assert published["device"].pop("corruption_policy") == "published"
+    assert repaired == published
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["offchip"].__setitem__("epochs", 9),
+            "ten full-MNIST",
+        ),
+        (
+            lambda value: value["offchip"].__setitem__("maximum_batches", 3437),
+            "maximum_batches=3438",
+        ),
+        (
+            lambda value: value["data"].__setitem__("num_points", 4096),
+            "all 55,000 training examples",
+        ),
+        (
+            lambda value: value["offchip"].__setitem__(
+                "epoch_evaluation", "validation_only"
+            ),
+            "validation_and_test",
+        ),
+    ],
+)
+def test_long_hwa_rejects_budget_drift(mutation, message: str) -> None:
+    payload = _payload("hwa_long_repaired_stochastic_hwa.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
+
+
+def test_long_hwa_exact_pv_study_declares_six_matched_arms() -> None:
+    plan = load_study_plan(LONG_HWA_EXACT_PV_STUDY_PATH)
+
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "repaired-exact-no-hwa",
+        "repaired-long-deterministic-hwa",
+        "repaired-long-stochastic-hwa",
+        "published-exact-no-hwa",
+        "published-long-deterministic-hwa",
+        "published-long-stochastic-hwa",
+    ]
+    for arm in plan["arms"]:
+        _, spec = resolve_experiment_config(
+            arm["configs"][0]["resolved_path"], RunMode.TRAIN
+        )
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.offchip.deployment_target == "fixed_final_master_fault_blind_pv"
         assert spec.transfer.enabled is True
 
 

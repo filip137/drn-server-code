@@ -718,6 +718,45 @@ comparator. Both arms must exclude a teacher, autograd/BPTT, Adam state, and a
 learner-visible fault map during recovery before they are described as
 on-chip-compatible.
 
+## Planned long-HWA exact-P&V follow-up
+
+The next off-chip HWA diagnostic is frozen in
+[`mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1.json`](../studies/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1.json).
+It addresses two separate questions that must not be conflated.
+
+First, arrays A--D are independent hardware realizations. They share the same
+logical teacher, OM preset, corruption policy, and controller, but assignments
+`87004`, `87005`, `87006`, and `87007` independently sample cell parameters,
+reference values, defect locations, and P&V streams. No-HWA accuracy is
+therefore expected to be exchangeable across arrays, not bit-identical. The
+repaired no-HWA source/fresh-target difference in the preceding diagnostic was
+only about 0.31 percentage point; the published-defect spread was larger
+because defect-map placement changes which logical weights are immutable.
+
+Second, the earlier no-HWA/HWA contrast used different deployment handoffs.
+No HWA requested the exact teacher master, while support-aware HWA first
+clamped the target to each array's cell support. The new six-arm study gives
+all policies the same fault-blind operation: P&V receives the exact unchanged
+teacher or exact fixed-final HWA master. Bounds, stuck values, and eligibility
+masks are not exposed to the request path; saturation and exhaustion are
+measured outcomes.
+
+The HWA budget is increased from 1,280 updates on 4,096 examples to ten full
+55,000-example epochs, or 34,380 fixed-final Adam updates. Deterministic HWA
+uses source-A support-clamped forwards. Stochastic HWA additionally samples
+
+```text
+q_apparent = q_persistent + 1.4113 * 0.0949 * N(0, 1)
+```
+
+once for every cell and minibatch with a replayable RNG and identity STE.
+Initial and per-epoch clean realized-state metrics use exactly 1,000 validation
+and 1,000 test examples; final deployment uses the matched P&V controller on A
+and untouched B--D. This tests longer training and the OM apparent-write-noise
+equation. It does not yet resample full device identities, defect masks, or
+acceptance-conditioned programmed endpoints per minibatch; those are the next
+HWA intervention if fixed-A noise training fails to transfer.
+
 ## Claim limits
 
 The implementation does not model inference read noise, retention, ADC/DAC

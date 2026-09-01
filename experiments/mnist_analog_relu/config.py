@@ -86,6 +86,7 @@ class OffchipForwardNoiseSettings:
 @dataclass(frozen=True)
 class OffchipSettings:
     policy: str
+    training_protocol: str
     epochs: int
     logical_learning_rates: tuple[float, float]
     beta_1: float
@@ -95,6 +96,8 @@ class OffchipSettings:
     master_q_bounds: tuple[float, float]
     maximum_batches: int | None
     checkpoint_policy: str
+    deployment_target: str
+    epoch_evaluation: str
     forward_noise: OffchipForwardNoiseSettings | None
 
 
@@ -589,7 +592,12 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             "maximum_batches",
             "checkpoint_policy",
         },
-        {"forward_noise"},
+        {
+            "forward_noise",
+            "training_protocol",
+            "deployment_target",
+            "epoch_evaluation",
+        },
     )
     supported_policies = {
         "none",
@@ -604,6 +612,7 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             f"to be one of {sorted(supported_policies)!r}",
             raw["policy"],
         )
+    policy = raw["policy"]
     epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=0)
     rates = _pair(
         raw["logical_learning_rates"],
@@ -635,23 +644,69 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             raw["forward_noise"], f"{path}.forward_noise"
         )
     )
-    if raw["policy"] in {"none", "support_clamped_no_update"}:
+    default_training_protocol = (
+        "no_update"
+        if policy in {"none", "support_clamped_no_update"}
+        else "legacy_five_epoch_fixed_final"
+    )
+    training_protocol = raw.get(
+        "training_protocol", default_training_protocol
+    )
+    supported_training_protocols = {
+        "no_update",
+        "legacy_five_epoch_fixed_final",
+        "full_mnist_ten_epoch_fixed_final",
+    }
+    if training_protocol not in supported_training_protocols:
+        raise config_error(
+            f"{path}.training_protocol",
+            f"to be one of {sorted(supported_training_protocols)!r}",
+            training_protocol,
+        )
+    if policy in {"none", "support_clamped_no_update"}:
         if epochs != 0 or rates != (0.0, 0.0):
             raise config_error(
                 path,
                 "to use zero epochs and rates for a no-update offchip policy",
                 dict(raw),
             )
-    elif epochs != 5 or rates != (1e-4, 1e-4):
+        if training_protocol != "no_update":
+            raise config_error(
+                f"{path}.training_protocol",
+                "to equal 'no_update' for an off-chip no-update policy",
+                training_protocol,
+            )
+    elif training_protocol == "legacy_five_epoch_fixed_final":
+        if epochs != 5 or rates != (1e-4, 1e-4):
+            raise config_error(
+                path,
+                (
+                    "to use the predeclared five epochs and logical learning "
+                    "rates [1e-4, 1e-4] for legacy HWA/QAT"
+                ),
+                dict(raw),
+            )
+    elif training_protocol == "full_mnist_ten_epoch_fixed_final":
+        if (
+            policy not in {"continuous_hwa", "stochastic_apparent_hwa"}
+            or epochs != 10
+            or rates != (1e-4, 1e-4)
+        ):
+            raise config_error(
+                path,
+                (
+                    "to use continuous or stochastic HWA for ten full-MNIST "
+                    "fixed-final epochs at logical learning rates [1e-4, 1e-4]"
+                ),
+                dict(raw),
+            )
+    else:
         raise config_error(
-            path,
-            (
-                "to use the predeclared five epochs and logical learning "
-                "rates [1e-4, 1e-4] for HWA/QAT"
-            ),
-            dict(raw),
+            f"{path}.training_protocol",
+            "not to equal 'no_update' for a trained off-chip policy",
+            training_protocol,
         )
-    if raw["policy"] == "stochastic_apparent_hwa":
+    if policy == "stochastic_apparent_hwa":
         if forward_noise is None:
             raise config_error(
                 f"{path}.forward_noise",
@@ -664,8 +719,53 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             "to be null or absent outside stochastic_apparent_hwa",
             raw["forward_noise"],
         )
+    deployment_target = raw.get(
+        "deployment_target", "policy_realized_state"
+    )
+    if deployment_target not in {
+        "policy_realized_state",
+        "fixed_final_master_fault_blind_pv",
+    }:
+        raise config_error(
+            f"{path}.deployment_target",
+            (
+                "to be 'policy_realized_state' or "
+                "'fixed_final_master_fault_blind_pv'"
+            ),
+            deployment_target,
+        )
+    if (
+        deployment_target == "fixed_final_master_fault_blind_pv"
+        and policy
+        not in {"none", "continuous_hwa", "stochastic_apparent_hwa"}
+    ):
+        raise config_error(
+            f"{path}.deployment_target",
+            (
+                "to use the exact-master P&V handoff only for no-HWA, "
+                "continuous-HWA, or stochastic-apparent-HWA policies"
+            ),
+            deployment_target,
+        )
+    epoch_evaluation = raw.get("epoch_evaluation", "validation_only")
+    if epoch_evaluation not in {"validation_only", "validation_and_test"}:
+        raise config_error(
+            f"{path}.epoch_evaluation",
+            "to be 'validation_only' or 'validation_and_test'",
+            epoch_evaluation,
+        )
+    if (
+        training_protocol == "full_mnist_ten_epoch_fixed_final"
+        and epoch_evaluation != "validation_and_test"
+    ):
+        raise config_error(
+            f"{path}.epoch_evaluation",
+            "to equal 'validation_and_test' for the ten-epoch HWA diagnostic",
+            epoch_evaluation,
+        )
     return OffchipSettings(
-        policy=raw["policy"],
+        policy=policy,
+        training_protocol=training_protocol,
         epochs=epochs,
         logical_learning_rates=rates,
         beta_1=betas[0],
@@ -677,6 +777,8 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             raw["maximum_batches"], f"{path}.maximum_batches"
         ),
         checkpoint_policy=raw["checkpoint_policy"],
+        deployment_target=deployment_target,
+        epoch_evaluation=epoch_evaluation,
         forward_noise=forward_noise,
     )
 
@@ -1650,6 +1752,38 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     recovery = _parse_recovery(raw["recovery"])
     offchip = _parse_offchip(raw["offchip"])
     data = _parse_data(raw["data"])
+    evaluation = _parse_evaluation(raw["evaluation"])
+    if offchip.training_protocol == "full_mnist_ten_epoch_fixed_final":
+        available = 60_000 - data.validation_points
+        expected_batches = math.ceil(available / data.batch_size)
+        if (
+            data.num_points is not None
+            or offchip.maximum_batches != expected_batches
+            or not evaluation.evaluate_test
+            or evaluation.sample_limit != 1_000
+            or evaluation.maximum_validation_batches != math.ceil(
+                1_000 / data.batch_size
+            )
+        ):
+            raise config_error(
+                "config",
+                (
+                    "to use all 55,000 training examples for ten fixed-final "
+                    f"HWA epochs with maximum_batches={expected_batches}, "
+                    "and epoch diagnostics on exactly 1,000 validation and "
+                    "1,000 test examples"
+                ),
+                dict(raw),
+            )
+    if (
+        offchip.epoch_evaluation == "validation_and_test"
+        and not evaluation.evaluate_test
+    ):
+        raise config_error(
+            "config.offchip.epoch_evaluation",
+            "to require config.evaluation.evaluate_test=true",
+            offchip.epoch_evaluation,
+        )
     if recovery.policy == "star_local_pulse_sgd" and (
         device.corruption_policy != "counterfactual_repaired"
         or transfer.enabled
@@ -1806,7 +1940,7 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
         offchip=offchip,
         recovery=recovery,
         transfer=transfer,
-        evaluation=_parse_evaluation(raw["evaluation"]),
+        evaluation=evaluation,
         drn_reference=reference,
     )
 
