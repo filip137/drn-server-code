@@ -40,6 +40,11 @@ from training.ibm_om_standard_crossbar import (
     tensor_sha256,
     validate_population_layout,
 )
+from training.ibm_om_tiki_taka import (
+    IbmOmDirectPulseSgd,
+    IbmOmTikiTakaV1,
+    build_tiki_taka_fast_zero_target,
+)
 from training.ibm_reram_hwa import (
     IbmReramArrayPopulation,
     sample_om_array_population_external,
@@ -73,6 +78,8 @@ _POST_DEPLOYMENT_FAULT_POLICIES = frozenset(
         "star_local_pulse_sgd",
         "supervised_ce_pulse_adam",
         "supervised_ce_shadow_program_verify",
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
     }
 )
 
@@ -84,6 +91,11 @@ def _post_deployment_fault_settings(spec: CrossbarTrainSpec) -> Any | None:
         return spec.recovery.supervised_bp
     if spec.recovery.policy == "supervised_ce_shadow_program_verify":
         return spec.recovery.supervised_shadow_pv
+    if spec.recovery.policy in {
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+    }:
+        return spec.recovery.supervised_stochastic_bp
     return None
 
 
@@ -996,6 +1008,22 @@ def _recovery_seed(
     return derive_seed(runtime_seed, assignment_seed, endpoint_seed, "crossbar_pulse_selection")
 
 
+def _stochastic_bit_line_seed(
+    *,
+    configured_seed: int,
+    assignment_seed: int,
+    endpoint_seed: int,
+) -> int:
+    """Derive one matched endpoint stream without including recovery policy."""
+
+    return derive_seed(
+        configured_seed,
+        assignment_seed,
+        endpoint_seed,
+        "crossbar_stochastic_compressed_bit_lines",
+    )
+
+
 def _offchip_realized_state(
     *,
     master: torch.Tensor,
@@ -1690,6 +1718,188 @@ def _run_supervised_ce_pulse_recovery(
     return epoch_reports, optimizer_report
 
 
+def _state_tree_equal(left: Any, right: Any) -> bool:
+    """Compare a weights-only recovery artifact without coercing tensor values."""
+
+    if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
+        return (
+            isinstance(left, torch.Tensor)
+            and isinstance(right, torch.Tensor)
+            and left.dtype == right.dtype
+            and left.shape == right.shape
+            and torch.equal(left.detach().cpu(), right.detach().cpu())
+        )
+    if isinstance(left, Mapping) or isinstance(right, Mapping):
+        return (
+            isinstance(left, Mapping)
+            and isinstance(right, Mapping)
+            and set(left) == set(right)
+            and all(_state_tree_equal(left[key], right[key]) for key in left)
+        )
+    if isinstance(left, (list, tuple)) or isinstance(right, (list, tuple)):
+        return (
+            isinstance(left, type(right))
+            and len(left) == len(right)
+            and all(
+                _state_tree_equal(left_value, right_value)
+                for left_value, right_value in zip(left, right, strict=True)
+            )
+        )
+    return type(left) is type(right) and left == right
+
+
+def _save_and_verify_on_chip_recovery_state(
+    path: Path,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist and immediately reload the exact stochastic-recovery cursor."""
+
+    atomic_torch_save(dict(payload), path)
+    reloaded = torch.load(path, map_location="cpu", weights_only=True)
+    if not _state_tree_equal(payload, reloaded):
+        raise RuntimeError(
+            "Expected the on-chip recovery artifact to reload bit-exactly."
+        )
+    return {
+        "artifact": path.name,
+        "artifact_sha256": sha256_file(path),
+        "artifact_reload_bit_exact": True,
+    }
+
+
+def _run_supervised_stochastic_on_chip_recovery(
+    *,
+    updater: Any,
+    train_loader: Iterable,
+    repair_examples: int,
+    epochs: int,
+    maximum_batches: int | None,
+    device: torch.device,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run manual label-CE updates through one capability-limited backend.
+
+    The helper deliberately accepts neither a teacher, a fault map, an
+    autograd callback, optimizer moments, nor a weight/shadow tensor.
+    """
+
+    epoch_reports: list[dict[str, Any]] = []
+    all_inputs: list[torch.Tensor] = []
+    all_labels: list[torch.Tensor] = []
+    epoch_cohorts: list[dict[str, Any]] = []
+    required_step_fields = {
+        "examples",
+        "cross_entropy_sum",
+        "pre_update_correct",
+        "slow_commanded_pulses",
+        "slow_commanded_cells",
+        "fast_commanded_pulses",
+        "fast_commanded_cells",
+    }
+    for epoch in range(1, epochs + 1):
+        epoch_inputs: list[torch.Tensor] = []
+        epoch_labels: list[torch.Tensor] = []
+        examples = 0
+        batches = 0
+        loss_sum = 0.0
+        correct = 0
+        slow_pulses = 0
+        fast_pulses = 0
+        slow_cells = 0
+        fast_cells = 0
+        for batch_index, (inputs, labels) in enumerate(
+            limited(train_loader, maximum_batches)
+        ):
+            cpu_inputs = inputs.detach().cpu().to(torch.float32).contiguous()
+            cpu_labels = labels.detach().cpu().to(torch.int64).contiguous()
+            epoch_inputs.append(cpu_inputs)
+            epoch_labels.append(cpu_labels)
+            all_inputs.append(cpu_inputs)
+            all_labels.append(cpu_labels)
+            step = updater.step(
+                cpu_inputs.to(device=device),
+                cpu_labels.to(device=device),
+            )
+            if not isinstance(step, Mapping) or not required_step_fields.issubset(step):
+                raise RuntimeError(
+                    "Expected the on-chip stochastic backend to return its exact "
+                    "loss and slow/fast pulse-accounting receipt."
+                )
+            batch_examples = int(step["examples"])
+            if batch_examples != int(cpu_labels.numel()):
+                raise RuntimeError(
+                    "Expected one manual-CE backend example per streamed label."
+                )
+            examples += batch_examples
+            batches = batch_index + 1
+            loss_sum += float(step["cross_entropy_sum"])
+            correct += int(step["pre_update_correct"])
+            slow_pulses += int(step["slow_commanded_pulses"])
+            fast_pulses += int(step["fast_commanded_pulses"])
+            slow_cells += int(step["slow_commanded_cells"])
+            fast_cells += int(step["fast_commanded_cells"])
+        if examples != repair_examples:
+            raise ValueError(
+                "Expected stochastic on-chip BP to consume exactly its declared "
+                f"repair cohort each epoch. Provided value: observed={examples}, "
+                f"expected={repair_examples}."
+            )
+        epoch_cohort, _ = _ordered_labeled_cohort_report(
+            inputs=epoch_inputs,
+            labels=epoch_labels,
+            split=f"post_fault_supervised_stochastic_bp_epoch_{epoch}_update_stream",
+        )
+        epoch_cohorts.append(epoch_cohort)
+        epoch_reports.append(
+            {
+                "epoch": epoch,
+                "batches": batches,
+                "examples": examples,
+                "train_cross_entropy": loss_sum / examples,
+                "train_pre_update_accuracy": correct / examples,
+                "slow_commanded_pulses": slow_pulses,
+                "slow_commanded_cells_per_step_sum": slow_cells,
+                "fast_commanded_pulses": fast_pulses,
+                "fast_commanded_cells_per_step_sum": fast_cells,
+                "repair_cohort": epoch_cohort,
+            }
+        )
+    repair_cohort, _ = _ordered_labeled_cohort_report(
+        inputs=all_inputs,
+        labels=all_labels,
+        split="post_fault_supervised_stochastic_bp_full_update_stream",
+    )
+    backend_report = updater.report()
+    required_report_fields = {
+        "optimizer_steps",
+        "slow_commanded_pulses",
+        "slow_commanded_cells",
+        "fast_commanded_pulses",
+        "fast_commanded_cells",
+    }
+    if (
+        not isinstance(backend_report, Mapping)
+        or not required_report_fields.issubset(backend_report)
+    ):
+        raise RuntimeError(
+            "Expected a complete slow/fast stochastic-recovery backend report."
+        )
+    optimizer_report = dict(backend_report)
+    optimizer_report.update(
+        {
+            "commanded_pulses": int(backend_report["slow_commanded_pulses"]),
+            "commanded_cells": int(backend_report["slow_commanded_cells"]),
+            "repair_cohort": repair_cohort,
+            "per_epoch_repair_cohorts": epoch_cohorts,
+            "teacher_access_during_updates": False,
+            "fault_mask_access_during_updates": False,
+            "autograd_during_updates": False,
+            "digital_optimizer_moments": False,
+            "digital_weight_or_shadow_state": False,
+        }
+    )
+    return epoch_reports, optimizer_report
+
+
 def _train_supervised_ce_shadow(
     *,
     initial_apparent_q: torch.Tensor,
@@ -2075,6 +2285,436 @@ def _recover(
                 "enabled_cells": 0,
             },
             "checkpoint_policy": "fixed_p0_no_selection",
+        }, final_state
+
+    if spec.recovery.policy in {
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+    }:
+        settings = spec.recovery.supervised_stochastic_bp
+        common_context = {
+            "faulted_checkpoint_path",
+            "recovery_state_path",
+            "fault_mask",
+            "stuck_persistent_q",
+            "fault_report",
+            "fault_source_population_fingerprint",
+            "predeployment_training_cohort",
+        }
+        tiki_taka_context = {
+            "fast_population",
+            "fast_population_receipt",
+            "fast_endpoint_seed",
+            "fast_commissioned_checkpoint_path",
+        }
+        expected_context = (
+            common_context | tiki_taka_context
+            if spec.recovery.policy == "supervised_ce_tiki_taka_v1"
+            else common_context
+        )
+        if (
+            settings is None
+            or not isinstance(post_fault_context, Mapping)
+            or set(post_fault_context) != expected_context
+        ):
+            raise ValueError(
+                "Expected a complete chronological stochastic on-chip "
+                "supervised-recovery context."
+            )
+
+        # C chronology is deliberately identical in both arms: the healthy P0
+        # exists first, then one immutable published companion fault is applied
+        # and checkpointed before any learner or auxiliary-array activity.
+        transition = plant.apply_stuck_at_fault_transition(
+            mask=post_fault_context["fault_mask"],
+            stuck_persistent_q=post_fault_context["stuck_persistent_q"],
+            transition_id=(
+                f"assignment-{spec.device.assignment_seed}-endpoint-{endpoint_seed}"
+            ),
+            source_population_fingerprint=str(
+                post_fault_context["fault_source_population_fingerprint"]
+            ),
+        )
+        faulted_state = plant.state_dict()
+        faulted_checkpoint_path = Path(
+            post_fault_context["faulted_checkpoint_path"]
+        )
+        atomic_torch_save(faulted_state, faulted_checkpoint_path)
+        damaged_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+
+        slow_port = plant.on_chip_recovery_port(
+            layout=layout,
+            digital_scales=digital_scales,
+        )
+        resolved_bit_line_seed = _stochastic_bit_line_seed(
+            configured_seed=settings.bit_line_seed,
+            assignment_seed=spec.device.assignment_seed,
+            endpoint_seed=endpoint_seed,
+        )
+
+        def bit_line_generator() -> torch.Generator:
+            value = torch.Generator(device=device.type)
+            value.manual_seed(resolved_bit_line_seed)
+            return value
+
+        fast_plant = None
+        fast_initial_state = None
+        fast_initialization_report = None
+        fast_commissioned_artifact = None
+        fast_initialization_receipt = None
+        if spec.recovery.policy == "supervised_ce_stochastic_pulse_sgd":
+
+            def updater_factory() -> IbmOmDirectPulseSgd:
+                return IbmOmDirectPulseSgd(
+                    port=slow_port,
+                    layout=layout,
+                    learning_rates_q=spec.recovery.learning_rates_q,
+                    generator=bit_line_generator(),
+                    device=device,
+                    desired_bl=settings.desired_bl,
+                    fixed_bl=settings.fixed_bl,
+                    update_bl_management=settings.update_bl_management,
+                    update_management=settings.update_management,
+                    um_grad_scale=settings.um_grad_scale,
+                )
+
+        else:
+            tiki_taka = spec.recovery.tiki_taka
+            fast_population = post_fault_context["fast_population"]
+            fast_population_receipt = post_fault_context[
+                "fast_population_receipt"
+            ]
+            fast_endpoint_seed = post_fault_context["fast_endpoint_seed"]
+            if (
+                tiki_taka is None
+                or not isinstance(fast_population, IbmReramArrayPopulation)
+                or not isinstance(fast_population_receipt, Mapping)
+                or isinstance(fast_endpoint_seed, bool)
+                or not isinstance(fast_endpoint_seed, int)
+            ):
+                raise ValueError(
+                    "Expected an independently sampled physical Tiki-Taka fast array."
+                )
+            zero_target = build_tiki_taka_fast_zero_target(fast_population)
+            fast_plant, fast_programming = _program_endpoint(
+                population=fast_population,
+                requested=zero_target.target_q,
+                assignment_seed=tiki_taka.fast_assignment_seed,
+                endpoint_seed=fast_endpoint_seed,
+                maximum_pulses=spec.device.maximum_programming_pulses,
+                tolerance_x=spec.device.verify_tolerance_x,
+                device=device,
+                stream_role="tiki_taka_fast_literal_q_zero_program_verify",
+                random_stream_fingerprint=fast_population_receipt[
+                    "bound_treatment"
+                ]["source_population_fingerprint"],
+            )
+            fast_initial_state = fast_plant.state_dict()
+            fast_initialization_receipt = {
+                "policy": "program_verify_strict_q_zero_mask_blind",
+                "target_q_sha256": zero_target.report["target_q_sha256"],
+                "post_program_persistent_sha256": tensor_sha256(
+                    fast_plant.persistent
+                ),
+                "post_program_apparent_sha256": tensor_sha256(fast_plant.apparent),
+                "physical_program_verify": True,
+                "direct_state_assignment": False,
+            }
+            fast_commissioned_checkpoint_path = Path(
+                post_fault_context["fast_commissioned_checkpoint_path"]
+            )
+            fast_commissioned_artifact = _save_and_verify_on_chip_recovery_state(
+                fast_commissioned_checkpoint_path,
+                {
+                    "schema": "ebl.ibm_om_tiki_taka_fast_commissioned_state",
+                    "schema_version": 1,
+                    "assignment_seed": tiki_taka.fast_assignment_seed,
+                    "endpoint_seed": fast_endpoint_seed,
+                    "population_fingerprint": fast_population.fingerprint,
+                    "target": zero_target.report,
+                    "programming": fast_programming,
+                    "initialization_receipt": fast_initialization_receipt,
+                    "plant_state": fast_initial_state,
+                },
+            )
+            fast_initialization_report = {
+                "assignment_seed": tiki_taka.fast_assignment_seed,
+                "endpoint_seed": fast_endpoint_seed,
+                "population_fingerprint": fast_population.fingerprint,
+                "corruption_policy": fast_population.corruption_policy,
+                "target": zero_target.report,
+                "program_verify": fast_programming,
+                "receipt": fast_initialization_receipt,
+                "requested_target": "literal_q_zero_for_every_fast_cell",
+                "controller_accesses_fault_mask": False,
+                "eligible_mask_supplied": False,
+                "support_and_stuck_classification_is_posthoc_only": True,
+                "commissioned_state_artifact": fast_commissioned_artifact,
+                "commissioning_precedes_recovery_updates": True,
+                "commissioning_pulses_excluded_from_recovery_pulse_counts": True,
+            }
+            fast_port = fast_plant.tiki_taka_fast_port(layout=layout)
+
+            def updater_factory() -> IbmOmTikiTakaV1:
+                return IbmOmTikiTakaV1(
+                    slow_port=slow_port,
+                    fast_port=fast_port,
+                    layout=layout,
+                    learning_rates_q=spec.recovery.learning_rates_q,
+                    fast_initialization_receipt=fast_initialization_receipt,
+                    generator=bit_line_generator(),
+                    device=device,
+                    fast_lr=tiki_taka.fast_lr,
+                    gamma=tiki_taka.gamma,
+                    transfer_every=tiki_taka.transfer_every,
+                    units_in_mbatch=tiki_taka.units_in_mbatch,
+                    n_reads_per_transfer=tiki_taka.n_reads_per_transfer,
+                    transfer_lr=tiki_taka.transfer_lr,
+                    scale_transfer_lr=tiki_taka.scale_transfer_lr,
+                    transfer_columns=tiki_taka.transfer_columns,
+                    transfer_selection=tiki_taka.transfer_selection,
+                    with_reset_prob=tiki_taka.with_reset_prob,
+                    random_selection=tiki_taka.random_selection,
+                    desired_bl=settings.desired_bl,
+                    fixed_bl=settings.fixed_bl,
+                    update_bl_management=settings.update_bl_management,
+                    update_management=settings.update_management,
+                    um_grad_scale=settings.um_grad_scale,
+                )
+
+        updater = updater_factory()
+        # Construct the replay target while A is still in its commissioned
+        # state. Loading the completed updater cursor later must not touch C or A.
+        updater_reload_probe = updater_factory()
+        epoch_reports, optimizer_report = (
+            _run_supervised_stochastic_on_chip_recovery(
+                updater=updater,
+                train_loader=train_loader,
+                repair_examples=settings.repair_examples,
+                epochs=spec.recovery.epochs,
+                maximum_batches=spec.recovery.maximum_batches,
+                device=device,
+            )
+        )
+        updater_state = updater.state_dict()
+        updater_reload_probe.load_state_dict(updater_state)
+        if not _state_tree_equal(
+            updater_state,
+            updater_reload_probe.state_dict(),
+        ):
+            raise RuntimeError(
+                "Expected the stochastic updater RNG, counters, and cursors "
+                "to reload bit-exactly without touching either array."
+            )
+        optimizer_report["state_dict_reload_bit_exact"] = True
+        optimizer_report["configured_bit_line_seed"] = settings.bit_line_seed
+        optimizer_report["resolved_bit_line_seed"] = resolved_bit_line_seed
+
+        repair_cohort = optimizer_report["repair_cohort"]
+        predeployment_cohort = post_fault_context[
+            "predeployment_training_cohort"
+        ]
+        if not isinstance(predeployment_cohort, Mapping):
+            raise RuntimeError("Expected a bound predeployment training cohort.")
+        comparison_fields = (
+            "examples",
+            "ordered_sample_ids_sha256",
+            "model_inputs_sha256",
+            "labels_sha256",
+            "ordered_example_identity_sequence_sha256",
+            "unique_example_identities",
+        )
+        same_predeployment_stream = all(
+            predeployment_cohort.get(name) == repair_cohort[name]
+            for name in comparison_fields
+        )
+        repair_cohort["same_as_predeployment_first_epoch_update_stream"] = (
+            same_predeployment_stream
+        )
+        repair_cohort["predeployment_first_epoch_update_stream"] = {
+            name: predeployment_cohort.get(name) for name in comparison_fields
+        }
+
+        final_evaluation = _evaluate_plant_states(
+            plant=plant,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=validation_loader,
+            device=device,
+            maximum_batches=spec.evaluation.maximum_validation_batches,
+            sample_limit=spec.evaluation.sample_limit,
+        )
+        final_state = plant.state_dict()
+        posthoc_pulse_effects = _posthoc_recovery_pulse_effects(
+            faulted_state=faulted_state,
+            final_state=final_state,
+            fault_mask=post_fault_context["fault_mask"],
+            layout=layout,
+        )
+        if (
+            posthoc_pulse_effects["commanded_pulses"]
+            != optimizer_report["slow_commanded_pulses"]
+        ):
+            raise RuntimeError(
+                "Expected stochastic slow-array commands to match the plant "
+                "pulse-counter delta exactly."
+            )
+
+        fast_final_state = None
+        fast_posthoc_pulse_effects = None
+        if fast_plant is not None and fast_initial_state is not None:
+            fast_final_state = fast_plant.state_dict()
+            fast_posthoc_pulse_effects = _posthoc_recovery_pulse_effects(
+                faulted_state=fast_initial_state,
+                final_state=fast_final_state,
+                fault_mask=fast_plant.population.corrupt,
+                layout=layout,
+            )
+            if (
+                fast_posthoc_pulse_effects["commanded_pulses"]
+                != optimizer_report["fast_commanded_pulses"]
+            ):
+                raise RuntimeError(
+                    "Expected stochastic fast-array commands to match the plant "
+                    "pulse-counter delta exactly."
+                )
+
+        recovery_state_path = Path(post_fault_context["recovery_state_path"])
+        recovery_state_artifact = _save_and_verify_on_chip_recovery_state(
+            recovery_state_path,
+            {
+                "schema": "ebl.ibm_om_on_chip_stochastic_recovery_state",
+                "schema_version": 1,
+                "policy": spec.recovery.policy,
+                "assignment_seed": spec.device.assignment_seed,
+                "endpoint_seed": endpoint_seed,
+                "slow_population_fingerprint": plant.population.fingerprint,
+                "faulted_checkpoint_sha256": sha256_file(
+                    faulted_checkpoint_path
+                ),
+                "repair_cursor": {
+                    "fixed_final_epoch": spec.recovery.epochs,
+                    "optimizer_steps": optimizer_report["optimizer_steps"],
+                    "batches": sum(
+                        int(report["batches"]) for report in epoch_reports
+                    ),
+                    "examples": optimizer_report["examples"],
+                    "maximum_batches_per_epoch": spec.recovery.maximum_batches,
+                    "cohort": repair_cohort,
+                },
+                "bit_line_rng": {
+                    "configured_seed": settings.bit_line_seed,
+                    "resolved_endpoint_seed": resolved_bit_line_seed,
+                    "generator_state_sha256": optimizer_report[
+                        "bit_line_engine"
+                    ]["generator_state_sha256"],
+                },
+                "updater_state": updater_state,
+                "slow_final_plant_state": final_state,
+                "fast_array": (
+                    None
+                    if fast_plant is None
+                    else {
+                        "population_fingerprint": fast_plant.population.fingerprint,
+                        "commissioned_artifact_sha256": fast_commissioned_artifact[
+                            "artifact_sha256"
+                        ],
+                        "final_plant_state": fast_final_state,
+                    }
+                ),
+            },
+        )
+        return {
+            "policy": spec.recovery.policy,
+            "objective": "cross_entropy",
+            "layer_scope": spec.recovery.layer_scope,
+            "network_forward_state": "apparent_q",
+            "hidden_update_state": "persistent_q",
+            "gradient_handoff": (
+                "manual_label_ce_to_slow_C_stochastic_compressed_BL31"
+                if spec.recovery.policy
+                == "supervised_ce_stochastic_pulse_sgd"
+                else "manual_label_ce_to_fast_A_then_sequential_apparent_slice_transfer_to_slow_C"
+            ),
+            "on_chip_backprop_contract": {
+                "loss": "ground_truth_label_cross_entropy",
+                "output_error": "softmax_logits_minus_onehot_label",
+                "hidden_error": (
+                    "output_error_through_slow_C_W2_transpose_then_relu_mask"
+                ),
+                "gradient_engine": settings.gradient_engine,
+                "transpose_mvm": True,
+                "cross_layer_backpropagation": True,
+                "autograd_during_updates": False,
+                "digital_adam_moments": False,
+                "digital_weight_or_shadow_state": False,
+                "teacher_access_during_updates": False,
+                "fault_mask_access_during_updates": False,
+                "restricted_update_ports": True,
+                "pulse_type": settings.pulse_type,
+                "desired_bl": settings.desired_bl,
+                "fixed_bl": settings.fixed_bl,
+                "update_bl_management": settings.update_bl_management,
+                "update_management": settings.update_management,
+                "um_grad_scale": settings.um_grad_scale,
+                "learning_rates_q": list(spec.recovery.learning_rates_q),
+                "cumulative_pulse_cap": settings.cumulative_pulse_cap,
+                "final_program_verify": settings.final_program_verify,
+                "label_source": settings.label_source,
+            },
+            "healthy_pre_fault_apparent_validation": initial_evaluation[
+                "apparent_forward"
+            ],
+            "healthy_pre_fault_persistent_validation": initial_evaluation[
+                "persistent_diagnostic"
+            ],
+            "fault_source": dict(post_fault_context["fault_report"]),
+            "fault_transition": transition,
+            "faulted_pre_recovery_checkpoint": faulted_checkpoint_path.name,
+            "faulted_pre_recovery_checkpoint_sha256": sha256_file(
+                faulted_checkpoint_path
+            ),
+            "faulted_pre_recovery_apparent_validation": damaged_evaluation[
+                "apparent_forward"
+            ],
+            "faulted_pre_recovery_persistent_validation": damaged_evaluation[
+                "persistent_diagnostic"
+            ],
+            "tiki_taka_fast_array": (
+                None
+                if fast_plant is None
+                else {
+                    "initialization": fast_initialization_report,
+                    "final_apparent_q_sha256": tensor_sha256(fast_plant.apparent),
+                    "final_persistent_q_sha256": tensor_sha256(
+                        fast_plant.persistent
+                    ),
+                    "posthoc_recovery_pulse_effects": fast_posthoc_pulse_effects,
+                    "visible_to_network_forward": False,
+                }
+            ),
+            "epochs": epoch_reports,
+            "fixed_final_epoch": spec.recovery.epochs,
+            "fixed_final_apparent_validation": final_evaluation[
+                "apparent_forward"
+            ],
+            "fixed_final_persistent_validation": final_evaluation[
+                "persistent_diagnostic"
+            ],
+            "optimizer": optimizer_report,
+            "posthoc_pulse_effects": posthoc_pulse_effects,
+            "recovery_state": recovery_state_artifact,
+            "checkpoint_policy": "fixed_final_epoch_no_selection_no_final_program_verify",
         }, final_state
 
     if spec.recovery.policy == "star_local_pulse_sgd":
@@ -3126,6 +3766,9 @@ def run_train(request: "TrainRequest") -> int:
         post_fault_population = None
         post_fault_overlay = None
         post_fault_artifact_paths: tuple[tuple[Path, str], ...] = ()
+        fast_population = None
+        fast_population_receipt = None
+        fast_array_artifact_paths: tuple[tuple[Path, str], ...] = ()
         fault_settings = _post_deployment_fault_settings(spec)
         if spec.recovery.policy in _POST_DEPLOYMENT_FAULT_POLICIES:
             if fault_settings is None:
@@ -3168,6 +3811,24 @@ def run_train(request: "TrainRequest") -> int:
                 "receipt": post_fault_receipt,
             }
             post_fault_artifact_paths = tuple(sampled_fault_artifacts)
+        if spec.recovery.policy == "supervised_ce_tiki_taka_v1":
+            tiki_taka = spec.recovery.tiki_taka
+            if tiki_taka is None:  # pragma: no cover - parser invariant
+                raise RuntimeError("Expected Tiki-Taka recovery settings.")
+            (
+                fast_population,
+                fast_population_receipt,
+                fast_array_artifact_paths,
+            ) = _sample_population(
+                layout=layout,
+                assignment_seed=tiki_taka.fast_assignment_seed,
+                corruption_policy=tiki_taka.fast_corruption_policy,
+                sampler=sampler,
+                artifact_root=artifact_root,
+                role="tiki_taka_fast_array",
+                bound_policy=spec.device.bound_policy,
+                required_aihwkit_version=spec.runtime.required_aihwkit_version,
+            )
         codebook = build_deterministic_effective_codebook(
             source_population,
             maximum_pulses=spec.device.deterministic_codebook_pulses,
@@ -3426,12 +4087,15 @@ def run_train(request: "TrainRequest") -> int:
             if spec.recovery.policy in {
                 "supervised_ce_pulse_adam",
                 "supervised_ce_shadow_program_verify",
+                "supervised_ce_stochastic_pulse_sgd",
+                "supervised_ce_tiki_taka_v1",
             }:
-                supervised_settings = (
-                    spec.recovery.supervised_bp
-                    if spec.recovery.policy == "supervised_ce_pulse_adam"
-                    else spec.recovery.supervised_shadow_pv
-                )
+                if spec.recovery.policy == "supervised_ce_pulse_adam":
+                    supervised_settings = spec.recovery.supervised_bp
+                elif spec.recovery.policy == "supervised_ce_shadow_program_verify":
+                    supervised_settings = spec.recovery.supervised_shadow_pv
+                else:
+                    supervised_settings = spec.recovery.supervised_stochastic_bp
                 if supervised_settings is None:  # pragma: no cover - parser invariant
                     raise RuntimeError("Expected supervised recovery settings.")
                 full_training_examples = 60_000 - spec.data.validation_points
@@ -3487,6 +4151,36 @@ def run_train(request: "TrainRequest") -> int:
                         "first_epoch_training_cohort"
                     ],
                 }
+                if spec.recovery.policy in {
+                    "supervised_ce_stochastic_pulse_sgd",
+                    "supervised_ce_tiki_taka_v1",
+                }:
+                    post_fault_context["recovery_state_path"] = (
+                        endpoint_artifact_root / "on_chip_recovery_state.pt"
+                    )
+                if spec.recovery.policy == "supervised_ce_tiki_taka_v1":
+                    tiki_taka = spec.recovery.tiki_taka
+                    if (
+                        tiki_taka is None
+                        or fast_population is None
+                        or fast_population_receipt is None
+                    ):  # pragma: no cover - parser/runtime invariant
+                        raise RuntimeError(
+                            "Expected the independently sampled Tiki-Taka fast array."
+                        )
+                    post_fault_context.update(
+                        {
+                            "fast_population": fast_population,
+                            "fast_population_receipt": fast_population_receipt,
+                            "fast_endpoint_seed": tiki_taka.fast_endpoint_seeds[
+                                endpoint_index
+                            ],
+                            "fast_commissioned_checkpoint_path": (
+                                endpoint_artifact_root
+                                / "tiki_taka_fast_commissioned.pt"
+                            ),
+                        }
+                    )
                 if spec.recovery.policy == "supervised_ce_shadow_program_verify":
                     post_fault_context["shadow_target_path"] = (
                         endpoint_artifact_root / "supervised_shadow_state.pt"
@@ -3579,6 +4273,27 @@ def run_train(request: "TrainRequest") -> int:
                         (
                             Path(post_fault_context["shadow_target_path"]),
                             "supervised_shadow_optimizer_state",
+                        )
+                    )
+                if spec.recovery.policy in {
+                    "supervised_ce_stochastic_pulse_sgd",
+                    "supervised_ce_tiki_taka_v1",
+                }:
+                    post_fault_runtime_artifact_paths.append(
+                        (
+                            Path(post_fault_context["recovery_state_path"]),
+                            "on_chip_stochastic_recovery_state",
+                        )
+                    )
+                if spec.recovery.policy == "supervised_ce_tiki_taka_v1":
+                    post_fault_runtime_artifact_paths.append(
+                        (
+                            Path(
+                                post_fault_context[
+                                    "fast_commissioned_checkpoint_path"
+                                ]
+                            ),
+                            "tiki_taka_fast_commissioned_state",
                         )
                     )
             p0_test_evaluation = None
@@ -3895,6 +4610,34 @@ def run_train(request: "TrainRequest") -> int:
                 }
             )
 
+        if spec.recovery.policy in {
+            "supervised_ce_stochastic_pulse_sgd",
+            "supervised_ce_tiki_taka_v1",
+        }:
+            cohort_fields = (
+                "examples",
+                "ordered_sample_ids_sha256",
+                "model_inputs_sha256",
+                "labels_sha256",
+                "ordered_example_identity_sequence_sha256",
+                "unique_example_identities",
+            )
+            reference_cohort = endpoint_rows[0]["recovery"]["optimizer"][
+                "repair_cohort"
+            ]
+            if any(
+                any(
+                    row["recovery"]["optimizer"]["repair_cohort"][name]
+                    != reference_cohort[name]
+                    for name in cohort_fields
+                )
+                for row in endpoint_rows[1:]
+            ):
+                raise RuntimeError(
+                    "Expected every endpoint to consume the exact same ordered "
+                    "55,000-example label-repair cohort."
+                )
+
         aggregates: dict[str, Any] = {
             "network_forward_state": "apparent_q",
             "hidden_update_state": "persistent_q",
@@ -4038,6 +4781,51 @@ def run_train(request: "TrainRequest") -> int:
                         "shadow_program_verify_reads": _aggregate(
                             endpoint_rows,
                             ("recovery", "program_verify", "verify_reads"),
+                        ),
+                    }
+                )
+            if spec.recovery.policy in {
+                "supervised_ce_stochastic_pulse_sgd",
+                "supervised_ce_tiki_taka_v1",
+            }:
+                aggregates.update(
+                    {
+                        "on_chip_manual_ce_optimizer_steps": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "optimizer", "optimizer_steps"),
+                        ),
+                        "on_chip_slow_commanded_pulses": aggregates[
+                            "recovery_commanded_pulses"
+                        ],
+                        "on_chip_slow_commanded_cells": aggregates[
+                            "recovery_commanded_cells"
+                        ],
+                    }
+                )
+            if spec.recovery.policy == "supervised_ce_tiki_taka_v1":
+                aggregates.update(
+                    {
+                        "tiki_taka_fast_commanded_pulses": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "optimizer", "fast_commanded_pulses"),
+                        ),
+                        "tiki_taka_fast_commanded_cells": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "optimizer", "fast_commanded_cells"),
+                        ),
+                        "tiki_taka_transfer_events": _aggregate(
+                            endpoint_rows,
+                            ("recovery", "optimizer", "transfer_events"),
+                        ),
+                        "tiki_taka_fast_commissioning_pulses": _aggregate(
+                            endpoint_rows,
+                            (
+                                "recovery",
+                                "tiki_taka_fast_array",
+                                "initialization",
+                                "program_verify",
+                                "total_programming_pulses",
+                            ),
                         ),
                     }
                 )
@@ -4251,7 +5039,17 @@ def run_train(request: "TrainRequest") -> int:
                             "ordinary_adam_on_digital_q_shadow_then_final_closed_loop_program_verify"
                             if spec.recovery.policy
                             == "supervised_ce_shadow_program_verify"
-                            else "identity_ste_apparent_q_to_persistent_pulse_update"
+                            else (
+                                "manual_label_ce_to_slow_C_stochastic_compressed_BL31"
+                                if spec.recovery.policy
+                                == "supervised_ce_stochastic_pulse_sgd"
+                                else (
+                                    "manual_label_ce_to_fast_A_then_sequential_apparent_slice_transfer_to_slow_C"
+                                    if spec.recovery.policy
+                                    == "supervised_ce_tiki_taka_v1"
+                                    else "identity_ste_apparent_q_to_persistent_pulse_update"
+                                )
+                            )
                         )
                     )
                 ),
@@ -4286,6 +5084,33 @@ def run_train(request: "TrainRequest") -> int:
                             else "continuous_shadow_adam_then_final_same_array_program_verify"
                         ),
                         "fault_mask_access_during_updates": False,
+                    }
+                ),
+                "on_chip_supervised_bp_recovery": (
+                    None
+                    if spec.recovery.policy
+                    not in {
+                        "supervised_ce_stochastic_pulse_sgd",
+                        "supervised_ce_tiki_taka_v1",
+                    }
+                    else {
+                        "loss": "ground_truth_label_cross_entropy",
+                        "transpose_mvm": True,
+                        "cross_layer_backpropagation": True,
+                        "gradient_engine": "manual_cross_entropy_backprop",
+                        "autograd": False,
+                        "digital_adam_moments": False,
+                        "digital_weight_or_shadow_state": False,
+                        "teacher_access_during_updates": False,
+                        "fault_mask_access_during_updates": False,
+                        "pulse_type": "stochastic_compressed_BL31",
+                        "implementation": (
+                            "direct_shared_bitline_pulses_on_slow_C"
+                            if spec.recovery.policy
+                            == "supervised_ce_stochastic_pulse_sgd"
+                            else "tiki_taka_v1_fast_A_accumulation_and_sequential_apparent_slice_transfer_to_slow_C"
+                        ),
+                        "final_program_verify": False,
                     }
                 ),
                 "passive_kcl_denominator": "not_applicable_standard_crossbar_MVM",
@@ -4344,6 +5169,22 @@ def run_train(request: "TrainRequest") -> int:
                             else None
                         ),
                         "sampling_receipt": post_fault_overlay["receipt"],
+                    }
+                ),
+                "tiki_taka_fast_array": (
+                    None
+                    if spec.recovery.policy != "supervised_ce_tiki_taka_v1"
+                    or fast_population is None
+                    else {
+                        "assignment_seed": fast_population.assignment_seed,
+                        "endpoint_seeds": list(
+                            spec.recovery.tiki_taka.fast_endpoint_seeds
+                        ),
+                        "population_fingerprint": fast_population.fingerprint,
+                        "corruption_policy": fast_population.corruption_policy,
+                        "defects": _population_defect_report(fast_population),
+                        "sampling_receipt": fast_population_receipt,
+                        "role": "independent_auxiliary_fast_A_array",
                     }
                 ),
             },
@@ -4459,6 +5300,32 @@ def run_train(request: "TrainRequest") -> int:
                 ),
                 *(
                     [
+                        f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam",
+                        "post_fault_manual_BP_uses_streamed_ground_truth_labels_but_no_teacher_autograd_Adam_shadow_weights_or_fault_mask",
+                        "stochastic_compressed_shared_bit_lines_are_distribution_level_AIHWKit_1_1_parity_with_grouped_sign_application_not_native_Cpp_bit_order",
+                        "post_deployment_fault_transition_replays_explicitly_enabled_AIHWKit_published_OM_corrupt_cells_after_healthy_programming",
+                        "corrupt_persistent_q_is_stuck_but_apparent_q_retains_AIHWKit_write_noise_resampling",
+                        "no_final_program_verify_is_applied_after_the_recovery_epoch",
+                    ]
+                    if spec.recovery.policy
+                    in {
+                        "supervised_ce_stochastic_pulse_sgd",
+                        "supervised_ce_tiki_taka_v1",
+                    }
+                    else []
+                ),
+                *(
+                    [
+                        "tiki_taka_fast_A_is_an_independent_model_based_OM_population_commissioned_toward_literal_q_zero_by_fault_blind_one_pulse_program_verify",
+                        "fast_A_support_reachability_and_stuck_cell_classification_are_posthoc_diagnostics_not_controller_inputs",
+                        "tiki_taka_transfer_reads_one_sequential_apparent_physical_input_column_per_tile_per_minibatch",
+                        "fast_A_is_auxiliary_and_never_participates_in_the_network_forward",
+                    ]
+                    if spec.recovery.policy == "supervised_ce_tiki_taka_v1"
+                    else []
+                ),
+                *(
+                    [
                         "same_array_persistent_transfer_uses_hidden_controller_inaccessible_state"
                     ]
                     if spec.transfer.source_state == "same_array_persistent"
@@ -4473,6 +5340,7 @@ def run_train(request: "TrainRequest") -> int:
             for path, kind in (
                 *source_artifact_paths,
                 *post_fault_artifact_paths,
+                *fast_array_artifact_paths,
                 *target_artifact_paths,
             )
         ]

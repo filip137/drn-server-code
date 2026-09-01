@@ -43,6 +43,11 @@ SUPERVISED_RETRAINING_STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-supervised-retraining-recovery-20260831-v1.json"
 )
+STOCHASTIC_TIKI_TAKA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
@@ -302,6 +307,369 @@ def test_supervised_shadow_program_verify_contract_is_strict_and_chronological()
     assert settings.fault_mask_access == "forbidden"
     assert spec.device.corruption_policy == "counterfactual_repaired"
     assert spec.transfer.enabled is False
+
+
+@pytest.mark.parametrize(
+    ("name", "policy", "fast_corruption_policy", "expected_learning_rates_q"),
+    [
+        (
+            "supervised_ce_stochastic_pulse_sgd_full_epoch.json",
+            "supervised_ce_stochastic_pulse_sgd",
+            None,
+            (0.0001, 0.0001),
+        ),
+        (
+            "supervised_ce_tiki_taka_v1_repaired_fast_full_epoch.json",
+            "supervised_ce_tiki_taka_v1",
+            "counterfactual_repaired",
+            (0.001, 0.001),
+        ),
+        (
+            "supervised_ce_tiki_taka_v1_published_fast_full_epoch.json",
+            "supervised_ce_tiki_taka_v1",
+            "published",
+            (0.001, 0.001),
+        ),
+    ],
+)
+def test_stochastic_pulse_recovery_contract_is_physical_and_chronological(
+    name: str,
+    policy: str,
+    fast_corruption_policy: str | None,
+    expected_learning_rates_q: tuple[float, float],
+) -> None:
+    payload = _payload(name)
+    spec = resolve_crossbar_spec(parse_crossbar_config(payload), RunMode.TRAIN)
+
+    assert spec.recovery.policy == policy
+    assert spec.recovery.objective == "cross_entropy"
+    assert spec.recovery.layer_scope == "all"
+    assert spec.recovery.epochs == 1
+    assert spec.recovery.learning_rates_q == expected_learning_rates_q
+    assert spec.recovery.maximum_batches == 3_438
+    assert spec.recovery.pulse_cap_per_cell is None
+    assert spec.recovery.beta_1 is None
+    assert spec.recovery.beta_2 is None
+    assert spec.recovery.epsilon is None
+    assert "betas" not in payload["recovery"]
+    assert "epsilon" not in payload["recovery"]
+    assert "pulse_cap_per_cell" not in payload["recovery"]
+    assert spec.data.num_points == 16
+    assert spec.offchip.policy == "continuous_hwa"
+    assert spec.offchip.maximum_batches == 1
+    assert spec.device.corruption_policy == "counterfactual_repaired"
+    assert spec.transfer.enabled is False
+
+    settings = spec.recovery.supervised_stochastic_bp
+    assert settings is not None
+    assert settings.repair_examples == 55_000
+    assert settings.label_source == "ground_truth"
+    assert settings.update_batching == "minibatch"
+    assert settings.gradient_engine == "manual_cross_entropy_backprop"
+    assert settings.optimizer_state == "none"
+    assert settings.weight_state == (
+        "physical_persistent_and_apparent_device_state_no_shadow"
+    )
+    assert settings.pulse_type == "stochastic_compressed"
+    assert settings.desired_bl == 31
+    assert settings.fixed_bl is True
+    assert settings.update_bl_management is True
+    assert settings.update_management is True
+    assert settings.um_grad_scale == 1.0
+    assert settings.bit_line_seed == 108402
+    assert settings.cumulative_pulse_cap is None
+    assert settings.final_program_verify is False
+    assert settings.fault_transition == (
+        "post_deployment_published_companion_replay"
+    )
+    assert settings.fault_source_corruption_policy == "published"
+    assert settings.fault_source_preset_default_corrupt_devices_prob == 0.0
+    assert settings.fault_source_enabled_corrupt_devices_prob == 0.1348
+    assert settings.fault_source_corrupt_devices_range == 0.01
+    assert settings.fault_mask_access == "forbidden"
+
+    tiki_taka = spec.recovery.tiki_taka
+    if fast_corruption_policy is None:
+        assert tiki_taka is None
+        assert "tiki_taka" not in payload["recovery"]
+    else:
+        assert tiki_taka is not None
+        assert tiki_taka.algorithm == "tiki_taka_transfer_compound_v1"
+        assert tiki_taka.gamma == 0.0
+        assert tiki_taka.fast_lr == 1.0
+        assert tiki_taka.transfer_every == 1
+        assert tiki_taka.units_in_mbatch is True
+        assert tiki_taka.n_reads_per_transfer == 1
+        assert tiki_taka.transfer_selection == (
+            "sequential_physical_tile_columns"
+        )
+        assert tiki_taka.transfer_lr == 1.0
+        assert tiki_taka.scale_transfer_lr is True
+        assert tiki_taka.transfer_columns is True
+        assert tiki_taka.with_reset_prob == 0.0
+        assert tiki_taka.random_selection is False
+        assert tiki_taka.fast_preset == "ReRamArrayOMPresetDevice"
+        assert tiki_taka.fast_evidence_class == "model_based_aihwkit_preset"
+        assert tiki_taka.fast_assignment_seed == 88004
+        assert tiki_taka.fast_endpoint_seeds == (98402, 98403, 98404, 98405)
+        assert tiki_taka.fast_initialization == (
+            "strict_q_zero_program_verify_mask_blind"
+        )
+        assert tiki_taka.fast_corruption_policy == fast_corruption_policy
+        assert tiki_taka.fast_preset_default_corrupt_devices_prob == 0.0
+        assert tiki_taka.fast_enabled_corrupt_devices_prob == 0.1348
+        assert tiki_taka.fast_corrupt_devices_range == 0.01
+
+
+def test_tiki_taka_fast_defect_control_changes_only_fast_corruption_policy() -> None:
+    repaired = _payload(
+        "supervised_ce_tiki_taka_v1_repaired_fast_full_epoch.json"
+    )
+    published = _payload(
+        "supervised_ce_tiki_taka_v1_published_fast_full_epoch.json"
+    )
+
+    assert (
+        repaired["recovery"]["tiki_taka"].pop("fast_corruption_policy")
+        == "counterfactual_repaired"
+    )
+    assert (
+        published["recovery"]["tiki_taka"].pop("fast_corruption_policy")
+        == "published"
+    )
+    assert published == repaired
+
+
+def test_stochastic_tiki_taka_study_freezes_three_arm_heldout_contract() -> None:
+    plan = load_study_plan(STOCHASTIC_TIKI_TAKA_STUDY_PATH)
+
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "direct-bl31-stochastic-pulse-sgd",
+        "tiki-taka-v1-repaired-fast-om",
+        "tiki-taka-v1-published-fast-om",
+    ]
+    specs = [
+        resolve_experiment_config(arm["configs"][0]["resolved_path"], RunMode.TRAIN)[
+            1
+        ]
+        for arm in plan["arms"]
+    ]
+    assert all(isinstance(spec, CrossbarTrainSpec) for spec in specs)
+    assert [spec.recovery.policy for spec in specs] == [
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+        "supervised_ce_tiki_taka_v1",
+    ]
+    assert [spec.recovery.learning_rates_q for spec in specs] == [
+        (0.0001, 0.0001),
+        (0.001, 0.001),
+        (0.001, 0.001),
+    ]
+    assert specs[1].recovery.tiki_taka is not None
+    assert specs[2].recovery.tiki_taka is not None
+    assert specs[1].recovery.tiki_taka.fast_corruption_policy == (
+        "counterfactual_repaired"
+    )
+    assert specs[2].recovery.tiki_taka.fast_corruption_policy == "published"
+    assert all(
+        spec.device.endpoint_seeds == (89402, 89403, 89404, 89405)
+        for spec in specs
+    )
+    assert any(
+        "Endpoint 89402 is development-only; endpoints 89403-89405"
+        in criterion
+        for criterion in plan["completion_criteria"]
+    )
+
+
+def test_stochastic_pulse_recovery_allows_positive_declared_q_rates() -> None:
+    payload = _payload("supervised_ce_stochastic_pulse_sgd_full_epoch.json")
+    payload["recovery"]["learning_rates_q"] = [0.002, 0.003]
+
+    spec = parse_crossbar_config(payload)
+
+    assert spec.recovery.learning_rates_q == (0.002, 0.003)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["recovery"].__setitem__(
+                "learning_rates_q", [0.0, 0.01]
+            ),
+            "two positive numbers",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__("epochs", 2),
+            "exactly one epoch",
+        ),
+        (
+            lambda value: value["data"].__setitem__("num_points", 32),
+            "exact prior P0 source contract",
+        ),
+        (
+            lambda value: value["offchip"].__setitem__("maximum_batches", 2),
+            "exact prior P0 source contract",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "gradient_engine", "autograd_full_network_backprop"
+            ),
+            "manual_cross_entropy_backprop",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "optimizer_state", "digital_adam"
+            ),
+            "to equal 'none'",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "weight_state", "persistent_device_q_only"
+            ),
+            "physical_persistent_and_apparent_device_state_no_shadow",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "desired_bl", 30
+            ),
+            "maximum bit-line length 31",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "update_bl_management", False
+            ),
+            "to be true",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "cumulative_pulse_cap", 64
+            ),
+            "no cumulative per-cell pulse cap",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "final_program_verify", True
+            ),
+            "to be false",
+        ),
+        (
+            lambda value: value["recovery"]["supervised_stochastic_bp"].__setitem__(
+                "fault_mask_access", "available"
+            ),
+            "forbidden",
+        ),
+        (
+            lambda value: value["recovery"].__setitem__(
+                "betas", [0.9, 0.999]
+            ),
+            "contain only keys",
+        ),
+        (
+            lambda value: value["device"].__setitem__(
+                "corruption_policy", "published"
+            ),
+            "counterfactually repaired healthy array",
+        ),
+    ],
+)
+def test_stochastic_pulse_recovery_rejects_scientific_drift(
+    mutation,
+    message: str,
+) -> None:
+    payload = _payload("supervised_ce_stochastic_pulse_sgd_full_epoch.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "gamma", 0.1
+            ),
+            "to equal 0.0",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "fast_lr", 0.5
+            ),
+            "to equal 1.0",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "transfer_every", 2
+            ),
+            "to equal 1",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "transfer_selection", "sequential_global_columns"
+            ),
+            "sequential_physical_tile_columns",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "n_reads_per_transfer", 2
+            ),
+            "to equal 1",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "scale_transfer_lr", False
+            ),
+            "to be true",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "with_reset_prob", 1.0
+            ),
+            "to equal 0.0",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "random_selection", True
+            ),
+            "to be false",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "fast_assignment_seed", 88005
+            ),
+            "to equal 88004",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "fast_endpoint_seeds", [98402, 98403]
+            ),
+            "frozen independent fast-array seeds",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "fast_initialization", "exact_zero"
+            ),
+            "strict_q_zero_program_verify_mask_blind",
+        ),
+        (
+            lambda value: value["recovery"]["tiki_taka"].__setitem__(
+                "fast_corruption_policy", "none"
+            ),
+            "counterfactual_repaired.*published",
+        ),
+    ],
+)
+def test_tiki_taka_v1_rejects_scientific_drift(mutation, message: str) -> None:
+    payload = _payload(
+        "supervised_ce_tiki_taka_v1_repaired_fast_full_epoch.json"
+    )
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
 
 
 @pytest.mark.parametrize(

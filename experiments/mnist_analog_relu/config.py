@@ -142,6 +142,56 @@ class SupervisedShadowPvRecoverySettings:
 
 
 @dataclass(frozen=True)
+class SupervisedStochasticBpRecoverySettings:
+    repair_examples: int
+    label_source: str
+    update_batching: str
+    gradient_engine: str
+    optimizer_state: str
+    weight_state: str
+    pulse_type: str
+    desired_bl: int
+    fixed_bl: bool
+    update_bl_management: bool
+    update_management: bool
+    um_grad_scale: float
+    bit_line_seed: int
+    cumulative_pulse_cap: int | None
+    final_program_verify: bool
+    fault_transition: str
+    fault_source_corruption_policy: str
+    fault_source_preset_default_corrupt_devices_prob: float
+    fault_source_enabled_corrupt_devices_prob: float
+    fault_source_corrupt_devices_range: float
+    fault_mask_access: str
+
+
+@dataclass(frozen=True)
+class TikiTakaV1RecoverySettings:
+    algorithm: str
+    gamma: float
+    fast_lr: float
+    transfer_every: int
+    units_in_mbatch: bool
+    n_reads_per_transfer: int
+    transfer_selection: str
+    transfer_lr: float
+    scale_transfer_lr: bool
+    transfer_columns: bool
+    with_reset_prob: float
+    random_selection: bool
+    fast_preset: str
+    fast_evidence_class: str
+    fast_assignment_seed: int
+    fast_endpoint_seeds: tuple[int, ...]
+    fast_initialization: str
+    fast_corruption_policy: str
+    fast_preset_default_corrupt_devices_prob: float
+    fast_enabled_corrupt_devices_prob: float
+    fast_corrupt_devices_range: float
+
+
+@dataclass(frozen=True)
 class RecoverySettings:
     policy: str
     layer_scope: str
@@ -151,11 +201,13 @@ class RecoverySettings:
     beta_2: float | None
     epsilon: float | None
     objective: str
-    pulse_cap_per_cell: int
+    pulse_cap_per_cell: int | None
     maximum_batches: int | None
     star: StarRecoverySettings | None
     supervised_bp: SupervisedBpRecoverySettings | None
     supervised_shadow_pv: SupervisedShadowPvRecoverySettings | None
+    supervised_stochastic_bp: SupervisedStochasticBpRecoverySettings | None
+    tiki_taka: TikiTakaV1RecoverySettings | None
 
 
 @dataclass(frozen=True)
@@ -536,6 +588,279 @@ def _parse_offchip(value: Any) -> OffchipSettings:
     )
 
 
+def _parse_supervised_stochastic_bp(
+    value: Any,
+    path: str,
+) -> SupervisedStochasticBpRecoverySettings:
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "repair_examples",
+            "label_source",
+            "update_batching",
+            "gradient_engine",
+            "optimizer_state",
+            "weight_state",
+            "pulse_type",
+            "desired_bl",
+            "fixed_bl",
+            "update_bl_management",
+            "update_management",
+            "um_grad_scale",
+            "bit_line_seed",
+            "cumulative_pulse_cap",
+            "final_program_verify",
+            "fault_transition",
+            "fault_source_corruption_policy",
+            "fault_source_preset_default_corrupt_devices_prob",
+            "fault_source_enabled_corrupt_devices_prob",
+            "fault_source_corrupt_devices_range",
+            "fault_mask_access",
+        },
+    )
+    expected = {
+        "label_source": "ground_truth",
+        "update_batching": "minibatch",
+        "gradient_engine": "manual_cross_entropy_backprop",
+        "optimizer_state": "none",
+        "weight_state": "physical_persistent_and_apparent_device_state_no_shadow",
+        "pulse_type": "stochastic_compressed",
+        "fault_transition": "post_deployment_published_companion_replay",
+        "fault_source_corruption_policy": "published",
+        "fault_mask_access": "forbidden",
+    }
+    for name, expected_value in expected.items():
+        if raw[name] != expected_value:
+            raise config_error(
+                f"{path}.{name}", f"to equal {expected_value!r}", raw[name]
+            )
+    desired_bl = _integer(raw["desired_bl"], f"{path}.desired_bl", minimum=1)
+    if desired_bl != 31:
+        raise config_error(
+            f"{path}.desired_bl",
+            "to equal the frozen stochastic-compressed maximum bit-line length 31",
+            raw["desired_bl"],
+        )
+    boolean_contract = {
+        "fixed_bl": True,
+        "update_bl_management": True,
+        "update_management": True,
+        "final_program_verify": False,
+    }
+    for name, expected_value in boolean_contract.items():
+        parsed = _boolean(raw[name], f"{path}.{name}")
+        if parsed is not expected_value:
+            raise config_error(
+                f"{path}.{name}", f"to be {str(expected_value).lower()}", raw[name]
+            )
+    um_grad_scale = _number(
+        raw["um_grad_scale"], f"{path}.um_grad_scale", minimum=0.0
+    )
+    if not math.isclose(float(um_grad_scale), 1.0, rel_tol=0.0, abs_tol=1e-12):
+        raise config_error(
+            f"{path}.um_grad_scale",
+            "to equal the frozen update-management gradient scale 1.0",
+            raw["um_grad_scale"],
+        )
+    bit_line_seed = _integer(
+        raw["bit_line_seed"], f"{path}.bit_line_seed", minimum=1
+    )
+    if bit_line_seed != 108402:
+        raise config_error(
+            f"{path}.bit_line_seed",
+            "to equal the frozen stochastic bit-line seed 108402",
+            raw["bit_line_seed"],
+        )
+    if raw["cumulative_pulse_cap"] is not None:
+        raise config_error(
+            f"{path}.cumulative_pulse_cap",
+            "to be null because this arm has no cumulative per-cell pulse cap",
+            raw["cumulative_pulse_cap"],
+        )
+    fault_source_scalars = {
+        "fault_source_preset_default_corrupt_devices_prob": 0.0,
+        "fault_source_enabled_corrupt_devices_prob": 0.1348,
+        "fault_source_corrupt_devices_range": 0.01,
+    }
+    for name, expected_value in fault_source_scalars.items():
+        parsed = _number(raw[name], f"{path}.{name}", minimum=0.0)
+        if not math.isclose(
+            float(parsed), expected_value, rel_tol=0.0, abs_tol=1e-12
+        ):
+            raise config_error(
+                f"{path}.{name}", f"to equal {expected_value!r}", raw[name]
+            )
+    return SupervisedStochasticBpRecoverySettings(
+        repair_examples=_integer(
+            raw["repair_examples"], f"{path}.repair_examples", minimum=1
+        ),
+        label_source=expected["label_source"],
+        update_batching=expected["update_batching"],
+        gradient_engine=expected["gradient_engine"],
+        optimizer_state=expected["optimizer_state"],
+        weight_state=expected["weight_state"],
+        pulse_type=expected["pulse_type"],
+        desired_bl=desired_bl,
+        fixed_bl=True,
+        update_bl_management=True,
+        update_management=True,
+        um_grad_scale=float(um_grad_scale),
+        bit_line_seed=bit_line_seed,
+        cumulative_pulse_cap=None,
+        final_program_verify=False,
+        fault_transition=expected["fault_transition"],
+        fault_source_corruption_policy=expected[
+            "fault_source_corruption_policy"
+        ],
+        fault_source_preset_default_corrupt_devices_prob=(
+            fault_source_scalars[
+                "fault_source_preset_default_corrupt_devices_prob"
+            ]
+        ),
+        fault_source_enabled_corrupt_devices_prob=(
+            fault_source_scalars["fault_source_enabled_corrupt_devices_prob"]
+        ),
+        fault_source_corrupt_devices_range=fault_source_scalars[
+            "fault_source_corrupt_devices_range"
+        ],
+        fault_mask_access=expected["fault_mask_access"],
+    )
+
+
+def _parse_tiki_taka_v1(value: Any, path: str) -> TikiTakaV1RecoverySettings:
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "algorithm",
+            "gamma",
+            "fast_lr",
+            "transfer_every",
+            "units_in_mbatch",
+            "n_reads_per_transfer",
+            "transfer_selection",
+            "transfer_lr",
+            "scale_transfer_lr",
+            "transfer_columns",
+            "with_reset_prob",
+            "random_selection",
+            "fast_preset",
+            "fast_evidence_class",
+            "fast_assignment_seed",
+            "fast_endpoint_seeds",
+            "fast_initialization",
+            "fast_corruption_policy",
+            "fast_preset_default_corrupt_devices_prob",
+            "fast_enabled_corrupt_devices_prob",
+            "fast_corrupt_devices_range",
+        },
+    )
+    expected = {
+        "algorithm": "tiki_taka_transfer_compound_v1",
+        "transfer_selection": "sequential_physical_tile_columns",
+        "fast_preset": "ReRamArrayOMPresetDevice",
+        "fast_evidence_class": "model_based_aihwkit_preset",
+        "fast_initialization": "strict_q_zero_program_verify_mask_blind",
+    }
+    for name, expected_value in expected.items():
+        if raw[name] != expected_value:
+            raise config_error(
+                f"{path}.{name}", f"to equal {expected_value!r}", raw[name]
+            )
+    if raw["fast_corruption_policy"] not in {
+        "counterfactual_repaired",
+        "published",
+    }:
+        raise config_error(
+            f"{path}.fast_corruption_policy",
+            "to be 'counterfactual_repaired' or 'published'",
+            raw["fast_corruption_policy"],
+        )
+    scalar_contract = {
+        "gamma": 0.0,
+        "fast_lr": 1.0,
+        "transfer_lr": 1.0,
+        "with_reset_prob": 0.0,
+        "fast_preset_default_corrupt_devices_prob": 0.0,
+        "fast_enabled_corrupt_devices_prob": 0.1348,
+        "fast_corrupt_devices_range": 0.01,
+    }
+    parsed_scalars: dict[str, float] = {}
+    for name, expected_value in scalar_contract.items():
+        parsed = _number(raw[name], f"{path}.{name}", minimum=0.0)
+        if not math.isclose(
+            float(parsed), expected_value, rel_tol=0.0, abs_tol=1e-12
+        ):
+            raise config_error(
+                f"{path}.{name}", f"to equal {expected_value!r}", raw[name]
+            )
+        parsed_scalars[name] = float(parsed)
+    integer_contract = {
+        "transfer_every": 1,
+        "n_reads_per_transfer": 1,
+        "fast_assignment_seed": 88004,
+    }
+    parsed_integers: dict[str, int] = {}
+    for name, expected_value in integer_contract.items():
+        parsed = _integer(raw[name], f"{path}.{name}", minimum=1)
+        if parsed != expected_value:
+            raise config_error(
+                f"{path}.{name}", f"to equal {expected_value}", raw[name]
+            )
+        parsed_integers[name] = parsed
+    boolean_contract = {
+        "units_in_mbatch": True,
+        "scale_transfer_lr": True,
+        "transfer_columns": True,
+        "random_selection": False,
+    }
+    for name, expected_value in boolean_contract.items():
+        parsed = _boolean(raw[name], f"{path}.{name}")
+        if parsed is not expected_value:
+            raise config_error(
+                f"{path}.{name}", f"to be {str(expected_value).lower()}", raw[name]
+            )
+    fast_endpoint_seeds = _integer_tuple(
+        raw["fast_endpoint_seeds"], f"{path}.fast_endpoint_seeds"
+    )
+    if fast_endpoint_seeds != (98402, 98403, 98404, 98405):
+        raise config_error(
+            f"{path}.fast_endpoint_seeds",
+            "to equal the frozen independent fast-array seeds [98402, 98403, 98404, 98405]",
+            raw["fast_endpoint_seeds"],
+        )
+    return TikiTakaV1RecoverySettings(
+        algorithm=expected["algorithm"],
+        gamma=parsed_scalars["gamma"],
+        fast_lr=parsed_scalars["fast_lr"],
+        transfer_every=parsed_integers["transfer_every"],
+        units_in_mbatch=True,
+        n_reads_per_transfer=parsed_integers["n_reads_per_transfer"],
+        transfer_selection=expected["transfer_selection"],
+        transfer_lr=parsed_scalars["transfer_lr"],
+        scale_transfer_lr=True,
+        transfer_columns=True,
+        with_reset_prob=parsed_scalars["with_reset_prob"],
+        random_selection=False,
+        fast_preset=expected["fast_preset"],
+        fast_evidence_class=expected["fast_evidence_class"],
+        fast_assignment_seed=parsed_integers["fast_assignment_seed"],
+        fast_endpoint_seeds=fast_endpoint_seeds,
+        fast_initialization=expected["fast_initialization"],
+        fast_corruption_policy=raw["fast_corruption_policy"],
+        fast_preset_default_corrupt_devices_prob=parsed_scalars[
+            "fast_preset_default_corrupt_devices_prob"
+        ],
+        fast_enabled_corrupt_devices_prob=parsed_scalars[
+            "fast_enabled_corrupt_devices_prob"
+        ],
+        fast_corrupt_devices_range=parsed_scalars["fast_corrupt_devices_range"],
+    )
+
+
 def _parse_recovery(value: Any) -> RecoverySettings:
     path = "config.recovery"
     raw = _object(value, path)
@@ -568,6 +893,23 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             path,
             common | {"betas", "epsilon", "supervised_shadow_pv"},
         )
+    elif policy == "supervised_ce_stochastic_pulse_sgd":
+        _keys(
+            raw,
+            path,
+            common | {"learning_rates_q", "supervised_stochastic_bp"},
+        )
+    elif policy == "supervised_ce_tiki_taka_v1":
+        _keys(
+            raw,
+            path,
+            common
+            | {
+                "learning_rates_q",
+                "supervised_stochastic_bp",
+                "tiki_taka",
+            },
+        )
     else:
         _keys(
             raw,
@@ -580,13 +922,17 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         "star_local_pulse_sgd",
         "supervised_ce_pulse_adam",
         "supervised_ce_shadow_program_verify",
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
     }:
         raise config_error(
             f"{path}.policy",
             (
                 "to be 'none', 'pulse_adam', 'star_local_pulse_sgd', "
                 "'supervised_ce_pulse_adam', or "
-                "'supervised_ce_shadow_program_verify'"
+                "'supervised_ce_shadow_program_verify', "
+                "'supervised_ce_stochastic_pulse_sgd', or "
+                "'supervised_ce_tiki_taka_v1'"
             ),
             policy,
         )
@@ -600,6 +946,17 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         # are therefore derived by the runtime from the declared logical rates.
         rates = (0.0, 0.0)
         pulse_cap = 0
+    elif policy in {
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+    }:
+        rates = _pair(
+            raw["learning_rates_q"],
+            f"{path}.learning_rates_q",
+            minimum=0.0,
+            positive=True,
+        )
+        pulse_cap = None
     else:
         rates = _pair(raw["learning_rates_q"], f"{path}.learning_rates_q", minimum=0.0)
         pulse_cap = _integer(
@@ -608,6 +965,8 @@ def _parse_recovery(value: Any) -> RecoverySettings:
     star = None
     supervised_bp = None
     supervised_shadow_pv = None
+    supervised_stochastic_bp = None
+    tiki_taka = None
     beta_1: float | None = None
     beta_2: float | None = None
     epsilon: float | None = None
@@ -1015,6 +1374,31 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             fault_mask_access=expected["fault_mask_access"],
         )
         pulse_cap = maximum_programming_pulses
+    elif policy in {
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+    }:
+        if (
+            epochs != 1
+            or raw["objective"] != "cross_entropy"
+            or raw["layer_scope"] != "all"
+        ):
+            raise config_error(
+                path,
+                (
+                    "to use exactly one epoch, objective='cross_entropy', "
+                    "and scope='all' for stochastic-pulse supervised recovery"
+                ),
+                dict(raw),
+            )
+        supervised_stochastic_bp = _parse_supervised_stochastic_bp(
+            raw["supervised_stochastic_bp"],
+            f"{path}.supervised_stochastic_bp",
+        )
+        if policy == "supervised_ce_tiki_taka_v1":
+            tiki_taka = _parse_tiki_taka_v1(
+                raw["tiki_taka"], f"{path}.tiki_taka"
+            )
     return RecoverySettings(
         policy=policy,
         layer_scope=raw["layer_scope"],
@@ -1029,6 +1413,8 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         star=star,
         supervised_bp=supervised_bp,
         supervised_shadow_pv=supervised_shadow_pv,
+        supervised_stochastic_bp=supervised_stochastic_bp,
+        tiki_taka=tiki_taka,
     )
 
 
@@ -1189,6 +1575,8 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     if recovery.policy in {
         "supervised_ce_pulse_adam",
         "supervised_ce_shadow_program_verify",
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
     } and (
         device.corruption_policy != "counterfactual_repaired"
         or transfer.enabled
@@ -1203,6 +1591,52 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
             ),
             dict(raw),
         )
+    if recovery.policy in {
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+    }:
+        stochastic_settings = recovery.supervised_stochastic_bp
+        if stochastic_settings is None:  # pragma: no cover - parser invariant
+            raise RuntimeError(
+                "Expected supervised stochastic-BP settings after parsing."
+            )
+        available = 60_000 - data.validation_points
+        expected_batches = math.ceil(available / data.batch_size)
+        if (
+            stochastic_settings.repair_examples != available
+            or recovery.maximum_batches != expected_batches
+            or data.num_points != 16
+            or offchip.maximum_batches != 1
+        ):
+            raise config_error(
+                "config.recovery",
+                (
+                    "to consume exactly one complete 55,000-example "
+                    "stochastic-pulse repair epoch with maximum_batches="
+                    f"ceil(55000/{data.batch_size}) while preserving the "
+                    "exact prior P0 source contract data.num_points=16 and "
+                    "offchip.maximum_batches=1"
+                ),
+                dict(raw["recovery"]),
+            )
+        if recovery.policy == "supervised_ce_tiki_taka_v1":
+            tiki_taka = recovery.tiki_taka
+            if tiki_taka is None:  # pragma: no cover - parser invariant
+                raise RuntimeError("Expected Tiki-Taka v1 settings after parsing.")
+            if (
+                tiki_taka.fast_assignment_seed == device.assignment_seed
+                or len(tiki_taka.fast_endpoint_seeds)
+                != len(device.endpoint_seeds)
+                or set(tiki_taka.fast_endpoint_seeds) & set(device.endpoint_seeds)
+            ):
+                raise config_error(
+                    "config.recovery.tiki_taka",
+                    (
+                        "to use an independent fast-array assignment and one "
+                        "disjoint fast endpoint seed per slow endpoint"
+                    ),
+                    dict(raw["recovery"]["tiki_taka"]),
+                )
     if recovery.policy == "supervised_ce_pulse_adam":
         settings = recovery.supervised_bp
         if settings is None:  # pragma: no cover - parser invariant
@@ -1311,6 +1745,8 @@ __all__ = [
     "SCHEMA_VERSION",
     "StarRecoverySettings",
     "SupervisedBpRecoverySettings",
+    "SupervisedStochasticBpRecoverySettings",
+    "TikiTakaV1RecoverySettings",
     "parse_crossbar_config",
     "resolve_crossbar_spec",
 ]

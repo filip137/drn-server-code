@@ -508,6 +508,89 @@ off-array retrain-then-reprogram ceiling, not fully on-chip learning. Apparent
 post-write accuracy remains primary; persistent-q, fresh-read, retention, and
 independent-array durability remain separate requirements.
 
+## Planned stochastic-pulse and Tiki-Taka recovery
+
+The formal three-arm follow-up is frozen in
+[`mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1.json`](../studies/mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1.json).
+Its declared configs are the
+[`direct BL31`](../examples/mnist_analog_relu/ibm_om_onchip_importance/supervised_ce_stochastic_pulse_sgd_full_epoch.json),
+[`repaired-fast Tiki-Taka`](../examples/mnist_analog_relu/ibm_om_onchip_importance/supervised_ce_tiki_taka_v1_repaired_fast_full_epoch.json),
+and
+[`published-fast Tiki-Taka`](../examples/mnist_analog_relu/ibm_om_onchip_importance/supervised_ce_tiki_taka_v1_published_fast_full_epoch.json)
+arms. The formal study is planned and has no held-out result yet.
+It starts from the same continuous-HWA healthy P0 and the same chronological
+published-companion fault as the writer-debug study, but removes the FP32
+weight shadow, autograd, Adam moments, and final P&V. All recovery arms stream
+the same `55,000` labels in `3,438` minibatches and perform manual full-network
+cross-entropy BP, including a slow-array `W2` transpose MVM and the stored
+digital-ReLU mask. The learner has no teacher or fault-map access.
+
+Endpoint `89402` alone selected the fixed-final rates. The development screen
+used the first 1,000 validation examples and never selected a mid-epoch state:
+
+| Policy | Shared W1/W2 q-rate candidates | Fixed-final apparent accuracy | Frozen rate |
+| --- | --- | --- | --- |
+| Direct BL31 pulse-SGD | `1e-4`, `3e-4`, `1e-2` | `88.5%`, `72.0%`, `52.1%` | `[1e-4,1e-4]` |
+| Tiki-Taka, repaired fast OM | `1e-3`, `3e-3`, `1e-2` | `87.2%`, `82.3%`, `78.0%` | `[1e-3,1e-3]` |
+
+The Tiki-Taka screen was rerun after replacing support-aware fast-array
+initialization with literal-zero, mask-blind P&V; no earlier initialization
+result is eligible. The published-defect fast arm inherits `[1e-3,1e-3]`
+without tuning. Its `87.1%` development canary is descriptive and cannot
+change the schedule. Endpoint `89402` remains excluded from primary
+statistics; endpoints `89403-89405` are the held-out cohort.
+
+The direct arm converts the manual outer-product factors into
+stochastic-compressed coincidence pulse trains and writes them directly to
+the damaged slow array. The frozen writer uses `desired_bl=31`, `fixed_bl=true`,
+update-BL management and update management, `um_grad_scale=1`, and no
+cumulative pulse cap. The network forward and reverse MVMs use apparent `q`;
+hidden persistent `q` controls subsequent physical writes.
+
+The Tiki-Taka v1-style arms add an independently sampled fast accumulator
+array `A` to the deployed slow array `C`. Every `A` cell receives the literal
+`q=0` target through fault-blind one-pulse apparent-verify P&V before recovery;
+the controller receives neither a fault mask nor a support clamp/oracle.
+Unreachable stuck cells remain persistently immutable and may accept only
+through apparent noise or exhaust. Acceptance, exhaustion, persistent/apparent
+residuals, and commissioning pulses are reported separately from recovery
+cost. Gradients write stochastic BL31 pulses
+to `A`; every minibatch transfers one sequential apparent input-column slice
+from each physical tile into `C`. With the frozen `512`-input tile limit, W1
+has two `392x50` tiles and W2 one `50x10` tile. Each tile has its own cursor, so
+`3,438` updates traverse each W1 tile `8.77` times and W2 `68.76` times; there
+is no global 784-column W1 cursor. The remaining contract is
+`gamma=0`, `fast_lr=1`, `transfer_every=1`, one read per transfer,
+`transfer_lr=1` scaled by the selected layer q rate, column transfer, no reset,
+and deterministic sequential selection.
+
+Both Tiki-Taka arms use fast assignment `88004` and endpoint seeds
+`98402-98405`, paired with slow endpoints `89402-89405`. The repaired-fast arm
+counterfactually replaces only sampled fast corrupt cells. The published-fast
+arm retains the preset's explicitly enabled `0.1348` corruption probability
+and `0.01` corrupt range. Everything else is matched. The fast array is not
+visible to inference and doubles programmable model-state storage from 39,700
+to 79,400 `q` cells; this is simulator state accounting, not a fabricated
+device-count claim.
+
+Primary analysis reports healthy, immediate-fault, and fixed-final apparent
+accuracy per held-out endpoint, with persistent-q accuracy as a separate
+diagnostic. A protocol is meaningfully reparative only if all three held-out
+endpoints improve, mean recovery fraction reaches `0.40`, and mean final
+apparent accuracy reaches `88%`. A repaired-fast Tiki-Taka advantage over
+direct requires at least `+1.0` percentage point in the held-out mean. The
+published-fast effect is material when its absolute paired mean difference
+from repaired-fast reaches `1.0` point; its sign is reported rather than
+assumed.
+
+Every result must reconcile bit-line statistics, slow/fast pulse commands,
+physical plant counters, immutable-site commands, actual healthy persistent
+movement, fast commissioning cost, transfer events and per-tile cursors, RNG
+state, and checkpoint replay. These are on-chip-compatible update simulations,
+not a physical peripheral implementation or native AIHWKit `TransferCompound`
+parity result. They remain silent on fresh-read noise, retention, endurance,
+line resistance, energy, and independent-array generalization.
+
 ## Planned STAR-inspired local-state-only recovery
 
 This protocol adapts [*STAR: Astrocyte-Inspired State-Augmented Repair for

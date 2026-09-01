@@ -722,6 +722,43 @@ class IbmOmEffectiveCrossbarPlant:
         self.upward_pulses += upward.to(torch.int64)
         self.downward_pulses += downward.to(torch.int64)
 
+    def apply_grouped_pulse_counts(
+        self,
+        positive_counts: torch.Tensor,
+        negative_counts: torch.Tensor,
+    ) -> None:
+        """Apply counted coincidence pulses with an explicit grouped ordering.
+
+        Stochastic-compressed bit lines can command both update directions for
+        one cell over a minibatch.  The caller retains the exact positive and
+        negative coincidence counts; this plant applies all positive pulse
+        rounds first and all negative pulse rounds second.  The grouping is a
+        declared distribution-level approximation to a native tile's hidden
+        bit-line ordering, not a claim of bitwise AIHWKit replay.
+        """
+
+        positive = torch.as_tensor(
+            positive_counts, dtype=torch.int64, device=self.device
+        )
+        negative = torch.as_tensor(
+            negative_counts, dtype=torch.int64, device=self.device
+        )
+        if (
+            positive.shape != (self.size,)
+            or negative.shape != (self.size,)
+            or bool(torch.any(positive < 0))
+            or bool(torch.any(negative < 0))
+        ):
+            raise ValueError(
+                "Expected non-negative positive/negative pulse counts per crosspoint."
+            )
+        positive_maximum = int(positive.max().item()) if positive.numel() else 0
+        negative_maximum = int(negative.max().item()) if negative.numel() else 0
+        for pulse_index in range(positive_maximum):
+            self.pulse((positive > pulse_index).to(torch.int8))
+        for pulse_index in range(negative_maximum):
+            self.pulse(-(negative > pulse_index).to(torch.int8))
+
     def apply_stuck_at_fault_transition(
         self,
         *,
@@ -826,6 +863,47 @@ class IbmOmEffectiveCrossbarPlant:
         """Backward-compatible name for the restricted recovery update port."""
 
         return self.restricted_recovery_update_port()
+
+    def on_chip_recovery_port(
+        self,
+        *,
+        layout: Sequence[CrossbarTileSpec],
+        digital_scales: Sequence[float],
+    ) -> "_OnChipCrossbarRecoveryPort":
+        """Open a forward/BP/pulse capability after the immutable fault event.
+
+        The returned learner view never exposes the full apparent or
+        persistent tensors, the population, RNG, or fault metadata.  Forward
+        MVMs and the one required transpose MVM remain capabilities of the
+        physical plant rather than weight-tensor handoffs.
+        """
+
+        if self.fault_transition is None:
+            raise RuntimeError(
+                "Expected the post-deployment fault before opening the on-chip "
+                "recovery port."
+            )
+        validate_population_layout(self.population, layout)
+        return _OnChipCrossbarRecoveryPort(
+            self,
+            layout=layout,
+            digital_scales=digital_scales,
+        )
+
+    def tiki_taka_fast_port(
+        self,
+        *,
+        layout: Sequence[CrossbarTileSpec],
+    ) -> "_TikiTakaFastArrayPort":
+        """Open a restricted auxiliary-array pulse/read capability.
+
+        Tiki-Taka transfer may read only the selected physical input column.
+        It cannot obtain a full apparent fast matrix or any hidden plant
+        authority.
+        """
+
+        validate_population_layout(self.population, layout)
+        return _TikiTakaFastArrayPort(self, layout=layout)
 
     def state_dict(self) -> dict[str, Any]:
         return {
@@ -1459,6 +1537,230 @@ class _LocalStarUpdatePort:
 
     def pulse(self, directions: torch.Tensor) -> None:
         self.__pulse_writer(directions)
+
+    def state_hash_receipt(self) -> dict[str, str]:
+        return {
+            "apparent_sha256": tensor_sha256(self.__apparent_state),
+            "persistent_sha256": tensor_sha256(self.__persistent_state),
+        }
+
+
+def _layout_receipt(
+    layout: Sequence[CrossbarTileSpec],
+) -> tuple[tuple[str, int, int, int, int, int], ...]:
+    """Return the immutable scalar layout identity used by restricted ports."""
+
+    return tuple(
+        (
+            tile.key,
+            tile.layer_index,
+            tile.tile_index,
+            tile.input_start,
+            tile.input_stop,
+            tile.out_features,
+        )
+        for tile in layout
+    )
+
+
+class _OnChipCrossbarRecoveryPort:
+    """Capability-limited slow-array view for label-supervised recovery."""
+
+    __slots__ = (
+        "__size",
+        "__nominal_dw_min",
+        "__layout",
+        "__layout_receipt_value",
+        "__digital_scales",
+        "__device",
+        "__apparent_state",
+        "__persistent_state",
+        "__grouped_pulse_writer",
+    )
+
+    def __init__(
+        self,
+        plant: IbmOmEffectiveCrossbarPlant,
+        *,
+        layout: Sequence[CrossbarTileSpec],
+        digital_scales: Sequence[float],
+    ) -> None:
+        scales = tuple(float(value) for value in digital_scales)
+        if len(scales) != 2 or any(
+            not math.isfinite(value) or value <= 0.0 for value in scales
+        ):
+            raise ValueError("Expected two finite positive physical-q scales.")
+        self.__size = plant.size
+        self.__nominal_dw_min = float(plant.population.nominal_dw_min)
+        self.__layout = tuple(layout)
+        self.__layout_receipt_value = _layout_receipt(self.__layout)
+        self.__digital_scales = scales
+        self.__device = plant.device
+        self.__apparent_state = plant.apparent
+        self.__persistent_state = plant.persistent
+        self.__grouped_pulse_writer = plant.apply_grouped_pulse_counts
+
+    @property
+    def size(self) -> int:
+        return self.__size
+
+    @property
+    def nominal_dw_min(self) -> float:
+        return self.__nominal_dw_min
+
+    @property
+    def q_scales(self) -> tuple[float, float]:
+        return self.__digital_scales
+
+    def hardware_contract(self) -> dict[str, Any]:
+        return {
+            "size": self.__size,
+            "nominal_dw_min": self.__nominal_dw_min,
+            "layout": self.__layout_receipt_value,
+            "q_scales": self.__digital_scales,
+            "device": str(self.__device),
+            "forward_state": "apparent_q",
+            "full_weight_tensor_exposed": False,
+            "fault_mask_exposed": False,
+        }
+
+    @torch.no_grad()
+    def forward(self, inputs: torch.Tensor) -> StandardCrossbarForwardStates:
+        if inputs.ndim != 2 or inputs.device != self.__device or not bool(
+            torch.all(torch.isfinite(inputs))
+        ):
+            raise ValueError(
+                "Expected finite rank-2 inputs on the recovery-port device."
+            )
+        return standard_crossbar_forward_states(
+            inputs,
+            self.__apparent_state,
+            self.__layout,
+            digital_scales=self.__digital_scales,
+        )
+
+    @torch.no_grad()
+    def output_transpose_mvm(self, output_errors: torch.Tensor) -> torch.Tensor:
+        """Apply the apparent second-layer transpose without exporting W2."""
+
+        if output_errors.ndim != 2 or output_errors.device != self.__device or not bool(
+            torch.all(torch.isfinite(output_errors))
+        ):
+            raise ValueError(
+                "Expected finite rank-2 output errors on the recovery-port device."
+            )
+        _, output_weight = effective_state_to_logical_weights(
+            self.__apparent_state,
+            self.__layout,
+            digital_scales=self.__digital_scales,
+        )
+        if output_errors.shape[1] != output_weight.shape[1]:
+            raise ValueError("Expected output errors to match the output crossbar.")
+        return output_errors @ output_weight.transpose(0, 1)
+
+    def apply_grouped_pulse_counts(
+        self,
+        positive_counts: torch.Tensor,
+        negative_counts: torch.Tensor,
+    ) -> None:
+        self.__grouped_pulse_writer(positive_counts, negative_counts)
+
+    def state_hash_receipt(self) -> dict[str, str]:
+        return {
+            "apparent_sha256": tensor_sha256(self.__apparent_state),
+            "persistent_sha256": tensor_sha256(self.__persistent_state),
+        }
+
+
+class _TikiTakaFastArrayPort:
+    """Restricted fast-array port exposing only selected transfer columns."""
+
+    __slots__ = (
+        "__size",
+        "__nominal_dw_min",
+        "__layout_receipt_value",
+        "__tile_offsets",
+        "__tile_shapes",
+        "__device",
+        "__apparent_state",
+        "__persistent_state",
+        "__grouped_pulse_writer",
+    )
+
+    def __init__(
+        self,
+        plant: IbmOmEffectiveCrossbarPlant,
+        *,
+        layout: Sequence[CrossbarTileSpec],
+    ) -> None:
+        tiles = tuple(layout)
+        offsets = []
+        offset = 0
+        for tile in tiles:
+            offsets.append(offset)
+            offset += tile.cells
+        self.__size = plant.size
+        self.__nominal_dw_min = float(plant.population.nominal_dw_min)
+        self.__layout_receipt_value = _layout_receipt(tiles)
+        self.__tile_offsets = tuple(offsets)
+        self.__tile_shapes = tuple(tile.shape for tile in tiles)
+        self.__device = plant.device
+        self.__apparent_state = plant.apparent
+        self.__persistent_state = plant.persistent
+        self.__grouped_pulse_writer = plant.apply_grouped_pulse_counts
+
+    @property
+    def size(self) -> int:
+        return self.__size
+
+    @property
+    def nominal_dw_min(self) -> float:
+        return self.__nominal_dw_min
+
+    def hardware_contract(self) -> dict[str, Any]:
+        return {
+            "size": self.__size,
+            "nominal_dw_min": self.__nominal_dw_min,
+            "layout": self.__layout_receipt_value,
+            "device": str(self.__device),
+            "selected_slice_only": True,
+            "full_weight_tensor_exposed": False,
+            "fault_mask_exposed": False,
+        }
+
+    @torch.no_grad()
+    def read_apparent_column(
+        self,
+        *,
+        tile_index: int,
+        column_index: int,
+    ) -> torch.Tensor:
+        """Read one physical input column in AIHWKit's ``[out,in]`` sense."""
+
+        if (
+            isinstance(tile_index, bool)
+            or not isinstance(tile_index, int)
+            or tile_index < 0
+            or tile_index >= len(self.__tile_shapes)
+        ):
+            raise ValueError("Expected a valid physical Tiki-Taka tile index.")
+        inputs, outputs = self.__tile_shapes[tile_index]
+        if (
+            isinstance(column_index, bool)
+            or not isinstance(column_index, int)
+            or column_index < 0
+            or column_index >= inputs
+        ):
+            raise ValueError("Expected a valid physical input-column index.")
+        start = self.__tile_offsets[tile_index] + column_index * outputs
+        return self.__apparent_state[start : start + outputs].detach().clone()
+
+    def apply_grouped_pulse_counts(
+        self,
+        positive_counts: torch.Tensor,
+        negative_counts: torch.Tensor,
+    ) -> None:
+        self.__grouped_pulse_writer(positive_counts, negative_counts)
 
     def state_hash_receipt(self) -> dict[str, str]:
         return {
