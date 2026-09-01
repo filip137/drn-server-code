@@ -8,6 +8,8 @@ inaccessible to the controller and remains the sole forward-pass authority.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from hashlib import sha256
+import json
 import math
 from typing import Any, Mapping, Sequence
 
@@ -17,6 +19,15 @@ from experiments.mnist_relu_drn.ibm_om_winsorized_onchip_adam import (
     flatten_physical,
 )
 from training.ibm_reram_program_verify import VerifyPort
+
+
+def _mask_sha256(value: torch.Tensor) -> str:
+    cpu = value.detach().contiguous().cpu()
+    digest = sha256()
+    digest.update(str(cpu.dtype).encode("utf-8"))
+    digest.update(json.dumps(list(cpu.shape), separators=(",", ":")).encode("utf-8"))
+    digest.update(cpu.numpy().tobytes(order="C"))
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -39,6 +50,8 @@ class IncrementalProgramVerifyAdamStep:
     per_call_one_pulse_budget_reached_cells: int
     cap_blocked_cells: int
     target_debt_cells: int
+    frozen_target_debt_cells: int
+    trainable_accepted_cells: int
     maximum_absolute_target_debt: float
     reversals: int
     target_projection: TargetProjection
@@ -100,6 +113,7 @@ class IncrementalOnePulseProgramVerifyAdam:
         verify_tolerance_raw_x: float,
         pulse_cap: int,
         maximum_pulses_per_cell_per_minibatch: int = 1,
+        trainable_cell_mask: torch.Tensor | None = None,
         beta1: float = 0.9,
         beta2: float = 0.999,
         epsilon: float = 1e-8,
@@ -153,6 +167,16 @@ class IncrementalOnePulseProgramVerifyAdam:
         self.maximum_pulses_per_cell_per_minibatch = int(
             maximum_pulses_per_cell_per_minibatch
         )
+        if trainable_cell_mask is None:
+            writable = torch.ones(port.size, dtype=torch.bool, device=self.device)
+        else:
+            writable = torch.as_tensor(
+                trainable_cell_mask, dtype=torch.bool, device=self.device
+            ).clone()
+        if writable.shape != (port.size,) or not bool(torch.any(writable)):
+            raise ValueError("Expected a nonempty fixed trainable-cell mask.")
+        self.trainable_cell_mask = writable
+        self.trainable_cell_mask_sha256 = _mask_sha256(writable)
         self.beta1 = float(beta1)
         self.beta2 = float(beta2)
         self.epsilon = float(epsilon)
@@ -228,7 +252,9 @@ class IncrementalOnePulseProgramVerifyAdam:
         gradient_raw_x = flatten_physical(
             tuple(2.0 * value.detach() for value in gradients)
         )
+        gradient_raw_x.masked_fill_(~self.trainable_cell_mask, 0.0)
         command = self._adam_command(gradient_raw_x)
+        command.masked_fill_(~self.trainable_cell_mask, 0.0)
         unprojected = self.desired_raw_x + command
         projected = unprojected.clamp(0.0, 1.0)
         target_projection = _projection(unprojected, projected)
@@ -271,7 +297,11 @@ class IncrementalOnePulseProgramVerifyAdam:
         for _ in range(self.maximum_pulses_per_cell_per_minibatch):
             residual = self.cached_apparent_raw_x - self.desired_raw_x
             finite = torch.isfinite(residual)
-            debt = finite & (residual.abs() > self.verify_tolerance_raw_x)
+            debt = (
+                finite
+                & self.trainable_cell_mask
+                & (residual.abs() > self.verify_tolerance_raw_x)
+            )
             eligible = self.pulse_count + total_this_step < self.pulse_cap
             selected = debt & eligible
             if not bool(torch.any(selected)):
@@ -304,7 +334,11 @@ class IncrementalOnePulseProgramVerifyAdam:
         if bool(torch.any(self.pulse_count > self.pulse_cap)):
             raise RuntimeError("Incremental P&V exceeded its cumulative pulse cap.")
         residual = self.cached_apparent_raw_x - self.desired_raw_x
-        debt = torch.isfinite(residual) & (residual.abs() > self.verify_tolerance_raw_x)
+        raw_debt = torch.isfinite(residual) & (
+            residual.abs() > self.verify_tolerance_raw_x
+        )
+        debt = raw_debt & self.trainable_cell_mask
+        frozen_debt = raw_debt & ~self.trainable_cell_mask
         cap_blocked = (self.pulse_count >= self.pulse_cap) & debt
         issued = int(total_this_step.sum().item())
         per_call_ceiling = int(
@@ -332,6 +366,10 @@ class IncrementalOnePulseProgramVerifyAdam:
             per_call_one_pulse_budget_reached_cells=per_call_ceiling,
             cap_blocked_cells=cap_blocked_count,
             target_debt_cells=int(debt.sum().item()),
+            frozen_target_debt_cells=int(frozen_debt.sum().item()),
+            trainable_accepted_cells=int(
+                (self.trainable_cell_mask & ~debt & torch.isfinite(residual)).sum().item()
+            ),
             maximum_absolute_target_debt=(
                 float(residual[debt].abs().max().item()) if bool(torch.any(debt)) else 0.0
             ),
@@ -343,7 +381,7 @@ class IncrementalOnePulseProgramVerifyAdam:
     def state_dict(self) -> dict[str, Any]:
         return {
             "schema": "ebl.mnist_relu_drn.ibm_om_incremental_one_pulse_program_verify_adam_state",
-            "schema_version": 1,
+            "schema_version": 2,
             "binding_shapes": [list(shape) for shape in self.binding_shapes],
             "learning_rate_raw_x": self.learning_rate_raw_x,
             "nominal_delta_x": self.nominal_delta_x,
@@ -359,6 +397,10 @@ class IncrementalOnePulseProgramVerifyAdam:
             "first_moment": self.first_moment.detach().cpu().clone(),
             "second_moment": self.second_moment.detach().cpu().clone(),
             "pulse_count": self.pulse_count.detach().cpu().clone(),
+            "trainable_cell_mask": self.trainable_cell_mask.detach().cpu().clone(),
+            "trainable_cell_mask_sha256": self.trainable_cell_mask_sha256,
+            "trainable_cells": int(self.trainable_cell_mask.sum().item()),
+            "frozen_cells": int((~self.trainable_cell_mask).sum().item()),
             "desired_raw_x": self.desired_raw_x.detach().cpu().clone(),
             "initial_target_projection": asdict(self.initial_target_projection),
             "initial_target_projection_by_layer": [
@@ -400,7 +442,7 @@ class IncrementalOnePulseProgramVerifyAdam:
         if (
             state.get("schema")
             != "ebl.mnist_relu_drn.ibm_om_incremental_one_pulse_program_verify_adam_state"
-            or state.get("schema_version") != 1
+            or state.get("schema_version") != 2
             or state.get("binding_shapes")
             != [list(shape) for shape in self.binding_shapes]
             or state.get("pulse_cap") != self.pulse_cap
@@ -431,6 +473,8 @@ class IncrementalOnePulseProgramVerifyAdam:
             != asdict(self.initial_target_projection)
             or state.get("initial_target_projection_by_layer")
             != [asdict(value) for value in self.initial_target_projection_by_layer]
+            or state.get("trainable_cell_mask_sha256")
+            != self.trainable_cell_mask_sha256
             or not math.isclose(
                 float(state.get("nominal_delta_x", float("nan"))),
                 self.nominal_delta_x,
@@ -447,6 +491,7 @@ class IncrementalOnePulseProgramVerifyAdam:
             "first_moment": self.first_moment,
             "second_moment": self.second_moment,
             "pulse_count": self.pulse_count,
+            "trainable_cell_mask": self.trainable_cell_mask,
             "desired_raw_x": self.desired_raw_x,
             "cached_apparent_raw_x": self.cached_apparent_raw_x,
             "previous_pulse_direction": self.previous_pulse_direction,
@@ -468,6 +513,14 @@ class IncrementalOnePulseProgramVerifyAdam:
             or bool(torch.any(state["pulse_count"] > self.pulse_cap))
             or bool(torch.any(state["desired_raw_x"] < 0.0))
             or bool(torch.any(state["desired_raw_x"] > 1.0))
+            or not torch.equal(
+                state["trainable_cell_mask"].to(self.device),
+                self.trainable_cell_mask,
+            )
+            or int(state.get("trainable_cells", -1))
+            != int(self.trainable_cell_mask.sum().item())
+            or int(state.get("frozen_cells", -1))
+            != int((~self.trainable_cell_mask).sum().item())
             or bool(
                 torch.any(
                     (state["previous_pulse_direction"] < -1)
@@ -480,6 +533,12 @@ class IncrementalOnePulseProgramVerifyAdam:
         for name, destination in tensors.items():
             source = state[name]
             destination.copy_(source.to(self.device))
+        if (
+            bool(torch.any(self.first_moment[~self.trainable_cell_mask] != 0.0))
+            or bool(torch.any(self.second_moment[~self.trainable_cell_mask] != 0.0))
+            or bool(torch.any(self.pulse_count[~self.trainable_cell_mask] != 0))
+        ):
+            raise ValueError("Frozen cells changed in the incremental P&V Adam state.")
         self.step_index = int(state["step"])
         self.total_api_full_port_verify_calls = int(
             state["total_api_full_port_verify_calls"]

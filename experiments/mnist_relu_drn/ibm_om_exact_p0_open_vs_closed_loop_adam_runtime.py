@@ -95,6 +95,20 @@ def _maximum_by_layer(
     return result
 
 
+def _rms_by_layer(
+    values: torch.Tensor, binding_shapes: Sequence[Sequence[int]]
+) -> list[float]:
+    result = []
+    offset = 0
+    cpu = values.detach().to(device="cpu", dtype=torch.float64)
+    for shape in binding_shapes:
+        size = math.prod(tuple(shape))
+        layer = cpu[offset : offset + size]
+        result.append(float(layer.square().mean().sqrt().item()))
+        offset += size
+    return result
+
+
 def _load_device_model(path: Path, protocol: Any) -> tuple[Any, Path, Mapping[str, Any]]:
     source = path.expanduser().resolve()
     if not source.is_file() or sha256_file(source) != protocol.device_model.receipt_sha256:
@@ -354,9 +368,14 @@ def _build_optimizer(
     population: Any,
     protocol: Any,
     device: torch.device,
+    trainable_cell_mask: torch.Tensor | None = None,
 ) -> Any:
     recovery = protocol.recovery
     if arm_id == "open_loop_adam":
+        if trainable_cell_mask is not None and not bool(
+            torch.all(torch.as_tensor(trainable_cell_mask, dtype=torch.bool))
+        ):
+            raise ValueError("The historical open-loop arm requires all cells.")
         return ColumnSerialOpenLoopAdam(
             open_loop_pulse_port(plant),
             device=device,
@@ -382,6 +401,7 @@ def _build_optimizer(
             maximum_pulses_per_cell_per_minibatch=(
                 recovery.arms[1].maximum_pulses_per_cell_per_minibatch
             ),
+            trainable_cell_mask=trainable_cell_mask,
             beta1=recovery.beta1,
             beta2=recovery.beta2,
             epsilon=recovery.epsilon,
@@ -458,8 +478,32 @@ def _run_arm(
     protocol: Any,
     store: RunStore,
     generated_artifacts: list[Mapping[str, Any]],
+    trainable_cell_mask: torch.Tensor | None = None,
+    artifact_arm_id: str | None = None,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
     recovery = protocol.recovery
+    report_arm_id = artifact_arm_id or arm_id
+    if not report_arm_id or any(
+        character not in "abcdefghijklmnopqrstuvwxyz0123456789_"
+        for character in report_arm_id
+    ):
+        raise ValueError("Expected a filesystem-safe recovery arm identifier.")
+    if trainable_cell_mask is None:
+        trainable_mask = torch.ones(
+            population.size, dtype=torch.bool, device=stack.device
+        )
+    else:
+        trainable_mask = torch.as_tensor(
+            trainable_cell_mask, dtype=torch.bool, device=stack.device
+        ).clone()
+    if trainable_mask.shape != (population.size,) or not bool(
+        torch.any(trainable_mask)
+    ):
+        raise ValueError("Expected a nonempty flat trainable-cell mask.")
+    trainable_mask_sha256 = _tensor_sha256(trainable_mask.detach().cpu())
+    trainable_cells_by_layer = _counts_by_layer(
+        trainable_mask, population.binding_shapes
+    )
     loaders.train_generator.set_state(p0["recovery_generator_state"].clone())
     plant = _restore_deployment_plant(
         p0,
@@ -468,7 +512,9 @@ def _run_arm(
         device=stack.device,
     )
     p0_persistent = plant.persistent.detach().cpu().clone()
+    p0_apparent = plant.apparent.detach().cpu().clone()
     p0_draw_indices = plant.state_dict()["draw_indices"].detach().cpu().clone()
+    trainable_mask_cpu = trainable_mask.detach().cpu()
     sync_catalog_from_persistent(
         stack.bundle.catalog, plant, binding_shapes=population.binding_shapes
     )
@@ -498,6 +544,12 @@ def _run_arm(
         population=population,
         protocol=protocol,
         device=stack.device,
+        trainable_cell_mask=trainable_mask,
+    )
+    initial_desired_raw_x = (
+        optimizer.desired_raw_x.detach().cpu().clone()
+        if arm_id != "open_loop_adam"
+        else None
     )
     corrupt = population.corrupt.to(stack.device)
     reports: list[Mapping[str, Any]] = []
@@ -557,9 +609,12 @@ def _run_arm(
                 tuple(stack.differentiator.compute_gradient())
             )
             before_state = plant.persistent.detach().clone()
+            before_apparent = plant.apparent.detach().clone()
             before_count = optimizer.pulse_count.detach().clone()
             step = optimizer.step(gradients)
             pulse_delta = optimizer.pulse_count - before_count
+            if bool(torch.any(pulse_delta[~trainable_mask] != 0)):
+                raise RuntimeError("A frozen physical cell received a pulse command.")
             issued = int(pulse_delta.sum().item())
             expected_issued = (
                 int(step.applied_cell_pulses)
@@ -569,6 +624,11 @@ def _run_arm(
             if issued != expected_issued:
                 raise RuntimeError("Recovery issued-command accounting diverged.")
             moved = plant.persistent != before_state
+            apparent_moved = plant.apparent != before_apparent
+            if bool(torch.any(moved & ~trainable_mask)) or bool(
+                torch.any(apparent_moved & ~trainable_mask)
+            ):
+                raise RuntimeError("A frozen physical cell changed plant state.")
             if bool(torch.any(moved & corrupt)):
                 raise RuntimeError("An immutable published-corrupt cell moved.")
             if bool(torch.any(plant.persistent + 1.0 < 0.0)):
@@ -647,14 +707,84 @@ def _run_arm(
         )
         if not draw_gate or int(draw_indices.max().item()) > recovery.maximum_random_draws:
             raise RuntimeError("Plant RNG draw continuation differs from two draws/pulse.")
+        frozen_state_gate = (
+            torch.equal(
+                plant_state["persistent"].detach().cpu()[~trainable_mask_cpu],
+                p0_persistent[~trainable_mask_cpu],
+            )
+            and torch.equal(
+                plant_state["apparent"].detach().cpu()[~trainable_mask_cpu],
+                p0_apparent[~trainable_mask_cpu],
+            )
+            and torch.equal(
+                draw_indices[~trainable_mask_cpu],
+                p0_draw_indices[~trainable_mask_cpu],
+            )
+            and bool(
+                torch.all(
+                    optimizer.pulse_count.detach().cpu()[~trainable_mask_cpu] == 0
+                )
+            )
+        )
+        if arm_id != "open_loop_adam":
+            assert initial_desired_raw_x is not None
+            frozen_state_gate = frozen_state_gate and (
+                bool(
+                    torch.all(
+                        optimizer.first_moment.detach().cpu()[~trainable_mask_cpu]
+                        == 0.0
+                    )
+                )
+                and bool(
+                    torch.all(
+                        optimizer.second_moment.detach().cpu()[~trainable_mask_cpu]
+                        == 0.0
+                    )
+                )
+                and bool(
+                    torch.all(
+                        optimizer.previous_pulse_direction.detach().cpu()[
+                            ~trainable_mask_cpu
+                        ]
+                        == 0
+                    )
+                )
+                and torch.equal(
+                    optimizer.desired_raw_x.detach().cpu()[~trainable_mask_cpu],
+                    initial_desired_raw_x[~trainable_mask_cpu],
+                )
+                and torch.equal(
+                    optimizer.cached_apparent_raw_x.detach().cpu()[
+                        ~trainable_mask_cpu
+                    ],
+                    ((p0_apparent + 1.0) / 2.0)[~trainable_mask_cpu],
+                )
+                and not bool(
+                    torch.any(
+                        optimizer.ever_cap_blocked.detach().cpu()[
+                            ~trainable_mask_cpu
+                        ]
+                    )
+                )
+                and not bool(
+                    torch.any(
+                        optimizer.ever_update_target_projected.detach().cpu()[
+                            ~trainable_mask_cpu
+                        ]
+                    )
+                )
+            )
+        if not frozen_state_gate:
+            raise RuntimeError("A frozen cell changed state, RNG, or optimizer memory.")
         generator_record = _generator_state_record(
             loaders.train_generator.get_state()
         )
         checkpoint_payload = {
             "schema": "ebl.mnist_relu_drn.ibm_om_exact_p0_recovery_arm_state",
-            "schema_version": 1,
+            "schema_version": 2,
             "evidence_tier": EVIDENCE_TIER,
-            "arm_id": arm_id,
+            "arm_id": report_arm_id,
+            "writer_arm_id": arm_id,
             "epoch": epoch,
             "source_p0_sha256": protocol.p0.sha256,
             "optimizer_state": optimizer_state,
@@ -664,7 +794,16 @@ def _run_arm(
             "validation_prediction_sha256": validation_prediction_sha256,
             "test": None,
             "output_kl_only": True,
-            "updated_physical_layers": [0, 1],
+            "updated_physical_layers": [
+                index
+                for index, count in enumerate(trainable_cells_by_layer)
+                if count > 0
+            ],
+            "trainable_cell_mask_sha256": trainable_mask_sha256,
+            "trainable_cells_by_layer": trainable_cells_by_layer,
+            "frozen_cells_unchanged": bool(
+                frozen_state_gate
+            ),
             "issued_commands_cumulative": issued_cumulative,
             "effective_state_change_events_cumulative": cumulative_effective,
             "issued_commands_targeting_corrupt_cells_cumulative": (
@@ -680,14 +819,15 @@ def _run_arm(
         }
         checkpoint = atomic_torch_save(
             checkpoint_payload,
-            store.run_dir / f"checkpoints/{arm_id}_epoch_{epoch}.pt",
+            store.run_dir / f"checkpoints/{report_arm_id}_epoch_{epoch}.pt",
         )
         checkpoints[epoch] = checkpoint
         generated_artifacts.append(
-            {"path": str(checkpoint), "kind": f"{arm_id}_epoch_checkpoint"}
+            {"path": str(checkpoint), "kind": f"{report_arm_id}_epoch_checkpoint"}
         )
         report = {
-            "arm_id": arm_id,
+            "arm_id": report_arm_id,
+            "writer_arm_id": arm_id,
             "epoch": epoch,
             "train": {
                 "examples": examples,
@@ -706,6 +846,14 @@ def _run_arm(
             "maximum_commands_per_cell_by_layer": _maximum_by_layer(
                 optimizer.pulse_count, population.binding_shapes
             ),
+            "trainable_cell_mask_sha256": trainable_mask_sha256,
+            "trainable_cells": int(trainable_mask.sum().item()),
+            "trainable_cells_by_layer": trainable_cells_by_layer,
+            "frozen_cells": int((~trainable_mask).sum().item()),
+            "trainable_corrupt_cells_analysis_side": int(
+                (trainable_mask & corrupt).sum().item()
+            ),
+            "frozen_state_rng_and_optimizer_exact": True,
             "issued_commands_targeting_corrupt_cells_epoch": corrupt_issued_epoch,
             "upward_pulses_epoch": upward_epoch,
             "downward_pulses_epoch": downward_epoch,
@@ -740,7 +888,7 @@ def _run_arm(
         reports.append(report)
         store.append_metric({"mode": "exact_p0_recovery", **report})
         print(
-            f"recovery arm={arm_id} epoch={epoch}/{recovery.epochs} "
+            f"recovery arm={report_arm_id} epoch={epoch}/{recovery.epochs} "
             f"val={100.0*float(validation['student_accuracy']):.2f}% "
             f"issued={issued_epoch}",
             flush=True,
@@ -754,7 +902,8 @@ def _run_arm(
     selected_path = checkpoints[selected_epoch]
     selected_payload = torch.load(selected_path, map_location="cpu", weights_only=True)
     if (
-        selected_payload.get("arm_id") != arm_id
+        selected_payload.get("arm_id") != report_arm_id
+        or selected_payload.get("writer_arm_id") != arm_id
         or selected_payload.get("epoch") != selected_epoch
         or selected_payload.get("test") is not None
         or not isinstance(selected_payload.get("optimizer_state"), Mapping)
@@ -772,6 +921,13 @@ def _run_arm(
         )
     )
     selected_optimizer_state = selected_payload["optimizer_state"]
+    selected_persistent = selected_payload["plant_continuation_state"][
+        "persistent"
+    ].detach().cpu()
+    selected_delta = selected_persistent - p0_persistent
+    selected_changed = selected_delta != 0.0
+    if bool(torch.any(selected_changed & ~trainable_mask_cpu)):
+        raise RuntimeError("A selected checkpoint changed a frozen physical cell.")
     if arm_id == "incremental_one_pulse_closed_loop_target_tracking":
         replay_optimizer = _build_optimizer(
             arm_id,
@@ -780,6 +936,7 @@ def _run_arm(
             population=population,
             protocol=protocol,
             device=stack.device,
+            trainable_cell_mask=trainable_mask,
         )
         replay_optimizer.load_state_dict(selected_optimizer_state)
         replay_state = replay_optimizer.state_dict()
@@ -792,6 +949,7 @@ def _run_arm(
             "previous_pulse_direction",
             "ever_update_target_projected",
             "ever_cap_blocked",
+            "trainable_cell_mask",
         ):
             if not torch.equal(replay_state[name], selected_optimizer_state[name]):
                 raise RuntimeError("Closed-loop optimizer checkpoint replay changed.")
@@ -831,15 +989,17 @@ def _run_arm(
         p0_persistent,
         selected_payload["plant_continuation_state"]["persistent"],
         population.corrupt,
-        context=f"selected_{arm_id}",
+        context=f"selected_{report_arm_id}",
     )
     initial_projection = None
     selected_controller_diagnostic = None
     if arm_id != "open_loop_adam":
-        terminal_debt = (
+        terminal_debt_all = (
             selected_optimizer_state["cached_apparent_raw_x"]
             - selected_optimizer_state["desired_raw_x"]
         ).abs() > float(protocol.recovery.arms[1].verify_tolerance_raw_x)
+        terminal_debt = terminal_debt_all & trainable_mask.detach().cpu()
+        frozen_terminal_debt = terminal_debt_all & ~trainable_mask.detach().cpu()
         initial_projection = {
             "all_cells": selected_optimizer_state["initial_target_projection"],
             "by_layer": selected_optimizer_state[
@@ -891,9 +1051,20 @@ def _run_arm(
             "terminal_target_debt_cells_by_layer": _counts_by_layer(
                 terminal_debt, population.binding_shapes
             ),
+            "frozen_terminal_target_debt_cells": int(
+                frozen_terminal_debt.sum().item()
+            ),
+            "unique_commanded_cells": int(
+                (selected_optimizer_state["pulse_count"] > 0).sum().item()
+            ),
+            "unique_commanded_cells_by_layer": _counts_by_layer(
+                selected_optimizer_state["pulse_count"] > 0,
+                population.binding_shapes,
+            ),
         }
     report = {
-        "arm_id": arm_id,
+        "arm_id": report_arm_id,
+        "writer_arm_id": arm_id,
         "claim_label": (
             OPEN_LOOP_CLAIM_LABEL
             if arm_id == "open_loop_adam"
@@ -916,6 +1087,26 @@ def _run_arm(
         "initial_desired_target_projection": initial_projection,
         "selected_controller_diagnostic": selected_controller_diagnostic,
         "corrupt_immobility": corrupt_immobility,
+        "partial_update": {
+            "trainable_cell_mask_sha256": trainable_mask_sha256,
+            "trainable_cells": int(trainable_mask.sum().item()),
+            "trainable_cells_by_layer": trainable_cells_by_layer,
+            "frozen_cells": int((~trainable_mask).sum().item()),
+            "trainable_corrupt_cells_analysis_side": int(
+                (trainable_mask & corrupt).sum().item()
+            ),
+            "fault_mask_used_for_selection": False,
+            "all_four_cells_per_selected_logical_quad_required_by_successor": (
+                artifact_arm_id is not None
+            ),
+            "persistent_cells_changed_from_p0": int(selected_changed.sum().item()),
+            "persistent_cells_changed_from_p0_by_layer": _counts_by_layer(
+                selected_changed, population.binding_shapes
+            ),
+            "persistent_raw_a_delta_rms_by_layer": _rms_by_layer(
+                selected_delta, population.binding_shapes
+            ),
+        },
         "optimizer_state_contract_validated": optimizer_state_contract_validated,
         "optimizer_state_replay_roundtrip": optimizer_state_replay_roundtrip,
         "optimizer_state_replay_limitation": (

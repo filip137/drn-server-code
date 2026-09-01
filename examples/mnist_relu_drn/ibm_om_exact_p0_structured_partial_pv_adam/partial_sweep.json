@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_exact_p0_structured_partial_pv_adam.v1",
+  "teacher_weights_path": "data/mnist_relu_teacher_fixed_init_20260816.pt",
+  "teacher_weights_sha256": "9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52",
+  "target_assignment_seed": 94004,
+  "p0_endpoint_seed": 94301,
+  "p0_sha256": "299d4800f89f379bd85cb25b824c89ef9fe92313fd82d70e27e7ee3f320bbb04",
+  "source_hwa_checkpoint_sha256": "d976b28789b1799cc6c7b1c0d66aadf4f8d635a5dce56ede5d6f1d76c1e41b72",
+  "device_model_sha256": "2107dd670e769361e325661d77f7dec39e7f331db9cc4a3b283a945bd51d4321",
+  "published_population_sha256": "91844d19fc3a1d3043969fb0d2fa793404d71f9a20ed03977aaa63e8a67c86b5",
+  "published_population_fingerprint": "487e9ec1fec97f4f43ce102198fc05afe994760200c675d5595bcd94e1f54039",
+  "recovery_data_order_seed": 94402,
+  "recovery_epochs": 3,
+  "recovery_learning_rate_raw_x": 0.00003,
+  "nominal_delta_x": 0.04745,
+  "verify_tolerance_raw_x": 0.023725,
+  "recovery_pulse_cap": 64,
+  "maximum_random_draws": 385,
+  "fixed_logit_gain": 14.12537544622754,
+  "ranking_cohort": "existing 1024-example train-only mapping calibration loader; no new seed",
+  "ranking_aggregation": "mean across the 8 deterministic 128-example calibration minibatches of the mean absolute dL/dx=2*dL/dG across each canonical quad's 4 physical cells",
+  "ranking_tie_break": "stable flat-index tie-break",
+  "matched_logical_count": 500,
+  "arms": [
+    "full",
+    "w1_only",
+    "w2_only",
+    "w1_top500",
+    "global_top500"
+  ]
+}

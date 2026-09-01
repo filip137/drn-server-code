@@ -132,6 +132,12 @@ from experiments.mnist_relu_drn.ibm_om_exact_p0_open_vs_closed_loop_adam_config 
     parse_exact_p0_open_vs_closed_loop_adam_config,
     resolve_exact_p0_open_vs_closed_loop_adam_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_exact_p0_structured_partial_pv_adam_config import (
+    EXPERIMENT_ID as IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_SCHEMA_VERSION,
+    parse_exact_p0_structured_partial_pv_adam_config,
+    resolve_exact_p0_structured_partial_pv_adam_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -1134,6 +1140,20 @@ IBM_OM_EXACT_P0_OPEN_VS_CLOSED_LOOP_ADAM_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_EXPERIMENT_ID,
+    schema_version=IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_SCHEMA_VERSION,
+    description=(
+        "Compare full, layer-only, and train-only-gradient-ranked 500-quad "
+        "structured partial closed-loop P&V Adam recovery from one exact "
+        "target-94004/endpoint-94301 corrupt-OM P0."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_exact_p0_structured_partial_pv_adam_config,
+    resolver=resolve_exact_p0_structured_partial_pv_adam_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
@@ -1151,6 +1171,7 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_V1.experiment_id: IBM_OM_CORRUPT_SOURCE_HWA_CROSS_ARRAY_PULSE_ADAM_V1,
     IBM_OM_CORRUPT_MULTI_SOURCE_HWA_TUNED_RECOVERY_V1.experiment_id: IBM_OM_CORRUPT_MULTI_SOURCE_HWA_TUNED_RECOVERY_V1,
     IBM_OM_EXACT_P0_OPEN_VS_CLOSED_LOOP_ADAM_V1.experiment_id: IBM_OM_EXACT_P0_OPEN_VS_CLOSED_LOOP_ADAM_V1,
+    IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_V1.experiment_id: IBM_OM_EXACT_P0_STRUCTURED_PARTIAL_PV_ADAM_V1,
     IBM_OM_FOUR_REFERENCE_BALANCE_V1.experiment_id: IBM_OM_FOUR_REFERENCE_BALANCE_V1,
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,

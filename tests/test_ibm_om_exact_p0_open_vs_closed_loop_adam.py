@@ -154,3 +154,47 @@ def test_closed_loop_checkpoint_roundtrip_restores_controller_cache_and_rejects_
     drifted["beta1"] = 0.8
     with pytest.raises(ValueError, match="checkpoint contract"):
         replay.load_state_dict(drifted)
+
+
+def test_partial_mask_freezes_adam_state_target_and_pulse_eligibility() -> None:
+    shapes = ((2, 1), (1, 1))
+    initial_x = torch.tensor([-0.1, 0.5, 1.2], dtype=torch.float32)
+    writable = torch.tensor([False, True, False])
+    port = FakeVerifyPort(initial_x)
+    optimizer = IncrementalOnePulseProgramVerifyAdam(
+        port,
+        initial_apparent_raw_a=2.0 * initial_x - 1.0,
+        device="cpu",
+        binding_shapes=shapes,
+        learning_rate_raw_x=0.2,
+        nominal_delta_x=0.1,
+        verify_tolerance_raw_x=0.01,
+        pulse_cap=4,
+        trainable_cell_mask=writable,
+    )
+    frozen_target = optimizer.desired_raw_x[~writable].clone()
+    step = optimizer.step(
+        (torch.full((2, 1), -1.0), torch.full((1, 1), -1.0))
+    )
+    assert step.issued_cell_pulses == 1
+    assert step.frozen_target_debt_cells == 2
+    assert torch.equal(optimizer.pulse_count[~writable], torch.zeros(2, dtype=torch.int64))
+    assert torch.equal(optimizer.first_moment[~writable], torch.zeros(2))
+    assert torch.equal(optimizer.second_moment[~writable], torch.zeros(2))
+    assert torch.equal(optimizer.desired_raw_x[~writable], frozen_target)
+    assert port.raw_x[0].item() == pytest.approx(-0.1)
+    assert port.raw_x[2].item() == pytest.approx(1.2)
+
+    wrong_mask = IncrementalOnePulseProgramVerifyAdam(
+        FakeVerifyPort(initial_x),
+        initial_apparent_raw_a=2.0 * initial_x - 1.0,
+        device="cpu",
+        binding_shapes=shapes,
+        learning_rate_raw_x=0.2,
+        nominal_delta_x=0.1,
+        verify_tolerance_raw_x=0.01,
+        pulse_cap=4,
+        trainable_cell_mask=torch.tensor([True, False, False]),
+    )
+    with pytest.raises(ValueError, match="checkpoint contract"):
+        wrong_mask.load_state_dict(optimizer.state_dict())
