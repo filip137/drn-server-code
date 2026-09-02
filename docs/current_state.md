@@ -62,10 +62,17 @@ The strongest current interpretation is:
   against repaired A reaches `90.750%` on published-defect B--D, versus
   `88.192%` when the source HWA model retains A's fixed defect map; teacher KL
   improves from `0.3767` to `0.2580`. The result supports removing fixed
-  corrupt identities from the HWA source model. The next HWA control should
-  resample an empirical healthy-device model characterized from A rather than
-  keep logical weights bound to A's exact cells. This does not yet establish
-  that on-chip recovery is necessary or capable of repairing stuck cells.
+  corrupt identities from the HWA source model. This establishes retained
+  corruption as a real deployment problem in the fitted-preset simulation,
+  but it is not evidence that population-level IBM-style HWA fails: the
+  current implementation binds every logical coordinate to one fixed Array-A
+  identity throughout training, whereas IBM inference HWA is designed without
+  a specific chip or failure map. The next HWA control should use A as
+  characterization data, resample a joint healthy-device or P&V-endpoint
+  distribution during training, and keep B--D untouched for evaluation rather
+  than keep logical weights bound to A's exact cells. Randomized defect-mask
+  augmentation belongs in a separate arm. This does not yet establish that
+  on-chip recovery is necessary or capable of repairing stuck cells.
 - Ideal IBM OM baseline controls now isolate zero-state contrast as a major
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
@@ -787,16 +794,18 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Build a versioned empirical HWA device model from Array A's characterized
-   healthy cells rather than binding each logical weight to one exact A cell.
-   Resample or permute bounds, references, directional update parameters, and
-   write-noise parameters across logical coordinates on every declared HWA
-   sampling interval. Compare fixed repaired-A HWA with this healthy
-   population-resampled HWA and with a separately named arm that resamples
-   independent published defect masks; deploy all frozen masters on untouched
-   B--D populations. Add a P&V-conditioned endpoint model as an orthogonal
-   control, because additive write noise alone does not reproduce verified
-   endpoints. Then cross the best training model with no remapping,
+1. Build a versioned empirical, population-level HWA model from Array A's
+   characterized healthy cells rather than binding each logical weight to one
+   exact A cell. Preserve correlations by resampling complete device tuples
+   (bounds, reference, directional update parameters, and noise parameters),
+   or fit the target-conditioned P&V endpoint distribution that those tuples
+   generate; redraw the declared realization at each HWA sampling interval.
+   Compare fixed repaired-A HWA with this healthy population-resampled HWA and
+   with a separately named arm that resamples independent published defect
+   masks; deploy all frozen masters on untouched B--D populations. Keep a
+   P&V-conditioned endpoint model as an orthogonal control, because additive
+   write noise alone does not reproduce verified endpoints. Then cross the
+   best training model with no remapping,
    defect-aware remapping, and spare-row or spare-column deployment, plus
    fresh-read/retention checks. Only after a valid persistent deployment still
    underperforms should a byte-identical frozen-versus-on-chip-recovery fork be

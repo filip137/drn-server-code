@@ -174,6 +174,44 @@ defect augmentation is desired. Since deployment uses P&V-conditioned
 apparent endpoints, a full endpoint-distribution surrogate should also be
 tested separately from the current additive-noise-only forward.
 
+#### Recorded conclusion and HWA correction
+
+The completed evidence supports two separate conclusions:
+
+1. **Device corruption is a real problem in this fitted-preset deployment.**
+   Retaining the published stuck cells reduced the original continuous-HWA
+   fresh-array result from `95.300%` to `83.350%`. In the longer crossed study,
+   training against repaired A rather than A's fixed defect map improved the
+   same published-defect B--D deployments from `88.192% / 0.3767` to
+   `90.750% / 0.2580` in apparent accuracy / teacher KL.
+2. **The present fixed-Array-A HWA is not the final HWA method.** IBM's
+   inference-HWA methodology deliberately avoids a particular device, chip,
+   or failure map and redraws calibrated forward nonidealities during
+   retraining. Our implementation redraws additive apparent noise, but keeps
+   A's exact per-cell support, reference, and corruption identity fixed. The
+   crossed result should therefore be read as evidence of fixed-identity
+   overfitting, not as evidence that distributional HWA is ineffective.
+
+For the next comparison, Array A is characterization data rather than the
+training substrate. The primary arm will retain an FP32 master while drawing
+new virtual healthy-device realizations from a versioned joint population
+model. Complete device tuples must be resampled together so correlations among
+bounds, reference, directional SET/RESET response, and noise are preserved.
+An IBM-style target-conditioned programming/P&V endpoint distribution is a
+second, separately named realization model. A fixed source defect map is
+excluded from the primary arm; independently redrawn defect masks are an
+explicit robustness augmentation, not part of the healthy HWA baseline.
+Frozen masters are then evaluated by the same P&V protocol on untouched B--D.
+
+This separation also clarifies the role of SET/RESET variation. During
+off-chip inference HWA, its deployment consequence should enter through the
+sampled joint device or programming-endpoint distribution. During actual P&V
+or on-chip pulse updates, the individual device curves remain fixed and must
+be simulated explicitly. See IBM's
+[device-agnostic HWA description](https://www.nature.com/articles/s41467-023-40770-4)
+and the
+[AIHWKit inference-HWA contract](https://aihwkit.readthedocs.io/en/latest/hwa_training.html).
+
 ## Plain-language conclusion
 
 - The digital ReLU teacher scores `97.700%` on this cohort.
@@ -197,12 +235,13 @@ tested separately from the current additive-noise-only forward.
   cells because they trained Array A after a different chronological fault
   transition.
 
-This makes the present conclusion narrower and clearer: HWA works well for the
-repaired-array control, while fitting one fixed source defect map is actively
-harmful to fresh-array transfer. Training against repaired A helps on
-published-defect targets on average, but is not uniformly better than no HWA.
-Whether training the already deployed Array B can recover the remaining loss
-remains an open experiment.
+This makes the present conclusion narrower and clearer: device corruption is
+a real deployment problem, while fitting one fixed source defect map is
+actively harmful to fresh-array transfer. Training against repaired A helps
+on published-defect targets on average, but is not uniformly better than no
+HWA. The existing experiment therefore motivates a better population-level
+HWA model before it motivates on-chip recovery. Whether training the already
+deployed Array B can recover any remaining loss remains an open experiment.
 
 ## Existing recovery evidence is from Array A, not Array B
 
