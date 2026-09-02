@@ -854,6 +854,13 @@ def _default_train_handler(request: TrainRequest) -> Optional[int]:
         from experiments.mnist_relu_drn.ibm_om_exact_p0_hybrid_extension_pv_adam_runtime import (
             run_train,
         )
+    elif (
+        request.definition.experiment_id
+        == "mnist_ibm_om_population_hwa_cross_array.v1"
+    ):
+        from experiments.mnist_relu_drn.ibm_om_population_hwa_cross_array_runtime import (
+            run_train,
+        )
     elif request.definition.experiment_id in {
         "mnist_relu_drn_reset.v1",
         "mnist_relu_drn_reset_differential.v1",

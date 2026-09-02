@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 import torch
 
-from training.ibm_reram_endpoint_model import sample_ibm_reram_endpoints
+from training.ibm_reram_endpoint_model import (
+    build_ibm_reram_accepted_endpoint_model,
+    sample_ibm_reram_endpoints,
+)
+from training.ibm_reram_raw_active_program_verify import RAW_ACTIVE_COORDINATE
 
 
 CONDITION_KEY = "one_pulse__lower_to_target__tau_step_0.5"
@@ -90,6 +94,8 @@ def _artifact(
     return {
         "schema": "ebl.ibm_reram.bounded_piecewise_uniform_endpoint_model",
         "schema_version": 2,
+        "coordinate": RAW_ACTIVE_COORDINATE,
+        "metadata": {"enable_published_corruption": False},
         "conditions": {
             CONDITION_KEY: {
                 "fit_status": "fit",
@@ -99,6 +105,53 @@ def _artifact(
             },
         },
     }
+
+
+def test_compiled_accepted_model_is_replayable_and_coordinate_tagged() -> None:
+    model = build_ibm_reram_accepted_endpoint_model(
+        _artifact(corrupt_fraction=1.0),
+        condition_key=CONDITION_KEY,
+        expected_coordinate=RAW_ACTIVE_COORDINATE,
+    ).to("cpu", dtype=torch.float32)
+    targets = torch.full((8_000,), 0.5, dtype=torch.float32)
+
+    first = model.sample(
+        targets,
+        generator=torch.Generator(device="cpu").manual_seed(141),
+    )
+    second = model.sample(
+        targets,
+        generator=torch.Generator(device="cpu").manual_seed(141),
+    )
+
+    assert model.coordinate == RAW_ACTIVE_COORDINATE
+    assert len(model.fingerprint) == 64
+    assert torch.equal(first.residual_x, second.residual_x)
+    assert torch.equal(first.apparent_x, second.apparent_x)
+    assert torch.equal(first.apparent_x, first.target_x + first.residual_x)
+    below_midpoint = (first.apparent_x < 0.5).to(torch.float32).mean()
+    assert 0.47 < float(below_midpoint) < 0.53
+
+
+def test_compiled_accepted_model_rejects_wrong_coordinate_and_support() -> None:
+    artifact = _artifact()
+    artifact["coordinate"] = "x=(w+1)/2"
+    with pytest.raises(ValueError, match="coordinate"):
+        build_ibm_reram_accepted_endpoint_model(
+            artifact,
+            condition_key=CONDITION_KEY,
+            expected_coordinate=RAW_ACTIVE_COORDINATE,
+        )
+
+    artifact = _artifact()
+    records = artifact["conditions"][CONDITION_KEY]["validation"]["per_target"]
+    records[0]["target"] = 0.1
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        build_ibm_reram_accepted_endpoint_model(
+            artifact,
+            condition_key=CONDITION_KEY,
+            expected_coordinate=RAW_ACTIVE_COORDINATE,
+        )
 
 
 def _select_reachability_class(

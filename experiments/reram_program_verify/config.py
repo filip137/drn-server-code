@@ -13,6 +13,9 @@ from experiments.schema import RunMode, config_error
 EXPERIMENT_ID = "ibm_reram_program_verify.v1"
 SCHEMA_VERSION = 1
 SUPPORTED_PRESETS = ("reram_array_om", "reram_array_hfo2")
+REFERENCE_RELATIVE_STATE = "reference_relative"
+RAW_ACTIVE_STATE = "raw_active"
+SUPPORTED_STATE_COORDINATES = (REFERENCE_RELATIVE_STATE, RAW_ACTIVE_STATE)
 SHORT_PRODUCTION_PULSE_CAPS = MappingProxyType(
     {
         "production_short": 512,
@@ -113,6 +116,7 @@ class RuntimeSettings:
 class DeviceSettings:
     preset: str
     enable_published_corruption: bool
+    state_coordinate: str
 
 
 @dataclass(frozen=True)
@@ -233,13 +237,29 @@ def _parse_runtime(value: Any) -> RuntimeSettings:
 def _parse_device(value: Any) -> DeviceSettings:
     path = "config.device"
     raw = _object(value, path)
-    _keys(raw, path, {"preset", "enable_published_corruption"})
+    _keys(
+        raw,
+        path,
+        {"preset", "enable_published_corruption"},
+        {"state_coordinate"},
+    )
     if raw["preset"] not in SUPPORTED_PRESETS:
         raise config_error(f"{path}.preset", f"to be one of {SUPPORTED_PRESETS!r}", raw["preset"])
     corruption = raw["enable_published_corruption"]
     if not isinstance(corruption, bool):
         raise config_error(f"{path}.enable_published_corruption", "to be a boolean", corruption)
-    return DeviceSettings(preset=raw["preset"], enable_published_corruption=corruption)
+    state_coordinate = raw.get("state_coordinate", REFERENCE_RELATIVE_STATE)
+    if state_coordinate not in SUPPORTED_STATE_COORDINATES:
+        raise config_error(
+            f"{path}.state_coordinate",
+            f"to be one of {SUPPORTED_STATE_COORDINATES!r}",
+            state_coordinate,
+        )
+    return DeviceSettings(
+        preset=raw["preset"],
+        enable_published_corruption=corruption,
+        state_coordinate=state_coordinate,
+    )
 
 
 def _parse_partitions(value: Any, path: str) -> PartitionSettings:
@@ -515,7 +535,9 @@ def resolve_reram_program_verify_spec(
 __all__ = [
     "CharacterizeSettings", "DeviceSettings", "EXPERIMENT_ID",
     "HWA_PRODUCTION_PROFILE",
+    "RAW_ACTIVE_STATE", "REFERENCE_RELATIVE_STATE",
     "ReramProgramVerifyConfig", "ReramProgramVerifySpec", "RuntimeSettings",
-    "SCHEMA_VERSION", "parse_reram_program_verify_config",
+    "SCHEMA_VERSION", "SUPPORTED_STATE_COORDINATES",
+    "parse_reram_program_verify_config",
     "resolve_reram_program_verify_spec",
 ]

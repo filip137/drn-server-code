@@ -25,8 +25,11 @@ from experiments.reram_program_verify.analysis import (
     write_plots,
     write_report,
 )
-from experiments.reram_program_verify.config import ReramProgramVerifySpec
-from experiments.reram_program_verify.config import HWA_PRODUCTION_PROFILE
+from experiments.reram_program_verify.config import (
+    HWA_PRODUCTION_PROFILE,
+    RAW_ACTIVE_STATE,
+    ReramProgramVerifySpec,
+)
 from experiments.reram_program_verify.integrity import validate_trajectory_database
 from experiments.reram_program_verify.storage import TrajectoryStore
 from experiments.schema import to_plain_data
@@ -35,6 +38,7 @@ from training.ibm_reram_program_verify import (
     ControllerSettings,
     IbmReramPlant,
     IbmReramPopulation,
+    IbmReramRawActivePlant,
     PopulationStepEstimator,
     VerifyObservation,
     derive_seed,
@@ -42,12 +46,40 @@ from training.ibm_reram_program_verify import (
     run_program_verify,
     sample_ibm_reram_population,
 )
+from training.ibm_reram_raw_active_program_verify import RAW_ACTIVE_COORDINATE
 
 if TYPE_CHECKING:
     from ebl.cli import CharacterizeRequest
 
 
 _ROOT = Path(__file__).resolve().parents[2]
+_REFERENCE_RELATIVE_COORDINATE = "x=(w+1)/2"
+
+
+def _endpoint_coordinate(spec: ReramProgramVerifySpec) -> str:
+    return (
+        RAW_ACTIVE_COORDINATE
+        if spec.device.state_coordinate == RAW_ACTIVE_STATE
+        else _REFERENCE_RELATIVE_COORDINATE
+    )
+
+
+def _plant_type(spec: ReramProgramVerifySpec):
+    return (
+        IbmReramRawActivePlant
+        if spec.device.state_coordinate == RAW_ACTIVE_STATE
+        else IbmReramPlant
+    )
+
+
+def _population_persistent_bounds(
+    population: IbmReramPopulation,
+    *,
+    raw_active: bool,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if raw_active:
+        return population.min_bound, population.max_bound
+    return population.logical_min, population.logical_max
 
 
 def _trajectory_axes(num_devices: int, repeats: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -362,7 +394,7 @@ def _condition_population(
             stream="conditioning",
         )
     )
-    plant = IbmReramPlant(
+    plant = _plant_type(spec)(
         population.select(device_ids),
         seeds=conditioning_seeds,
         device=spec.runtime.device,
@@ -421,7 +453,7 @@ def _run_target(
         stream="target_programming",
     )
     conditioning = conditioned.result
-    plant = IbmReramPlant(
+    plant = _plant_type(spec)(
         expanded_host,
         seeds=pulse_seeds,
         device=execution_device,
@@ -443,11 +475,15 @@ def _run_target(
     conditioned_persistent = (
         (conditioning.persistent + 1.0) / 2.0
     ).detach().cpu().tolist()
+    persistent_lower, persistent_upper = _population_persistent_bounds(
+        expanded_host,
+        raw_active=(spec.device.state_coordinate == RAW_ACTIVE_STATE),
+    )
     sampled_lower_persistent = (
-        (expanded_host.logical_min + 1.0) / 2.0
+        (persistent_lower + 1.0) / 2.0
     ).detach().cpu().tolist()
     sampled_upper_persistent = (
-        (expanded_host.logical_max + 1.0) / 2.0
+        (persistent_upper + 1.0) / 2.0
     ).detach().cpu().tolist()
     construction_seeds = expanded_host.construction_seeds.tolist()
     corrupt_flags = expanded_host.corrupt.tolist()
@@ -561,7 +597,11 @@ def _run_target(
         observer=observe,
     )
     persistent_endpoint = (plant.persistent + 1.0) / 2.0
-    physical = plant.persistent + expanded.reference
+    physical = (
+        plant.persistent
+        if spec.device.state_coordinate == RAW_ACTIVE_STATE
+        else plant.persistent + expanded.reference
+    )
     bound_threshold = 2.0 * settings.conditioning.persistent_change_threshold_span_fraction
     at_lower = torch.abs(physical - expanded.min_bound) <= bound_threshold
     at_upper = torch.abs(physical - expanded.max_bound) <= bound_threshold
@@ -690,7 +730,11 @@ def run_characterize(request: "CharacterizeRequest") -> int:
             "observed_corrupt_devices": int(population.corrupt.sum()),
             "nominal_dw_min": population.nominal_dw_min,
             "nominal_step_fraction": nominal_step_fraction,
-            "coordinate": "x=(w+1)/2",
+            "coordinate": _endpoint_coordinate(spec),
+            "state_coordinate": spec.device.state_coordinate,
+            "sampled_reference_consumed_by_plant": (
+                spec.device.state_coordinate != RAW_ACTIVE_STATE
+            ),
             "evidence_class": (
                 "model_based_aihwkit_preset"
                 if settings.profile != "smoke"
@@ -866,6 +910,8 @@ def run_characterize(request: "CharacterizeRequest") -> int:
                         spec.device.enable_published_corruption
                     ),
                     "nominal_dw_min": population.nominal_dw_min,
+                    "coordinate": _endpoint_coordinate(spec),
+                    "state_coordinate": spec.device.state_coordinate,
                     "trajectory_artifact_sha256": database_digest,
                     "device_population_artifact_sha256": sha256_file(
                         population_path

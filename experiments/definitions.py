@@ -150,6 +150,12 @@ from experiments.mnist_relu_drn.ibm_om_exact_p0_hybrid_extension_pv_adam_config 
     parse_exact_p0_hybrid_extension_pv_adam_config,
     resolve_exact_p0_hybrid_extension_pv_adam_spec,
 )
+from experiments.mnist_relu_drn.ibm_om_population_hwa_cross_array_config import (
+    EXPERIMENT_ID as IBM_OM_POPULATION_HWA_CROSS_ARRAY_EXPERIMENT_ID,
+    SCHEMA_VERSION as IBM_OM_POPULATION_HWA_CROSS_ARRAY_SCHEMA_VERSION,
+    parse_population_hwa_cross_array_config,
+    resolve_population_hwa_cross_array_spec,
+)
 from experiments.mnist_relu_drn.ibm_om_four_reference_balance_config import (
     EXPERIMENT_ID as IBM_OM_FOUR_REFERENCE_BALANCE_EXPERIMENT_ID,
     SCHEMA_VERSION as IBM_OM_FOUR_REFERENCE_BALANCE_SCHEMA_VERSION,
@@ -1194,8 +1200,24 @@ IBM_OM_EXACT_P0_HYBRID_EXTENSION_PV_ADAM_V1 = ExperimentDefinition(
 )
 
 
+IBM_OM_POPULATION_HWA_CROSS_ARRAY_V1 = ExperimentDefinition(
+    experiment_id=IBM_OM_POPULATION_HWA_CROSS_ARRAY_EXPERIMENT_ID,
+    schema_version=IBM_OM_POPULATION_HWA_CROSS_ARRAY_SCHEMA_VERSION,
+    description=(
+        "Program raw ReLU-derived positive conductances on Array A, train "
+        "with an array-agnostic healthy raw-active programming-error "
+        "population, freeze the HWA masters, and transfer them to matched "
+        "repaired and published-corrupt Array B--D deployments."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_population_hwa_cross_array_config,
+    resolver=resolve_population_hwa_cross_array_spec,
+)
+
+
 # This dictionary is the complete registration mechanism.
 EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
+    IBM_OM_POPULATION_HWA_CROSS_ARRAY_V1.experiment_id: IBM_OM_POPULATION_HWA_CROSS_ARRAY_V1,
     IBM_OM_BASELINE_SELECTION_V1.experiment_id: IBM_OM_BASELINE_SELECTION_V1,
     IBM_OM_BASELINE_SPACING_PV_V1.experiment_id: IBM_OM_BASELINE_SPACING_PV_V1,
     IBM_OM_BASELINE_SPACING_PV_NO_CLIP_V1.experiment_id: IBM_OM_BASELINE_SPACING_PV_NO_CLIP_V1,

@@ -14,6 +14,15 @@ from experiments.study_workflow import prepare_study, summarize_study
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SMOKE = _ROOT / "examples" / "reram_program_verify" / "smoke_om.json"
+_RAW_ACTIVE_SMOKE = (
+    _ROOT / "examples" / "reram_program_verify" / "smoke_om_raw_active.json"
+)
+_RAW_ACTIVE_HWA = (
+    _ROOT
+    / "examples"
+    / "reram_program_verify"
+    / "hwa_production_cap128_om_raw_active_continuous.json"
+)
 _PRODUCTION = tuple(
     _ROOT / "examples" / "reram_program_verify" / name
     for name in (
@@ -66,6 +75,20 @@ def test_reram_characterization_config_resolves_strictly() -> None:
     assert spec.device.preset == "reram_array_om"
     assert spec.settings.controllers == ("one_pulse", "adaptive")
     assert spec.settings.start_protocols == ("lower_to_target", "upper_to_target")
+    assert spec.device.state_coordinate == "reference_relative"
+
+
+def test_raw_active_characterization_configs_keep_the_global_positive_g_coordinate() -> None:
+    _, smoke = resolve_experiment_config(_RAW_ACTIVE_SMOKE, RunMode.CHARACTERIZE)
+    _, production = resolve_experiment_config(_RAW_ACTIVE_HWA, RunMode.CHARACTERIZE)
+
+    assert smoke.device.state_coordinate == "raw_active"
+    assert production.device.state_coordinate == "raw_active"
+    assert production.device.enable_published_corruption is False
+    assert production.settings.profile == "hwa_production_cap128"
+    assert production.settings.target_minimum == 0.0
+    assert production.settings.target_maximum == 1.0
+    assert production.settings.target_points == 41
 
 
 @pytest.mark.parametrize("path", _PRODUCTION)

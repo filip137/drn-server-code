@@ -82,6 +82,25 @@ study-level state.
 
 ## Queued next
 
+### `ibm-om-positive-g-population-hwa-cross-array` — IBM-style DRN HWA transfer
+
+- **Question:** Does array-agnostic healthy population programming-error HWA
+  improve transfer from a raw Array-A baseline to Arrays B--D, and do
+  published corrupt devices remain a material independent penalty?
+- **Status:** `queued`
+- **Last updated:** 2026-09-02
+- **Setup:** Raw ReLU-derived signed masters map to four physical
+  conductances in `G=[0,2]`; Array A is written before HWA but is excluded
+  from the HWA sampler; continuous and one-delta population-HWA arms are
+  frozen before paired repaired/published-corrupt writes on B--D.
+- **Intended raw home:**
+  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`
+- **Next action:** Generate the healthy raw-active cap-128 endpoint artifact,
+  run the smoke protocol, then launch the full exploratory A--D comparison
+  only if the smoke artifacts and ordering invariants pass.
+- **Detailed protocol:**
+  [`ibm_om_population_hwa_cross_array.md`](ibm_om_population_hwa_cross_array.md)
+
 ### `mnist-post-hwa-adaptation-locality` — Is full rewriting necessary?
 
 - **Question:** Can targeted W2-plus-bias fine-tuning close most of the gap

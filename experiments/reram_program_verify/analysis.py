@@ -641,7 +641,7 @@ def build_empirical_kernel(
             "schema": "ebl.ibm_reram.empirical_endpoint_kernel",
             "schema_version": 1,
             "conditioning": "success",
-            "coordinate": "x=(w+1)/2",
+            "coordinate": metadata.get("coordinate", "x=(w+1)/2"),
             "claim_class": metadata.get(
                 "evidence_class", "model_based_aihwkit_preset"
             ),
@@ -865,7 +865,7 @@ def fit_gaussian_surrogates(
         artifact = {
             "schema": "ebl.ibm_reram.gaussian_endpoint_model",
             "schema_version": 1,
-            "coordinate": "x=(w+1)/2",
+            "coordinate": metadata.get("coordinate", "x=(w+1)/2"),
             "raw_equation": "x_programmed=x_target+mu(x_target)+sigma(x_target)*Normal(0,1)",
             "deployment_view": "clip raw endpoint to [0,1] only when explicitly requested",
             "fit_partition": "fit device identities; accepted non-corrupt trajectories only",
@@ -1249,7 +1249,7 @@ def fit_bounded_uniform_models(
         artifact = {
             "schema": "ebl.ibm_reram.bounded_piecewise_uniform_endpoint_model",
             "schema_version": 2,
-            "coordinate": "x=(w+1)/2",
+            "coordinate": metadata.get("coordinate", "x=(w+1)/2"),
             "success_equation": (
                 "x_programmed=x_target+e; e is sampled from a target-conditioned "
                 "piecewise-uniform density supported on the verify window"

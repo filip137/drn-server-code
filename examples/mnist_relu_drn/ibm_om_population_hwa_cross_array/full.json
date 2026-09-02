@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_population_hwa_cross_array.v1",
+  "profile": "exploratory_full"
+}
