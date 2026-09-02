@@ -87,7 +87,7 @@ study-level state.
 - **Question:** Does array-agnostic healthy population programming-error HWA
   improve transfer from a raw Array-A baseline to Arrays B--D, and do
   published corrupt devices remain a material independent penalty?
-- **Status:** `running` — A--D smoke protocol
+- **Status:** `running` — full A--D exploratory protocol
 - **Last updated:** 2026-09-02
 - **Setup:** Raw ReLU-derived signed masters map to four physical
   conductances in `G=[0,2]`; Array A is written before HWA but is excluded
@@ -102,13 +102,21 @@ study-level state.
   `82df08f1251ca1dfa992dd1eeb6a3d3ef2d9533d1a10d00e171c83cffd1d1bbf`
   and
   `ca17553cd7fc6b1f1f4524078474ce2cc69502a3cb25220be0f3c7af2f0f5271`.
-- **Active smoke:** Local CUDA execution under tmux session
-  `ibm_om_population_hwa_smoke`, writing
-  `results/exploratory_noncanonical-ibm-om-population-hwa-smoke/` and
-  `results/exploratory_noncanonical-ibm-om-population-hwa-smoke.launch.log`.
-  It uses one training batch per epoch, 64 evaluation examples, and one frozen
-  endpoint seed on each of Arrays A--D. The source config SHA-256 is
-  `fa746f95ef583da6638da33105d3b0b773717041c285e07ee09710a4e6b2c681`;
+- **Completed smoke:** Run
+  `20260902T174023.488270Z-0a83b36b-ca3d0789` completed in 83.04 seconds with
+  all 24 A--D state/population deployments. Every ordering and positive-`G`
+  invariant passed. On its 64-example screen, repaired B--D means were 79.69%
+  raw, 72.92% continuous HWA, and 70.31% one-delta HWA; the paired published-
+  corruption penalties were 46.35, 40.62, and 40.62 percentage points. These
+  are canary observations, not scientific estimates.
+- **Active full run:** Local CUDA execution under tmux session
+  `ibm_om_population_hwa_full`, writing
+  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/` and
+  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array.launch.log`.
+  It uses every MNIST training batch for both ten-epoch HWA arms, the full test
+  split, and four endpoint seeds for every repaired/corrupt deployment on each
+  of Arrays A--D. The source config SHA-256 is
+  `1244f0c17f9071f95d913d1f0621b19917b0f6a6c9d3f484d496cf7b8f59342a`;
   the numerical implementation is commit `627ea8ff`.
 - **Monitoring:** Require the native `status.json`, growing trajectory/metric
   artifacts, plausible GPU activity, and a terminal `result.json`; inspect at
