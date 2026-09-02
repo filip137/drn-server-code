@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-08-31
+Last updated: 2026-09-02
 
 ## Purpose
 
@@ -58,9 +58,14 @@ The strongest current interpretation is:
   to `83.350%`, a paired `-11.950`-point penalty, and broke fresh-array
   portability. Continuous HWA therefore handles ordinary healthy-cell
   variation in this smoke but not surviving stuck-cell and defect-map
-  mismatch. Defect-distribution training and defect-aware deployment are the
-  next question; this result does not yet establish that on-chip recovery is
-  necessary or capable of repairing stuck cells.
+  mismatch. The completed long-HWA cross then showed that a master trained
+  against repaired A reaches `90.750%` on published-defect B--D, versus
+  `88.192%` when the source HWA model retains A's fixed defect map; teacher KL
+  improves from `0.3767` to `0.2580`. The result supports removing fixed
+  corrupt identities from the HWA source model. The next HWA control should
+  resample an empirical healthy-device model characterized from A rather than
+  keep logical weights bound to A's exact cells. This does not yet establish
+  that on-chip recovery is necessary or capable of repairing stuck cells.
 - Ideal IBM OM baseline controls now isolate zero-state contrast as a major
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
@@ -360,6 +365,18 @@ and fine-tuning updates must remain separately measurable.
   mismatch next. These are exploratory AIHWKit-preset smokes with 16
   adaptation examples and 1,000 test examples; they exclude defect remapping,
   spares, fresh-read retention, and on-chip updates.
+- **Fixed-map versus population-model HWA:** In the ten-epoch crossed study,
+  repaired-A stochastic HWA reached `90.750%` pooled apparent accuracy and
+  `0.2580` teacher KL on published-defect B--D. Published-defect-A HWA reached
+  only `88.192%` and `0.3767` on those exact targets. All three assignment
+  means improved, so the predeclared source-policy gate passed. Code and
+  checkpoint audit clarifies that HWA did not pulse Array A: Adam updated an
+  FP32 master, while each forward clamped it through A's fixed cell-by-cell
+  support. All `5,366` stuck-coordinate shadows moved despite their realized
+  values remaining immutable, and the final master rather than the realized
+  A state was handed to target P&V. This supports a new empirical-population
+  HWA arm that samples healthy device identities learned from A across
+  minibatches or epochs; it is distinct from using one fixed virtual A.
 
 ### Cell-specific IBM OM QAT and held-out-array transfer
 
@@ -770,11 +787,17 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Run a predeclared full-scale standard-crossbar defect-mismatch study that
-   compares single-array continuous HWA with HWA trained across multiple
-   published defect masks, then evaluates both frozen masters on several
-   untouched arrays. Cross that training comparison with no remapping,
-   defect-aware remapping, and spare-row or spare-column deployment, and add
+1. Build a versioned empirical HWA device model from Array A's characterized
+   healthy cells rather than binding each logical weight to one exact A cell.
+   Resample or permute bounds, references, directional update parameters, and
+   write-noise parameters across logical coordinates on every declared HWA
+   sampling interval. Compare fixed repaired-A HWA with this healthy
+   population-resampled HWA and with a separately named arm that resamples
+   independent published defect masks; deploy all frozen masters on untouched
+   B--D populations. Add a P&V-conditioned endpoint model as an orthogonal
+   control, because additive write noise alone does not reproduce verified
+   endpoints. Then cross the best training model with no remapping,
+   defect-aware remapping, and spare-row or spare-column deployment, plus
    fresh-read/retention checks. Only after a valid persistent deployment still
    underperforms should a byte-identical frozen-versus-on-chip-recovery fork be
    introduced; truly stuck cells cannot themselves be updated. The planned

@@ -1,7 +1,7 @@
 # IBM-OM standard-crossbar simulation report: 31 August–1 September 2026
 
 - **Reporting window:** 2026-08-31 through 2026-09-01, Europe/Paris
-- **Last updated:** 2026-09-01
+- **Last updated:** 2026-09-02
 - **Branch:** `codex/ibm-om-crossbar-digital-relu`
 - **Architecture:** bias-free `784-50-10` analog crossbar--digital ReLU--analog crossbar
 - **Device source:** AIHWKit 1.1.0 `ReRamArrayOMPresetDevice`
@@ -35,8 +35,8 @@ mapped and programmed onto A or a fresh array.
 | After original HWA | Five-minibatch fixed-final HWA master deployed with P&V | A (`87004`) | **95.775%** | **85.650%** | reviewed |
 | No HWA, fresh deployment | Teacher weights deployed directly with P&V | B (`87005`) | **96.675%** | **89.600%** | reviewed |
 | After original HWA, fresh deployment | Five-minibatch HWA master deployed with P&V | B (`87005`) | **96.225%** | **80.200%** | reviewed |
-| Long stochastic HWA on repaired A | Ten-epoch repaired-A master deployed with P&V | B (`87005`) | **95.575%** | **91.650%** | full artifacts; ready for review |
-| Long stochastic HWA on published-defect A | Ten-epoch published-A master deployed with P&V | B (`87005`) | **92.525%** | **87.025%** | full artifacts; ready for review |
+| Long stochastic HWA on repaired A | Ten-epoch repaired-A master deployed with P&V | B (`87005`) | **95.575%** | **91.650%** | full artifacts; crossed study reviewed |
+| Long stochastic HWA on published-defect A | Ten-epoch published-A master deployed with P&V | B (`87005`) | **92.525%** | **87.025%** | full artifacts; crossed study reviewed |
 | On-chip training (a) | Train the same persistent B state with stochastic pulses | B (`87005`) | **Not run** | **Not run** | required matched experiment |
 | Continuous control (b) | Train from the same B state with continuous updates | B (`87005`) | **Not run** | **Not run** | required matched experiment |
 
@@ -145,9 +145,34 @@ published targets, `83.800%` for published-A to repaired targets, and
 `75.267%` for published-A to published targets. Apparent post-P&V accuracy
 remains the primary inference metric.
 
-This crossed study is artifact-verified and `ready_for_review`; its scientific
-outcome remains a human decision. Its generated report is
+This crossed study is artifact-verified and reviewed with outcome `supported`.
+Its generated report is
 [`results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md`](../results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md).
+
+#### What “HWA on Array A” actually updated
+
+No physical Array-A cell was pulse-programmed during HWA. Adam updated a
+digital FP32 master. On every minibatch, however, each master coordinate was
+clamped through the lower and upper support of the same corresponding Array-A
+cell, and apparent write noise was added to that realized forward state. The
+straight-through backward pass then updated the master coordinate as though
+the clamp were the identity.
+
+That distinction matters for corrupt cells. In the published-A run, all
+`5,366` corrupt coordinates in the FP32 master changed (`0.0784 q` RMS), while
+their realized forward values remained exactly at their immutable stuck
+states. At deployment, P&V received the fixed-final **master**, not the
+realized Array-A state. The training procedure therefore remained tied to A's
+exact identity map while also exporting shadow updates that A itself could
+never express.
+
+The next HWA model should instead be characterized from Array A but not remain
+identity-aligned with it: estimate or bootstrap the healthy-cell population,
+then resample/permutate device parameters across logical coordinates during
+training. A separate arm may resample independent defect masks if generic
+defect augmentation is desired. Since deployment uses P&V-conditioned
+apparent endpoints, a full endpoint-distribution surrogate should also be
+tested separately from the current additive-noise-only forward.
 
 ## Plain-language conclusion
 
@@ -500,7 +525,7 @@ write-noise resampling caused by commands to immutable cells.
 | Shadow-Adam/P&V writer debug | 2026-08-31 | full artifacts; ready for review; one failed attempt retained | [plan](../studies/mnist-ibm-om-crossbar-shadow-program-verify-retraining-debug-20260831-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-shadow-program-verify-retraining-debug-20260831-v1/analysis/report.md) |
 | Stochastic SGD and Tiki-Taka v1 | 2026-09-01 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-stochastic-tiki-taka-recovery-20260901-v1/analysis/report.md) |
 | Long-HWA exact-P&V comparison | 2026-09-01 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1/analysis/report.md) |
-| Crossed HWA/target defect policies | 2026-09-01 | full artifacts; ready for review | [plan](../studies/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md) |
+| Crossed HWA/target defect policies | 2026-09-01; reviewed 2026-09-02 | reviewed; supported | [plan](../studies/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1.json), [workflow report](../results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/report.md) |
 
 Artifact verification reports exact declared coverage for all workflow studies.
 No simulations are currently active. Studies marked `ready for review` do not

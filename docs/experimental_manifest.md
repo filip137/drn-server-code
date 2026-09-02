@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-08-31
+Last updated: 2026-09-02
 
 ## Program goal
 
@@ -1329,6 +1329,33 @@ P&V — no-clipping direct exploratory CUDA screen**
 - **Raw artifacts:** `results/mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1/`
 - **Workflow summary:** `results/mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-crossbar-fresh-array-published-defects-smoke-20260831-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1 -->
+### mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1
+
+**Crossed HWA-training and fresh-array defect policies for IBM-OM**
+
+- **Finished:** 2026-09-02
+- **Evidence class:** `exploratory_model_based_aihwkit_preset_cross_defect_hwa_transfer_control`
+- **Outcome:** supported
+- **Initial hypothesis:** The fresh-array loss of fixed-Array-A stochastic HWA is partly caused by fitting Array A's particular stuck-cell map. When the exact repaired-A stochastic-HWA master is deployed onto the same published-stuck B-D populations and endpoint streams used by the diagonal control, it will outperform the published-A-trained master on pooled apparent accuracy and teacher KL. An effect is material only if accuracy improves by at least 1.0 percentage point, teacher-to-student KL decreases, at least two of the three array means improve, and no array becomes more than 2.0 points worse. The reverse published-A-master to repaired-B-D cross is included to complete the 2-by-2 interaction.
+- **Completion criteria:**
+  - Both declared configs complete exactly once. Each uses the same bias-free 784-50-10 teacher, first-1000 test cohort, source assignment A=87004 with endpoint streams 89402-89405, and fresh arrays B=87005, C=87006, and D=87007 with four paired P&V endpoint streams each.
+  - Both arms use ten full 55000-example epochs, 34380 Adam steps, teacher-KL, logical rates [0.0001,0.0001], identical minibatch order, stochastic apparent-noise seed 88042, fixed-final selection, and an exact-master fault-blind P&V handoff. The only cross-arm source intervention is source-A corruption policy; the only fresh-deployment intervention is the explicitly opposite target corruption policy.
+  - The repaired-A arm reproduces fixed-final master SHA-256 8a2f31abf08e9eafcb70cb96ae1ae20af5ebb05eb2cd8de6383d9a46c0726cbc from repaired-long-stochastic-hwa in study mnist-ibm-om-crossbar-long-hwa-exact-pv-20260901-v1. The published-A arm reproduces master SHA-256 718c6a8c2c9702380f9620b75cb88bd51651294ca74884e922cb1b12e0642d08 from published-long-stochastic-hwa in that study.
+  - The repaired-A to published-B-D arm reproduces published target fingerprints ba3a6ba9f66addfd86c41fa841d8786c5fb4359901042b5290030bca6942df3e, 37e3b830327f2ce654c21b38ef08324990e506e9be7c12141bbcbd0b701072fd, and 721b57d8e580a480d718ff3723a398f1b0fc7e2ebee8b0635e8f59f247910c7c. The reverse arm reproduces repaired fingerprints 0da6a6e4034a8c8a2f6771e580c4a2fe88b3a61337c8abea63f77f31bb698738, 519fb3395788b5f7176a215a97e7261f828ee390cb52ba78678e7e00a154cf93, and aca109e1f8dcd10cfe1abca5b5c5002edfaf79c93d92e8c39ae4b44c0be366be.
+  - Every target population records configured and resolved corruption policy, defect counts, assignment and endpoint seeds, population fingerprint, exact requested master hash, P&V apparent and persistent accuracy, teacher agreement, teacher-to-student KL, prediction hashes, pulse/read totals, acceptance, exhaustion, saturation, and mapping diagnostics.
+  - Apparent post-P&V state is the primary forward metric; persistent q is a programming-state diagnostic. Four endpoint streams within an assignment are repeated writes, while B-D assignment means are the fresh-array units.
+  - The result remains an exploratory AIHWKit-1.1.0 fitted-preset simulation on 1000 test examples. It makes no fabricated-device, fresh-read, retention, endurance, line-resistance, peripheral, or on-chip-learning claim.
+- **Coverage:** 2 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is supported. For this IBM-OM standard-crossbar protocol, HWA should be performed against the array model without retained corrupt devices rather than against one fixed source-array defect map. On the exact same published-defect B-D populations, the repaired-A stochastic-HWA master reached 90.750% pooled apparent accuracy with teacher-to-student KL 0.2580, compared with 88.192% and KL 0.3767 for the published-defect-A master. The paired accuracy gains were +4.625, +2.275, and +0.775 percentage points on B, C, and D, so the predeclared material-effect gate passed. The reverse cross agreed: on repaired B-D, repaired-A HWA reached 95.250% and KL 0.1003, whereas published-defect-A HWA reached 92.283% and KL 0.2405. This indicates that retaining one source array's corrupt identities during HWA fits that particular defect map and harms fresh-array transfer instead of teaching reusable defect compensation. Repaired-A HWA only modestly exceeded no HWA on published B-D overall (90.750% versus 89.758%) and was worse on D, so the success is the source-policy comparison, not a claim of uniform robustness to every defective target array.
+- **Main limitations:** This is exploratory fitted-preset evidence from AIHWKit 1.1.0, not fabricated-device validation. Accuracy and KL use the first 1,000 MNIST test examples. There is one source assignment and three fresh target assignments; four endpoint streams per target are repeated programming writes, not independent arrays. HWA used a fixed source population for ten 55,000-example epochs, so the study tests one form of fixed-map exposure rather than resampling independent fault maps during training. The primary metric is the post-P&V apparent state; independently resampled reads, retention, drift, endurance, line resistance, and peripheral effects remain untested. Repaired-A HWA improved the published-target pooled mean by only 0.992 percentage points over no HWA and reduced accuracy on target D by 2.625 points, so it does not establish uniform target-array robustness. This study deploys frozen masters and does not train persistent B-D arrays on chip.
+- **Next steps:**
+  - Run the predeclared apples-to-apples Array-B recovery comparison by forking bit-identical post-P&V B checkpoints into stochastic-pulse and ideal continuous-update arms, using the same 55,000 labeled examples, order, gradients, learning rate, and fixed-final step under both repaired and published target policies.
+  - Repeat the crossed repaired-versus-published HWA comparison over multiple independently sampled source and target assignments and fault masks, evaluate all 10,000 MNIST test examples, and add independently resampled read and retention measurements.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1 -->
 
 ## Shared validity notes
 
