@@ -61,6 +61,36 @@ Speed does not override the measured-data, matched-comparison, controller-port,
 provenance, or honest-reporting constraints below. Preserve user data and
 unrelated worktree changes.
 
+## Local CUDA execution gate
+
+This host (`nom-cool-2`) is expected to provide the local RTX 3090 through a
+working NVIDIA driver. CUDA availability is a hard precondition for GPU work in
+this tree; a CPU fallback or a skipped CUDA test is not an acceptable substitute.
+
+- The Codex command sandbox can hide `/dev/nvidia*` from ordinary commands even
+  when the host driver is healthy. An approved `nvidia-smi` invocation can run
+  at host level while an ordinary Python invocation remains device-isolated, so
+  `nvidia-smi` alone is not a sufficient execution check.
+- Before reporting CUDA unavailable, accepting CUDA skips, or launching a GPU
+  run, execute the intended Python interpreter at host level (request sandbox
+  escalation) and verify an actual CUDA allocation, kernel, and synchronization:
+
+  ```bash
+  /home/filip/miniconda3/envs/py312/bin/python -c "import torch; assert torch.cuda.is_available(); x=torch.arange(4096,device='cuda').reshape(64,64); y=x@x.T; torch.cuda.synchronize(); print(torch.cuda.get_device_name(0), y.device)"
+  ```
+
+- If host-level `nvidia-smi` and the escalated PyTorch canary pass, classify a
+  failure from ordinary sandboxed Python as sandbox device isolation. Rerun all
+  CUDA-required tests, scripts, and experiments with host-level execution; do
+  not reinstall the driver, fall back to CPU, or report the driver as broken.
+- If either host-level check fails, do not launch or count skipped GPU tests as
+  verification. Capture the kernel/module, device-node, driver, and PyTorch
+  runtime evidence and diagnose the host-level failure before proceeding.
+- Verification reports for CUDA-relevant changes must state that the real
+  host-level canary passed and must identify any remaining skipped tests. A
+  sandbox-only `torch.cuda.is_available() == False` is never sufficient evidence
+  that this host lacks working CUDA.
+
 ## Repository map
 
 - `ebl/`: public command-line entry point. Workflow-managed training,
