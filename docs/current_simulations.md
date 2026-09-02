@@ -87,7 +87,7 @@ study-level state.
 - **Question:** Does array-agnostic healthy population programming-error HWA
   improve transfer from a raw Array-A baseline to Arrays B--D, and do
   published corrupt devices remain a material independent penalty?
-- **Status:** `running` — raw-active characterization prerequisite
+- **Status:** `running` — A--D smoke protocol
 - **Last updated:** 2026-09-02
 - **Setup:** Raw ReLU-derived signed masters map to four physical
   conductances in `G=[0,2]`; Array A is written before HWA but is excluded
@@ -95,14 +95,20 @@ study-level state.
   frozen before paired repaired/published-corrupt writes on B--D.
 - **Intended raw home:**
   `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`
-- **Active prerequisite:** Local CUDA characterization under tmux session
-  `ibm_om_raw_active_hwa_char`, writing
-  `results/exploratory_noncanonical-ibm-om-raw-active-characterization/` and
-  `results/exploratory_noncanonical-ibm-om-raw-active-characterization.launch.log`.
-  It covers 1,024 healthy OM identities, four repeats, 41 targets, both
-  one-pulse and adaptive controllers, and the frozen 128-pulse cap. The source
-  config SHA-256 is
-  `d0ea8df03a60de609414bcaa3558a9fdad5fc26bebf2aed13647a626c1571b35`;
+- **Completed prerequisite:** The local CUDA characterization run
+  `20260902T173750.508771Z-a8b27fe4-2fce664a` completed in 75.96 seconds with
+  201,392 valid trajectories and both 41-target controller blocks. Its bounded
+  endpoint and step-estimator SHA-256 values are respectively
+  `82df08f1251ca1dfa992dd1eeb6a3d3ef2d9533d1a10d00e171c83cffd1d1bbf`
+  and
+  `ca17553cd7fc6b1f1f4524078474ce2cc69502a3cb25220be0f3c7af2f0f5271`.
+- **Active smoke:** Local CUDA execution under tmux session
+  `ibm_om_population_hwa_smoke`, writing
+  `results/exploratory_noncanonical-ibm-om-population-hwa-smoke/` and
+  `results/exploratory_noncanonical-ibm-om-population-hwa-smoke.launch.log`.
+  It uses one training batch per epoch, 64 evaluation examples, and one frozen
+  endpoint seed on each of Arrays A--D. The source config SHA-256 is
+  `fa746f95ef583da6638da33105d3b0b773717041c285e07ee09710a4e6b2c681`;
   the numerical implementation is commit `627ea8ff`.
 - **Monitoring:** Require the native `status.json`, growing trajectory/metric
   artifacts, plausible GPU activity, and a terminal `result.json`; inspect at
