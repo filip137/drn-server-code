@@ -1,6 +1,6 @@
 # Current LoRA/HWA Simulations
 
-Manual sections last updated: 2026-07-29
+Manual sections last updated: 2026-08-29
 
 ## Purpose
 
@@ -18,42 +18,47 @@ Prepared workflow studies retain their hypothesis in
 <!-- BEGIN AUTOMATIC ACTIVE SIMULATIONS -->
 ## Active
 
-### `measured-cohort-b-lora-rank4-reset-20260815-v1`
-
-- **Status:** `running`
-- **Active native runs:** `1`
-- **Raw home:** `results/measured-cohort-b-lora-rank4-reset-20260815-v1/`
-- **Runs:**
-  - `measured-cohort-b-lora-rank4-reset-20260815-v1/20260815T171027.734599Z-89c7d36c-7c5ad177` — `train`, `small_drn.v1`, started `2026-08-15T17:10:27.734755+00:00`
-
-### `mnist-ibm-om-differential-pair-hwa-program-verify-pilot-20260824-v1`
-
-- **Status:** `running`
-- **Active native runs:** `1`
-- **Raw home:** `results/mnist-ibm-om-differential-pair-hwa-program-verify-pilot-20260824-v1/`
-- **Runs:**
-  - `mnist-ibm-om-differential-pair-hwa-program-verify-pilot-20260824-v1/runs/train-exact-bounds-pair-hwa/20260824T120938.532361Z-d9f199ff-39777998` — `train`, `mnist_relu_drn_kd.v1`, arm `train-exact-bounds-pair-hwa`, started `2026-08-24T12:09:38.533493+00:00`
-
-### `mnist-relu-drn-kd-exploratory-20260816`
+### `mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v1`
 
 - **Status:** `running`
 - **Active native runs:** `2`
-- **Raw home:** `results/mnist-relu-drn-kd-exploratory-20260816/`
+- **Raw home:** `results/mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v1/`
 - **Runs:**
-  - `mnist-relu-drn-kd-exploratory-20260816/teacher_lr3e4/20260816T132511.786114Z-224bcaf4-ba2076eb` — `train`, `mnist_relu.v1`, started `2026-08-16T13:25:11.786279+00:00`
-  - `mnist-relu-drn-kd-exploratory-20260816/teacher_lr5e4/20260816T132511.786248Z-e8c48023-c4551d53` — `train`, `mnist_relu.v1`, started `2026-08-16T13:25:11.786374+00:00`
-
-### `mnist-relu-drn-reset-factorial-20260817-v1`
-
-- **Status:** `running`
-- **Active native runs:** `1`
-- **Raw home:** `results/mnist-relu-drn-reset-factorial-20260817-v1/`
-- **Runs:**
-  - `mnist-relu-drn-reset-factorial-20260817-v1/stages/bias_free_logical_mse/local/bias_free_logical_mse_train/attempt-002/runs/20260817T052654.046087Z-9aae840c-4f019e33` — `train`, `mnist_relu_drn_reset_factorial.v1`, started `2026-08-17T05:26:54.046273+00:00`
+  - `mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v1/runs/alpha_025_spacing_2delta-heldout-87003/20260828T173708.357122Z-12b21972-b548a052` — `validate`, `mnist_ibm_om_baseline_spacing_pv_truncated_nominal.v1`, arm `alpha_025_spacing_2delta-heldout-87003`, started `2026-08-28T17:37:08.357387+00:00`
+  - `mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v1/runs/alpha_025_spacing_4delta-heldout-87001/20260828T173708.549593Z-9c2ad4f2-ef125e3f` — `validate`, `mnist_ibm_om_baseline_spacing_pv_truncated_nominal.v1`, arm `alpha_025_spacing_4delta-heldout-87001`, started `2026-08-28T17:37:08.549872+00:00`
 
 <!-- END AUTOMATIC ACTIVE SIMULATIONS -->
 
 ## Analyzing or paused
+
+### Winsorized multi-assignment QAT and persistent pulse-mediated Adam
+
+- **Question:** Can deterministic QAT improve transfer across Winsorized IBM
+  OM assignments, and can pulse-mediated Adam recover one poor persistent
+  deployment without remapping it?
+- **Goal milestone:** `M7`
+- **Status:** `analyzing`
+- **Last updated:** 2026-08-29
+- **Setup:** Ten-epoch deterministic QAT alternated assignments 86001/87001,
+  selected spacing on 87002 at fixed epoch 10, and evaluated five persistent
+  P&V streams on 87003. A follow-up cloned one newly programmed 87003 state
+  across frozen, direct-rail, and coordinated-contrast recovery arms.
+- **Raw homes:**
+  `results/mnist-ibm-om-winsorized-multi-assignment-qat-exploratory-20260829-v1/`
+  and
+  `results/mnist-ibm-om-winsorized-onchip-adam-exploratory-20260829-v1/`
+- **Latest observation:** Assignment 87002 selected `h=delta_x`. On 87003,
+  deterministic QAT changed the five-seed P&V mean only from 68.998% to
+  70.380% and reduced ideal accuracy from 94.88% to 94.47%. Starting from one
+  separately programmed 59.20% persistent state, direct-rail pulse-mediated
+  Adam at `3e-5` reached 94.14% after 54,834 pulses. This is one-state
+  `exploratory_noncanonical` recovery, not a robust on-chip claim.
+- **Next action:** Freeze one-delta, direct rail, `3e-5`, and one epoch, then
+  replicate paired frozen/recovery arms from multiple predeclared persistent
+  endpoints and assignments without retuning. Add inference-read and retention
+  controls only after the paired recovery effect replicates.
+- **Detailed report:**
+  [`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md)
 
 ### `mnist-multibase-lora-replication` — Multi-base MNIST replication
 

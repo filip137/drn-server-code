@@ -1,22 +1,65 @@
-# AGENTS — Tiki-Taka/LoRA integration
+# AGENTS — IBM OM cell-aware quantized exploration
 
 ## Worktree scope
 
-These instructions apply to the `codex/tiki-taka-lora-integration` worktree.
-Its primary research question is:
+These instructions apply to the `codex/ibm-om-cell-aware-quantized` worktree.
+Its current research question is:
 
-> Under which measured-device conditions does hardware-aware (HWA) training
-> underperform, and does the remaining performance gap require additional
-> on-chip training?
+> How should the IBM optimized-material conductance baseline be shared and
+> placed, together with the quantization spacing, when cells have different
+> commissioned RESET-to-SET windows?
 
-Work in this tree must help separate the effects of initialization, HWA,
-physical-device programming or reassignment, and the post-deployment update
-rule. Compare HWA-only behavior with matched on-chip recovery controls such as
-Tiki-Taka or LoRA when the study plan calls for them. Do not assume that
-on-chip training is needed; require a predeclared matched comparison.
+Work in this tree must separate ideal logical mapping from persistent physical
+programming, and must keep baseline sharing, baseline position, spacing, and
+device assignment distinguishable in the results. The immediate focus is to
+choose between a baseline shared by four cells and one shared by two cells,
+then determine where that baseline should lie given the cells' asymmetric
+headroom and the requested spacing.
 
 Keep unrelated repository maintenance and unrelated experiment families out
 of this worktree.
+
+## Exploratory operating mode
+
+This is an exploratory worktree. The default objective is to obtain a
+scientifically interpretable result as soon as practical, rather than to
+reproduce production CI, release gates, or finalized-study ceremony on every
+iteration.
+
+- Prefer the shortest end-to-end path that answers the current question. Use
+  direct local CUDA execution, focused scripts, reduced assignments or
+  repetitions, and staged sweeps when they provide faster feedback.
+- Run only the smallest smoke needed to catch likely errors in the changed
+  path: normally an import or config check plus one tiny numerical or GPU
+  canary. Documentation-only changes need no runtime smoke.
+- Do not run broad test suites, exhaustive CPU/GPU parity, duplicate execution
+  surfaces, multi-platform checks, production-launcher validation, lifecycle
+  checks, or repository-wide security scanners unless the change or the user
+  request makes them directly relevant.
+- Repository security and hardening checks are targeted, not automatic. Run
+  them when changing credentials, network access, subprocess execution,
+  deserialization, permissions, untrusted-input handling, or artifact
+  integrity. Do not weaken production security code to make an experiment
+  pass.
+- “Loosen security checks” means skipping unrelated repository scanners and
+  release gates. It never means bypassing sandbox or approval controls,
+  exposing credentials, weakening access control, or taking unsafe destructive
+  actions.
+- Exploratory runs may bypass the workflow-managed study lifecycle and use
+  clearly named ignored result roots. Record the source revision, config,
+  seeds, device assignment, intervention, primary readout, and limitations
+  needed to interpret and reproduce a useful result.
+- Label reduced-coverage and direct-run outputs `exploratory_noncanonical`.
+  They may guide the next experiment, but they are not finalized evidence and
+  must not support strong deployment or on-chip-training claims by themselves.
+- Screen cheaply first and expand only promising configurations. Spend full
+  assignments, endpoint repetitions, artifact verification, and formal review
+  only when they can change the scientific decision or when promoting a result
+  to canonical evidence.
+
+Speed does not override the measured-data, matched-comparison, controller-port,
+provenance, or honest-reporting constraints below. Preserve user data and
+unrelated worktree changes.
 
 ## Repository map
 
@@ -114,20 +157,23 @@ of this worktree.
 
 ## Experimental workflow
 
-- Follow [`docs/experiment_workflow.md`](docs/experiment_workflow.md).
-- Declare the hypothesis, arms, completion criteria, and analysis before
-  launching native runs.
-- Keep workflow-managed raw runs under the prepared
-  `results/<study-id>/runs/<arm-id>/` roots and preserve failed attempts.
+- Exploratory runs are the default in this worktree. Before launch, record the
+  question, intervention, frozen inputs and seeds, and primary readout; this
+  may be a concise config or adjacent note rather than a complete study plan.
+- Direct local runners and disposable canaries are allowed. Preserve failed
+  attempts only when they are scientifically or operationally informative.
+- State the actual coverage and limitations whenever reporting exploratory
+  results; do not imply that a reduced screen is a completed study.
 - Separate measured results from interpretation. Claim that on-chip training
   is needed only when the predeclared HWA-only control underperforms and a
   matched on-chip arm closes the specified gap.
-- Do not stop at a result summary when a workflow-managed study reaches a
-  terminal scientific conclusion. Run the artifact-verified study summary and
-  follow the review/finalize procedure in `docs/experiment_workflow.md`; use
-  the `ebl-study-closeout` skill when it is available.
-- A concluded study must either be finalized into
-  `docs/experimental_manifest.md` or be handed off with the exact reason that
-  scientific review or finalization remains pending. The manifest contains
-  one entry per study, not one entry per seed, run, shard, or subprocess. Do
-  not finalize active, incomplete, or ad hoc smoke runs as finished evidence.
+- When promoting an exploratory result to workflow-managed or canonical
+  evidence, follow [`docs/experiment_workflow.md`](docs/experiment_workflow.md)
+  in full: predeclare the study, rerun the required coverage through the public
+  CLI, use prepared `results/<study-id>/runs/<arm-id>/` roots, preserve failed
+  attempts, verify artifacts, and complete scientific review and finalization.
+- A concluded workflow-managed study must either be finalized into
+  `docs/experimental_manifest.md` or handed off with the exact reason review or
+  finalization remains pending. Use the `ebl-study-closeout` skill when it is
+  available. Do not finalize exploratory runs or smoke tests as finished
+  evidence.

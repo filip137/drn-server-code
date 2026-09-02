@@ -1224,6 +1224,83 @@ P&V — no-clipping direct exploratory CUDA screen**
 - **Local ignored artifacts:**
   `results/mnist-ibm-om-baseline-spacing-pv-no-clip-exploratory-20260828-v1/`
 
+### mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v2
+
+**Shared-destination baseline and spacing after nominal-bound Winsorization —
+direct exploratory CUDA screen**
+
+- **Finished:** 2026-08-28
+- **Evidence class:**
+  `model_based_aihwkit_preset_nominal_bound_winsorization_control`
+- **Lifecycle:** `exploratory_noncanonical`; this direct CUDA result was not
+  prepared, reviewed, or finalized through the workflow-managed lifecycle
+- **Experiment ID:**
+  `mnist_ibm_om_baseline_spacing_pv_truncated_nominal.v1`
+- **Question:** Does the normalized workaround `a in [-1,1]`, `G=a+1`
+  recover ideal and persistent deployment accuracy when the bound operation is
+  applied before RESET commissioning and P&V rather than as an unphysical
+  circuit-handoff clip?
+- **IBM-model audit:** Default AIHWKit 1.1.0 does not perform this operation.
+  `w_min=-1,w_max=1` are nominal abstract signed-weight bounds; Gaussian
+  device-to-device variation samples cell bounds beyond them, and the C++
+  sampler enforces sign/order without capping to the nominal means. The
+  `SoftBoundsReferenceDevice` is a differential signed-weight abstraction and
+  supplies no unique absolute single-device conductance origin.
+- **Intervention:** Reuse each frozen jointly repaired identity, Winsorize its
+  sampled hard pulse bounds to `a in [-1,1]`, repeat eight-read RESET
+  commissioning on the modified population, build shared destination-column
+  baselines, run the same one-pulse P&V, and deploy persistent `G=a+1=2x`
+  directly. No identity is rejected/resampled and no persistent endpoint is
+  clipped. About 75% of held-out cells have at least one changed bound and 25%
+  have both changed.
+- **Coverage:** 27/27 CUDA configurations completed: three baseline positions,
+  three spacings, three held-out assignments, and five persistent P&V seeds per
+  assignment, for 135 persistent deployments. Zero targets or persistent
+  endpoints were projected at circuit handoff, and zero persistent endpoints
+  left their transformed native support. Four of 238,200 unique destination
+  pairs required a separately recorded pre-programming adjustment of their
+  noisy RESET-max request into the exact pairwise common support.
+- **Accuracy matrix:**
+
+  | `alpha` | Spacing | Continuous | Ideal quantized | Persistent P&V |
+  | ---: | ---: | ---: | ---: | ---: |
+  | 0.00 | `1 delta_x` | 94.9800% | 94.5267% | 74.7913% |
+  | 0.00 | `2 delta_x` | 94.9800% | 93.0933% | **75.7860%** |
+  | 0.00 | `4 delta_x` | 94.9800% | 87.8867% | 71.7620% |
+  | 0.25 | `1 delta_x` | 95.0667% | **94.9933%** | 67.9993% |
+  | 0.25 | `2 delta_x` | 95.0667% | 88.7467% | 58.6040% |
+  | 0.25 | `4 delta_x` | 95.0667% | 77.6333% | 54.9020% |
+  | 0.50 | `1 delta_x` | 94.6900% | 22.7767% | 11.9080% |
+  | 0.50 | `2 delta_x` | 94.6900% | 12.7867% | 10.3027% |
+  | 0.50 | `4 delta_x` | 94.6900% | 13.1533% | 8.9993% |
+
+- **Interpretation:** Winsorization removes the extreme common-mode translation
+  of the global-affine stress test and restores high ideal mapped accuracy.
+  It does not solve persistent deployment. The best persistent mean is 75.7860%
+  at `alpha=0,h=2 delta_x`, with 71.26% requested-code correctness, 35.98%
+  persistent-window success, 99.955% apparent acceptance, and persistent
+  target RMSE 0.05523 raw `x`. Its +0.995-point mean lead over one-delta
+  spacing is not robust: it wins 9/15 paired endpoints and the paired deltas
+  range from -13.34 to +14.19 points. One-delta spacing preserves more ideal
+  resolution but has only 49.63% code correctness; four-delta spacing improves
+  the code label by erasing too much logical resolution. The midpoint rows are
+  additionally confounded by a `[1.0,0.125]` continuous scale selection and a
+  gain at the 1000 ceiling.
+- **Claim boundary:** This is a large analyst-imposed normalized-preset
+  sensitivity control, not default IBM behavior, an absolute conductance
+  calibration, raw measured-device evidence, or fabricated-array evidence. It
+  contains no inference read noise, retention, drift, QAT, HWA, BPTT,
+  replacement-hardware transfer after training, or on-chip recovery.
+- **Next step:** Supply a versioned physical HRS/LRS conductance calibration or
+  measured distribution. Within the normalized control, improve the
+  controller/state estimator at fixed targets until persistent requested-code
+  correctness approaches the declared 90% progression gate; do not begin
+  training/recovery solely from the current 75.7860% endpoint.
+- **Tracked report:**
+  [`ibm_om_baseline_spacing_pv.md`](ibm_om_baseline_spacing_pv.md)
+- **Local ignored artifacts:**
+  `results/mnist-ibm-om-baseline-spacing-pv-winsorized-nominal-exploratory-20260828-v2/`
+
 <!-- BEGIN EBL STUDY mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1 -->
 ### mnist-ibm-om-four-reference-balance-ideal-init-20260828-v1
 
