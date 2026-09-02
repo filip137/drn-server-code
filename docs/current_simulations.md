@@ -31,6 +31,39 @@ Prepared workflow studies retain their hypothesis in
 
 ## Analyzing or paused
 
+### `ibm-om-positive-g-population-hwa-cross-array` — IBM-style DRN HWA transfer
+
+- **Question:** Does array-agnostic healthy population programming-error HWA
+  improve transfer from a raw Array-A baseline to Arrays B--D, and do
+  published corrupt devices remain a material independent penalty?
+- **Status:** `analyzing` — exploratory characterization, smoke, and full run
+  complete
+- **Last updated:** 2026-09-02
+- **Setup:** Raw ReLU-derived signed masters map to four physical
+  conductances in `G=[0,2]`; Array A is written before HWA but is excluded
+  from the HWA sampler; continuous and one-delta population-HWA arms are
+  frozen before paired repaired/published-corrupt writes on B--D.
+- **Raw homes:**
+  `results/exploratory_noncanonical-ibm-om-raw-active-characterization/`,
+  `results/exploratory_noncanonical-ibm-om-population-hwa-smoke/`, and
+  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`.
+- **Completed coverage:** The full run
+  `20260902T174313.144856Z-4602e186-5b00f3fc` contains both ten-epoch HWA
+  arms and exactly 96 deployments: four endpoint seeds for every A--D array,
+  raw/continuous/QAT state, and repaired/corrupt role. All 127 declared
+  artifacts and 1.294 GB of payload passed size and SHA-256 verification.
+- **Latest observation:** Repaired B--D accuracy averaged 81.1725% raw,
+  65.3775% after continuous population HWA, and 65.3825% after one-delta QAT.
+  The corresponding paired published-corruption penalties were 40.7433,
+  18.6492, and 20.4358 percentage points. HWA therefore failed to improve
+  repaired transfer while corrupt devices remained a large independent loss.
+- **Next action:** Add a matched ten-epoch clean/no-modifier optimizer control
+  before changing HWA. Then inspect the population residual bias and the
+  31--32% out-of-range rejection rate; do not tune against B--D or launch
+  on-chip recovery from this exploratory result.
+- **Detailed report:**
+  [`ibm_om_population_hwa_cross_array.md`](ibm_om_population_hwa_cross_array.md)
+
 ### Winsorized multi-assignment QAT and persistent pulse-mediated Adam
 
 - **Question:** Can deterministic QAT improve transfer across Winsorized IBM
@@ -81,53 +114,6 @@ They are interrupted raw attempts, not active studies; this ledger tracks the
 study-level state.
 
 ## Queued next
-
-### `ibm-om-positive-g-population-hwa-cross-array` — IBM-style DRN HWA transfer
-
-- **Question:** Does array-agnostic healthy population programming-error HWA
-  improve transfer from a raw Array-A baseline to Arrays B--D, and do
-  published corrupt devices remain a material independent penalty?
-- **Status:** `running` — full A--D exploratory protocol
-- **Last updated:** 2026-09-02
-- **Setup:** Raw ReLU-derived signed masters map to four physical
-  conductances in `G=[0,2]`; Array A is written before HWA but is excluded
-  from the HWA sampler; continuous and one-delta population-HWA arms are
-  frozen before paired repaired/published-corrupt writes on B--D.
-- **Intended raw home:**
-  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`
-- **Completed prerequisite:** The local CUDA characterization run
-  `20260902T173750.508771Z-a8b27fe4-2fce664a` completed in 75.96 seconds with
-  201,392 valid trajectories and both 41-target controller blocks. Its bounded
-  endpoint and step-estimator SHA-256 values are respectively
-  `82df08f1251ca1dfa992dd1eeb6a3d3ef2d9533d1a10d00e171c83cffd1d1bbf`
-  and
-  `ca17553cd7fc6b1f1f4524078474ce2cc69502a3cb25220be0f3c7af2f0f5271`.
-- **Completed smoke:** Run
-  `20260902T174023.488270Z-0a83b36b-ca3d0789` completed in 83.04 seconds with
-  all 24 A--D state/population deployments. Every ordering and positive-`G`
-  invariant passed. On its 64-example screen, repaired B--D means were 79.69%
-  raw, 72.92% continuous HWA, and 70.31% one-delta HWA; the paired published-
-  corruption penalties were 46.35, 40.62, and 40.62 percentage points. These
-  are canary observations, not scientific estimates.
-- **Active full run:** Local CUDA execution under tmux session
-  `ibm_om_population_hwa_full`, writing
-  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/` and
-  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array.launch.log`.
-  It uses every MNIST training batch for both ten-epoch HWA arms, the full test
-  split, and four endpoint seeds for every repaired/corrupt deployment on each
-  of Arrays A--D. The source config SHA-256 is
-  `1244f0c17f9071f95d913d1f0621b19917b0f6a6c9d3f484d496cf7b8f59342a`;
-  the numerical implementation is commit `627ea8ff`.
-- **Monitoring:** Require the native `status.json`, growing trajectory/metric
-  artifacts, plausible GPU activity, and a terminal `result.json`; inspect at
-  least every 30 minutes. A failed attempt may be retried only into a fresh
-  output directory without changing its seeds or scientific settings.
-- **Next action:** When characterization completes, validate and hash its
-  bounded endpoint and step-estimator artifacts, run the smoke A--D protocol,
-  then launch the full exploratory comparison only if the smoke artifacts and
-  ordering invariants pass.
-- **Detailed protocol:**
-  [`ibm_om_population_hwa_cross_array.md`](ibm_om_population_hwa_cross_array.md)
 
 ### `mnist-post-hwa-adaptation-locality` — Is full rewriting necessary?
 

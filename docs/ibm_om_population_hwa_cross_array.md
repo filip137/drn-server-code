@@ -10,10 +10,12 @@ The `improved-hwa-drn` branch implements the exploratory sequence
 The scientific question is whether a clean master trained against ordinary
 healthy population programming error transfers better than the former
 Array-A-conditioned HWA, and whether published corrupt devices still cause a
-material loss after that source-array dependence is removed. No result is
-reported here; the implementation and smoke/full protocols are ready, but the
-new raw-active characterization and A--D experiment have not been run in this
-worktree.
+material loss after that source-array dependence is removed. The full
+exploratory run completed on 2026-09-02. Under the frozen protocol,
+array-agnostic population HWA did not improve repaired B--D transfer: both HWA
+arms lost about 15.8 percentage points relative to the untrained raw-ReLU
+master. Published corrupt cells remained a separate material problem, costing
+18.65 points after continuous HWA and 20.44 points after one-delta QAT.
 
 All reduced runs are `exploratory_noncanonical`.
 
@@ -124,6 +126,71 @@ test split, and four predeclared endpoint seeds per array. Both protocols use
 the fixed assignments A=`87004`, B=`87005`, C=`87006`, D=`87007` and preserve
 the layer learning rates from the preceding DRN HWA ladder. The full run is
 still exploratory rather than canonical evidence.
+
+## Completed exploratory result
+
+The prerequisite characterization, smoke, and full run completed on the local
+RTX 3090 through the host-level CUDA path:
+
+- characterization run
+  `20260902T173750.508771Z-a8b27fe4-2fce664a`: 201,392 trajectories,
+  1,024 healthy identities, four repeats, both 41-target controller blocks,
+  and a passing SQLite/invariant integrity report;
+- bounded endpoint model SHA-256
+  `82df08f1251ca1dfa992dd1eeb6a3d3ef2d9533d1a10d00e171c83cffd1d1bbf`;
+- step-estimator SHA-256
+  `ca17553cd7fc6b1f1f4524078474ce2cc69502a3cb25220be0f3c7af2f0f5271`;
+- smoke run `20260902T174023.488270Z-0a83b36b-ca3d0789`, which completed all
+  24 declared canary deployments and passed every ordering invariant; and
+- full run `20260902T174313.144856Z-4602e186-5b00f3fc`, launched from clean
+  commit `b149ac3ce465f44fc6a4f245c000644ba00c9716`, which completed in
+  1,761.52 seconds. All 127 declared artifacts (1,294,448,640 bytes) passed
+  size and SHA-256 verification. Coverage is exactly 96 deployments: four
+  endpoint seeds for every array, logical state, and repaired/corrupt role.
+
+The following accuracies are arithmetic means over the four endpoint seeds in
+each array and then over untouched Arrays B--D:
+
+| Logical state | Clean global test | Repaired B | Repaired C | Repaired D | Repaired B--D mean | Change from raw |
+|---|---:|---:|---:|---:|---:|---:|
+| Raw ReLU master | 96.88% | 79.6050% | 80.8625% | 83.0500% | 81.1725% | -- |
+| Continuous population HWA | 92.04% | 66.4575% | 64.6575% | 65.0175% | 65.3775% | -15.7950 pp |
+| One-delta population HWA/QAT | 91.93% | 68.2650% | 65.8400% | 62.0425% | 65.3825% | -15.7900 pp |
+
+| Logical state | Published-corrupt B--D mean | Paired repaired-minus-corrupt penalty |
+|---|---:|---:|
+| Raw ReLU master | 40.4292% | 40.7433 pp |
+| Continuous population HWA | 46.7283% | 18.6492 pp |
+| One-delta population HWA/QAT | 44.9467% | 20.4358 pp |
+
+Every saved invariant passed: all physical conductances stayed in `[0,2]`,
+Array A bounds/state/reference/corruption never entered HWA, Arrays B--D were
+not sampled until both fixed epoch-10 checkpoint hashes existed, each physical
+cell received a fresh healthy endpoint residual per minibatch, forward and
+backward shared that realization, and deployment inference consumed persistent
+full `G=2x` rather than the apparent verify endpoint. The continuous and QAT
+checkpoint SHA-256 values are respectively
+`9ee8d45533f65539be13efd116e92750e3d06c870b926118115c66b83344b50a`
+and
+`d8e68b5b20eb56da84bddcb0f6a7ff5fbf01a0af9c12b3eeed8c4360286b7f48`.
+
+The primary transfer hypothesis is therefore not supported by this frozen
+implementation. Removing Array-A conditioning was not sufficient; the HWA
+optimization itself reduced clean global accuracy by about five points before
+target-array programming and produced nearly identical repaired B--D means for
+continuous and one-delta training. Rejection-resampling discarded 31.20% and
+32.01% of scalar apparent draws in the two arms, respectively. That is a
+declared no-clipping policy, but it is now an important mechanism diagnostic.
+
+Corrupt devices nevertheless remain significant: their matched penalties are
+still roughly 19--20 points after HWA. The smaller penalty than the raw arm
+does not mean corruption is solved, because the repaired HWA reference state
+also became much worse. These data neither establish that corruption is the
+only remaining limitation nor justify on-chip recovery. The next matched
+diagnostic should add a ten-epoch clean/no-modifier optimizer control with the
+same minibatches and learning rates, then inspect residual bias,
+rejection-conditioning, and ramp/learning-rate sensitivity without selecting
+on B--D.
 
 ## Evidence boundary
 
