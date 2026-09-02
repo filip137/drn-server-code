@@ -33,6 +33,33 @@ lambertw = _load_lambertw()
 _CONV_LAYER_TYPES = (ConvLayer,)
 
 
+def _scale_diode_strength_for_layer(
+    params,
+    layer,
+    voltage_amp,
+    current_amp,
+    *,
+    strength_key,
+):
+    """Return updater parameters in the layer's physical-KCL energy units.
+
+    The resistive coefficients at layer ``l`` carry the diagonal energy factor
+
+        D_l = (current_amp / voltage_amp) ** (l - 1).
+
+    A specialized coordinate updater must multiply its current-setting diode
+    parameter by the same factor so that it solves the stationary equation of
+    that energy.  Voltage-domain parameters (for example ``V_t``, ``V_off``,
+    and ``v_off``) are copied without modification.
+    """
+
+    scaled = dict(params)
+    scale_power = layer_index(layer) - 1
+    scale = float(current_amp / voltage_amp) ** scale_power
+    scaled[strength_key] = scaled[strength_key] * scale
+    return scaled
+
+
 def _scale_hard_sigmoid_params_for_layer(
     params,
     layer,
@@ -989,6 +1016,25 @@ class QuadraticMinimizer(Minimizer):
         quadratic_params = dict(quadratic_diode_param)
         exponential_params = dict(exponential_diode_param)
         hard_sigmoid_params = dict(hard_sigmoid_param or {})
+
+        def scaled_quadratic_params(layer):
+            return _scale_diode_strength_for_layer(
+                quadratic_params,
+                layer,
+                voltage_amp,
+                current_amp,
+                strength_key="diode_conductance",
+            )
+
+        def scaled_exponential_params(layer):
+            return _scale_diode_strength_for_layer(
+                exponential_params,
+                layer,
+                voltage_amp,
+                current_amp,
+                strength_key="I_s",
+            )
+
         if not hard_sigmoid_params:
             # Derive sensible defaults from quadratic params when not provided explicitly.
             if "diode_conductance" in quadratic_params:
@@ -1017,13 +1063,25 @@ class QuadraticMinimizer(Minimizer):
         if non_linearity == 'perfect_diode':
             updaters = [QuadraticUpdater(layer, fn) for layer in free_layers]
         elif non_linearity == 'lpw_diode':
-            updaters = [AdaptiveQuadraticUpdater(layer, fn, quadratic_params) for layer in free_layers]
+            updaters = [
+                AdaptiveQuadraticUpdater(layer, fn, scaled_quadratic_params(layer))
+                for layer in free_layers
+            ]
         elif non_linearity == 'double_diode_quadratic':
-            updaters = [QuadraticDoubleDiodeUpdaterOffset(layer, fn, quadratic_params) for layer in free_layers]
+            updaters = [
+                QuadraticDoubleDiodeUpdaterOffset(layer, fn, scaled_quadratic_params(layer))
+                for layer in free_layers
+            ]
         elif non_linearity == 'double_diode_exponential':
-            updaters = [ExponentialDoubleDiodeUpdater(layer, fn, exponential_params) for layer in free_layers]
+            updaters = [
+                ExponentialDoubleDiodeUpdater(layer, fn, scaled_exponential_params(layer))
+                for layer in free_layers
+            ]
         elif non_linearity == 'single_diode_exponential':
-            updaters = [ExponentialSingleDiodeUpdater(layer, fn, exponential_params) for layer in free_layers]
+            updaters = [
+                ExponentialSingleDiodeUpdater(layer, fn, scaled_exponential_params(layer))
+                for layer in free_layers
+            ]
         elif non_linearity == 'hard_sigmoid':
             updaters = [
                 HardSigmoidUpdater(
