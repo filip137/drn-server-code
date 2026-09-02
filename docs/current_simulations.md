@@ -1,6 +1,6 @@
 # Current Simulations
 
-Updated: 2026-08-27
+Updated: 2026-09-02
 
 The Active section is generated from local `results/**/status.json` files.
 Maintain the persistent directory index and other sections manually. Every
@@ -11,6 +11,18 @@ and superseded directories. Scientific conclusions belong in
 direction belongs in [`current_state.md`](current_state.md). State definitions
 and the `ready-for-review` gate are in
 [`experiment_reporting.md`](experiment_reporting.md#simulation-dashboard-and-result-directory-index).
+
+## Physical-KCL rerun closeout
+
+The required physical-KCL compatibility scope is complete.  The Conv1
+checkpoint/same-LR study and all scheduled Conv2/Conv3 production jobs are
+terminal, collected locally, and validated as recorded below and in
+[`experimental_manifest.md`](experimental_manifest.md).  The broader original
+18-arm impact inventory is superseded by the closeout recorded in
+[`legacy_physical_kcl_rerun_inventory.md`](legacy_physical_kcl_rerun_inventory.md):
+its eight unrun cells are optional follow-up, not missing scheduled work.  No
+additional long paper rerun is queued or implied.  Online write-noise studies
+are a separate experiment lineage and are not part of this closeout.
 
 ## Active
 

@@ -60,6 +60,21 @@ mapping in that runtime order.
 
 ## Finished Studies
 
+### Physical-KCL rerun scope closeout — 2026-09-02
+
+The required corrected physical-KCL compatibility scope is complete.  It
+consists of the Conv1 clean-wide checkpoint and same-LR BPTT diagnostic; the
+Conv2/Conv3 clean-wide same-LR BPTT runs; the Conv2/Conv3 clean and
+endpoint-noisy centered-EqProp repeats; and the three fixed-initialization
+bounded Conv3 BPTT cells at `Gmax={1e-4,5e-4,1e-3}`.  Every scheduled run is
+terminal, collected locally, and validated; the official MNIST test split
+remained sealed.  The original 18-arm table was an exhaustive impact audit,
+not the final execution contract.  Its unrun Conv1 EqProp and Conv1/Conv2
+bounded cells, together with deferred wide SGD qualification, are optional
+future work rather than missing required reruns.  See the
+[closed inventory](legacy_physical_kcl_rerun_inventory.md) and the terminal
+[operational record](current_simulations.md#physical-kcl-rerun-closeout).
+
 ## `perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1` — Conv1 legacy checkpoint compatibility and exact-LR retraining under the corrected physical KCL energy
 
 - Analyzed: 2026-08-25
@@ -105,14 +120,17 @@ mapping in that runtime order.
   optimizer scale are empirically robust to the correction at one seed.  SGD
   is not: its same-checkpoint loss is material, and the larger retraining loss
   shows that optimizer scaling is more sensitive than checkpoint reuse.
-  Corrected Conv1 legacy SGD therefore requires LR reselection.  The old Adam
-  rate remains a viable candidate, not a generally requalified legacy result.
-- Limits and next gates: one architecture, one seed, two BPTT optimizers, and
-  validation-only evidence.  It neither estimates uncertainty nor clears
-  Conv2/Conv3, EqProp phase gradients and beta, read noise, bounded weights,
-  or an official-test evaluation.  Continue with corrected Conv1 legacy SGD
-  LR qualification and then the legacy-only operating-point/LR and EqProp
-  gates in the rerun inventory.
+  Corrected Conv1 legacy SGD would therefore require LR reselection before it
+  could be used as corrected evidence; it is excluded from the closed required
+  scope.  The old Adam rate is accepted for the completed compatibility scope,
+  not as a generally requalified legacy result.
+- Limits and scope: one architecture, one seed, two BPTT optimizers, and
+  validation-only evidence.  This study alone neither estimates uncertainty
+  nor clears Conv2/Conv3, EqProp phase gradients and beta, read noise, bounded
+  weights, or an official-test evaluation.  The selected Conv2/Conv3 checks
+  were completed separately and are recorded in the closeout above.  Broader
+  Conv1 SGD, EqProp, and bounded follow-up is optional rather than required for
+  the current paper integration.
 - Artifacts: [study report](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/analysis/report.md),
   [checkpoint replays](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/checkpoint_replay/),
   [exact-LR retrains](../results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1/same_lr_bptt/), and
