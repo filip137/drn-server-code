@@ -76,7 +76,7 @@ this tree; a CPU fallback or a skipped CUDA test is not an acceptable substitute
   escalation) and verify an actual CUDA allocation, kernel, and synchronization:
 
   ```bash
-  /home/filip/miniconda3/envs/py312/bin/python -c "import torch; assert torch.cuda.is_available(); x=torch.arange(4096,device='cuda').reshape(64,64); y=x@x.T; torch.cuda.synchronize(); print(torch.cuda.get_device_name(0), y.device)"
+  /home/filip/miniconda3/envs/py312/bin/python -c "import torch; assert torch.cuda.is_available(); x=torch.arange(4096,device='cuda',dtype=torch.float32).reshape(64,64); y=x@x.T; torch.cuda.synchronize(); print(torch.cuda.get_device_name(0), y.device)"
   ```
 
 - If host-level `nvidia-smi` and the escalated PyTorch canary pass, classify a

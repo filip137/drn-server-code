@@ -1,6 +1,6 @@
 # Current LoRA/HWA Simulations
 
-Manual sections last updated: 2026-08-29
+Manual sections last updated: 2026-09-02
 
 ## Purpose
 
@@ -87,7 +87,7 @@ study-level state.
 - **Question:** Does array-agnostic healthy population programming-error HWA
   improve transfer from a raw Array-A baseline to Arrays B--D, and do
   published corrupt devices remain a material independent penalty?
-- **Status:** `queued`
+- **Status:** `running` — raw-active characterization prerequisite
 - **Last updated:** 2026-09-02
 - **Setup:** Raw ReLU-derived signed masters map to four physical
   conductances in `G=[0,2]`; Array A is written before HWA but is excluded
@@ -95,9 +95,23 @@ study-level state.
   frozen before paired repaired/published-corrupt writes on B--D.
 - **Intended raw home:**
   `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`
-- **Next action:** Generate the healthy raw-active cap-128 endpoint artifact,
-  run the smoke protocol, then launch the full exploratory A--D comparison
-  only if the smoke artifacts and ordering invariants pass.
+- **Active prerequisite:** Local CUDA characterization under tmux session
+  `ibm_om_raw_active_hwa_char`, writing
+  `results/exploratory_noncanonical-ibm-om-raw-active-characterization/` and
+  `results/exploratory_noncanonical-ibm-om-raw-active-characterization.launch.log`.
+  It covers 1,024 healthy OM identities, four repeats, 41 targets, both
+  one-pulse and adaptive controllers, and the frozen 128-pulse cap. The source
+  config SHA-256 is
+  `d0ea8df03a60de609414bcaa3558a9fdad5fc26bebf2aed13647a626c1571b35`;
+  the numerical implementation is commit `627ea8ff`.
+- **Monitoring:** Require the native `status.json`, growing trajectory/metric
+  artifacts, plausible GPU activity, and a terminal `result.json`; inspect at
+  least every 30 minutes. A failed attempt may be retried only into a fresh
+  output directory without changing its seeds or scientific settings.
+- **Next action:** When characterization completes, validate and hash its
+  bounded endpoint and step-estimator artifacts, run the smoke A--D protocol,
+  then launch the full exploratory comparison only if the smoke artifacts and
+  ordering invariants pass.
 - **Detailed protocol:**
   [`ibm_om_population_hwa_cross_array.md`](ibm_om_population_hwa_cross_array.md)
 
