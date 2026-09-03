@@ -16,6 +16,7 @@ from model.resistive.minimizer import (
     ExponentialDoubleDiodeUpdater,
     ExponentialSingleDiodeUpdater,
     HardSigmoidUpdater,
+    _scale_diode_strength_for_layer,
 )
 from model.resistive.layer import NonlinearResistiveLayer
 from model.variable.layer import LinearLayer
@@ -2511,6 +2512,25 @@ class CustomQuadraticMinimizer(CustomMinimizer):
         quadratic_params = dict(quadratic_diode_param)
         exponential_params = dict(exponential_diode_param)
         hard_sigmoid_params = dict(hard_sigmoid_param or {})
+
+        def scaled_quadratic_params(layer):
+            return _scale_diode_strength_for_layer(
+                quadratic_params,
+                layer,
+                voltage_amp,
+                current_amp,
+                strength_key="diode_conductance",
+            )
+
+        def scaled_exponential_params(layer):
+            return _scale_diode_strength_for_layer(
+                exponential_params,
+                layer,
+                voltage_amp,
+                current_amp,
+                strength_key="I_s",
+            )
+
         if not hard_sigmoid_params:
             if "diode_conductance" in quadratic_params:
                 hard_sigmoid_params["g_on"] = quadratic_params["diode_conductance"]
@@ -2527,22 +2547,42 @@ class CustomQuadraticMinimizer(CustomMinimizer):
         if non_linearity == "perfect_diode":
             updaters = [CustomQuadraticUpdater(layer, fn) for layer in free_layers]
         elif non_linearity == "lpw_diode":
-            updaters = [CustomAdaptiveQuadraticUpdater(layer, fn, quadratic_params) for layer in free_layers]
+            updaters = [
+                CustomAdaptiveQuadraticUpdater(layer, fn, scaled_quadratic_params(layer))
+                for layer in free_layers
+            ]
         elif non_linearity == "double_diode_quadratic":
-            updaters = [CustomQuadraticDoubleDiodeUpdaterOffset(layer, fn, quadratic_params) for layer in free_layers]
+            updaters = [
+                CustomQuadraticDoubleDiodeUpdaterOffset(
+                    layer, fn, scaled_quadratic_params(layer)
+                )
+                for layer in free_layers
+            ]
         elif non_linearity == "double_diode_exponential":
             if double_diode_updater in ("CustomExponentialDoubleDiodeUpdater", "custom"):
                 updater_cls = CustomExponentialDoubleDiodeUpdater
-                updaters = [updater_cls(layer, fn, exponential_params) for layer in free_layers]
+                updaters = [
+                    updater_cls(layer, fn, scaled_exponential_params(layer))
+                    for layer in free_layers
+                ]
             elif double_diode_updater in ("float64_experimental", "ExperimentalDoubleDiodeUpdater"):
                 updater_cls = ExperimentalDoubleDiodeUpdater
-                updaters = [updater_cls(layer, fn, exponential_params) for layer in free_layers]
+                updaters = [
+                    updater_cls(layer, fn, scaled_exponential_params(layer))
+                    for layer in free_layers
+                ]
             elif double_diode_updater in ("float32", "Float32ExponentialDoubleDiodeUpdater"):
                 updater_cls = Float32ExponentialDoubleDiodeUpdater
-                updaters = [updater_cls(layer, fn, exponential_params) for layer in free_layers]
+                updaters = [
+                    updater_cls(layer, fn, scaled_exponential_params(layer))
+                    for layer in free_layers
+                ]
             elif double_diode_updater in ("float64_timed", "TimedExponentialDOubleDiodeUpdater"):
                 updater_cls = TimedExponentialDOubleDiodeUpdater
-                updaters = [updater_cls(layer, fn, exponential_params) for layer in free_layers]
+                updaters = [
+                    updater_cls(layer, fn, scaled_exponential_params(layer))
+                    for layer in free_layers
+                ]
             elif double_diode_updater in (
                 "float64_timed_overrelaxed",
                 "OverRelazedTimedExponentialDoubleDiodeUpdater",
@@ -2551,7 +2591,7 @@ class CustomQuadraticMinimizer(CustomMinimizer):
                     OverRelazedTimedExponentialDoubleDiodeUpdater(
                         layer,
                         fn,
-                        exponential_params,
+                        scaled_exponential_params(layer),
                         overrelaxation_factor=overrelaxation_factor,
                     )
                     for layer in free_layers
@@ -2565,7 +2605,7 @@ class CustomQuadraticMinimizer(CustomMinimizer):
                     OverRelazedDoubleDiodeExponentialUpdater(
                         layer,
                         fn,
-                        exponential_params,
+                        scaled_exponential_params(layer),
                         overrelaxation_factor=overrelaxation_factor,
                     )
                     for layer in free_layers
@@ -2597,7 +2637,7 @@ class CustomQuadraticMinimizer(CustomMinimizer):
                     OverRelazedSingleDiodeExponentialUpdater(
                         layer,
                         fn,
-                        exponential_params,
+                        scaled_exponential_params(layer),
                         overrelaxation_factor=overrelaxation_factor,
                     )
                     for layer in free_layers
@@ -2610,7 +2650,10 @@ class CustomQuadraticMinimizer(CustomMinimizer):
                     f"got {single_diode_updater!r}"
                 )
             if updater_cls is not None:
-                updaters = [updater_cls(layer, fn, exponential_params) for layer in free_layers]
+                updaters = [
+                    updater_cls(layer, fn, scaled_exponential_params(layer))
+                    for layer in free_layers
+                ]
         elif non_linearity == "hard_sigmoid":
             updaters = [CustomHardSigmoidUpdater(layer, fn, hard_sigmoid_params) for layer in free_layers]
         elif non_linearity == "experimental":
