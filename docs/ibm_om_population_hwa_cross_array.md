@@ -11,11 +11,11 @@ The scientific question is whether a clean master trained against ordinary
 healthy population programming error transfers better than the former
 Array-A-conditioned HWA, and whether published corrupt devices still cause a
 material loss after that source-array dependence is removed. The full
-exploratory run completed on 2026-09-02. Under the frozen protocol,
-array-agnostic population HWA did not improve repaired B--D transfer: both HWA
-arms lost about 15.8 percentage points relative to the untrained raw-ReLU
-master. Published corrupt cells remained a separate material problem, costing
-18.65 points after continuous HWA and 20.44 points after one-delta QAT.
+exploratory programming run completed on 2026-09-02, but its headline
+evaluation used the hidden persistent endpoints. Those values are retained
+below as a secondary state diagnostic and are not the primary inference
+result. A frozen apparent-state replay is predeclared below to answer the
+question using the state exposed to the network after programming.
 
 All reduced runs are `exploratory_noncanonical`.
 
@@ -57,7 +57,7 @@ are recorded per epoch and in the checkpointed sampler state. This is a
 hardware-specific conditional-endpoint policy and a known difference from the
 standard-crossbar handoff.
 
-## Implemented ladder
+## Original implemented ladder
 
 1. Load the exact frozen ReLU teacher checkpoint and create clean normalized
    logical masters. No newest-checkpoint discovery is allowed.
@@ -79,6 +79,10 @@ standard-crossbar handoff.
 7. Report HWA-minus-raw transfer, quantization-minus-continuous HWA, and the
    repaired-minus-published-corrupt penalty separately for every array and
    over B--D.
+
+Steps 6--7 describe the already completed persistent-state evaluation. They
+must not be interpreted as the primary deployed inference result now that the
+saved post-write apparent endpoints are available.
 
 Array A is deliberately a pre-HWA baseline, not an HWA input. Its sampled
 bounds, references, identities, corruption mask, programming endpoint, and
@@ -127,7 +131,37 @@ the fixed assignments A=`87004`, B=`87005`, C=`87006`, D=`87007` and preserve
 the layer learning rates from the preceding DRN HWA ladder. The full run is
 still exploratory rather than canonical evidence.
 
-## Completed exploratory result
+## Predeclared apparent-state replay
+
+The next diagnostic is a read-only replay of all 96 saved endpoints from
+`20260902T174313.144856Z-4602e186-5b00f3fc`. It freezes the teacher checkpoint
+(`9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52`),
+MNIST split and order (runtime/data seeds 42), arrays A--D (assignment seeds
+87004--87007), all four endpoint seeds per array, logical HWA state, repaired
+versus published-corrupt population, fixed logit gain, DRN topology, and
+solver. It invokes no programming, resampling, optimizer update, or fresh
+inference noise.
+
+For each endpoint, one saved post-write apparent sample is held fixed for the
+entire test-set forward. Native raw-active apparent values are mapped by
+`x=(a+1)/2`. Because the passive DRN and the requested raw-ReLU mapping require
+nonnegative conductances in `[0,2]`, inference uses the explicit passivity
+projection `G=2*clamp(x,0,1)`. The literal unbounded apparent values, their
+out-of-range rate, accepted out-of-range count, and projection displacement
+are retained as diagnostics. This projection is a DRN-specific inference
+policy, not another programming operation and not a claim of literal
+unbounded AIHWKit forward parity.
+
+The primary readout is full-test apparent-state accuracy and the paired
+repaired-minus-corrupt penalty on untouched Arrays B--D. HWA-minus-raw and
+one-delta-minus-continuous comparisons remain separate. Persistent accuracy is
+reported on the identical examples and settings, and one full endpoint must
+replay its saved persistent prediction hash exactly before the apparent result
+is accepted. This direct CUDA replay is `exploratory_noncanonical` and remains
+a model-based AIHWKit 1.1.0 OM diagnostic rather than measured-hardware
+evidence.
+
+## Completed persistent-state exploratory result
 
 The prerequisite characterization, smoke, and full run completed on the local
 RTX 3090 through the host-level CUDA path:

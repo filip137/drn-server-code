@@ -153,6 +153,11 @@ this tree; a CPU fallback or a skipped CUDA test is not an acceptable substitute
 - Matched arms must keep the DRN topology, solver, data split, teacher or base
   checkpoint, and device assignment fixed unless one of them is the explicitly
   declared intervention.
+- Use the post-write apparent device state for the network's primary accuracy
+  evaluation, model selection, and scientific conclusions; do not substitute
+  accuracy computed from the hidden persistent state. At minimum, every result
+  must report both apparent-state accuracy and persistent-state accuracy,
+  clearly labelled and evaluated on the same examples and settings.
 - The realistic P&V controller may receive only continuous targets, apparent
   normalized verify values, its own history, and calibration-partition
   population estimates. Keep persistent states and hidden device parameters
