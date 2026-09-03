@@ -1,6 +1,6 @@
 # Current LoRA/HWA Simulations
 
-Manual sections last updated: 2026-09-02
+Manual sections last updated: 2026-09-03
 
 ## Purpose
 
@@ -36,9 +36,8 @@ Prepared workflow studies retain their hypothesis in
 - **Question:** Does array-agnostic healthy population programming-error HWA
   improve transfer from a raw Array-A baseline to Arrays B--D, and do
   published corrupt devices remain a material independent penalty?
-- **Status:** `analyzing` — exploratory characterization, smoke, and full run
-  complete
-- **Last updated:** 2026-09-02
+- **Status:** `analyzing` — programming run and apparent-state replay complete
+- **Last updated:** 2026-09-03
 - **Setup:** Raw ReLU-derived signed masters map to four physical
   conductances in `G=[0,2]`; Array A is written before HWA but is excluded
   from the HWA sampler; continuous and one-delta population-HWA arms are
@@ -46,21 +45,28 @@ Prepared workflow studies retain their hypothesis in
 - **Raw homes:**
   `results/exploratory_noncanonical-ibm-om-raw-active-characterization/`,
   `results/exploratory_noncanonical-ibm-om-population-hwa-smoke/`, and
-  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`.
+  `results/exploratory_noncanonical-ibm-om-population-hwa-cross-array/`, plus
+  `results/exploratory_noncanonical-ibm-om-population-hwa-apparent-replay/`.
 - **Completed coverage:** The full run
   `20260902T174313.144856Z-4602e186-5b00f3fc` contains both ten-epoch HWA
   arms and exactly 96 deployments: four endpoint seeds for every A--D array,
   raw/continuous/QAT state, and repaired/corrupt role. All 127 declared
   artifacts and 1.294 GB of payload passed size and SHA-256 verification.
-- **Latest observation:** Repaired B--D accuracy averaged 81.1725% raw,
-  65.3775% after continuous population HWA, and 65.3825% after one-delta QAT.
-  The corresponding paired published-corruption penalties were 40.7433,
-  18.6492, and 20.4358 percentage points. HWA therefore failed to improve
-  repaired transfer while corrupt devices remained a large independent loss.
+- **Apparent-state coverage:** The immutable replay
+  `20260903T090511.037538Z-e7f05444-b3c9bd37` evaluated all 96 saved endpoints
+  on all 10,000 test examples. It invoked no programming or resampling and
+  passed an exact saved-persistent prediction-hash canary.
+- **Latest observation:** Primary apparent-state repaired B--D accuracy is
+  93.3942% raw, 78.2958% after continuous population HWA, and 74.6742% after
+  one-delta QAT. Corresponding corrupt accuracy is 47.3300%, 50.3500%, and
+  48.4800%, giving paired corruption penalties of 46.0642, 27.9458, and
+  26.1942 percentage points. Apparent inference improves accuracy relative to
+  persistent inference but does not rescue HWA transfer or remove the defect
+  problem.
 - **Next action:** Add a matched ten-epoch clean/no-modifier optimizer control
-  before changing HWA. Then inspect the population residual bias and the
-  31--32% out-of-range rejection rate; do not tune against B--D or launch
-  on-chip recovery from this exploratory result.
+  before changing HWA. Then inspect the population residual bias, the 31--32%
+  HWA rejection rate, and the 6.41% projected apparent endpoint values; do not
+  tune against B--D or launch on-chip recovery from this exploratory result.
 - **Detailed report:**
   [`ibm_om_population_hwa_cross_array.md`](ibm_om_population_hwa_cross_array.md)
 

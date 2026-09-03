@@ -13,9 +13,11 @@ Array-A-conditioned HWA, and whether published corrupt devices still cause a
 material loss after that source-array dependence is removed. The full
 exploratory programming run completed on 2026-09-02, but its headline
 evaluation used the hidden persistent endpoints. Those values are retained
-below as a secondary state diagnostic and are not the primary inference
-result. A frozen apparent-state replay is predeclared below to answer the
-question using the state exposed to the network after programming.
+below as a secondary state diagnostic. The frozen apparent-state replay
+completed on 2026-09-03 and is now the primary inference result. On B--D,
+continuous and one-delta population HWA reduced repaired apparent-state
+accuracy by 15.10 and 18.72 percentage points relative to raw ReLU. Published
+corruption still cost 27.95 and 26.19 points in those HWA arms.
 
 All reduced runs are `exploratory_noncanonical`.
 
@@ -131,9 +133,9 @@ the fixed assignments A=`87004`, B=`87005`, C=`87006`, D=`87007` and preserve
 the layer learning rates from the preceding DRN HWA ladder. The full run is
 still exploratory rather than canonical evidence.
 
-## Predeclared apparent-state replay
+## Apparent-state replay protocol
 
-The next diagnostic is a read-only replay of all 96 saved endpoints from
+The diagnostic is a read-only replay of all 96 saved endpoints from
 `20260902T174313.144856Z-4602e186-5b00f3fc`. It freezes the teacher checkpoint
 (`9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52`),
 MNIST split and order (runtime/data seeds 42), arrays A--D (assignment seeds
@@ -160,6 +162,62 @@ replay its saved persistent prediction hash exactly before the apparent result
 is accepted. This direct CUDA replay is `exploratory_noncanonical` and remains
 a model-based AIHWKit 1.1.0 OM diagnostic rather than measured-hardware
 evidence.
+
+## Completed apparent-state exploratory result
+
+The full replay
+`20260903T090511.037538Z-e7f05444-b3c9bd37` completed from clean commit
+`41c0cd49f182a7d76c2fbeb42cc3e8ecc4505cd8` in 202.51 seconds on the local
+RTX 3090. It evaluated all 96 unique saved endpoint identities, exactly 24 per
+array and 10,000 test examples per endpoint. The first persistent endpoint
+reproduced its saved 10,000-example prediction hash exactly before apparent
+evaluation. The scientific-summary SHA-256 is
+`4d4393bf480f8257f6bb493b37985908f6dcd6f1a95499952ad585fd5a7817ae`.
+
+| Logical state | Repaired B | Repaired C | Repaired D | Repaired B--D mean | Change from raw |
+|---|---:|---:|---:|---:|---:|
+| Raw ReLU master | 94.2550% | 93.1500% | 92.7775% | 93.3942% | -- |
+| Continuous population HWA | 78.1300% | 79.4300% | 77.3275% | 78.2958% | -15.0983 pp |
+| One-delta population HWA/QAT | 77.2750% | 74.7850% | 71.9625% | 74.6742% | -18.7200 pp |
+
+| Logical state | Apparent repaired B--D | Apparent corrupt B--D | Apparent corruption penalty | Persistent repaired B--D | Persistent corrupt B--D | Persistent corruption penalty |
+|---|---:|---:|---:|---:|---:|---:|
+| Raw ReLU master | 93.3942% | 47.3300% | 46.0642 pp | 81.1725% | 40.4292% | 40.7433 pp |
+| Continuous population HWA | 78.2958% | 50.3500% | 27.9458 pp | 65.3775% | 46.7283% | 18.6492 pp |
+| One-delta population HWA/QAT | 74.6742% | 48.4800% | 26.1942 pp | 65.3825% | 44.9467% | 20.4358 pp |
+
+Using the apparent rather than persistent state raises repaired B--D accuracy
+by 12.2217, 12.9183, and 9.2917 points for raw, continuous HWA, and one-delta
+HWA, respectively. It raises corrupt accuracy by only 6.9008, 3.6217, and
+3.5333 points. Apparent inference therefore does not make the defect problem
+disappear; it increases the paired corruption gap for every logical state.
+
+HWA still fails the repaired-transfer comparison. Its smaller corruption gap
+than raw ReLU must not be called defect robustness: most of that reduction
+comes from lowering the repaired reference by 15--19 points, while corrupt
+accuracy changes by only +3.02 points for continuous HWA and +1.15 points for
+one-delta HWA relative to raw ReLU.
+
+Across B--D, 732,525 of 11,433,600 saved apparent cell-endpoint values (6.4068%)
+fell outside nominal `x=[0,1]`; 98.73% of those were below zero and 96.35% had
+been accepted by noisy verify. The passivity projection had RMS displacement
+0.00458 in raw `x`, or 0.00916 in `G`, while literal extrema were -0.24294 and
+1.21552. Thus the projected apparent result is the correct positive-`G` DRN
+diagnostic requested here, but it is not a literal unbounded AIHWKit forward.
+
+The result strengthens the preliminary indication that this passive DRN is
+more defect-sensitive than the earlier crossbar-plus-digital-ReLU smokes.
+It is not yet a matched architecture proof: those crossbar smokes used
+different tensor sizes, device populations, and adaptation histories. A
+neck-to-neck causal architecture claim still requires the already specified
+matched topology/device/codebook/programming control.
+
+The scientific conclusion is therefore unchanged but better grounded:
+array-agnostic population HWA does not improve clean B--D transfer under this
+training protocol, and published corrupt devices remain a large independent
+problem under the primary apparent-state inference rule. The next training
+diagnostic remains a matched ten-epoch clean/no-modifier optimizer control;
+on-chip recovery is not implied by this replay alone.
 
 ## Completed persistent-state exploratory result
 
@@ -232,6 +290,9 @@ This uses the AIHWKit 1.1.0 optimized-material preset, not independent raw
 device traces. It models successful healthy programming error during HWA and
 explicit pulse-resolved deployment with the preset's published corruption
 mechanism. It does not include inference read noise, retention, peripheral
-nonideality, fabricated-array measurements, or on-chip recovery. A persistent
-corruption penalty would show that defects remain significant under this HWA;
-it would not by itself show that on-chip training is necessary or sufficient.
+nonideality, fabricated-array measurements, or on-chip recovery. The observed
+persistent and apparent corruption penalties show that defects remain
+significant under this HWA; they do not by themselves show that on-chip
+training is necessary or sufficient. The primary apparent result also
+includes the declared positive-G passivity projection and cannot be relabelled
+as literal unbounded AIHWKit inference.
