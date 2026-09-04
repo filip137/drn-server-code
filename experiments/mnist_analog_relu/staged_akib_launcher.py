@@ -55,6 +55,7 @@ from experiments.mnist_analog_relu.staged_config import (
 )
 from experiments.study_workflow import load_study_plan, load_study_record
 from training.ibm_reram_hwa import load_om_array_population
+from training.ibm_reram_program_verify import OM_PRESET
 from training.ibm_om_standard_crossbar import tensor_sha256
 
 
@@ -1614,6 +1615,22 @@ def _probe_gpu_occupancy(*, environment: Mapping[str, str]) -> dict[str, Any]:
     }
 
 
+def _sampler_probe_request(corruption_policy: str) -> dict[str, Any]:
+    if corruption_policy not in {"counterfactual_repaired", "published"}:
+        raise ValueError(f"Unsupported sampler probe policy: {corruption_policy!r}.")
+    return {
+        "preset": OM_PRESET,
+        "assignment_seed": 2_099_999,
+        "corruption_policy": corruption_policy,
+        "preset_default_corrupt_devices_prob": 0.0,
+        "published_corrupt_devices_prob": 0.1348,
+        "corrupt_devices_range": 0.01,
+        "binding_keys": ["probe"],
+        "binding_shapes": [[2, 2]],
+        "required_aihwkit_version": EXPECTED_AIHWKIT_VERSION,
+    }
+
+
 def _probe_prerequisites(
     *,
     task_python: Path,
@@ -1663,17 +1680,7 @@ def _probe_prerequisites(
     with tempfile.TemporaryDirectory(prefix="ebl-om-sampler-probe-") as temporary:
         root = Path(temporary)
         for policy in ("counterfactual_repaired", "published"):
-            request = {
-                "preset": "ReRamArrayOMPresetDevice",
-                "assignment_seed": 2_099_999,
-                "corruption_policy": policy,
-                "preset_default_corrupt_devices_prob": 0.0,
-                "published_corrupt_devices_prob": 0.1348,
-                "corrupt_devices_range": 0.01,
-                "binding_keys": ["probe"],
-                "binding_shapes": [[2, 2]],
-                "required_aihwkit_version": EXPECTED_AIHWKIT_VERSION,
-            }
+            request = _sampler_probe_request(policy)
             output = root / f"{policy}.npz"
             receipt = root / f"{policy}.json"
             command = [

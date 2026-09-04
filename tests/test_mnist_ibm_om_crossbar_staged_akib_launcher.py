@@ -30,6 +30,7 @@ from experiments.mnist_analog_relu.staged_akib_launcher import (
     _replay_completed_adam_ancestry,
     _require_akib_hostname,
     _require_clean_source_commit,
+    _sampler_probe_request,
     _tuning_diagnostic_row,
     _validate_declared_coverage,
     _validate_hwa_evaluation,
@@ -38,6 +39,9 @@ from experiments.mnist_analog_relu.staged_akib_launcher import (
     development_blueprints,
     production_blueprints,
     teacher_blueprints,
+)
+from experiments.reram_program_verify.hwa_population_sampler import (
+    _request as parse_hwa_population_request,
 )
 
 
@@ -531,6 +535,17 @@ def test_gpu_occupancy_probe_fails_closed_on_compute_process(monkeypatch) -> Non
 
     monkeypatch.setattr(subprocess, "run", idle)
     assert _probe_gpu_occupancy(environment={})["exclusive_at_probe"] is True
+
+
+def test_prerequisite_sampler_probe_requests_match_canonical_sampler_schema() -> None:
+    for policy in ("counterfactual_repaired", "published"):
+        request = _sampler_probe_request(policy)
+        assert parse_hwa_population_request(
+            json.dumps(request, allow_nan=False, sort_keys=True)
+        ) == request
+
+    with pytest.raises(ValueError, match="Unsupported sampler probe policy"):
+        _sampler_probe_request("unknown")
 
 
 def test_all_24_tuning_diagnostics_require_epochs_examples_states_and_pulses(
