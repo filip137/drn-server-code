@@ -66,6 +66,8 @@ class TrainRequest:
     device_data: Optional[Path] = None
     device_model: Optional[Path] = None
     teacher_weights: Optional[Path] = None
+    device_state: Optional[Path] = None
+    selection_receipt: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +210,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--teacher-weights",
         type=Path,
         help="explicit named ReLU teacher checkpoint for distillation",
+    )
+    train.add_argument(
+        "--device-state",
+        type=Path,
+        help=(
+            "explicit deployed or faulted physical-device state bundle for "
+            "a staged experiment"
+        ),
+    )
+    train.add_argument(
+        "--selection-receipt",
+        type=Path,
+        help=(
+            "explicit frozen hyperparameter-selection receipt for a staged "
+            "experiment"
+        ),
     )
 
     linspace = commands.add_parser(
@@ -478,6 +496,10 @@ def _protocol_payload(
         definition.experiment_id == "mnist_relu_drn_kd.v1"
         for definition in definitions
     )
+    supports_staged_crossbar_inputs = any(
+        definition.experiment_id == "mnist_ibm_om_crossbar_relu.v2"
+        for definition in definitions
+    )
     return {
         "protocol_version": 1,
         "capabilities": {
@@ -574,6 +596,11 @@ def _protocol_payload(
                             else []
                         ),
                         "--teacher-weights",
+                        *(
+                            ["--device-state", "--selection-receipt"]
+                            if supports_staged_crossbar_inputs
+                            else []
+                        ),
                     ]
                 ),
             },
@@ -755,10 +782,12 @@ def _handler_result(handler: Handler, request: Any) -> int:
 def _default_train_handler(request: TrainRequest) -> Optional[int]:
     if request.definition.experiment_id == "small_drn.v1":
         from experiments.small_network.runtime import run_train
-    elif request.definition.experiment_id == "mnist_relu.v1":
+    elif request.definition.experiment_id in {"mnist_relu.v1", "mnist_relu.v2"}:
         from experiments.mnist_relu.runtime import run_train
     elif request.definition.experiment_id == "mnist_ibm_om_crossbar_relu.v1":
         from experiments.mnist_analog_relu.runtime import run_train
+    elif request.definition.experiment_id == "mnist_ibm_om_crossbar_relu.v2":
+        from experiments.mnist_analog_relu.staged_runtime import run_train
     elif request.definition.experiment_id == "mnist_relu_drn_kd.v1":
         from experiments.mnist_relu_drn.runtime import run_train
     elif request.definition.experiment_id == "mnist_ibm_om_winsorized_qat.v1":
@@ -840,7 +869,7 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
         )
     elif request.definition.experiment_id == "small_drn.v1":
         from experiments.small_network.runtime import run_validate
-    elif request.definition.experiment_id == "mnist_relu.v1":
+    elif request.definition.experiment_id in {"mnist_relu.v1", "mnist_relu.v2"}:
         from experiments.mnist_relu.runtime import run_validate
     elif request.definition.experiment_id == "mnist_relu_drn_kd.v1":
         from experiments.mnist_relu_drn.runtime import run_validate
@@ -964,6 +993,8 @@ def _dispatch(
             device_data=args.device_data,
             device_model=args.device_model,
             teacher_weights=args.teacher_weights,
+            device_state=args.device_state,
+            selection_receipt=args.selection_receipt,
         )
         return _handler_result(
             _require_handler(handlers.train, "train"),
