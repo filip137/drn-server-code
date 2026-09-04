@@ -158,11 +158,16 @@ def _parse_model(value: Any) -> ModelSettings:
     raw = _object(value, path)
     _keys(raw, path, {"dims", "bias"})
     dims = raw["dims"]
-    if not isinstance(dims, (list, tuple)) or tuple(dims) != (784, 50, 10):
-        raise config_error(f"{path}.dims", "to equal [784, 50, 10]", dims)
+    allowed_dims = {(784, 50, 10), (784, 256, 10)}
+    if not isinstance(dims, (list, tuple)) or tuple(dims) not in allowed_dims:
+        raise config_error(
+            f"{path}.dims",
+            "to equal [784, 50, 10] or [784, 256, 10]",
+            dims,
+        )
     if raw["bias"] is not False:
         raise config_error(f"{path}.bias", "to be false", raw["bias"])
-    return ModelSettings(dims=(784, 50, 10), bias=False)
+    return ModelSettings(dims=tuple(dims), bias=False)
 
 
 def _parse_train(value: Any) -> TeacherTrainSettings:

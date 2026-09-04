@@ -36,6 +36,12 @@ FULL_TILE_SET = "full_tile_SET"
 INDEPENDENT_ENDPOINTS = "figure6_ratio_independent"
 RANK_MATCHED_ENDPOINTS = "figure6_ratio_rank_matched"
 ENDPOINT_REGIMES = (INDEPENDENT_ENDPOINTS, RANK_MATCHED_ENDPOINTS)
+REJECT_INVALID_PAIRS = "reject_population"
+CONDITIONAL_REDRAW_INVALID_PAIRS = "conditional_redraw_both_endpoints"
+INVALID_PAIR_POLICIES = (
+    REJECT_INVALID_PAIRS,
+    CONDITIONAL_REDRAW_INVALID_PAIRS,
+)
 
 # Digitized Baseline-HfO2 Figure-6 marginal statistics, in microSiemens.
 FIGURE6_RESET_STD_US = 6.4411
@@ -144,10 +150,42 @@ class HfO2Figure6EndpointPopulation:
     reset_state: torch.Tensor
     set_state: torch.Tensor
     reset_clipped: torch.Tensor
+    invalid_pair_policy: str
+    initial_invalid_pairs: int
+    total_redrawn_pairs: int
+    redraw_rounds: int
 
     def __post_init__(self) -> None:
         if self.regime not in ENDPOINT_REGIMES:
             raise ValueError(f"Expected regime in {ENDPOINT_REGIMES!r}.")
+        if self.invalid_pair_policy not in INVALID_PAIR_POLICIES:
+            raise ValueError(
+                f"Expected invalid_pair_policy in {INVALID_PAIR_POLICIES!r}."
+            )
+        if self.invalid_pair_policy == CONDITIONAL_REDRAW_INVALID_PAIRS and (
+            self.regime != INDEPENDENT_ENDPOINTS
+        ):
+            raise ValueError(
+                "Conditional invalid-pair redraw is defined only for independent "
+                "endpoint pairing."
+            )
+        for name in (
+            "initial_invalid_pairs",
+            "total_redrawn_pairs",
+            "redraw_rounds",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"Expected non-negative integer {name}.")
+        if self.invalid_pair_policy == REJECT_INVALID_PAIRS and (
+            self.total_redrawn_pairs != 0 or self.redraw_rounds != 0
+        ):
+            raise ValueError("Reject-policy endpoint populations cannot record redraws.")
+        if self.invalid_pair_policy == CONDITIONAL_REDRAW_INVALID_PAIRS and (
+            (self.initial_invalid_pairs == 0)
+            != (self.total_redrawn_pairs == 0 and self.redraw_rounds == 0)
+        ):
+            raise ValueError("Conditional endpoint redraw accounting is inconsistent.")
         if isinstance(self.assignment_seed, bool) or not isinstance(
             self.assignment_seed, int
         ):
@@ -215,10 +253,28 @@ class HfO2Figure6EndpointPopulation:
             "evidence_class": "analyst_defined_figure6_informed_synthetic_control",
             "regime": self.regime,
             "pairing_policy": (
-                "independent_gaussian_quantiles"
+                (
+                    "independent_gaussian_quantiles_conditioned_on_valid_pair"
+                    if self.invalid_pair_policy
+                    == CONDITIONAL_REDRAW_INVALID_PAIRS
+                    else "independent_gaussian_quantiles"
+                )
                 if self.regime == INDEPENDENT_ENDPOINTS
                 else "rank_matched_gaussian_quantiles"
             ),
+            "invalid_pair_handling": {
+                "policy": self.invalid_pair_policy,
+                "validity_condition": "SET > RESET and SET > 0",
+                "redraw_scope": (
+                    "both_RESET_and_SET_for_each_invalid_pair"
+                    if self.invalid_pair_policy
+                    == CONDITIONAL_REDRAW_INVALID_PAIRS
+                    else None
+                ),
+                "initial_invalid_pairs": self.initial_invalid_pairs,
+                "total_redrawn_pairs": self.total_redrawn_pairs,
+                "redraw_rounds": self.redraw_rounds,
+            },
             "assignment_seed": self.assignment_seed,
             "devices": self.devices,
             "state_coordinate": "unitless_positive_endpoint_state",
@@ -258,13 +314,16 @@ def sample_hfo2_figure6_endpoint_population(
     devices: int,
     assignment_seed: int,
     regime: str = INDEPENDENT_ENDPOINTS,
+    invalid_pair_policy: str = REJECT_INVALID_PAIRS,
 ) -> HfO2Figure6EndpointPopulation:
     """Sample the requested full-RESET/full-SET distributions reproducibly.
 
     The independent regime uses operation-specific random streams.  The
     rank-matched regime preserves those exact finite marginal samples and
-    pairs their ascending ranks.  Neither regime clips, redraws, or otherwise
-    repairs SET states.
+    pairs their ascending ranks.  By default an invalid finite population is
+    rejected, preserving the original contract.  The explicitly requested
+    conditional policy redraws *both* marginal samples at every invalid
+    independent-pair coordinate until ``SET > RESET`` and ``SET > 0``.
     """
 
     if isinstance(devices, bool) or not isinstance(devices, int) or devices < 1:
@@ -273,6 +332,17 @@ def sample_hfo2_figure6_endpoint_population(
         raise ValueError("Expected assignment_seed to be an integer.")
     if regime not in ENDPOINT_REGIMES:
         raise ValueError(f"Expected regime in {ENDPOINT_REGIMES!r}.")
+    if invalid_pair_policy not in INVALID_PAIR_POLICIES:
+        raise ValueError(
+            f"Expected invalid_pair_policy in {INVALID_PAIR_POLICIES!r}."
+        )
+    if (
+        invalid_pair_policy == CONDITIONAL_REDRAW_INVALID_PAIRS
+        and regime != INDEPENDENT_ENDPOINTS
+    ):
+        raise ValueError(
+            "Conditional invalid-pair redraw requires independent endpoint pairing."
+        )
 
     reset_z = _normal_vector(
         devices=devices,
@@ -287,6 +357,39 @@ def sample_hfo2_figure6_endpoint_population(
 
     reset, reset_raw, reset_clipped = full_tile_reset(reset_z)
     set_state = full_tile_set(set_z)
+    invalid = (set_state <= 0.0) | (set_state <= reset)
+    initial_invalid_pairs = int(invalid.sum().item())
+    total_redrawn_pairs = 0
+    redraw_rounds = 0
+    while (
+        invalid_pair_policy == CONDITIONAL_REDRAW_INVALID_PAIRS
+        and bool(torch.any(invalid))
+    ):
+        redraw_rounds += 1
+        if redraw_rounds > 1024:
+            raise RuntimeError(
+                "Conditional endpoint sampler did not obtain a valid pair after "
+                "1024 deterministic redraw rounds."
+            )
+        count = int(invalid.sum().item())
+        total_redrawn_pairs += count
+        reset_z[invalid] = _normal_vector(
+            devices=count,
+            seed=_derived_seed(
+                assignment_seed,
+                f"conditional_redraw_{redraw_rounds}_{FULL_TILE_RESET}",
+            ),
+        )
+        set_z[invalid] = _normal_vector(
+            devices=count,
+            seed=_derived_seed(
+                assignment_seed,
+                f"conditional_redraw_{redraw_rounds}_{FULL_TILE_SET}",
+            ),
+        )
+        reset, reset_raw, reset_clipped = full_tile_reset(reset_z)
+        set_state = full_tile_set(set_z)
+        invalid = (set_state <= 0.0) | (set_state <= reset)
     return HfO2Figure6EndpointPopulation(
         regime=regime,
         assignment_seed=assignment_seed,
@@ -296,6 +399,10 @@ def sample_hfo2_figure6_endpoint_population(
         reset_state=reset,
         set_state=set_state,
         reset_clipped=reset_clipped,
+        invalid_pair_policy=invalid_pair_policy,
+        initial_invalid_pairs=initial_invalid_pairs,
+        total_redrawn_pairs=total_redrawn_pairs,
+        redraw_rounds=redraw_rounds,
     )
 
 
@@ -309,7 +416,10 @@ __all__ = [
     "HFO2_FIGURE6_RESET_STATE_STD",
     "HFO2_SET_STATE_STD",
     "INDEPENDENT_ENDPOINTS",
+    "INVALID_PAIR_POLICIES",
+    "CONDITIONAL_REDRAW_INVALID_PAIRS",
     "RANK_MATCHED_ENDPOINTS",
+    "REJECT_INVALID_PAIRS",
     "RESET_STATE_CENTER",
     "RESET_STATE_FLOOR",
     "SET_STATE_CENTER",

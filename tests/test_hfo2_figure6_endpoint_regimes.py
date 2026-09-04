@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from experiments.mnist_relu_drn.hfo2_figure6_endpoint_regimes import (
+    CONDITIONAL_REDRAW_INVALID_PAIRS,
     FIGURE6_RESET_TO_SET_STD_RATIO,
     HFO2_FIGURE6_RESET_STATE_STD,
     HFO2_SET_STATE_STD,
@@ -109,4 +110,31 @@ def test_pairing_regimes_change_only_the_joint_endpoint_assumption() -> None:
     )
     assert math.isfinite(
         rank_matched.report()["dynamic_range_SET_over_RESET"]["median"]
+    )
+
+
+def test_conditional_sampler_redraws_both_members_deterministically() -> None:
+    first = sample_hfo2_figure6_endpoint_population(
+        devices=200_000,
+        assignment_seed=20260904,
+        regime=INDEPENDENT_ENDPOINTS,
+        invalid_pair_policy=CONDITIONAL_REDRAW_INVALID_PAIRS,
+    )
+    replay = sample_hfo2_figure6_endpoint_population(
+        devices=200_000,
+        assignment_seed=20260904,
+        regime=INDEPENDENT_ENDPOINTS,
+        invalid_pair_policy=CONDITIONAL_REDRAW_INVALID_PAIRS,
+    )
+
+    assert first.initial_invalid_pairs > 0
+    assert first.total_redrawn_pairs >= first.initial_invalid_pairs
+    assert first.redraw_rounds >= 1
+    assert torch.equal(first.reset_standard_normal, replay.reset_standard_normal)
+    assert torch.equal(first.set_standard_normal, replay.set_standard_normal)
+    assert torch.all(first.set_state > first.reset_state)
+    assert torch.all(first.set_state > 0.0)
+    assert (
+        first.report()["invalid_pair_handling"]["redraw_scope"]
+        == "both_RESET_and_SET_for_each_invalid_pair"
     )

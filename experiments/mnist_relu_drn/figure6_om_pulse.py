@@ -176,6 +176,9 @@ class Figure6OmPulsePlant:
         self.native_stuck_raw_a = population.min_bound.to(
             self.device, dtype=self.dtype
         )
+        self.stuck_raw_a = self.native_stuck_raw_a.clone()
+        self.fault_intervention = "none"
+        self.fault_observation_seed: int | None = None
         flat_progress = flatten_physical(selected).to(self.device, dtype=self.dtype)
         raw = 2.0 * flat_progress - 1.0
         self.raw_a = torch.where(self.corrupt, self.native_stuck_raw_a, raw)
@@ -188,6 +191,76 @@ class Figure6OmPulsePlant:
         self.pulse_count = torch.zeros(
             population.size, dtype=torch.int64, device=self.device
         )
+
+    def inject_post_pv_reset_stuck_faults(
+        self,
+        mask: torch.Tensor,
+        *,
+        observation_seed: int,
+    ) -> Mapping[str, Any]:
+        """Force the paired published-OM mask to RESET after clean P&V.
+
+        The persistent coordinate of each selected cell becomes raw ``a=-1``
+        (progress zero) and remains immutable.  The fault event makes exactly
+        one noisy apparent observation for those cells only; all unselected
+        persistent and apparent coordinates remain bitwise unchanged.
+        """
+
+        selected = torch.as_tensor(mask, device=self.device, dtype=torch.bool)
+        if selected.shape != self.raw_a.shape:
+            raise ValueError("Post-P&V fault mask does not match the OM plant.")
+        if self.corruption_policy != "counterfactual_repaired" or bool(
+            torch.any(self.corrupt)
+        ):
+            raise ValueError(
+                "Post-P&V reset-stuck injection requires a clean "
+                "counterfactual-repaired plant."
+            )
+        if not torch.equal(selected, self.published_corrupt):
+            raise ValueError(
+                "Post-P&V fault mask must equal the paired published-OM "
+                "corruption mask."
+            )
+        if self.fault_intervention != "none":
+            raise ValueError("Post-P&V faults have already been injected.")
+        if isinstance(observation_seed, bool) or not isinstance(observation_seed, int):
+            raise ValueError("Expected an integer fault observation seed.")
+
+        persistent_before = self.raw_a.clone()
+        apparent_before = self.apparent_raw_a.clone()
+        self.corrupt.copy_(selected)
+        self.stuck_raw_a[selected] = -1.0
+        self.raw_a[selected] = -1.0
+        observation_generator = torch.Generator(device=self.device)
+        observation_generator.manual_seed(int(observation_seed))
+        write = torch.randn(
+            (int(selected.sum().item()),),
+            generator=observation_generator,
+            device=self.device,
+            dtype=self.dtype,
+        )
+        self.apparent_raw_a[selected] = -1.0 + (
+            OM_WRITE_NOISE_STD * OM_NOMINAL_DW_MIN_RAW_A * write
+        )
+        self.fault_intervention = "post_pv_reset_stuck_fault"
+        self.fault_observation_seed = int(observation_seed)
+        return {
+            "intervention": self.fault_intervention,
+            "mask_source": "paired_published_OM_population",
+            "fault_cells": int(selected.sum().item()),
+            "fault_fraction": float(selected.to(torch.float64).mean().item()),
+            "persistent_target_progress": 0.0,
+            "apparent_observation": "one_OM_write_noise_draw_at_fault_event",
+            "observation_seed": self.fault_observation_seed,
+            "nonfault_persistent_bitwise_unchanged": bool(
+                torch.equal(self.raw_a[~selected], persistent_before[~selected])
+            ),
+            "nonfault_apparent_bitwise_unchanged": bool(
+                torch.equal(
+                    self.apparent_raw_a[~selected], apparent_before[~selected]
+                )
+            ),
+        }
 
     @property
     def size(self) -> int:
@@ -244,9 +317,12 @@ class Figure6OmPulsePlant:
         if (
             not torch.equal(clone.dwmin_up_raw_a, self.dwmin_up_raw_a)
             or not torch.equal(clone.dwmin_down_raw_a, self.dwmin_down_raw_a)
-            or not torch.equal(clone.corrupt, self.corrupt)
         ):
             raise RuntimeError("OM pulse identities did not reproduce exactly.")
+        clone.corrupt.copy_(self.corrupt)
+        clone.stuck_raw_a.copy_(self.stuck_raw_a)
+        clone.fault_intervention = self.fault_intervention
+        clone.fault_observation_seed = self.fault_observation_seed
         clone.raw_a.copy_(self.raw_a)
         clone.apparent_raw_a.copy_(
             self.apparent_raw_a if retain_apparent_observation else self.raw_a
@@ -291,7 +367,7 @@ class Figure6OmPulsePlant:
             )
             candidate[down] = self.raw_a[down] - response[down]
         candidate.clamp_(-1.0, 1.0)
-        candidate[self.corrupt] = self.native_stuck_raw_a[self.corrupt]
+        candidate[self.corrupt] = self.stuck_raw_a[self.corrupt]
         self.raw_a[selected] = candidate[selected]
 
         write = torch.randn(
@@ -311,13 +387,21 @@ class Figure6OmPulsePlant:
     def state_dict(self) -> dict[str, Any]:
         return {
             "schema": "ebl.figure6_om_pulse_plant",
-            "schema_version": 1,
+            "schema_version": 2,
             "endpoint_model": self.field.report(),
             "pulse_model": PULSE_MODEL_LABEL,
             "corruption_policy": self.corruption_policy,
             "population_fingerprint": self.population_fingerprint,
             "persistent_state_coordinate": "raw_a=2*progress-1",
-            "published_corrupt_state": "immutable_native_singleton_raw_a",
+            "published_corrupt_state": (
+                "paired_mask_for_post_pv_reset_stuck_progress_zero"
+                if self.fault_intervention == "post_pv_reset_stuck_fault"
+                else "immutable_native_singleton_raw_a"
+            ),
+            "active_corrupt": self.corrupt.detach().cpu().clone(),
+            "active_stuck_raw_a": self.stuck_raw_a.detach().cpu().clone(),
+            "fault_intervention": self.fault_intervention,
+            "fault_observation_seed": self.fault_observation_seed,
             "persistent_raw_a": self.raw_a.detach().cpu().clone(),
             "apparent_raw_a": self.apparent_raw_a.detach().cpu().clone(),
             "pulse_count": self.pulse_count.detach().cpu().clone(),
@@ -328,13 +412,46 @@ class Figure6OmPulsePlant:
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
         if (
             state.get("schema") != "ebl.figure6_om_pulse_plant"
-            or state.get("schema_version") != 1
+            or state.get("schema_version") not in {1, 2}
             or state.get("pulse_model") != PULSE_MODEL_LABEL
             or state.get("corruption_policy") != self.corruption_policy
             or state.get("population_fingerprint") != self.population_fingerprint
             or state.get("pulse_noise_seed") != self.pulse_noise_seed
         ):
             raise ValueError("Figure-6 OM pulse-plant continuation mismatch.")
+        if state.get("schema_version") == 2:
+            active_corrupt = state.get("active_corrupt")
+            active_stuck = state.get("active_stuck_raw_a")
+            if (
+                not isinstance(active_corrupt, torch.Tensor)
+                or active_corrupt.shape != self.corrupt.shape
+                or not isinstance(active_stuck, torch.Tensor)
+                or active_stuck.shape != self.stuck_raw_a.shape
+            ):
+                raise ValueError("Invalid saved post-P&V fault state.")
+            self.corrupt.copy_(active_corrupt.to(self.device, dtype=torch.bool))
+            self.stuck_raw_a.copy_(
+                active_stuck.to(self.device, dtype=self.dtype)
+            )
+            fault_intervention = state.get("fault_intervention", "none")
+            if fault_intervention not in {"none", "post_pv_reset_stuck_fault"}:
+                raise ValueError("Invalid saved OM fault intervention.")
+            self.fault_intervention = fault_intervention
+            fault_seed = state.get("fault_observation_seed")
+            if fault_seed is not None and (
+                isinstance(fault_seed, bool) or not isinstance(fault_seed, int)
+            ):
+                raise ValueError("Invalid saved fault observation seed.")
+            self.fault_observation_seed = fault_seed
+            if self.fault_intervention == "post_pv_reset_stuck_fault" and (
+                self.corruption_policy != "counterfactual_repaired"
+                or not torch.equal(self.corrupt, self.published_corrupt)
+                or not torch.equal(
+                    self.stuck_raw_a[self.corrupt],
+                    torch.full_like(self.stuck_raw_a[self.corrupt], -1.0),
+                )
+            ):
+                raise ValueError("Saved post-P&V fault mask or stuck state is invalid.")
         for name, target in (
             ("persistent_raw_a", self.raw_a),
             ("apparent_raw_a", self.apparent_raw_a),
@@ -345,7 +462,7 @@ class Figure6OmPulsePlant:
                 raise ValueError(f"Invalid saved OM pulse-plant field {name!r}.")
             target.copy_(value.to(device=self.device, dtype=target.dtype))
         if not torch.equal(
-            self.raw_a[self.corrupt], self.native_stuck_raw_a[self.corrupt]
+            self.raw_a[self.corrupt], self.stuck_raw_a[self.corrupt]
         ):
             raise ValueError("Saved OM state moved a published corrupt singleton.")
         rng = state.get("pulse_noise_rng_state")
@@ -365,6 +482,8 @@ class Figure6OmPulsePlant:
             "cells": self.size,
             "corrupt_cells": int(self.corrupt.sum().item()),
             "published_corrupt_cells": int(self.published_corrupt.sum().item()),
+            "fault_intervention": self.fault_intervention,
+            "fault_observation_seed": self.fault_observation_seed,
             "persistent_progress_minimum": float(progress.min().item()),
             "persistent_progress_mean": float(progress.mean().item()),
             "persistent_progress_maximum": float(progress.max().item()),
@@ -379,7 +498,14 @@ class Figure6OmPulsePlant:
             "endpoint_bounds_replaced_by_figure6_model": True,
             "om_native_bound_dtod_used_for_healthy_endpoint_locations": False,
             "om_reference_used": False,
-            "published_corrupt_singletons_preserved": True,
+            "published_corrupt_singletons_preserved": (
+                self.fault_intervention == "none"
+                and self.corruption_policy == "published"
+            ),
+            "post_pv_fault_mask_matches_published_om": (
+                self.fault_intervention != "post_pv_reset_stuck_fault"
+                or torch.equal(self.corrupt, self.published_corrupt)
+            ),
             "apparent_state_projection": "clamp_progress_to_[0,1]_before_positive_G",
         }
 

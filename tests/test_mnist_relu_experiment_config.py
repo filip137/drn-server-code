@@ -37,10 +37,23 @@ def test_teacher_kaiming_initialization_uses_logical_fan_in() -> None:
     assert float(teacher.output_weight.state.abs().max()) <= (3.0 / 50.0) ** 0.5
 
 
+def test_teacher_256_kaiming_initialization_and_architecture() -> None:
+    torch.manual_seed(23)
+    teacher = BiasFreeReluTeacher(
+        device=torch.device("cpu"),
+        dims=(784, 256, 10),
+    )
+
+    assert tuple(teacher.input_weight.state.shape) == (784, 256)
+    assert tuple(teacher.output_weight.state.shape) == (256, 10)
+    assert teacher.architecture == "bias_free_relu_784_256_10"
+
+
 @pytest.mark.parametrize(
     "relative",
     [
         "examples/mnist_relu/teacher.json",
+        "examples/mnist_relu/teacher_256.json",
         "examples/mnist_relu_drn/ideal_single.json",
         "examples/mnist_relu_drn/ideal_differential.json",
         "examples/mnist_relu_drn/ideal_differential_general_ab.json",
@@ -64,6 +77,16 @@ def test_student_rejects_unknown_nested_keys() -> None:
     payload["mapping"]["surprise"] = 1
     with pytest.raises(ConfigError, match="Expected config.mapping"):
         parse_experiment_config(payload)
+
+
+def test_student_accepts_256_hidden_unit_physical_topology() -> None:
+    payload = json.loads(
+        (ROOT / "examples/mnist_relu_drn/ideal_differential.json").read_text()
+    )
+    payload["model"]["dims"] = [1568, 512, 20]
+    definition, document = parse_experiment_config(payload)
+
+    assert definition.resolve(document, RunMode.TRAIN).model.dims == (1568, 512, 20)
 
 
 def test_student_requires_explicit_empty_diode_parameter_dicts() -> None:

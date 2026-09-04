@@ -994,13 +994,18 @@ def _load_teacher(
     spec: StudentTrainSpec | StudentValidateSpec,
 ) -> tuple[BiasFreeReluTeacher | BoundedDrnTeacher, dict[str, Any]]:
     if spec.teacher.type == "bias_free_relu":
-        teacher = BiasFreeReluTeacher(device=device)
+        teacher_dims = (
+            spec.model.dims[0] // 2,
+            spec.model.dims[1] // 2,
+            spec.model.dims[2] // 2,
+        )
+        teacher = BiasFreeReluTeacher(device=device, dims=teacher_dims)
         loaded = load_named_weights(path, teacher.catalog)
         architecture = loaded.metadata.get("architecture")
-        if architecture != "bias_free_relu_784_50_10":
+        if architecture != teacher.architecture:
             raise ValueError(
                 "Expected --teacher-weights metadata architecture to equal "
-                "'bias_free_relu_784_50_10'. "
+                f"{teacher.architecture!r} for model dims {spec.model.dims!r}. "
                 f"Provided value: {architecture!r}."
             )
         return teacher, loaded.metadata

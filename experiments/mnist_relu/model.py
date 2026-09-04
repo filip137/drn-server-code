@@ -20,9 +20,21 @@ class TeacherWeight:
 
 
 class BiasFreeReluTeacher:
-    def __init__(self, *, device: torch.device) -> None:
-        self.input_weight = TeacherWeight((784, 50), device=device)
-        self.output_weight = TeacherWeight((50, 10), device=device)
+    def __init__(
+        self,
+        *,
+        device: torch.device,
+        dims: tuple[int, int, int] = (784, 50, 10),
+    ) -> None:
+        if dims not in {(784, 50, 10), (784, 256, 10)}:
+            raise ValueError(
+                "Expected bias-free ReLU teacher dims to be either "
+                "(784, 50, 10) or (784, 256, 10). "
+                f"Provided value: {dims!r}."
+            )
+        self.dims = dims
+        self.input_weight = TeacherWeight((dims[0], dims[1]), device=device)
+        self.output_weight = TeacherWeight((dims[1], dims[2]), device=device)
         torch.nn.init.kaiming_uniform_(
             self.input_weight.state.T,
             a=0.0,
@@ -71,6 +83,10 @@ class BiasFreeReluTeacher:
 
     def train(self) -> "BiasFreeReluTeacher":
         return self
+
+    @property
+    def architecture(self) -> str:
+        return "bias_free_relu_" + "_".join(str(value) for value in self.dims)
 
 
 __all__ = ["BiasFreeReluTeacher"]

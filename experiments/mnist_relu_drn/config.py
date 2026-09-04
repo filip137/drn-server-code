@@ -267,8 +267,13 @@ def _parse_model(value: Any) -> StudentModelSettings:
             "non_linearity",
         },
     )
-    if not isinstance(raw["dims"], (list, tuple)) or tuple(raw["dims"]) != (1568, 100, 20):
-        raise config_error(f"{path}.dims", "to equal [1568, 100, 20]", raw["dims"])
+    allowed_dims = {(1568, 100, 20), (1568, 512, 20)}
+    if not isinstance(raw["dims"], (list, tuple)) or tuple(raw["dims"]) not in allowed_dims:
+        raise config_error(
+            f"{path}.dims",
+            "to equal [1568, 100, 20] or [1568, 512, 20]",
+            raw["dims"],
+        )
     if raw["encoding"] not in {"single", "differential"}:
         raise config_error(f"{path}.encoding", "to be 'single' or 'differential'", raw["encoding"])
     if raw["include_biases"] is not False:
@@ -314,7 +319,7 @@ def _parse_model(value: Any) -> StudentModelSettings:
     if non_linearity["type"] != "perfect_diode":
         raise config_error(f"{path}.non_linearity.type", "to equal 'perfect_diode'", non_linearity["type"])
     return StudentModelSettings(
-        dims=(1568, 100, 20),
+        dims=tuple(raw["dims"]),
         input_gain=100.0,
         conductance_min=lower,
         conductance_max=upper,

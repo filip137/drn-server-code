@@ -178,3 +178,68 @@ def test_pulse_adam_records_probability_clipping_events() -> None:
     optimizer.step(tuple(torch.ones(shape) for shape in SHAPES))
     state = optimizer.state_dict()
     assert state["total_probability_clipped_cells"] == plant.size
+
+
+def test_post_pv_reset_stuck_fault_changes_only_mask_and_refreshes_on_attempt() -> None:
+    population = _population("counterfactual_repaired")
+    plant = Figure6OmPulsePlant(
+        _field(),
+        tuple(torch.full(shape, 0.4) for shape in SHAPES),
+        population,
+        pulse_noise_seed=501,
+    )
+    plant.sample_apparent()
+    persistent_before = plant.raw_a.clone()
+    apparent_before = plant.apparent_raw_a.clone()
+    receipt = plant.inject_post_pv_reset_stuck_faults(
+        population.published_corrupt,
+        observation_seed=502,
+    )
+    mask = population.published_corrupt
+
+    assert receipt["intervention"] == "post_pv_reset_stuck_fault"
+    assert torch.equal(plant.raw_a[mask], torch.full_like(plant.raw_a[mask], -1.0))
+    assert torch.equal(plant.raw_a[~mask], persistent_before[~mask])
+    assert torch.equal(plant.apparent_raw_a[~mask], apparent_before[~mask])
+    fault_apparent = plant.apparent_raw_a[mask].clone()
+
+    direction = torch.zeros(plant.size, dtype=torch.int8)
+    direction[mask] = 1
+    changed, capped = plant.pulse(direction, pulse_cap=4)
+    assert changed == 0
+    assert capped == 0
+    assert torch.equal(plant.raw_a[mask], torch.full_like(plant.raw_a[mask], -1.0))
+    assert not torch.equal(plant.apparent_raw_a[mask], fault_apparent)
+    assert torch.equal(plant.pulse_count[mask], torch.ones_like(plant.pulse_count[mask]))
+
+
+def test_post_pv_fault_clone_and_state_round_trip_are_exact() -> None:
+    population = _population("counterfactual_repaired")
+    plant = Figure6OmPulsePlant(
+        _field(),
+        tuple(torch.full(shape, 0.6) for shape in SHAPES),
+        population,
+        pulse_noise_seed=601,
+    )
+    plant.inject_post_pv_reset_stuck_faults(
+        population.published_corrupt,
+        observation_seed=602,
+    )
+    clone = plant.clone_for_new_pulse_phase(pulse_noise_seed=603)
+    assert torch.equal(clone.raw_a, plant.raw_a)
+    assert torch.equal(clone.apparent_raw_a, plant.apparent_raw_a)
+    assert torch.equal(clone.corrupt, plant.corrupt)
+    assert clone.fault_intervention == "post_pv_reset_stuck_fault"
+
+    state = clone.state_dict()
+    restored = Figure6OmPulsePlant(
+        _field(),
+        _zeros(),
+        population,
+        pulse_noise_seed=603,
+    )
+    restored.load_state_dict(state)
+    assert torch.equal(restored.raw_a, clone.raw_a)
+    assert torch.equal(restored.apparent_raw_a, clone.apparent_raw_a)
+    assert torch.equal(restored.corrupt, clone.corrupt)
+    assert restored.fault_observation_seed == 602

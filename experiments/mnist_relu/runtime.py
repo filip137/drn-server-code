@@ -134,7 +134,7 @@ def run_train(request: "TrainRequest") -> int:
             spec.data,
             data_seed=spec.runtime.data_seed,
         )
-        model = BiasFreeReluTeacher(device=device)
+        model = BiasFreeReluTeacher(device=device, dims=spec.model.dims)
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=spec.settings.learning_rate,
@@ -221,7 +221,8 @@ def run_train(request: "TrainRequest") -> int:
                     model.catalog,
                     metadata={
                         "experiment_id": spec.experiment_id,
-                        "architecture": "bias_free_relu_784_50_10",
+                        "architecture": model.architecture,
+                        "dims": list(model.dims),
                         "selection_metric": "validation.cross_entropy",
                         "selection_value": selected_loss,
                         "selection_accuracy": selected_accuracy,
@@ -310,7 +311,7 @@ def run_validate(request: "ValidateRequest") -> int:
         torch.manual_seed(spec.runtime.seed)
         device = _device(spec.runtime.device)
         data = build_mnist_loaders(spec.data, data_seed=spec.runtime.data_seed)
-        model = BiasFreeReluTeacher(device=device)
+        model = BiasFreeReluTeacher(device=device, dims=spec.model.dims)
         loaded = load_named_weights(request.weights, model.catalog)
         loader = data.validation if spec.settings.split == "validation" else data.test
         metrics = _evaluate(
