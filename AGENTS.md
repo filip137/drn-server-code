@@ -19,6 +19,30 @@ headroom and the requested spacing.
 Keep unrelated repository maintenance and unrelated experiment families out
 of this worktree.
 
+## Mandatory DRN apparent-state forwards
+
+- Whenever a device model distinguishes a hidden persistent state from a
+  post-write apparent state, **every device-facing DRN forward pass must use
+  the current held apparent state**. This includes forwards used for off-chip
+  HWA, on-chip recovery, gradient computation, training metrics, validation,
+  checkpoint selection, and final evaluation. Never substitute the hidden
+  persistent state in any of those paths.
+- Pulses and physical updates mutate the persistent state. After each write,
+  refresh the apparent state of touched cells according to the declared device
+  and write-noise model; the next DRN forward uses that updated held apparent
+  state. Do not copy apparent values into persistent state, and do not redraw
+  write noise independently per example unless a separately declared
+  inference-read-noise intervention requires it.
+- A persistent-state DRN forward is permitted only as an explicitly named
+  diagnostic or ablation. It must not drive gradients, optimizer updates,
+  checkpoint selection, or headline conclusions. When both states exist,
+  report apparent-state accuracy as primary and persistent-state accuracy as a
+  clearly labelled secondary diagnostic on the same examples and settings.
+- For off-chip HWA without an evolving physical plant, use the sampled
+  noisy/apparent hardware view for the forward and update the digital master
+  or desired target. Do not describe that digital-master update as a
+  persistent-device update.
+
 ## Exploratory operating mode
 
 This is an exploratory worktree. The default objective is to obtain a
