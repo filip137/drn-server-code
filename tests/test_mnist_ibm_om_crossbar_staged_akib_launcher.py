@@ -133,6 +133,102 @@ def test_manifest_roles_distinguish_teacher_weights_from_hwa_master(tmp_path: Pa
     }
 
 
+def test_canonical_runstore_commands_cover_teacher_and_all_staged_input_roles(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "study" / "runs" / "arm" / "run-1"
+    paths = {
+        role: tmp_path / f"{role}.bin"
+        for role in (
+            "weights",
+            "hwa_master",
+            "teacher_weights",
+            "origin_device_state",
+            "adam_selection_receipt",
+            "adam_epoch_resume",
+            "aihwkit_python",
+        )
+    }
+
+    def manifest(*roles: str) -> dict:
+        # RunStore input order is independent of the public CLI option order.
+        return {
+            "inputs": [
+                {"role": role, "path": str(paths[role])}
+                for role in reversed(roles)
+            ]
+        }
+
+    def base(task: TaskBlueprint) -> list[str]:
+        return [
+            "ebl",
+            task.mode,
+            "--config",
+            str(task.config.resolve()),
+            "--output-dir",
+            str(run.parent.resolve()),
+        ]
+
+    teacher_train, teacher_test = teacher_blueprints()
+    assert launcher._canonical_manifest_command(
+        task=teacher_train, run_dir=run, manifest=manifest()
+    ) == base(teacher_train)
+    assert launcher._canonical_manifest_command(
+        task=teacher_test, run_dir=run, manifest=manifest("weights")
+    ) == base(teacher_test) + ["--weights", str(paths["weights"].resolve())]
+
+    hwa_deploy = next(
+        task for task in development_blueprints() if task.label == "development.hwa.deploy"
+    )
+    assert launcher._canonical_manifest_command(
+        task=hwa_deploy,
+        run_dir=run,
+        manifest=manifest("hwa_master", "teacher_weights", "aihwkit_python"),
+    ) == base(hwa_deploy) + [
+        "--weights",
+        str(paths["hwa_master"].resolve()),
+        "--teacher-weights",
+        str(paths["teacher_weights"].resolve()),
+    ]
+
+    corruption = next(
+        task for task in development_blueprints() if task.label == "development.hwa.corrupt"
+    )
+    assert launcher._canonical_manifest_command(
+        task=corruption,
+        run_dir=run,
+        manifest=manifest("teacher_weights", "origin_device_state"),
+    ) == base(corruption) + [
+        "--teacher-weights",
+        str(paths["teacher_weights"].resolve()),
+        "--device-state",
+        str(paths["origin_device_state"].resolve()),
+    ]
+
+    adam = next(
+        task for task in production_blueprints() if task.arm_id == "hwa-adam-corrupt"
+    )
+    assert launcher._canonical_manifest_command(
+        task=adam,
+        run_dir=run,
+        manifest=manifest(
+            "teacher_weights",
+            "origin_device_state",
+            "adam_selection_receipt",
+            "adam_epoch_resume",
+        ),
+    ) == base(adam) + [
+        "--teacher-weights",
+        str(paths["teacher_weights"].resolve()),
+        "--device-state",
+        str(paths["origin_device_state"].resolve()),
+        "--selection-receipt",
+        str(paths["adam_selection_receipt"].resolve()),
+        "--resume",
+        str(paths["adam_epoch_resume"].resolve()),
+    ]
+
+
 def test_launcher_rejects_every_non_akib_hostname() -> None:
     assert _require_akib_hostname("integnano-akib") == "integnano-akib"
     with pytest.raises(RuntimeError, match="only on"):
@@ -206,9 +302,8 @@ def test_complete_reuse_requires_source_config_and_exact_input_hashes(tmp_path: 
             "run_id": run.name,
             "experiment_id": "mnist_relu.v2",
             "source": {"commit": commit, "dirty": False},
+            "runtime": {"executable": "/test/python"},
             "command": [
-                "/test/python",
-                "-m",
                 "ebl",
                 "validate",
                 "--config",
@@ -260,6 +355,7 @@ def test_complete_reuse_requires_source_config_and_exact_input_hashes(tmp_path: 
         source_commit=commit,
         config_sha256=config_sha,
         expected_inputs={"weights": input_sha},
+        task_python=Path("/test/python"),
     )
     assert found is not None and found.run_dir == run
 
@@ -270,6 +366,17 @@ def test_complete_reuse_requires_source_config_and_exact_input_hashes(tmp_path: 
             source_commit=commit,
             config_sha256=config_sha,
             expected_inputs={"weights": "c" * 64},
+            task_python=Path("/test/python"),
+        )
+
+    with pytest.raises(RuntimeError, match="mix source commits or input ancestry"):
+        _completed_run(
+            task=task,
+            arm_root=run.parent,
+            source_commit="d" * 40,
+            config_sha256=config_sha,
+            expected_inputs={"weights": input_sha},
+            task_python=Path("/test/python"),
         )
 
 

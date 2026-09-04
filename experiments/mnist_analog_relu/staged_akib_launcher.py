@@ -605,6 +605,71 @@ def _manifest_input_hashes(manifest: Mapping[str, Any]) -> dict[str, str] | None
     return result
 
 
+def _canonical_manifest_command(
+    *,
+    task: TaskBlueprint,
+    run_dir: Path,
+    manifest: Mapping[str, Any],
+) -> list[str] | None:
+    """Reconstruct the exact logical argv that ``ebl.cli`` records.
+
+    The parent launcher executes ``sys.executable -m ebl``, while
+    ``ebl.cli.main`` intentionally stores the stable logical entry point
+    ``ebl`` in each RunStore manifest.  Input paths come from the manifest
+    records whose bytes and roles are authenticated separately.
+    """
+
+    raw_inputs = manifest.get("inputs")
+    if not isinstance(raw_inputs, list):
+        return None
+    input_paths: dict[str, Path] = {}
+    for item in raw_inputs:
+        if not isinstance(item, Mapping):
+            return None
+        role = item.get("role")
+        path = item.get("path")
+        if (
+            not isinstance(role, str)
+            or role in input_paths
+            or not isinstance(path, str)
+        ):
+            return None
+        input_paths[role] = Path(path).expanduser().resolve()
+
+    known_roles = {
+        "weights",
+        "hwa_master",
+        "teacher_weights",
+        "origin_device_state",
+        "adam_selection_receipt",
+        "adam_epoch_resume",
+        "aihwkit_python",
+    }
+    if set(input_paths) - known_roles:
+        return None
+
+    command = [
+        "ebl",
+        task.mode,
+        "--config",
+        str(task.config.resolve()),
+        "--output-dir",
+        str(run_dir.parent.resolve()),
+    ]
+    weights_role = "weights" if task.study_id == TEACHER_PLAN_ID else "hwa_master"
+    for option, role in (
+        ("--weights", weights_role),
+        ("--teacher-weights", "teacher_weights"),
+        ("--device-state", "origin_device_state"),
+        ("--selection-receipt", "adam_selection_receipt"),
+        ("--resume", "adam_epoch_resume"),
+    ):
+        path = input_paths.get(role)
+        if path is not None:
+            command.extend((option, str(path)))
+    return command
+
+
 def _registered_artifacts_intact(run_dir: Path, result: Mapping[str, Any]) -> bool:
     records = result.get("artifacts")
     if not isinstance(records, list):
@@ -688,6 +753,11 @@ def _base_run_matches(
     runtime = manifest.get("runtime")
     command = manifest.get("command")
     inputs = _manifest_input_hashes(manifest)
+    canonical_command = _canonical_manifest_command(
+        task=task,
+        run_dir=run_dir,
+        manifest=manifest,
+    )
     command_config: Path | None = None
     command_output: Path | None = None
     if isinstance(command, list):
@@ -711,6 +781,7 @@ def _base_run_matches(
         or study.get("arm_id") != task.arm_id
         or study.get("source_config_sha256") != config_sha256
         or inputs is None
+        or command != canonical_command
         or command_config != task.config.resolve()
         or command_output != run_dir.parent.resolve()
         or (
@@ -718,9 +789,6 @@ def _base_run_matches(
             and (
                 not isinstance(runtime, Mapping)
                 or runtime.get("executable") != str(task_python.resolve())
-                or not isinstance(command, list)
-                or command[:4]
-                != [str(task_python.resolve()), "-m", "ebl", task.mode]
             )
         )
     ):
