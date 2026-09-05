@@ -13,6 +13,7 @@ from experiments.study_workflow import (
     StudyWorkflowError,
     finalize_study,
     load_study_plan,
+    load_study_record,
     prepare_study,
     register_federated_runs,
     summarize_study,
@@ -211,6 +212,13 @@ def test_federated_receipt_preserves_source_study_without_rewriting_run(
     source_study["prepared_at"] = "2026-09-05T00:00:00+00:00"
     _write_json(source_study_path, source_study)
     source_run = _complete_run(source, config)
+    staged_source = tmp_path / "local-study"
+    source.rename(staged_source)
+    source = staged_source
+    source_study_path = source / "study.json"
+    source_run = source / "runs" / "baseline" / source_run.name
+    with pytest.raises(StudyWorkflowError, match="directory name to equal study_id"):
+        load_study_record(source)
     source_manifest_bytes = (source_run / "manifest.json").read_bytes()
     target_arm = canonical / "runs" / "baseline"
     target_arm.rmdir()

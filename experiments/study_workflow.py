@@ -461,7 +461,11 @@ def prepare_study(plan_path: Path | str, results_root: Path | str) -> Path:
     return root
 
 
-def load_study_record(study_dir: Path | str) -> dict[str, Any]:
+def _load_study_record(
+    study_dir: Path | str,
+    *,
+    require_directory_name: bool,
+) -> dict[str, Any]:
     root = Path(study_dir).expanduser().resolve()
     path = root / "study.json"
     value = _load_json_object(path, label="study.json")
@@ -491,7 +495,7 @@ def load_study_record(study_dir: Path | str) -> dict[str, Any]:
             f"version={value['schema_version']!r}."
         )
     _identifier(value["study_id"], label="study.json study_id")
-    if root.name != value["study_id"]:
+    if require_directory_name and root.name != value["study_id"]:
         raise StudyWorkflowError(
             "Expected the study directory name to equal study_id. "
             f"Provided value: directory={root.name!r}, study_id={value['study_id']!r}."
@@ -583,6 +587,12 @@ def load_study_record(study_dir: Path | str) -> dict[str, Any]:
                 )
             hashes.add(digest)
     return value
+
+
+def load_study_record(study_dir: Path | str) -> dict[str, Any]:
+    """Load a prepared study from its canonical ``<study-id>`` directory."""
+
+    return _load_study_record(study_dir, require_directory_name=True)
 
 
 def _command_mode(command: Sequence[Any]) -> str | None:
@@ -960,7 +970,11 @@ def register_federated_runs(
             "Expected canonical and source studies to be distinct directories."
         )
     canonical = load_study_record(canonical_root)
-    source = load_study_record(source_root)
+    # A transferred source study may be unpacked beneath an arbitrary staging
+    # basename (for example ``local-study``).  Its exact study.json bytes and
+    # materialized contract remain authoritative; only the canonical target is
+    # required to occupy a directory named after its study ID.
+    source = _load_study_record(source_root, require_directory_name=False)
     if _materialized_contract(canonical) != _materialized_contract(source):
         raise StudyWorkflowError(
             "Expected federated source and canonical studies to have the same "
