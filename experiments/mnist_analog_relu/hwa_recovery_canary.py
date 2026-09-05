@@ -38,6 +38,7 @@ from experiments.mnist_analog_relu.generate_hwa_recovery_canary import (
 )
 from experiments.mnist_analog_relu.staged_artifacts import load_device_state
 from experiments.mnist_analog_relu.staged_config import parse_staged_crossbar_config
+from experiments.study_workflow import register_federated_runs
 from training.ibm_om_standard_crossbar import tensor_sha256
 
 
@@ -1625,6 +1626,106 @@ def _copy_arm_atomically(
         raise
 
 
+def _authenticate_existing_copy(
+    source_arm: Path,
+    target_arm: Path,
+    *,
+    verify_copy: Callable[[Path], None],
+) -> bool:
+    """Authenticate an earlier atomic copy without modifying either tree."""
+
+    if not target_arm.exists() or not any(target_arm.iterdir()):
+        return False
+    source_runs = _run_dirs(source_arm)
+    target_runs = _run_dirs(target_arm)
+    if (
+        len(source_runs) != 1
+        or len(target_runs) != 1
+        or source_runs[0].name != target_runs[0].name
+    ):
+        raise RuntimeError(
+            f"Existing canonical arm is not the unique incoming run: {target_arm}."
+        )
+    verify_copy(target_arm)
+    source_run = source_runs[0]
+    target_run = target_runs[0]
+    control_files = (
+        "config.resolved.json",
+        "manifest.json",
+        "metrics.jsonl",
+        "result.json",
+        "status.json",
+    )
+    mismatched = [
+        filename
+        for filename in control_files
+        if not (source_run / filename).is_file()
+        or not (target_run / filename).is_file()
+        or sha256_file(source_run / filename) != sha256_file(target_run / filename)
+    ]
+    if mismatched:
+        raise RuntimeError(
+            "Existing canonical arm does not retain byte-identical incoming "
+            f"control files: arm={target_arm.name!r}, files={mismatched!r}."
+        )
+    # Both run bundles have already passed registered-artifact hashing through
+    # ``_completed_run_for_collection``/``verify_copy``.  Equal result bytes
+    # therefore bind equal artifact paths, sizes, and content hashes.
+    return True
+
+
+def _artifact_verified_summary(
+    *,
+    task_python: Path,
+    study_dir: Path,
+) -> dict[str, Any]:
+    """Run the public summary command and require its semantic success state."""
+
+    completed = subprocess.run(
+        (
+            str(task_python),
+            "-m",
+            "ebl",
+            "study",
+            "summarize",
+            "--study-dir",
+            str(study_dir),
+            "--verify-artifacts",
+        ),
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "Artifact-verified workflow summary command failed: "
+            f"returncode={completed.returncode}, stderr={completed.stderr[-2000:]!r}."
+        )
+    summary_path = study_dir / "analysis" / "summary.json"
+    summary = _read_json(summary_path)
+    if (
+        summary.get("schema") != "ebl.study.summary"
+        or summary.get("schema_version") != 1
+        or summary.get("study_id") != STUDY_ID
+        or summary.get("validation_mode") != "full_artifact_hashes"
+        or summary.get("state") != "ready_for_review"
+        or summary.get("ready_for_review") is not True
+    ):
+        raise RuntimeError(
+            "Artifact-verified workflow summary did not reach ready_for_review: "
+            f"state={summary.get('state')!r}, "
+            f"ready_for_review={summary.get('ready_for_review')!r}."
+        )
+    return {
+        "path": summary_path.relative_to(study_dir).as_posix(),
+        "sha256": sha256_file(summary_path),
+        "state": summary["state"],
+        "ready_for_review": True,
+        "validation_mode": summary["validation_mode"],
+    }
+
+
 def collect_shard(
     *,
     canonical_study_dir: Path,
@@ -1700,6 +1801,7 @@ def collect_shard(
     )
 
     copied: list[dict[str, Any]] = []
+    federated_run_pairs: list[tuple[Path, Path]] = []
     for task, run_dir, commit in verified:
         source_arm = run_dir.parent
         target_arm = canonical_study_dir / "runs" / task.arm_id
@@ -1720,19 +1822,44 @@ def collect_shard(
                     "Copied arm verification does not match incoming evidence."
                 )
 
-        _copy_arm_atomically(source_arm, target_arm, verify_copy=verify_copy)
+        if _authenticate_existing_copy(
+            source_arm,
+            target_arm,
+            verify_copy=verify_copy,
+        ):
+            collection_action = "authenticated_existing"
+        else:
+            _copy_arm_atomically(source_arm, target_arm, verify_copy=verify_copy)
+            collection_action = "copied"
+        target_run = target_arm / run_dir.name
+        federated_run_pairs.append((run_dir, target_run))
         copied.append(
             {
                 "arm_id": task.arm_id,
                 "run_id": run_dir.name,
                 "execution_source_commit": commit,
-                "result_sha256": sha256_file(target_arm / run_dir.name / "result.json"),
+                "result_sha256": sha256_file(target_run / "result.json"),
+                "collection_action": collection_action,
             }
+        )
+
+    federated_receipt_path = register_federated_runs(
+        canonical_study_dir,
+        incoming_study_dir,
+        run_pairs=federated_run_pairs,
+    )
+
+    workflow_summary = None
+    if task_python is not None:
+        task_python = _require_executable(task_python, label="summary Python")
+        workflow_summary = _artifact_verified_summary(
+            task_python=task_python,
+            study_dir=canonical_study_dir,
         )
 
     receipt = {
         "schema": "ebl.ibm_om_crossbar_hwa_recovery_canary_collection",
-        "schema_version": 1,
+        "schema_version": 2,
         "study_id": STUDY_ID,
         "incoming_shard": incoming_shard,
         "incoming_study_dir": str(incoming_study_dir),
@@ -1742,6 +1869,13 @@ def collect_shard(
         "epoch0_cross_host_parity": parity,
         "cross_host_stream_parity": stream_parity,
         "fresh_apparent_pairing": fresh_pairing,
+        "federated_provenance": {
+            "path": federated_receipt_path.relative_to(
+                canonical_study_dir
+            ).as_posix(),
+            "sha256": sha256_file(federated_receipt_path),
+        },
+        "workflow_summary": workflow_summary,
         "copied": copied,
         "collected_at": _utc_now(),
     }
@@ -1751,22 +1885,6 @@ def collect_shard(
         / f"collection_{incoming_shard}_{_attempt_id()}.json"
     )
     atomic_write_json(receipt_path, receipt)
-    if task_python is not None:
-        task_python = _require_executable(task_python, label="summary Python")
-        subprocess.run(
-            (
-                str(task_python),
-                "-m",
-                "ebl",
-                "study",
-                "summarize",
-                "--study-dir",
-                str(canonical_study_dir),
-                "--verify-artifacts",
-            ),
-            cwd=ROOT,
-            check=True,
-        )
     return {**receipt, "receipt_path": str(receipt_path)}
 
 

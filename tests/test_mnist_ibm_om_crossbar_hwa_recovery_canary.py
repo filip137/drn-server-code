@@ -3,10 +3,12 @@ from __future__ import annotations
 from collections import Counter
 from json import dumps, loads
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 
+from experiments.artifacts import RunStore, sha256_file
 from experiments.mnist_analog_relu.generate_hwa_recovery_canary import (
     CHECKPOINT_POLICY,
     FRESH_DRAW_SEEDS,
@@ -22,7 +24,7 @@ from experiments.mnist_analog_relu.staged_config import (
     OnChipAdamDiagnosticStageSettings,
     parse_staged_crossbar_config,
 )
-from experiments.study_workflow import load_study_plan
+from experiments.study_workflow import load_study_plan, prepare_study
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -393,6 +395,215 @@ def test_atomic_collection_refuses_nonempty_target_without_copying(tmp_path: Pat
         campaign._copy_arm_atomically(source, target, verify_copy=lambda _path: None)
     assert (target / "old.txt").read_text(encoding="utf-8") == "old"
     assert not (target / "new.txt").exists()
+
+
+def test_collection_retry_only_accepts_byte_identical_existing_controls(
+    tmp_path: Path,
+) -> None:
+    source_arm = tmp_path / "source" / "run-arm"
+    target_arm = tmp_path / "target" / "run-arm"
+    source_run = source_arm / "run-001"
+    target_run = target_arm / "run-001"
+    for run in (source_run, target_run):
+        run.mkdir(parents=True)
+        for filename in (
+            "config.resolved.json",
+            "manifest.json",
+            "metrics.jsonl",
+            "result.json",
+            "status.json",
+        ):
+            (run / filename).write_text(f"{filename}\n", encoding="utf-8")
+    verified: list[Path] = []
+
+    assert campaign._authenticate_existing_copy(
+        source_arm,
+        target_arm,
+        verify_copy=verified.append,
+    ) is True
+    assert verified == [target_arm]
+
+    (target_run / "manifest.json").write_text("changed\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="byte-identical incoming control files"):
+        campaign._authenticate_existing_copy(
+            source_arm,
+            target_arm,
+            verify_copy=lambda _path: None,
+        )
+
+
+def test_collect_retry_registers_federated_study_and_requires_ready_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study_id = "federated-canary-smoke-v1"
+    configs = {}
+    for arm_id, setting in (("incoming-arm", 1), ("canonical-arm", 2)):
+        config = tmp_path / f"{arm_id}.json"
+        config.write_text(dumps({"scientific_setting": setting}), encoding="utf-8")
+        configs[arm_id] = config
+    plan = tmp_path / "plan.json"
+    plan.write_text(
+        dumps(
+            {
+                "schema_version": 1,
+                "study_id": study_id,
+                "title": "Federated canary smoke",
+                "hypothesis": "Both declared shards complete.",
+                "motivation": "Exercise immutable collection retry.",
+                "evidence_class": "exploratory",
+                "arms": [
+                    {
+                        "arm_id": arm_id,
+                        "description": f"{arm_id} description.",
+                        "experiment_id": "small_drn.v1",
+                        "mode": "train",
+                        "configs": [str(configs[arm_id])],
+                    }
+                    for arm_id in ("incoming-arm", "canonical-arm")
+                ],
+                "completion_criteria": ["Both runs are valid."],
+                "analysis_plan": ["Verify exact coverage."],
+            }
+        ),
+        encoding="utf-8",
+    )
+    incoming = prepare_study(plan, tmp_path / "incoming-results")
+    canonical = prepare_study(plan, tmp_path / "canonical-results")
+    incoming_study_path = incoming / "study.json"
+    incoming_study = loads(incoming_study_path.read_text(encoding="utf-8"))
+    incoming_study["prepared_at"] = "2026-09-05T00:00:00+00:00"
+    incoming_study_path.write_text(
+        dumps(incoming_study, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    def complete(root: Path, arm_id: str, run_id: str) -> Path:
+        output = root / "runs" / arm_id
+        store = RunStore.create(
+            output_root=output,
+            experiment_id="small_drn.v1",
+            resolved_config=loads(configs[arm_id].read_text(encoding="utf-8")),
+            command=(
+                "ebl",
+                "train",
+                "--config",
+                str(configs[arm_id]),
+                "--output-dir",
+                str(output),
+            ),
+            repo_root=tmp_path,
+            run_id=run_id,
+        )
+        store.append_metric({"metric": 1.0})
+        artifact = store.run_dir / "artifacts" / "value.bin"
+        artifact.write_bytes(b"value")
+        store.complete(
+            metrics={"metric": 1.0},
+            artifacts=(store.artifact_record(artifact, kind="value"),),
+        )
+        return store.run_dir
+
+    incoming_run = complete(incoming, "incoming-arm", "run-incoming")
+    complete(canonical, "canonical-arm", "run-canonical")
+    incoming_task = campaign.ArmTask(
+        "incoming-arm",
+        configs["incoming-arm"],
+        sha256_file(configs["incoming-arm"]),
+        "on_chip_adam_diagnostic",
+        "hwa_healthy_p0",
+    )
+    canonical_task = campaign.ArmTask(
+        "canonical-arm",
+        configs["canonical-arm"],
+        sha256_file(configs["canonical-arm"]),
+        "on_chip_adam_diagnostic",
+        "hwa_healthy_p0",
+    )
+
+    monkeypatch.setattr(campaign, "PLAN_PATH", plan)
+    monkeypatch.setattr(campaign, "STUDY_ID", study_id)
+    monkeypatch.setattr(
+        campaign,
+        "load_shard_tasks",
+        lambda shard: (incoming_task,) if shard == "local" else (canonical_task,),
+    )
+
+    def completed_run(
+        arm_dir: Path,
+        *,
+        task: campaign.ArmTask,
+        verify_artifacts: bool,
+    ) -> tuple[Path, str]:
+        del task, verify_artifacts
+        runs = [path for path in arm_dir.iterdir() if path.is_dir()]
+        assert len(runs) == 1
+        return runs[0], "a" * 40
+
+    monkeypatch.setattr(campaign, "_completed_run_for_collection", completed_run)
+    sentinel = {"schema_version": 1, "passed": True}
+    monkeypatch.setattr(campaign, "_epoch0_parity_sentinel", lambda **_kwargs: sentinel)
+    monkeypatch.setattr(campaign, "_adam_stream_sentinel", lambda **_kwargs: sentinel)
+    monkeypatch.setattr(campaign, "_fresh_pairing_sentinel", lambda **_kwargs: sentinel)
+
+    first = campaign.collect_shard(
+        canonical_study_dir=canonical,
+        incoming_study_dir=incoming,
+        incoming_shard="local",
+        task_python=Path(sys.executable),
+    )
+    target_run = canonical / "runs" / "incoming-arm" / incoming_run.name
+    manifest_before_retry = (target_run / "manifest.json").read_bytes()
+    assert first["copied"][0]["collection_action"] == "copied"
+    assert first["workflow_summary"]["state"] == "ready_for_review"
+
+    second = campaign.collect_shard(
+        canonical_study_dir=canonical,
+        incoming_study_dir=incoming,
+        incoming_shard="local",
+        task_python=Path(sys.executable),
+    )
+    assert second["copied"][0]["collection_action"] == "authenticated_existing"
+    assert second["workflow_summary"]["state"] == "ready_for_review"
+    assert (target_run / "manifest.json").read_bytes() == manifest_before_retry
+    assert len(list((canonical / "analysis/federated_collections").glob("*.json"))) == 1
+
+
+def test_collection_summary_rejects_exit_zero_invalid_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = tmp_path / "study"
+    analysis = study / "analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "summary.json").write_text(
+        dumps(
+            {
+                "schema": "ebl.study.summary",
+                "schema_version": 1,
+                "study_id": "summary-smoke-v1",
+                "validation_mode": "full_artifact_hashes",
+                "state": "invalid",
+                "ready_for_review": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(campaign, "STUDY_ID", "summary-smoke-v1")
+    monkeypatch.setattr(
+        campaign.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="summary-smoke-v1: invalid (ready_for_review=false)\n",
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="did not reach ready_for_review"):
+        campaign._artifact_verified_summary(
+            task_python=Path(sys.executable),
+            study_dir=study,
+        )
 
 
 def _write_epoch0_result(path: Path, *, prediction_sha: str, offset: float = 0.0) -> None:

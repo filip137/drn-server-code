@@ -169,7 +169,13 @@ Collection hashes every registered incoming artifact, requires one completion
 per assigned arm, requires the same clean execution commit on both hosts, and
 copies a whole arm into an empty temporary directory.  It exposes the arm
 atomically only after re-verification.  Existing canonical evidence is never
-overwritten.  Before copying, it also uses the replicated epoch-zero
+overwritten.  If collection was interrupted only after those atomic copies,
+rerunning the same command accepts an existing arm only after its unique run,
+registered artifacts, and all native control files authenticate as the exact
+incoming completion; it does not recopy or edit that evidence.  Collection
+also preserves the incoming materialized `study.json` in a hash-addressed
+archive and emits the strict federated receipt required for generic workflow
+summary.  Before copying, it uses the replicated epoch-zero
 evaluations already present in the Adam arms as a cross-host parity sentinel:
 student and teacher prediction hashes/counts must match exactly for both P0
 states, and held-apparent plus persistent diagnostic metrics must agree within

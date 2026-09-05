@@ -68,6 +68,17 @@ results/<study-id>/
 Preparation is idempotent only while the tracked source-plan hash is
 unchanged. Change the study ID when the scientific contract changes.
 
+Independent hosts may materialize the same tracked plan with different
+checkout-local paths and preparation timestamps.  Their native run manifests
+must continue to bind the exact `study.json` bytes present at launch; never
+rewrite those manifests after collection.  A federated collector instead
+uses `register_federated_runs` to archive the source `study.json` under its
+SHA-256 and write a receipt binding the common source-plan/materialized
+contract plus byte hashes for every copied run control file.  Summarization
+accepts a non-canonical study hash only through such a fully validated receipt
+and fails closed if the archive, receipt, plan identity, or copied controls
+change.
+
 ## 3. Run the declared arms
 
 Pass the arm directory as the normal `--output-dir`:
