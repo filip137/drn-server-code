@@ -2732,7 +2732,7 @@ class PulseAdam:
             or size < 1
             or size != sum(tile.cells for tile in tiles)
             or len(rates) != 2
-            or any(not math.isfinite(value) or value <= 0.0 for value in rates)
+            or any(not math.isfinite(value) or value < 0.0 for value in rates)
             or len(beta) != 2
             or not 0.0 <= beta[0] < 1.0
             or not 0.0 <= beta[1] < 1.0

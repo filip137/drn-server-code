@@ -36,6 +36,7 @@ from experiments.mnist_analog_relu.runtime import (
     _recovery_seed,
     _sample_population,
     _save_and_verify_on_chip_recovery_state,
+    _sample_aihwkit_om_apparent_write_noise,
     population_nominal_step,
 )
 from experiments.mnist_analog_relu.staged_analysis import (
@@ -52,9 +53,12 @@ from experiments.mnist_analog_relu.staged_artifacts import (
     save_hwa_master,
 )
 from experiments.mnist_analog_relu.staged_config import (
+    DiagnosticLiteralAdamHyperparameters,
+    FreshApparentDiagnosticStageSettings,
     LiteralAdamHyperparameters,
     OffchipHwaStageSettings,
     OnChipAdamStageSettings,
+    OnChipAdamDiagnosticStageSettings,
     SelectionReceiptAdamHyperparameters,
     StagedCrossbarTrainSpec,
 )
@@ -62,9 +66,11 @@ from experiments.mnist_relu.model import BiasFreeReluTeacher
 from experiments.mnist_shared import build_mnist_loaders, limited
 from experiments.schema import to_plain_data
 from training.checkpoint import load_named_weights
+from training.ibm_reram_program_verify import derive_seed
 from training.ibm_om_standard_crossbar import (
     CROSSBAR_TRAJECTORY_SEED_DERIVATION,
     IbmOmEffectiveCrossbarPlant,
+    IbmOmCrossbarStateBundle,
     PulseAdam,
     aihwkit_analog_linear_default_logical_weights,
     build_crossbar_layout,
@@ -87,6 +93,10 @@ _ROOT = Path(__file__).resolve().parents[2]
 _DIMS = (784, 256, 10)
 _CELL_COUNT = 203_264
 _RECOVERY_SCHEMA = "ebl.ibm_om_crossbar_adam_recovery"
+_DIAGNOSTIC_RECOVERY_SCHEMA = "ebl.ibm_om_crossbar_adam_diagnostic_recovery"
+_DIAGNOSTIC_RECOVERY_SCHEMA_VERSION = 2
+_ADAM_SELECTION_METRIC = "validation.apparent_forward.student_accuracy"
+_ADAM_SELECTION_METRIC_KEY = "student_accuracy"
 _ADAM_IMPLEMENTATION = {
     "digitally_assisted": True,
     "gradient_engine": "digital_full_apparent_q_autograd",
@@ -166,6 +176,16 @@ def _validate_request(request: Any) -> tuple[tuple[dict[str, Any], ...], Path | 
             permitted.add("selection_receipt")
         elif not isinstance(hyperparameters, LiteralAdamHyperparameters):
             raise TypeError("Expected resolved literal or receipt Adam settings.")
+    elif stage.kind == "on_chip_adam_diagnostic":
+        required.add("device_state")
+        permitted.update(("device_state", "resume"))
+        if not isinstance(
+            stage.hyperparameters, DiagnosticLiteralAdamHyperparameters
+        ):
+            raise TypeError("Expected resolved literal diagnostic Adam settings.")
+    elif stage.kind == "fresh_apparent_diagnostic":
+        required.add("device_state")
+        permitted.add("device_state")
     else:  # pragma: no cover - strict parser invariant
         raise RuntimeError(f"Unsupported staged kind: {stage.kind!r}.")
 
@@ -1283,10 +1303,31 @@ def _start_state_label(origin: StagedDeviceState) -> str:
 
 def _resolve_adam_settings(
     *,
-    stage: OnChipAdamStageSettings,
+    stage: OnChipAdamStageSettings | OnChipAdamDiagnosticStageSettings,
     profile: str,
     selection_path: Path | None,
 ) -> tuple[float, int | None, dict[str, Any]]:
+    if isinstance(stage, OnChipAdamDiagnosticStageSettings):
+        if (
+            profile != "diagnostic_validation_only"
+            or selection_path is not None
+            or not isinstance(
+                stage.hyperparameters, DiagnosticLiteralAdamHyperparameters
+            )
+        ):
+            raise ValueError(
+                "Expected diagnostic Adam runs to use the literal diagnostic "
+                "grid, diagnostic validation, and no selection receipt."
+            )
+        return (
+            stage.hyperparameters.learning_rate,
+            stage.hyperparameters.pulse_cap_per_cell,
+            {
+                "source": "literal_diagnostic_grid",
+                "checkpoint_policy": stage.checkpoint_policy,
+                "objective": stage.objective,
+            },
+        )
     if profile == "tuning_validation_only":
         if not isinstance(stage.hyperparameters, LiteralAdamHyperparameters) or selection_path is not None:
             raise ValueError("Expected tuning runs to use literal grid settings and no receipt.")
@@ -1314,6 +1355,111 @@ def _update_epoch_stream_digest(
     cpu_labels = labels.detach().cpu().to(torch.int64).contiguous()
     digests[0].update(cpu_inputs.numpy().tobytes())
     digests[1].update(cpu_labels.numpy().tobytes())
+
+
+def _adam_objective_loss(
+    *,
+    objective: str,
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    inputs: torch.Tensor,
+    teacher: BiasFreeReluTeacher,
+) -> torch.Tensor:
+    if objective == "supervised_cross_entropy":
+        return F.cross_entropy(logits, labels)
+    if objective == "teacher_kl":
+        with torch.no_grad():
+            teacher_logits = teacher.logits(inputs)
+            teacher_log_probability = F.log_softmax(teacher_logits, dim=1)
+            teacher_probability = teacher_log_probability.exp()
+        student_log_probability = F.log_softmax(logits, dim=1)
+        return (
+            teacher_probability
+            * (teacher_log_probability - student_log_probability)
+        ).sum(dim=1).mean()
+    raise ValueError(f"Unsupported on-chip Adam objective: {objective!r}.")
+
+
+def _adam_selection_objective_metric(objective: str) -> tuple[str, str]:
+    if objective == "supervised_cross_entropy":
+        return "validation.apparent_forward.cross_entropy", "cross_entropy"
+    if objective == "teacher_kl":
+        return "validation.apparent_forward.kl_teacher_student", "kl_teacher_student"
+    raise ValueError(f"Unsupported on-chip Adam objective: {objective!r}.")
+
+
+def _adam_selection_rank(
+    *, student_accuracy: float, objective_value: float, epoch: int
+) -> tuple[float, float, int]:
+    """Rank held-apparent checkpoints by accuracy, objective, then age."""
+
+    accuracy = float(student_accuracy)
+    loss = float(objective_value)
+    if (
+        not math.isfinite(accuracy)
+        or not 0.0 <= accuracy <= 1.0
+        or not math.isfinite(loss)
+        or isinstance(epoch, bool)
+        or not isinstance(epoch, int)
+        or epoch < 0
+    ):
+        raise ValueError("Expected finite held-apparent checkpoint-selection values.")
+    return (-accuracy, loss, epoch)
+
+
+def _diagnostic_recovery_payload(
+    *,
+    origin_sha: str,
+    start_state: str,
+    completed_epochs: int,
+    total_epochs: int,
+    learning_rate: float,
+    pulse_cap: int,
+    objective: str,
+    selection_metric: str,
+    selection_objective_metric: str,
+    checkpoint_policy: str,
+    optimizer_state_dict: Mapping[str, Any],
+    train_generator_state: torch.Tensor,
+    epoch_reports: Sequence[Mapping[str, Any]],
+    initial: Mapping[str, Any],
+    selection: Mapping[str, Any],
+    best_epoch: int,
+    best_accuracy: float,
+    best_objective_value: float,
+    best_current: IbmOmCrossbarStateBundle,
+    best_optimizer_state_dict: Mapping[str, Any],
+    best_train_generator_state: torch.Tensor,
+) -> dict[str, Any]:
+    return {
+        "schema": _DIAGNOSTIC_RECOVERY_SCHEMA,
+        "schema_version": _DIAGNOSTIC_RECOVERY_SCHEMA_VERSION,
+        "origin_device_state_sha256": origin_sha,
+        "start_state": start_state,
+        "completed_epochs": completed_epochs,
+        "total_epochs": total_epochs,
+        "learning_rate": learning_rate,
+        "pulse_cap_per_cell": pulse_cap,
+        "objective": objective,
+        "selection_metric": selection_metric,
+        "selection_objective_metric": selection_objective_metric,
+        "checkpoint_policy": checkpoint_policy,
+        "optimizer_state_dict": dict(optimizer_state_dict),
+        "train_generator_state": train_generator_state.detach().cpu().clone(),
+        "epoch_reports": [dict(item) for item in epoch_reports],
+        "initial": dict(initial),
+        "selection": dict(selection),
+        "best_epoch": best_epoch,
+        "best_value": {
+            "student_accuracy": float(best_accuracy),
+            "objective_value": float(best_objective_value),
+        },
+        "best_current_state": best_current.state_dict(),
+        "best_optimizer_state_dict": dict(best_optimizer_state_dict),
+        "best_train_generator_state": (
+            best_train_generator_state.detach().cpu().clone()
+        ),
+    }
 
 
 def _recovery_payload(
@@ -1429,6 +1575,210 @@ def _validate_resume(
     return recovery
 
 
+def _validate_diagnostic_resume(
+    resume: StagedDeviceState,
+    *,
+    origin: StagedDeviceState,
+    origin_sha: str,
+    start_state: str,
+    learning_rate: float,
+    pulse_cap: int,
+    total_epochs: int,
+    objective: str,
+    selection_metric: str,
+    selection_objective_metric: str,
+    checkpoint_policy: str,
+    selection: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], IbmOmCrossbarStateBundle]:
+    recovery = resume.recovery
+    required = {
+        "schema",
+        "schema_version",
+        "origin_device_state_sha256",
+        "start_state",
+        "completed_epochs",
+        "total_epochs",
+        "learning_rate",
+        "pulse_cap_per_cell",
+        "objective",
+        "selection_metric",
+        "selection_objective_metric",
+        "checkpoint_policy",
+        "optimizer_state_dict",
+        "train_generator_state",
+        "epoch_reports",
+        "initial",
+        "selection",
+        "best_epoch",
+        "best_value",
+        "best_current_state",
+        "best_optimizer_state_dict",
+        "best_train_generator_state",
+    }
+    if (
+        resume.role != "adam_final"
+        or resume.source_kind != origin.source_kind
+        or resume.dims != origin.dims
+        or resume.assignment_seed != origin.assignment_seed
+        or resume.endpoint_seed != origin.endpoint_seed
+        or resume.teacher_sha256 != origin.teacher_sha256
+        or resume.source_artifact_sha256 != origin.source_artifact_sha256
+        or resume.parent_device_state_sha256 != origin_sha
+        or resume.healthy_population.fingerprint
+        != origin.healthy_population.fingerprint
+        or resume.published_population.fingerprint
+        != origin.published_population.fingerprint
+        or resume.healthy_p0.plant_state_sha256
+        != origin.healthy_p0.plant_state_sha256
+        or resume.current.layout != origin.current.layout
+        or resume.current.digital_scales != origin.current.digital_scales
+        or resume.current.state_kind != origin.current.state_kind
+        or not isinstance(recovery, Mapping)
+        or set(recovery) != required
+        or recovery.get("schema") != _DIAGNOSTIC_RECOVERY_SCHEMA
+        or recovery.get("schema_version") != _DIAGNOSTIC_RECOVERY_SCHEMA_VERSION
+        or recovery.get("origin_device_state_sha256") != origin_sha
+        or recovery.get("start_state") != start_state
+        or recovery.get("total_epochs") != total_epochs
+        or not math.isclose(
+            float(recovery.get("learning_rate", math.nan)),
+            learning_rate,
+            rel_tol=0.0,
+            abs_tol=1e-15,
+        )
+        or recovery.get("pulse_cap_per_cell") != pulse_cap
+        or recovery.get("objective") != objective
+        or recovery.get("selection_metric") != selection_metric
+        or recovery.get("selection_objective_metric")
+        != selection_objective_metric
+        or recovery.get("checkpoint_policy") != checkpoint_policy
+        or recovery.get("selection") != selection
+    ):
+        raise ValueError(
+            "Expected an exact epoch-boundary diagnostic Adam resume for this origin."
+        )
+    completed = recovery["completed_epochs"]
+    reports = recovery["epoch_reports"]
+    generator_state = recovery["train_generator_state"]
+    best_epoch = recovery["best_epoch"]
+    best_value = recovery["best_value"]
+    best_generator_state = recovery["best_train_generator_state"]
+    if (
+        isinstance(completed, bool)
+        or not isinstance(completed, int)
+        or not 0 <= completed <= total_epochs
+        or not isinstance(reports, list)
+        or len(reports) != completed
+        or [item.get("epoch") for item in reports if isinstance(item, Mapping)]
+        != list(range(1, completed + 1))
+        or isinstance(best_epoch, bool)
+        or not isinstance(best_epoch, int)
+        or not 0 <= best_epoch <= completed
+        or not isinstance(best_value, Mapping)
+        or set(best_value) != {"student_accuracy", "objective_value"}
+        or not isinstance(best_value.get("student_accuracy"), (int, float))
+        or not isinstance(best_value.get("objective_value"), (int, float))
+        or not math.isfinite(float(best_value["student_accuracy"]))
+        or not 0.0 <= float(best_value["student_accuracy"]) <= 1.0
+        or not math.isfinite(float(best_value["objective_value"]))
+        or not isinstance(recovery.get("optimizer_state_dict"), Mapping)
+        or not isinstance(recovery.get("best_optimizer_state_dict"), Mapping)
+        or any(
+            not isinstance(state, torch.Tensor)
+            or state.dtype != torch.uint8
+            or state.device.type != "cpu"
+            or state.ndim != 1
+            for state in (generator_state, best_generator_state)
+        )
+    ):
+        raise ValueError("Expected a complete diagnostic Adam epoch and selection cursor.")
+
+    initial_validation = recovery["initial"]["validation"]["apparent_forward"]
+    objective_metric_key = selection_objective_metric.rsplit(".", 1)[-1]
+    candidates = [
+        (
+            float(initial_validation[_ADAM_SELECTION_METRIC_KEY]),
+            float(initial_validation[objective_metric_key]),
+        )
+    ]
+    candidates.extend(
+        (
+            float(item["validation"]["apparent_forward"][_ADAM_SELECTION_METRIC_KEY]),
+            float(item["validation"]["apparent_forward"][objective_metric_key]),
+        )
+        for item in reports
+    )
+    expected_best_epoch = min(
+        range(len(candidates)),
+        key=lambda epoch: _adam_selection_rank(
+            student_accuracy=candidates[epoch][0],
+            objective_value=candidates[epoch][1],
+            epoch=epoch,
+        ),
+    )
+    if (
+        best_epoch != expected_best_epoch
+        or not math.isclose(
+            float(best_value["student_accuracy"]),
+            candidates[expected_best_epoch][0],
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        or not math.isclose(
+            float(best_value["objective_value"]),
+            candidates[expected_best_epoch][1],
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+    ):
+        raise ValueError("Expected diagnostic Adam best-state selection to replay exactly.")
+
+    best_current = IbmOmCrossbarStateBundle.from_state_dict(
+        recovery["best_current_state"]
+    )
+    if (
+        best_current.layout != origin.current.layout
+        or best_current.digital_scales != origin.current.digital_scales
+        or best_current.state_kind != origin.current.state_kind
+        or best_current.population_fingerprint
+        != origin.current.population_fingerprint
+    ):
+        raise ValueError("Expected the embedded best diagnostic state to match its origin.")
+    if completed == 0:
+        terminal_matches = (
+            resume.current.plant_state_sha256 == origin.current.plant_state_sha256
+        )
+    else:
+        final_report = reports[-1]
+        terminal_matches = (
+            final_report.get("plant_state_sha256")
+            == resume.current.plant_state_sha256
+            and final_report.get("apparent_sha256")
+            == tensor_sha256(resume.current.plant_state["apparent"])
+            and final_report.get("persistent_sha256")
+            == tensor_sha256(resume.current.plant_state["persistent"])
+        )
+    if best_epoch == 0:
+        best_matches = (
+            best_current.plant_state_sha256 == origin.current.plant_state_sha256
+        )
+    else:
+        best_report = reports[best_epoch - 1]
+        best_matches = (
+            best_report.get("plant_state_sha256")
+            == best_current.plant_state_sha256
+            and best_report.get("apparent_sha256")
+            == tensor_sha256(best_current.plant_state["apparent"])
+            and best_report.get("persistent_sha256")
+            == tensor_sha256(best_current.plant_state["persistent"])
+        )
+    if not terminal_matches or not best_matches:
+        raise ValueError(
+            "Expected diagnostic Adam terminal and embedded best states to authenticate."
+        )
+    return recovery, best_current
+
+
 def _run_on_chip_adam(
     *,
     request: Any,
@@ -1442,8 +1792,11 @@ def _run_on_chip_adam(
     device: torch.device,
 ) -> tuple[dict[str, Any], list[ArtifactRecord]]:
     stage = spec.stage
-    if not isinstance(stage, OnChipAdamStageSettings):
+    if not isinstance(
+        stage, (OnChipAdamStageSettings, OnChipAdamDiagnosticStageSettings)
+    ):
         raise TypeError("Expected on-chip Adam stage settings.")
+    diagnostic = isinstance(stage, OnChipAdamDiagnosticStageSettings)
     origin_path = request.device_state.expanduser().resolve()
     origin_sha = sha256_file(origin_path)
     origin = load_device_state(origin_path)
@@ -1468,6 +1821,12 @@ def _run_on_chip_adam(
         profile=spec.evaluation.profile,
         selection_path=selection_path,
     )
+    selection_metric = _ADAM_SELECTION_METRIC
+    selection_metric_key = _ADAM_SELECTION_METRIC_KEY
+    (
+        selection_objective_metric,
+        selection_objective_metric_key,
+    ) = _adam_selection_objective_metric(stage.objective)
 
     origin_plant = _restore_current(origin, layout=layout, device=device)
     initial = _evaluate_plant_splits(
@@ -1484,20 +1843,39 @@ def _run_on_chip_adam(
     completed_epochs = 0
     resume_sha: str | None = None
     resume_recovery: Mapping[str, Any] | None = None
+    resume_best_current: IbmOmCrossbarStateBundle | None = None
     if request.resume is not None:
         resume_path = request.resume.expanduser().resolve()
         resume_sha = sha256_file(resume_path)
         resume = load_device_state(resume_path)
-        resume_recovery = _validate_resume(
-            resume,
-            origin=origin,
-            origin_sha=origin_sha,
-            start_state=start_state,
-            learning_rate=learning_rate,
-            pulse_cap=pulse_cap,
-            total_epochs=stage.epochs,
-            selection=selection,
-        )
+        if diagnostic:
+            if pulse_cap is None:  # pragma: no cover - strict config invariant
+                raise RuntimeError("Expected a finite diagnostic Adam pulse cap.")
+            resume_recovery, resume_best_current = _validate_diagnostic_resume(
+                resume,
+                origin=origin,
+                origin_sha=origin_sha,
+                start_state=start_state,
+                learning_rate=learning_rate,
+                pulse_cap=pulse_cap,
+                total_epochs=stage.epochs,
+                objective=stage.objective,
+                selection_metric=selection_metric,
+                selection_objective_metric=selection_objective_metric,
+                checkpoint_policy=stage.checkpoint_policy,
+                selection=selection,
+            )
+        else:
+            resume_recovery = _validate_resume(
+                resume,
+                origin=origin,
+                origin_sha=origin_sha,
+                start_state=start_state,
+                learning_rate=learning_rate,
+                pulse_cap=pulse_cap,
+                total_epochs=stage.epochs,
+                selection=selection,
+            )
         plant = _restore_current(resume, layout=layout, device=device)
         completed_epochs = int(resume_recovery["completed_epochs"])
         reports = [dict(item) for item in resume_recovery["epoch_reports"]]
@@ -1524,14 +1902,43 @@ def _run_on_chip_adam(
         generator=selection_generator,
         device=device,
     )
+    best_epoch = 0
+    best_accuracy = float(
+        initial["validation"]["apparent_forward"][selection_metric_key]
+    )
+    best_objective_value = float(
+        initial["validation"]["apparent_forward"][selection_objective_metric_key]
+    )
+    best_current = origin.current
+    best_optimizer_state_dict = optimizer.state_dict()
+    best_train_generator_state = data.train_generator.get_state().detach().cpu().clone()
     if resume_recovery is not None:
         optimizer.load_state_dict(resume_recovery["optimizer_state_dict"])
         data.train_generator.set_state(resume_recovery["train_generator_state"])
+        if diagnostic:
+            if resume_best_current is None:  # pragma: no cover - validated branch
+                raise RuntimeError("Expected an embedded diagnostic best state.")
+            best_epoch = int(resume_recovery["best_epoch"])
+            best_accuracy = float(
+                resume_recovery["best_value"]["student_accuracy"]
+            )
+            best_objective_value = float(
+                resume_recovery["best_value"]["objective_value"]
+            )
+            best_current = resume_best_current
+            best_optimizer_state_dict = dict(
+                resume_recovery["best_optimizer_state_dict"]
+            )
+            best_train_generator_state = resume_recovery[
+                "best_train_generator_state"
+            ].detach().cpu().clone()
 
     update_port = plant.restricted_recovery_update_port()
     epoch_artifacts: list[ArtifactRecord] = []
+    zero_learning_rate_control = diagnostic and learning_rate == 0.0
     for epoch in range(completed_epochs + 1, stage.epochs + 1):
-        loss_sum = 0.0
+        objective_loss_sum = 0.0
+        cross_entropy_sum = 0.0
         correct = 0
         examples = 0
         batches = 0
@@ -1543,6 +1950,11 @@ def _run_on_chip_adam(
             limited(data.train, stage.maximum_batches)
         ):
             _update_epoch_stream_digest(stream_digests, inputs, labels)
+            batch_examples = int(labels.numel())
+            examples += batch_examples
+            batches = batch_index + 1
+            if zero_learning_rate_control:
+                continue
             inputs = inputs.to(device=device, dtype=torch.float32)
             labels = labels.to(device=device, dtype=torch.long)
             apparent_q = update_port.apparent.to(device=device).requires_grad_(True)
@@ -1552,13 +1964,19 @@ def _run_on_chip_adam(
                 layout,
                 digital_scales=origin.current.digital_scales,
             )
-            loss = F.cross_entropy(logits, labels)
+            loss = _adam_objective_loss(
+                objective=stage.objective,
+                logits=logits,
+                labels=labels,
+                inputs=inputs,
+                teacher=teacher,
+            )
             gradient = torch.autograd.grad(loss, apparent_q, only_inputs=True)[0]
             pulse = optimizer.step(gradient, update_port)
-            batch_examples = int(labels.numel())
-            examples += batch_examples
-            batches = batch_index + 1
-            loss_sum += float(loss.item()) * batch_examples
+            objective_loss_sum += float(loss.item()) * batch_examples
+            cross_entropy_sum += float(
+                F.cross_entropy(logits.detach(), labels).item()
+            ) * batch_examples
             correct += int(logits.argmax(dim=1).eq(labels).sum().item())
             commanded += int(pulse["commanded_pulses"])
             clipped += int(pulse["probability_clipped"])
@@ -1577,39 +1995,12 @@ def _run_on_chip_adam(
             spec=spec,
             device=device,
         )
-        epoch_report = {
-            "epoch": epoch,
-            "batches": batches,
-            "examples": examples,
-            "train_cross_entropy": loss_sum / examples,
-            "train_pre_update_accuracy": correct / examples,
-            "commanded_pulses": commanded,
-            "probability_clipped": clipped,
-            "blocked_at_cap": blocked,
-            "ordered_model_inputs_sha256": stream_digests[0].hexdigest(),
-            "ordered_labels_sha256": stream_digests[1].hexdigest(),
-            "validation": evaluation["validation"],
-            "test": evaluation.get("test"),
-            "optimizer_cumulative": optimizer.report(),
-            **update_port.state_hash_receipt(),
-        }
-        reports.append(epoch_report)
-        store.append_metric(
-            {
-                "stage": "on_chip_adam",
-                "source_kind": origin.source_kind,
-                "start_state": start_state,
-                "assignment_seed": origin.assignment_seed,
-                "endpoint_seed": origin.endpoint_seed,
-                **epoch_report,
-            }
-        )
         current_bundle = crossbar_state_bundle(
             plant,
             layout=layout,
             digital_scales=origin.current.digital_scales,
             metadata={
-                "stage": "on_chip_adam",
+                "stage": stage.kind,
                 "origin_device_state_sha256": origin_sha,
                 "completed_epochs": epoch,
                 "learning_rate": learning_rate,
@@ -1617,19 +2008,137 @@ def _run_on_chip_adam(
                 "start_state": start_state,
             },
         )
-        recovery = _recovery_payload(
-            origin_sha=origin_sha,
-            start_state=start_state,
-            completed_epochs=epoch,
-            total_epochs=stage.epochs,
-            learning_rate=learning_rate,
-            pulse_cap=pulse_cap,
-            optimizer=optimizer,
-            train_generator=data.train_generator,
-            epoch_reports=reports,
-            initial=initial,
-            selection=selection,
+        optimizer_cumulative = optimizer.report()
+        zero_learning_rate_noop_check: dict[str, Any] | None = None
+        if zero_learning_rate_control:
+            zero_learning_rate_noop_check = {
+                "origin_plant_state_sha256": origin.current.plant_state_sha256,
+                "current_plant_state_sha256": current_bundle.plant_state_sha256,
+                "optimizer_steps": optimizer_cumulative["optimizer_steps"],
+                "requested_nonzero_commands": optimizer_cumulative[
+                    "requested_nonzero_commands"
+                ],
+                "commanded_pulses": optimizer_cumulative["commanded_pulses"],
+                "passed": bool(
+                    current_bundle.plant_state_sha256
+                    == origin.current.plant_state_sha256
+                    and optimizer_cumulative["optimizer_steps"] == 0
+                    and optimizer_cumulative["requested_nonzero_commands"] == 0
+                    and optimizer_cumulative["commanded_pulses"] == 0
+                ),
+            }
+            if not zero_learning_rate_noop_check["passed"]:
+                raise RuntimeError(
+                    "Expected learning-rate zero to preserve the complete plant "
+                    "and optimizer no-op state."
+                )
+        epoch_report = {
+            "epoch": epoch,
+            "batches": batches,
+            "examples": examples,
+            "train_objective": stage.objective,
+            "train_objective_loss": (
+                None if zero_learning_rate_control else objective_loss_sum / examples
+            ),
+            "train_cross_entropy": (
+                None if zero_learning_rate_control else cross_entropy_sum / examples
+            ),
+            "train_pre_update_accuracy": (
+                None if zero_learning_rate_control else correct / examples
+            ),
+            "execution": (
+                "zero_learning_rate_no_gradient_no_write_control"
+                if zero_learning_rate_control
+                else "apparent_forward_gradient_to_persistent_pulse_update"
+            ),
+            "commanded_pulses": commanded,
+            "probability_clipped": clipped,
+            "blocked_at_cap": blocked,
+            "ordered_model_inputs_sha256": stream_digests[0].hexdigest(),
+            "ordered_labels_sha256": stream_digests[1].hexdigest(),
+            "validation": evaluation["validation"],
+            "test": evaluation.get("test"),
+            "optimizer_cumulative": optimizer_cumulative,
+            "plant_state_sha256": current_bundle.plant_state_sha256,
+            "zero_learning_rate_noop_check": zero_learning_rate_noop_check,
+            **update_port.state_hash_receipt(),
+        }
+        reports.append(epoch_report)
+        store.append_metric(
+            {
+                "stage": stage.kind,
+                "source_kind": origin.source_kind,
+                "start_state": start_state,
+                "assignment_seed": origin.assignment_seed,
+                "endpoint_seed": origin.endpoint_seed,
+                **epoch_report,
+            }
         )
+        candidate_accuracy = float(
+            evaluation["validation"]["apparent_forward"][selection_metric_key]
+        )
+        candidate_objective_value = float(
+            evaluation["validation"]["apparent_forward"][
+                selection_objective_metric_key
+            ]
+        )
+        if diagnostic and _adam_selection_rank(
+            student_accuracy=candidate_accuracy,
+            objective_value=candidate_objective_value,
+            epoch=epoch,
+        ) < _adam_selection_rank(
+            student_accuracy=best_accuracy,
+            objective_value=best_objective_value,
+            epoch=best_epoch,
+        ):
+            best_epoch = epoch
+            best_accuracy = candidate_accuracy
+            best_objective_value = candidate_objective_value
+            best_current = current_bundle
+            best_optimizer_state_dict = optimizer.state_dict()
+            best_train_generator_state = (
+                data.train_generator.get_state().detach().cpu().clone()
+            )
+        if diagnostic:
+            if pulse_cap is None:  # pragma: no cover - strict config invariant
+                raise RuntimeError("Expected a finite diagnostic Adam pulse cap.")
+            recovery = _diagnostic_recovery_payload(
+                origin_sha=origin_sha,
+                start_state=start_state,
+                completed_epochs=epoch,
+                total_epochs=stage.epochs,
+                learning_rate=learning_rate,
+                pulse_cap=pulse_cap,
+                objective=stage.objective,
+                selection_metric=selection_metric,
+                selection_objective_metric=selection_objective_metric,
+                checkpoint_policy=stage.checkpoint_policy,
+                optimizer_state_dict=optimizer.state_dict(),
+                train_generator_state=data.train_generator.get_state(),
+                epoch_reports=reports,
+                initial=initial,
+                selection=selection,
+                best_epoch=best_epoch,
+                best_accuracy=best_accuracy,
+                best_objective_value=best_objective_value,
+                best_current=best_current,
+                best_optimizer_state_dict=best_optimizer_state_dict,
+                best_train_generator_state=best_train_generator_state,
+            )
+        else:
+            recovery = _recovery_payload(
+                origin_sha=origin_sha,
+                start_state=start_state,
+                completed_epochs=epoch,
+                total_epochs=stage.epochs,
+                learning_rate=learning_rate,
+                pulse_cap=pulse_cap,
+                optimizer=optimizer,
+                train_generator=data.train_generator,
+                epoch_reports=reports,
+                initial=initial,
+                selection=selection,
+            )
         checkpoint = StagedDeviceState(
             role="adam_final",
             source_kind=origin.source_kind,
@@ -1655,13 +2164,15 @@ def _run_on_chip_adam(
         )
 
     if len(reports) != stage.epochs:
-        raise RuntimeError("Expected the fixed-final Adam run to contain ten epoch reports.")
-    final_bundle = crossbar_state_bundle(
+        raise RuntimeError(
+            f"Expected the Adam run to contain {stage.epochs} epoch reports."
+        )
+    training_final_bundle = crossbar_state_bundle(
         plant,
         layout=layout,
         digital_scales=origin.current.digital_scales,
         metadata={
-            "stage": "on_chip_adam",
+            "stage": stage.kind,
             "origin_device_state_sha256": origin_sha,
             "completed_epochs": stage.epochs,
             "learning_rate": learning_rate,
@@ -1669,19 +2180,236 @@ def _run_on_chip_adam(
             "start_state": start_state,
         },
     )
-    final_recovery = _recovery_payload(
-        origin_sha=origin_sha,
-        start_state=start_state,
-        completed_epochs=stage.epochs,
-        total_epochs=stage.epochs,
-        learning_rate=learning_rate,
-        pulse_cap=pulse_cap,
-        optimizer=optimizer,
-        train_generator=data.train_generator,
-        epoch_reports=reports,
-        initial=initial,
-        selection=selection,
-    )
+    training_final_validation = reports[-1]["validation"]
+    report_kind = "crossbar_adam_recovery_report"
+    report_name = "adam_recovery_report.json"
+    if diagnostic:
+        if pulse_cap is None:  # pragma: no cover - strict config invariant
+            raise RuntimeError("Expected a finite diagnostic Adam pulse cap.")
+        selection_candidates = [
+            {
+                "epoch": 0,
+                "value": {
+                    "student_accuracy": float(
+                        initial["validation"]["apparent_forward"][
+                            selection_metric_key
+                        ]
+                    ),
+                    "objective_value": float(
+                        initial["validation"]["apparent_forward"][
+                            selection_objective_metric_key
+                        ]
+                    ),
+                },
+                "accuracy": float(
+                    initial["validation"]["apparent_forward"][selection_metric_key]
+                ),
+                "objective_value": float(
+                    initial["validation"]["apparent_forward"][
+                        selection_objective_metric_key
+                    ]
+                ),
+                "validation": initial["validation"],
+            }
+        ]
+        selection_candidates.extend(
+            {
+                "epoch": int(item["epoch"]),
+                "value": {
+                    "student_accuracy": float(
+                        item["validation"]["apparent_forward"][selection_metric_key]
+                    ),
+                    "objective_value": float(
+                        item["validation"]["apparent_forward"][
+                            selection_objective_metric_key
+                        ]
+                    ),
+                },
+                "accuracy": float(
+                    item["validation"]["apparent_forward"][selection_metric_key]
+                ),
+                "objective_value": float(
+                    item["validation"]["apparent_forward"][
+                        selection_objective_metric_key
+                    ]
+                ),
+                "validation": item["validation"],
+            }
+            for item in reports
+        )
+        recomputed_best = min(
+            selection_candidates,
+            key=lambda item: _adam_selection_rank(
+                student_accuracy=float(item["accuracy"]),
+                objective_value=float(item["objective_value"]),
+                epoch=int(item["epoch"]),
+            ),
+        )
+        if (
+            int(recomputed_best["epoch"]) != best_epoch
+            or not math.isclose(
+                float(recomputed_best["accuracy"]),
+                best_accuracy,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or not math.isclose(
+                float(recomputed_best["objective_value"]),
+                best_objective_value,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+        ):
+            raise RuntimeError("Expected diagnostic checkpoint selection to replay.")
+        selected_generator = torch.Generator(device=device.type)
+        selected_generator.manual_seed(
+            _recovery_seed(
+                runtime_seed=spec.runtime.seed,
+                assignment_seed=spec.device.assignment_seed,
+                endpoint_seed=spec.device.endpoint_seed,
+            )
+        )
+        selected_optimizer = PulseAdam(
+            size=_CELL_COUNT,
+            layout=layout,
+            learning_rates=(learning_rate, learning_rate),
+            betas=(stage.beta_1, stage.beta_2),
+            epsilon=stage.epsilon,
+            layer_scope=stage.layer_scope,
+            nominal_dw_min=population_nominal_step(origin.healthy_population),
+            pulse_cap_per_cell=pulse_cap,
+            generator=selected_generator,
+            device=device,
+        )
+        selected_optimizer.load_state_dict(best_optimizer_state_dict)
+        final_recovery = _diagnostic_recovery_payload(
+            origin_sha=origin_sha,
+            start_state=start_state,
+            completed_epochs=best_epoch,
+            total_epochs=stage.epochs,
+            learning_rate=learning_rate,
+            pulse_cap=pulse_cap,
+            objective=stage.objective,
+            selection_metric=selection_metric,
+            selection_objective_metric=selection_objective_metric,
+            checkpoint_policy=stage.checkpoint_policy,
+            optimizer_state_dict=selected_optimizer.state_dict(),
+            train_generator_state=best_train_generator_state,
+            epoch_reports=reports[:best_epoch],
+            initial=initial,
+            selection=selection,
+            best_epoch=best_epoch,
+            best_accuracy=best_accuracy,
+            best_objective_value=best_objective_value,
+            best_current=best_current,
+            best_optimizer_state_dict=selected_optimizer.state_dict(),
+            best_train_generator_state=best_train_generator_state,
+        )
+        final_bundle = best_current
+        final = {"validation": recomputed_best["validation"]}
+        selected_optimizer_report = selected_optimizer.report()
+        zero_learning_rate_noop_summary: dict[str, Any] | None = None
+        if zero_learning_rate_control:
+            zero_learning_rate_noop_summary = {
+                "origin_plant_state_sha256": origin.current.plant_state_sha256,
+                "selected_plant_state_sha256": final_bundle.plant_state_sha256,
+                "training_final_plant_state_sha256": (
+                    training_final_bundle.plant_state_sha256
+                ),
+                "selected_optimizer_steps": selected_optimizer_report[
+                    "optimizer_steps"
+                ],
+                "training_final_optimizer_steps": optimizer.report()[
+                    "optimizer_steps"
+                ],
+                "all_epoch_checks_passed": all(
+                    item["zero_learning_rate_noop_check"]["passed"]
+                    for item in reports
+                ),
+            }
+            zero_learning_rate_noop_summary["passed"] = bool(
+                zero_learning_rate_noop_summary["origin_plant_state_sha256"]
+                == zero_learning_rate_noop_summary["selected_plant_state_sha256"]
+                == zero_learning_rate_noop_summary[
+                    "training_final_plant_state_sha256"
+                ]
+                and zero_learning_rate_noop_summary["selected_optimizer_steps"] == 0
+                and zero_learning_rate_noop_summary[
+                    "training_final_optimizer_steps"
+                ]
+                == 0
+                and zero_learning_rate_noop_summary["all_epoch_checks_passed"]
+            )
+            if not zero_learning_rate_noop_summary["passed"]:
+                raise RuntimeError(
+                    "Expected the complete learning-rate-zero run to be a no-op."
+                )
+        diagnostic_fields: dict[str, Any] = {
+            "objective": stage.objective,
+            "selection_metric": selection_metric,
+            "selection_objective_metric": selection_objective_metric,
+            "selection_candidates": selection_candidates,
+            "selected_epoch": best_epoch,
+            "selected_value": {
+                "student_accuracy": best_accuracy,
+                "objective_value": best_objective_value,
+            },
+            "selected_accuracy": best_accuracy,
+            "selected_objective_value": best_objective_value,
+            "selected_validation": recomputed_best["validation"],
+            "non_degradation_passed": bool(
+                _adam_selection_rank(
+                    student_accuracy=best_accuracy,
+                    objective_value=best_objective_value,
+                    epoch=0,
+                )
+                <= _adam_selection_rank(
+                    student_accuracy=float(selection_candidates[0]["accuracy"]),
+                    objective_value=float(
+                        selection_candidates[0]["objective_value"]
+                    ),
+                    epoch=0,
+                )
+            ),
+            "training_final_epoch": stage.epochs,
+            "training_final_validation": training_final_validation,
+            "selected_optimizer": selected_optimizer_report,
+            "training_final_optimizer": optimizer.report(),
+            "zero_learning_rate_noop_check": zero_learning_rate_noop_summary,
+            "selected_plant_state_sha256": final_bundle.plant_state_sha256,
+            "training_final_plant_state_sha256": (
+                training_final_bundle.plant_state_sha256
+            ),
+            "training_final_apparent_sha256": tensor_sha256(
+                training_final_bundle.plant_state["apparent"]
+            ),
+            "training_final_persistent_sha256": tensor_sha256(
+                training_final_bundle.plant_state["persistent"]
+            ),
+        }
+        report_kind = "crossbar_adam_diagnostic_report"
+        report_name = "adam_diagnostic_report.json"
+    else:
+        final_bundle = training_final_bundle
+        final_recovery = _recovery_payload(
+            origin_sha=origin_sha,
+            start_state=start_state,
+            completed_epochs=stage.epochs,
+            total_epochs=stage.epochs,
+            learning_rate=learning_rate,
+            pulse_cap=pulse_cap,
+            optimizer=optimizer,
+            train_generator=data.train_generator,
+            epoch_reports=reports,
+            initial=initial,
+            selection=selection,
+        )
+        final = {
+            "validation": reports[-1]["validation"],
+            **({"test": reports[-1]["test"]} if reports[-1]["test"] is not None else {}),
+        }
+        selected_optimizer_report = optimizer.report()
+        diagnostic_fields = {}
     final_state = StagedDeviceState(
         role="adam_final",
         source_kind=origin.source_kind,
@@ -1699,11 +2427,24 @@ def _run_on_chip_adam(
     )
     final_path = store.run_dir / "checkpoints" / "crossbar_device_state.pt"
     save_device_state(final_path, final_state)
-    load_device_state(final_path)
-    final = {
-        "validation": reports[-1]["validation"],
-        **({"test": reports[-1]["test"]} if reports[-1]["test"] is not None else {}),
-    }
+    reloaded_final = load_device_state(final_path)
+    if diagnostic:
+        if pulse_cap is None:  # pragma: no cover - strict config invariant
+            raise RuntimeError("Expected a finite diagnostic Adam pulse cap.")
+        _validate_diagnostic_resume(
+            reloaded_final,
+            origin=origin,
+            origin_sha=origin_sha,
+            start_state=start_state,
+            learning_rate=learning_rate,
+            pulse_cap=pulse_cap,
+            total_epochs=stage.epochs,
+            objective=stage.objective,
+            selection_metric=selection_metric,
+            selection_objective_metric=selection_objective_metric,
+            checkpoint_policy=stage.checkpoint_policy,
+            selection=selection,
+        )
     report = {
         "source_kind": origin.source_kind,
         "start_state": start_state,
@@ -1714,6 +2455,7 @@ def _run_on_chip_adam(
         "learning_rate": learning_rate,
         "pulse_cap_per_cell": pulse_cap,
         "selection": selection,
+        **diagnostic_fields,
         "resolved_hyperparameters": {
             "learning_rate": learning_rate,
             "pulse_cap_per_cell": pulse_cap,
@@ -1726,13 +2468,13 @@ def _run_on_chip_adam(
         "epochs": reports,
         "final": final,
         "final_evaluation": final,
-        "optimizer": optimizer.report(),
+        "optimizer": selected_optimizer_report,
         "learning_implementation": dict(_ADAM_IMPLEMENTATION),
         "checkpoint_policy": stage.checkpoint_policy,
         "network_forward_state": "apparent_q",
         "hidden_update_state": "persistent_q",
     }
-    report_path = store.run_dir / "artifacts" / "adam_recovery_report.json"
+    report_path = store.run_dir / "artifacts" / report_name
     atomic_write_json(report_path, report)
     metrics = {
         **_base_metrics(
@@ -1751,6 +2493,7 @@ def _run_on_chip_adam(
         "origin_device_state_sha256": origin_sha,
         "resume_input_sha256": resume_sha,
         "selection": selection,
+        **diagnostic_fields,
         "resolved_hyperparameters": {
             "learning_rate": learning_rate,
             "pulse_cap_per_cell": pulse_cap,
@@ -1763,7 +2506,7 @@ def _run_on_chip_adam(
         "epochs": reports,
         "final": final,
         "final_evaluation": final,
-        "optimizer": optimizer.report(),
+        "optimizer": selected_optimizer_report,
         "learning_implementation": dict(_ADAM_IMPLEMENTATION),
         "device_state_sha256": sha256_file(final_path),
     }
@@ -1771,10 +2514,232 @@ def _run_on_chip_adam(
     artifacts.extend(
         (
             store.artifact_record(final_path, kind="crossbar_adam_final_state_bundle"),
-            store.artifact_record(report_path, kind="crossbar_adam_recovery_report"),
+            store.artifact_record(report_path, kind=report_kind),
         )
     )
     return metrics, artifacts
+
+
+def _metric_summary(values: Sequence[float]) -> dict[str, float]:
+    if not values or any(not math.isfinite(float(value)) for value in values):
+        raise ValueError("Expected finite non-empty diagnostic metric values.")
+    normalized = [float(value) for value in values]
+    return {
+        "mean": sum(normalized) / len(normalized),
+        "minimum": min(normalized),
+        "maximum": max(normalized),
+    }
+
+
+def _fresh_apparent_diagnostic_seed(
+    *,
+    configured_seed: int,
+    runtime_seed: int,
+    assignment_seed: int,
+    endpoint_seed: int,
+    start_state: str,
+    intervention: str,
+) -> tuple[int, dict[str, Any]]:
+    """Resolve one paired redraw stream shared by healthy/faulted P0."""
+
+    if start_state not in {"hwa_healthy_p0", "hwa_published_fault"}:
+        raise ValueError("Expected a named HWA P0 start for paired redraws.")
+    resolved = derive_seed(
+        configured_seed,
+        runtime_seed,
+        assignment_seed,
+        endpoint_seed,
+        intervention,
+    )
+    return resolved, {
+        "scheme": "derive_seed_without_start_state_for_paired_noise_v1",
+        "configured_seed": configured_seed,
+        "runtime_seed": runtime_seed,
+        "assignment_seed": assignment_seed,
+        "endpoint_seed": endpoint_seed,
+        "intervention": intervention,
+        "excluded_pairing_dimension": "start_state",
+        "matched_across_start_states": True,
+        "resolved_seed": resolved,
+    }
+
+
+def _run_fresh_apparent_diagnostic(
+    *,
+    request: Any,
+    store: RunStore,
+    spec: StagedCrossbarTrainSpec,
+    teacher: BiasFreeReluTeacher,
+    teacher_sha256: str,
+    teacher_validation: Mapping[str, Any],
+    data: "MnistLoaders",
+    layout: tuple,
+    device: torch.device,
+) -> tuple[dict[str, Any], list[ArtifactRecord]]:
+    stage = spec.stage
+    if not isinstance(stage, FreshApparentDiagnosticStageSettings):
+        raise TypeError("Expected fresh-apparent diagnostic stage settings.")
+    origin_path = request.device_state.expanduser().resolve()
+    origin_sha = sha256_file(origin_path)
+    origin = load_device_state(origin_path)
+    _validate_origin(
+        origin,
+        spec=spec,
+        teacher_sha256=teacher_sha256,
+        layout=layout,
+        allowed_roles={"healthy_p0", "faulted_p0"},
+    )
+    start_state = _start_state_label(origin)
+    if start_state != stage.start_state:
+        raise ValueError(
+            "Expected fresh_apparent_diagnostic --device-state to match the "
+            f"predeclared start_state {stage.start_state!r}; observed {start_state!r}."
+        )
+    plant = _restore_current(origin, layout=layout, device=device)
+    initial = _evaluate_plant_splits(
+        plant=plant,
+        scales=origin.current.digital_scales,
+        layout=layout,
+        teacher=teacher,
+        data=data,
+        spec=spec,
+        device=device,
+    )
+    before = {
+        "apparent_sha256": tensor_sha256(plant.apparent),
+        "persistent_sha256": tensor_sha256(plant.persistent),
+    }
+    resolved_seed, seed_derivation = _fresh_apparent_diagnostic_seed(
+        configured_seed=stage.seed,
+        runtime_seed=spec.runtime.seed,
+        assignment_seed=origin.assignment_seed,
+        endpoint_seed=origin.endpoint_seed,
+        start_state=start_state,
+        intervention=stage.intervention,
+    )
+    generator = torch.Generator(device=device.type)
+    generator.manual_seed(resolved_seed)
+    generator_before = tensor_sha256(generator.get_state())
+    draw_reports: list[dict[str, Any]] = []
+    for draw_index in range(1, stage.draws + 1):
+        fresh_apparent, noise = _sample_aihwkit_om_apparent_write_noise(
+            persistent_q=plant.persistent,
+            nominal_dw_min=origin.healthy_population.nominal_dw_min,
+            write_noise_std=origin.healthy_population.write_noise_std,
+            relative_scale=stage.relative_scale,
+            generator=generator,
+        )
+        evaluation = _evaluate_effective_splits(
+            state=fresh_apparent,
+            scales=origin.current.digital_scales,
+            layout=layout,
+            teacher=teacher,
+            data=data,
+            spec=spec,
+            device=device,
+        )
+        validation = {
+            "network_forward_state": "counterfactual_fresh_apparent_q_diagnostic",
+            "hidden_update_state": "persistent_q_unchanged",
+            "apparent_forward": evaluation["validation"],
+            "persistent_diagnostic": initial["validation"][
+                "persistent_diagnostic"
+            ],
+        }
+        draw_report = {
+            "draw": draw_index,
+            "fresh_apparent_q_sha256": tensor_sha256(fresh_apparent),
+            "noise_q_sha256": tensor_sha256(noise),
+            "validation": validation,
+        }
+        draw_reports.append(draw_report)
+        store.append_metric(
+            {
+                "stage": stage.kind,
+                "start_state": start_state,
+                "assignment_seed": origin.assignment_seed,
+                "endpoint_seed": origin.endpoint_seed,
+                **draw_report,
+            }
+        )
+    after = {
+        "apparent_sha256": tensor_sha256(plant.apparent),
+        "persistent_sha256": tensor_sha256(plant.persistent),
+    }
+    mutation_check = {
+        "before": before,
+        "after": after,
+        "passed": before == after,
+        "writes_commanded": 0,
+        "persistent_updates": 0,
+        "held_apparent_updates": 0,
+    }
+    if not mutation_check["passed"]:
+        raise RuntimeError(
+            "Expected the counterfactual apparent redraw diagnostic not to mutate the plant."
+        )
+    metric_names = (
+        "student_accuracy",
+        "kl_teacher_student",
+        "cross_entropy",
+    )
+    summary = {
+        name: _metric_summary(
+            [
+                float(item["validation"]["apparent_forward"][name])
+                for item in draw_reports
+            ]
+        )
+        for name in metric_names
+    }
+    report = {
+        "source_kind": origin.source_kind,
+        "start_state": start_state,
+        "assignment_seed": origin.assignment_seed,
+        "endpoint_seed": origin.endpoint_seed,
+        "origin_device_state_sha256": origin_sha,
+        "intervention": stage.intervention,
+        "interpretation": stage.interpretation,
+        "mutation_policy": stage.mutation_policy,
+        "draw_count": stage.draws,
+        "relative_scale": stage.relative_scale,
+        "configured_seed": stage.seed,
+        "resolved_seed": resolved_seed,
+        "matched_across_start_states": True,
+        "seed_derivation": seed_derivation,
+        "generator_state_before_sha256": generator_before,
+        "generator_state_after_sha256": tensor_sha256(generator.get_state()),
+        "noise_equation": (
+            "q_fresh_equals_persistent_q_plus_write_noise_std_times_"
+            "nominal_dw_min_times_standard_normal"
+        ),
+        "physical_read_claim": False,
+        "initial": initial,
+        "draws": draw_reports,
+        "summary": summary,
+        "mutation_check": mutation_check,
+        "network_forward_state": "counterfactual_fresh_apparent_q_diagnostic",
+        "hidden_update_state": "persistent_q_unchanged",
+    }
+    report_path = (
+        store.run_dir / "artifacts" / "fresh_apparent_diagnostic_report.json"
+    )
+    atomic_write_json(report_path, report)
+    metrics = {
+        **_base_metrics(
+            spec=spec,
+            teacher_sha256=teacher_sha256,
+            teacher_validation=teacher_validation,
+            device=device,
+        ),
+        "input_role": origin.role,
+        **report,
+    }
+    return metrics, [
+        store.artifact_record(
+            report_path, kind="crossbar_fresh_apparent_diagnostic_report"
+        )
+    ]
 
 
 def _run_stage(
@@ -1830,8 +2795,10 @@ def _run_stage(
         return _run_deploy(**common, sampler=sampler)
     if spec.stage.kind == "apply_corruption":
         return _run_apply_corruption(**common)
-    if spec.stage.kind == "on_chip_adam":
+    if spec.stage.kind in {"on_chip_adam", "on_chip_adam_diagnostic"}:
         return _run_on_chip_adam(**common)
+    if spec.stage.kind == "fresh_apparent_diagnostic":
+        return _run_fresh_apparent_diagnostic(**common)
     raise RuntimeError(f"Unsupported staged kind: {spec.stage.kind!r}.")
 
 
@@ -1847,7 +2814,11 @@ def run_train(request: "TrainRequest") -> int:
         command=request.command,
         repo_root=_ROOT,
         input_artifacts=input_artifacts,
-        resume_capability=("exact" if spec.stage.kind == "on_chip_adam" else "unsupported"),
+        resume_capability=(
+            "exact"
+            if spec.stage.kind in {"on_chip_adam", "on_chip_adam_diagnostic"}
+            else "unsupported"
+        ),
     )
     try:
         metrics, artifacts = _run_stage(request=request, store=store, sampler=sampler)

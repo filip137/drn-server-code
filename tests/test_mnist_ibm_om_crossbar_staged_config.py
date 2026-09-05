@@ -3,14 +3,19 @@ from __future__ import annotations
 import pytest
 
 from experiments.mnist_analog_relu.staged_config import (
+    ADAM_DIAGNOSTIC_LEARNING_RATE_GRID,
+    ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL,
     ADAM_LEARNING_RATE_GRID,
     ADAM_PULSE_CAP_GRID,
     EXPERIMENT_ID,
     ApplyCorruptionStageSettings,
     DeployStageSettings,
+    DiagnosticLiteralAdamHyperparameters,
+    FreshApparentDiagnosticStageSettings,
     LiteralAdamHyperparameters,
     OffchipHwaStageSettings,
     OnChipAdamStageSettings,
+    OnChipAdamDiagnosticStageSettings,
     SelectionReceiptAdamHyperparameters,
     StagedCrossbarTrainSpec,
     parse_staged_crossbar_config,
@@ -183,6 +188,57 @@ def _receipt_adam_stage() -> dict:
     return stage
 
 
+def _diagnostic_adam_stage(
+    *,
+    learning_rate: float = 1e-5,
+    objective: str = "teacher_kl",
+    start_state: str = "hwa_healthy_p0",
+) -> dict:
+    return {
+        "kind": "on_chip_adam_diagnostic",
+        "start_state": start_state,
+        "epochs": 3,
+        "optimizer": "pulse_adam",
+        "objective": objective,
+        "repair_examples": 55000,
+        "maximum_batches": 3438,
+        "betas": [0.9, 0.999],
+        "epsilon": 1e-8,
+        "layer_scope": "all",
+        "forward_state": "held_apparent_q",
+        "write_state": "persistent_q",
+        "gradient_estimator": (
+            "identity_ste_apparent_q_to_persistent_pulse_update"
+        ),
+        "checkpoint_policy": (
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        "hyperparameters": {
+            "source": "literal_diagnostic_grid",
+            "learning_rate": learning_rate,
+            "pulse_cap_per_cell": 640,
+        },
+    }
+
+
+def _fresh_apparent_stage(
+    start_state: str = "hwa_healthy_p0",
+) -> dict:
+    return {
+        "kind": "fresh_apparent_diagnostic",
+        "start_state": start_state,
+        "intervention": (
+            "counterfactual_post_write_apparent_noise_redraw_without_device_write"
+        ),
+        "draws": 4,
+        "relative_scale": 1,
+        "seed": 2090701,
+        "mutation_policy": "do_not_mutate_held_apparent_or_persistent_state",
+        "interpretation": "diagnostic_only_not_physical_inference_read_noise",
+    }
+
+
 def _parse_with_stage(stage: dict, *, evaluation: str | None = None):
     payload = _common_payload()
     payload["stage"] = stage
@@ -304,6 +360,118 @@ def test_selection_receipt_freezes_grid_four_starts_score_and_tie_rule() -> None
     assert selection.tie_break_policy == (
         "prefer_pulse_cap_128_then_lower_learning_rate"
     )
+
+
+@pytest.mark.parametrize("learning_rate", ADAM_DIAGNOSTIC_LEARNING_RATE_GRID)
+@pytest.mark.parametrize("objective", ["supervised_cross_entropy", "teacher_kl"])
+@pytest.mark.parametrize("start_state", ["hwa_healthy_p0", "hwa_published_fault"])
+def test_hwa_only_diagnostic_adam_grid_is_strict_and_includes_noop(
+    learning_rate: float,
+    objective: str,
+    start_state: str,
+) -> None:
+    assert ADAM_DIAGNOSTIC_LEARNING_RATE_GRID == (
+        0.0,
+        3e-6,
+        1e-5,
+        3e-5,
+        1e-4,
+        2e-4,
+        3e-4,
+    )
+    document = _parse_with_stage(
+        _diagnostic_adam_stage(
+            learning_rate=learning_rate,
+            objective=objective,
+            start_state=start_state,
+        ),
+        evaluation="diagnostic_validation_only",
+    )
+    stage = document.stage
+
+    assert isinstance(stage, OnChipAdamDiagnosticStageSettings)
+    assert isinstance(stage.hyperparameters, DiagnosticLiteralAdamHyperparameters)
+    assert stage.hyperparameters.learning_rate == learning_rate
+    assert stage.hyperparameters.pulse_cap_per_cell == (
+        ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL
+    )
+    assert stage.epochs == 3
+    assert stage.objective == objective
+    assert stage.start_state == start_state
+    assert document.evaluation.evaluate_test is False
+    assert document.evaluation.selection_metric == (
+        "stage_declared_held_apparent_validation"
+    )
+
+
+def test_diagnostic_adam_excludes_scratch_and_protocol_drift() -> None:
+    for mutate in (
+        lambda stage: stage.__setitem__("start_state", "scratch_healthy_p0"),
+        lambda stage: stage.__setitem__("epochs", 10),
+        lambda stage: stage.__setitem__("objective", "paired_squared_error"),
+        lambda stage: stage["hyperparameters"].__setitem__(
+            "pulse_cap_per_cell", 128
+        ),
+        lambda stage: stage["hyperparameters"].__setitem__(
+            "learning_rate", 1e-3
+        ),
+    ):
+        stage = _diagnostic_adam_stage()
+        mutate(stage)
+        with pytest.raises(ConfigError):
+            _parse_with_stage(stage, evaluation="diagnostic_validation_only")
+
+    with pytest.raises(ConfigError, match="diagnostic_validation_only"):
+        _parse_with_stage(
+            _diagnostic_adam_stage(), evaluation="tuning_validation_only"
+        )
+
+    with pytest.raises(ConfigError, match="only by a diagnostic stage"):
+        _parse_with_stage(
+            {"kind": "deploy", "source_kind": "teacher"},
+            evaluation="diagnostic_validation_only",
+        )
+
+
+@pytest.mark.parametrize("start_state", ["hwa_healthy_p0", "hwa_published_fault"])
+def test_fresh_apparent_control_is_explicitly_counterfactual_and_no_write(
+    start_state: str,
+) -> None:
+    document = _parse_with_stage(
+        _fresh_apparent_stage(start_state),
+        evaluation="diagnostic_validation_only",
+    )
+    stage = document.stage
+
+    assert isinstance(stage, FreshApparentDiagnosticStageSettings)
+    assert stage.draws == 4
+    assert stage.start_state == start_state
+    assert stage.intervention.startswith("counterfactual_post_write")
+    assert stage.mutation_policy == (
+        "do_not_mutate_held_apparent_or_persistent_state"
+    )
+    assert stage.interpretation == (
+        "diagnostic_only_not_physical_inference_read_noise"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("start_state", "scratch_healthy_p0"),
+        ("draws", 1),
+        ("relative_scale", 0.5),
+        ("mutation_policy", "mutate_held_apparent"),
+        ("interpretation", "physical_read_noise"),
+    ],
+)
+def test_fresh_apparent_control_rejects_physical_or_mutating_relabels(
+    field: str, invalid: object
+) -> None:
+    stage = _fresh_apparent_stage()
+    stage[field] = invalid
+    with pytest.raises(ConfigError):
+        _parse_with_stage(stage, evaluation="diagnostic_validation_only")
 
 
 @pytest.mark.parametrize(

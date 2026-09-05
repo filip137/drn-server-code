@@ -1168,6 +1168,48 @@ def test_pulse_adam_can_disable_the_cumulative_recovery_cap() -> None:
     assert report["enabled_cells"] == 4
 
 
+def test_zero_learning_rate_adam_is_an_exact_no_write_control() -> None:
+    layout = build_crossbar_layout((2, 2, 1), maximum_input_size=2)
+    population = _population(layout, noise=0.2)
+    plant = IbmOmEffectiveCrossbarPlant(
+        population,
+        generator=torch.Generator().manual_seed(3),
+        device="cpu",
+    )
+    before = plant.state_dict()
+    optimizer = PulseAdam(
+        size=population.size,
+        layout=layout,
+        learning_rates=(0.0, 0.0),
+        betas=(0.9, 0.999),
+        epsilon=1e-8,
+        layer_scope="all",
+        nominal_dw_min=0.1,
+        pulse_cap_per_cell=640,
+        generator=torch.Generator().manual_seed(4),
+        device="cpu",
+    )
+
+    update = optimizer.step(
+        torch.linspace(-1.0, 1.0, population.size),
+        plant.restricted_recovery_update_port(),
+    )
+    after = plant.state_dict()
+
+    assert update["commanded_pulses"] == 0
+    assert update["maximum_probability_before_clip"] == 0.0
+    assert optimizer.report()["optimizer_steps"] == 1
+    assert optimizer.report()["applied_pulses"] == 0
+    for name in (
+        "persistent",
+        "apparent",
+        "upward_pulses",
+        "downward_pulses",
+        "trajectory_draw_indices",
+    ):
+        assert torch.equal(after[name], before[name])
+
+
 def test_pulse_adam_checkpoint_and_plant_bundle_resume_bit_exactly() -> None:
     layout = build_crossbar_layout((2, 2, 1), maximum_input_size=2)
     population = _population(layout, noise=0.2)

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-09-02
+Last updated: 2026-09-05
 
 ## Purpose
 
@@ -73,6 +73,19 @@ The strongest current interpretation is:
   than keep logical weights bound to A's exact cells. Randomized defect-mask
   augmentation belongs in a separate arm. This does not yet establish that
   on-chip recovery is necessary or capable of repairing stuck cells.
+- The completed full-scale `784-256-10` staged crossbar study now gives a
+  negative boundary for the selected recovery protocol. HWA deployment retained
+  `97.124%` apparent test accuracy on healthy arrays and `96.076%` after the
+  published-companion faults, but ten epochs of the selected dense open-loop
+  PulseAdam reduced them to `92.937%` and `92.604%`; teacher KL worsened from
+  `0.02525` to `0.18993` and from `0.05676` to `0.19498`. The result is mixed
+  overall because off-chip HWA modestly reduced deployment loss and scratch
+  training learned substantially, but it refutes that shared `0.003`, cap-128
+  protocol for verification-conditioned HWA recovery. It does not refute Adam
+  generally or establish DRN superiority. The immediate diagnostic separates
+  HWA from scratch, includes epoch zero, tests lower rates and teacher-KL versus
+  label cross-entropy, and measures the apparent-state refresh confound before
+  another multi-assignment campaign.
 - Ideal IBM OM baseline controls now isolate zero-state contrast as a major
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
@@ -384,6 +397,17 @@ and fine-tuning updates must remain separately measurable.
   A state was handed to target P&V. This supports a new empirical-population
   HWA arm that samples healthy device identities learned from A across
   minibatches or epochs; it is distinct from using one fixed virtual A.
+- **Full `784-256-10` deployment and recovery ladder:** Across four assignment
+  seeds with four programming realizations each, direct P&V reached `97.039%`
+  mean apparent test accuracy and HWA P&V reached `97.124%`; their corrupted
+  counterparts reached `94.896%` and `96.076%`. The selected ten-epoch
+  PulseAdam protocol then reduced healthy/corrupted HWA accuracy to
+  `92.937/92.604%` and worsened teacher KL by `+0.16468/+0.13822`. Scratch
+  training rose from near chance to `85.924/85.015%`. The reviewed production
+  outcome is mixed, while the separate shared HWA/scratch tuning hypothesis is
+  refuted. These are model-based AIHWKit OM standard-crossbar results with held
+  apparent q primary and persistent q diagnostic; they are not a causal DRN
+  comparison or fabricated-array evidence.
 
 ### Cell-specific IBM OM QAT and held-out-array transfer
 
@@ -793,6 +817,13 @@ Exact measurements, limitations, and raw artifact locations are in the
   gradient, and program-and-verify information does each option require?
 
 ## Next steps
+
+The immediate standard-crossbar task is the predeclared HWA-only diagnostic on
+the exact saved healthy and faulted P0 states: compare zero update and lower
+PulseAdam rates under teacher-KL and label cross-entropy for three epochs, allow
+epoch zero to win, and include an explicitly counterfactual no-write apparent
+refresh. Do not expand recovery to new assignments unless a nonzero update
+beats or preserves P0 under the apparent-state primary metric.
 
 1. Build a versioned empirical, population-level HWA model from Array A's
    characterized healthy cells rather than binding each logical weight to one

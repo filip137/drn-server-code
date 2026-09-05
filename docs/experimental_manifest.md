@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-09-02
+Last updated: 2026-09-05
 
 ## Program goal
 
@@ -1356,6 +1356,80 @@ P&V — no-clipping direct exploratory CUDA screen**
 - **Raw artifacts:** `results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/`
 - **Workflow summary:** `results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-784-256-teacher-20260904-v1 -->
+### mnist-ibm-om-crossbar-784-256-teacher-20260904-v1
+
+**Accepted 784-256-10 bias-free MNIST ReLU teacher**
+
+- **Finished:** 2026-09-05
+- **Evidence class:** `digital_teacher_prerequisite_cuda`
+- **Outcome:** supported
+- **Initial hypothesis:** A bias-free 784-256-10 ReLU network trained for 30 epochs with the predeclared Adam protocol will produce a minimum-validation-cross-entropy checkpoint whose validation accuracy is strictly above 97%.
+- **Completion criteria:**
+  - The native CUDA run completes with artifact verification and a selected validation accuracy strictly greater than 0.97.
+  - The selected checkpoint records bias-free dimensions 784-256-10, seed 42, the stratified 55,000/5,000 split, and minimum validation cross-entropy selection.
+  - The accepted checkpoint is evaluated once on all 10,000 official test examples without using test performance for selection.
+  - No crossbar stage starts from a different checkpoint or a newest-checkpoint lookup.
+- **Coverage:** 2 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The hypothesis is supported. The predeclared bias-free 784-256-10 teacher selected epoch 1 by minimum validation cross-entropy (0.10088174006305635) and passed the strict validation-accuracy gate at 0.9732 (> 0.97); the one-time full official MNIST test evaluation was 0.9745. Checkpoint SHA-256 7c1f826c6da5e0a8b18024b49305a9c61230a93db28253a2e8ad427d788a4565 is therefore the accepted frozen source for the matched crossbar work.
+- **Main limitations:** This is a digital-teacher prerequisite, not device-facing evidence. It covers one bias-free 784-256-10 model, runtime/data seed 42, one stratified 55,000/5,000 MNIST split, one 30-epoch Adam training protocol, and one CUDA RTX 3080 execution; the official test set was evaluated once and was not used for checkpoint selection. It says nothing by itself about IBM-OM deployment, on-chip recovery, or DRN performance.
+- **Next steps:**
+  - Keep the accepted checkpoint hash fixed as the sole source for the declared HWA-only recovery diagnostic and any later matched crossbar or DRN comparison; do not substitute a checkpoint by recency.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-784-256-teacher-20260904-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-784-256-teacher-20260904-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-784-256-teacher-20260904-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-784-256-hwa-adam-tuning-20260904-v1 -->
+### mnist-ibm-om-crossbar-784-256-hwa-adam-tuning-20260904-v1
+
+**Stochastic HWA and one-write Adam tuning for the 784-256-10 IBM-OM crossbar**
+
+- **Finished:** 2026-09-05
+- **Evidence class:** `model_based_aihwkit_om_protocol_development_cuda`
+- **Outcome:** refuted
+- **Initial hypothesis:** A single Adam learning-rate and lifetime-cap pair selected by equally weighting HWA/scratch and healthy/published-fault starts will provide a fair fixed protocol for the independent production arrays.
+- **Completion criteria:**
+  - The HWA master completes ten 55,000-example epochs on CUDA using sampled apparent q for every training forward and no persistent plant update.
+  - Initial, every epoch, and fixed-final HWA validation each use one explicitly seeded apparent-q sample held across all 5,000 examples; the support-clamped digital master is reported only as a nonpersistent diagnostic.
+  - The HWA stage is validation-only and never evaluates the official test set during protocol development.
+  - Exactly one tuning assignment and one programming seed create the HWA and scratch P0 sources; each corruption arm reuses its exact P0 without reprogramming.
+  - All six learning-rate/cap candidates complete ten epochs from all four exact starts, for complete 6-by-4 coverage.
+  - Selection minimizes equally weighted final validation cross-entropy; candidates within 1e-6 prefer cap 128 and then lower learning rate. Test metrics cannot select.
+  - The artifact-verified analysis writes one immutable strict selection receipt for production.
+- **Coverage:** 29 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The hypothesis that one shared learning-rate/cap pair would provide a fair performance protocol is refuted. The strict validation-only grid and immutable selection procedure completed as declared and selected learning rate 0.003 with a nominal 128-pulse recovery cap at mean final apparent-state validation cross-entropy 0.3992081890530884 across the four matched starts. However, every tested candidate worsened both HWA starts. For the selected pair, the healthy-HWA start changed from validation accuracy/cross-entropy 0.9712/0.11665130902826785 to 0.9260/0.26871820666491986, and the published-fault HWA start changed from 0.9626/0.1432110793247819 to 0.9272/0.24943165071606635. The pooled score combined large scratch improvements with HWA degradation; learning rate 0.003 with cap 128 was also the least-bad HWA endpoint among an inadequate grid that contained no no-op and no rate below 0.0003. It therefore did not establish a suitable verification-conditioned HWA recovery setting. This refutes this selected dense open-loop PulseAdam protocol, not Adam in general.
+- **Main limitations:** Protocol development used one physical tuning assignment/programming realization (assignment 2090402, endpoint 2091402), one frozen HWA master, one scratch initialization, one teacher and MNIST split, three learning rates, capped-versus-uncapped writes, a fixed ten-epoch budget, and the declared supervised-cross-entropy objective. It is model-based AIHWKit OM evidence rather than fabricated-device evidence, and validation-only tuning is not array-transfer evidence. Combining HWA and scratch starts in one mean cross-entropy score makes the selection sensitive to their very different initial loss scales. The nominal recovery cap counter began after P&V and therefore was not a whole-lifetime pulse cap.
+- **Next steps:**
+  - Run the accepted small HWA-only diagnostic on the exact healthy and faulted P0 states: compare learning rates 0, 0.000003, 0.00001, 0.00003, 0.0001, and the 0.0003 stress anchor under teacher-KL and label cross-entropy for three epochs; make epoch zero eligible and include an explicitly counterfactual no-write apparent-refresh control before any larger recovery campaign.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-784-256-hwa-adam-tuning-20260904-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-784-256-hwa-adam-tuning-20260904-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-784-256-hwa-adam-tuning-20260904-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-784-256-production-20260904-v1 -->
+### mnist-ibm-om-crossbar-784-256-production-20260904-v1
+
+**Large 4x4 IBM-OM standard-crossbar deployment and recovery comparison**
+
+- **Finished:** 2026-09-05
+- **Evidence class:** `model_based_aihwkit_om_standard_crossbar_control_cuda`
+- **Outcome:** mixed
+- **Initial hypothesis:** Off-chip HWA and same-array Adam recovery will reduce apparent-state deployment loss relative to direct P&V, while the matched scratch arms will show whether recovery benefits arise from the teacher/HWA initialization or can be reached by on-array training alone.
+- **Completion criteria:**
+  - Every declared native run completes on CUDA with valid artifacts: 4 assignment seeds by 4 write seeds for each outcome family.
+  - Direct and HWA corrupt branches reuse their exact healthy P0; HWA and scratch Adam branches start from the exact named healthy or faulted state and never reprogram it.
+  - Every device-facing forward, gradient, checkpoint choice, and headline metric uses held apparent q; persistent q is reported only as a labelled diagnostic and controls subsequent pulses.
+  - The production Adam settings come only from the strict artifact-verified tuning receipt, with ten fixed epochs, no test selection, and exact epoch resume.
+  - All full 5,000-example validation and 10,000-example official test metrics, P&V telemetry, fault damage, recovery gain, pulse/cap telemetry, input hashes, and immutable commands are present.
+  - Assignment-level summaries average the four writes first and report mean, SD, and range across four assignments; pooled 16-realization summaries are secondary.
+- **Coverage:** 160 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The outcome is mixed. Off-chip HWA modestly reduced source-to-deployment loss on the model-based standard crossbar: assignment-level mean apparent test accuracy was 0.97124375 after HWA deployment versus 0.9703875 after direct deployment, and its own source-to-deployment accuracy loss was 0.00055625 versus 0.0041125 for the direct teacher path. The matched scratch arms also learned substantially from near-chance programmed starts, reaching apparent test accuracy 0.85924375 (healthy) and 0.85015 (published-fault). In contrast, the selected same-array dense open-loop PulseAdam step harmed the HWA starts: apparent test accuracy fell from 0.97124375 to 0.92936875 on healthy arrays and from 0.9607625 to 0.9260375 after published faults. Teacher-to-student KL worsened from 0.0252500 to 0.189931 on healthy arrays and from 0.0567631 to 0.194981 after published faults. Thus the same-array recovery part of the hypothesis is refuted for the selected protocol. This does not show that on-chip Adam generally fails and does not establish intrinsic DRN superiority.
+- **Main limitations:** The primary unit is four assignment means, each averaging four programming realizations; this remains one bias-free 784-256-10 MNIST teacher/HWA master and one selected ten-epoch learning-rate/cap protocol using supervised cross-entropy. The evidence is from a model-based AIHWKit OM standard-crossbar control, not fabricated arrays, and the standard MVM/digital-ReLU architecture is not a passive DRN. Apparent q is the primary network state; persistent-q values are secondary robustness diagnostics. No alternative Adam parameterization, loss, sparse/local update rule, recovery budget, teacher seed, dataset, topology, or fabricated-device transfer was tested here.
+- **Next steps:**
+  - Run the accepted small HWA-only diagnostic on the exact healthy and faulted P0 states: compare learning rates 0, 0.000003, 0.00001, 0.00003, 0.0001, and the 0.0003 stress anchor under teacher-KL and label cross-entropy for three epochs; make epoch zero eligible and include an explicitly counterfactual no-write apparent-refresh control. Require apparent-state non-degradation before expanding to another multi-assignment production study or drawing any DRN comparison.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-784-256-production-20260904-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-784-256-production-20260904-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-784-256-production-20260904-v1 -->
 
 ## Shared validity notes
 

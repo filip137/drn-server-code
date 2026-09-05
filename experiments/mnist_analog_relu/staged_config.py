@@ -20,15 +20,29 @@ SCHEMA_VERSION = 2
 
 ADAM_LEARNING_RATE_GRID = (3e-4, 1e-3, 3e-3)
 ADAM_PULSE_CAP_GRID = (128, None)
+ADAM_DIAGNOSTIC_LEARNING_RATE_GRID = (
+    0.0,
+    3e-6,
+    1e-5,
+    3e-5,
+    1e-4,
+    2e-4,
+    3e-4,
+)
+ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL = 640
+ADAM_DIAGNOSTIC_OBJECTIVES = ("supervised_cross_entropy", "teacher_kl")
 STAGE_KINDS = (
     "offchip_hwa",
     "deploy",
     "apply_corruption",
     "on_chip_adam",
+    "on_chip_adam_diagnostic",
+    "fresh_apparent_diagnostic",
 )
 DEPLOY_SOURCE_KINDS = ("teacher", "hwa_master", "scratch")
 EVALUATION_PROFILES = (
     "tuning_validation_only",
+    "diagnostic_validation_only",
     "production_full_validation_and_test",
 )
 
@@ -201,11 +215,52 @@ class OnChipAdamStageSettings:
     hyperparameters: AdamHyperparameters
 
 
+@dataclass(frozen=True)
+class DiagnosticLiteralAdamHyperparameters:
+    source: str
+    learning_rate: float
+    pulse_cap_per_cell: int
+
+
+@dataclass(frozen=True)
+class OnChipAdamDiagnosticStageSettings:
+    kind: str
+    start_state: str
+    epochs: int
+    optimizer: str
+    objective: str
+    repair_examples: int
+    maximum_batches: int
+    beta_1: float
+    beta_2: float
+    epsilon: float
+    layer_scope: str
+    forward_state: str
+    write_state: str
+    gradient_estimator: str
+    checkpoint_policy: str
+    hyperparameters: DiagnosticLiteralAdamHyperparameters
+
+
+@dataclass(frozen=True)
+class FreshApparentDiagnosticStageSettings:
+    kind: str
+    start_state: str
+    intervention: str
+    draws: int
+    relative_scale: float
+    seed: int
+    mutation_policy: str
+    interpretation: str
+
+
 StageSettings: TypeAlias = (
     OffchipHwaStageSettings
     | DeployStageSettings
     | ApplyCorruptionStageSettings
     | OnChipAdamStageSettings
+    | OnChipAdamDiagnosticStageSettings
+    | FreshApparentDiagnosticStageSettings
 )
 
 
@@ -558,13 +613,18 @@ def _parse_evaluation(value: Any) -> EvaluationSettings:
             f"{path}.profile", f"to be one of {list(EVALUATION_PROFILES)!r}", profile
         )
     production = profile == "production_full_validation_and_test"
+    diagnostic = profile == "diagnostic_validation_only"
     return EvaluationSettings(
         profile=profile,
         evaluate_validation=True,
         evaluate_test=production,
         validation_points=5000,
         test_points=10000 if production else None,
-        selection_metric="fixed_final_epoch_no_selection",
+        selection_metric=(
+            "stage_declared_held_apparent_validation"
+            if diagnostic
+            else "fixed_final_epoch_no_selection"
+        ),
         primary_state="held_apparent_q",
         secondary_state="hidden_persistent_q_diagnostic",
     )
@@ -949,6 +1009,195 @@ def _parse_on_chip_adam_stage(
     )
 
 
+def _diagnostic_learning_rate(value: Any, path: str) -> float:
+    parsed = _number(value, path, minimum=0.0)
+    for candidate in ADAM_DIAGNOSTIC_LEARNING_RATE_GRID:
+        if math.isclose(parsed, candidate, rel_tol=0.0, abs_tol=1e-15):
+            return candidate
+    raise config_error(
+        path,
+        f"to be one of {list(ADAM_DIAGNOSTIC_LEARNING_RATE_GRID)!r}",
+        value,
+    )
+
+
+def _parse_on_chip_adam_diagnostic_stage(
+    raw: Mapping[str, Any], path: str
+) -> OnChipAdamDiagnosticStageSettings:
+    required = {
+        "kind",
+        "start_state",
+        "epochs",
+        "optimizer",
+        "objective",
+        "repair_examples",
+        "maximum_batches",
+        "betas",
+        "epsilon",
+        "layer_scope",
+        "forward_state",
+        "write_state",
+        "gradient_estimator",
+        "checkpoint_policy",
+        "hyperparameters",
+    }
+    _keys(raw, path, required)
+    start_state = raw["start_state"]
+    allowed_start_states = ("hwa_healthy_p0", "hwa_published_fault")
+    if start_state not in allowed_start_states:
+        raise config_error(
+            f"{path}.start_state",
+            f"to be one of {list(allowed_start_states)!r}",
+            start_state,
+        )
+    expected = {
+        "optimizer": "pulse_adam",
+        "layer_scope": "all",
+        "forward_state": "held_apparent_q",
+        "write_state": "persistent_q",
+        "gradient_estimator": (
+            "identity_ste_apparent_q_to_persistent_pulse_update"
+        ),
+        "checkpoint_policy": (
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+    }
+    for name, required_value in expected.items():
+        if raw[name] != required_value:
+            raise config_error(
+                f"{path}.{name}", f"to equal {required_value!r}", raw[name]
+            )
+    objective = raw["objective"]
+    if objective not in ADAM_DIAGNOSTIC_OBJECTIVES:
+        raise config_error(
+            f"{path}.objective",
+            f"to be one of {list(ADAM_DIAGNOSTIC_OBJECTIVES)!r}",
+            objective,
+        )
+    epochs = _integer(raw["epochs"], f"{path}.epochs", minimum=1)
+    repair_examples = _integer(
+        raw["repair_examples"], f"{path}.repair_examples", minimum=1
+    )
+    maximum_batches = _integer(
+        raw["maximum_batches"], f"{path}.maximum_batches", minimum=1
+    )
+    if epochs != 3:
+        raise config_error(f"{path}.epochs", "to equal 3", raw["epochs"])
+    if repair_examples != 55000:
+        raise config_error(
+            f"{path}.repair_examples", "to equal 55000", raw["repair_examples"]
+        )
+    if maximum_batches != 3438:
+        raise config_error(
+            f"{path}.maximum_batches", "to equal 3438", raw["maximum_batches"]
+        )
+    betas = _number_pair(raw["betas"], f"{path}.betas", minimum=0.0)
+    if betas != (0.9, 0.999):
+        raise config_error(f"{path}.betas", "to equal [0.9, 0.999]", raw["betas"])
+    epsilon = _exact_number(raw["epsilon"], f"{path}.epsilon", 1e-8)
+    hyperparameters = _object(raw["hyperparameters"], f"{path}.hyperparameters")
+    _keys(
+        hyperparameters,
+        f"{path}.hyperparameters",
+        {"source", "learning_rate", "pulse_cap_per_cell"},
+    )
+    if hyperparameters["source"] != "literal_diagnostic_grid":
+        raise config_error(
+            f"{path}.hyperparameters.source",
+            "to equal 'literal_diagnostic_grid'",
+            hyperparameters["source"],
+        )
+    pulse_cap = _integer(
+        hyperparameters["pulse_cap_per_cell"],
+        f"{path}.hyperparameters.pulse_cap_per_cell",
+        minimum=1,
+    )
+    if pulse_cap != ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL:
+        raise config_error(
+            f"{path}.hyperparameters.pulse_cap_per_cell",
+            f"to equal {ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL}",
+            hyperparameters["pulse_cap_per_cell"],
+        )
+    return OnChipAdamDiagnosticStageSettings(
+        kind="on_chip_adam_diagnostic",
+        start_state=start_state,
+        epochs=3,
+        optimizer="pulse_adam",
+        objective=objective,
+        repair_examples=55000,
+        maximum_batches=3438,
+        beta_1=0.9,
+        beta_2=0.999,
+        epsilon=epsilon,
+        layer_scope="all",
+        forward_state="held_apparent_q",
+        write_state="persistent_q",
+        gradient_estimator=expected["gradient_estimator"],
+        checkpoint_policy=expected["checkpoint_policy"],
+        hyperparameters=DiagnosticLiteralAdamHyperparameters(
+            source="literal_diagnostic_grid",
+            learning_rate=_diagnostic_learning_rate(
+                hyperparameters["learning_rate"],
+                f"{path}.hyperparameters.learning_rate",
+            ),
+            pulse_cap_per_cell=ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL,
+        ),
+    )
+
+
+def _parse_fresh_apparent_diagnostic_stage(
+    raw: Mapping[str, Any], path: str
+) -> FreshApparentDiagnosticStageSettings:
+    required = {
+        "kind",
+        "start_state",
+        "intervention",
+        "draws",
+        "relative_scale",
+        "seed",
+        "mutation_policy",
+        "interpretation",
+    }
+    _keys(raw, path, required)
+    start_state = raw["start_state"]
+    allowed_start_states = ("hwa_healthy_p0", "hwa_published_fault")
+    if start_state not in allowed_start_states:
+        raise config_error(
+            f"{path}.start_state",
+            f"to be one of {list(allowed_start_states)!r}",
+            start_state,
+        )
+    expected = {
+        "intervention": (
+            "counterfactual_post_write_apparent_noise_redraw_without_device_write"
+        ),
+        "mutation_policy": "do_not_mutate_held_apparent_or_persistent_state",
+        "interpretation": "diagnostic_only_not_physical_inference_read_noise",
+    }
+    for name, required_value in expected.items():
+        if raw[name] != required_value:
+            raise config_error(
+                f"{path}.{name}", f"to equal {required_value!r}", raw[name]
+            )
+    draws = _integer(raw["draws"], f"{path}.draws", minimum=1)
+    if draws != 4:
+        raise config_error(f"{path}.draws", "to equal 4", raw["draws"])
+    relative_scale = _exact_number(
+        raw["relative_scale"], f"{path}.relative_scale", 1.0
+    )
+    return FreshApparentDiagnosticStageSettings(
+        kind="fresh_apparent_diagnostic",
+        start_state=start_state,
+        intervention=expected["intervention"],
+        draws=4,
+        relative_scale=relative_scale,
+        seed=_integer(raw["seed"], f"{path}.seed", minimum=1),
+        mutation_policy=expected["mutation_policy"],
+        interpretation=expected["interpretation"],
+    )
+
+
 def _parse_stage(value: Any) -> StageSettings:
     path = "config.stage"
     raw = _object(value, path)
@@ -961,6 +1210,10 @@ def _parse_stage(value: Any) -> StageSettings:
         return _parse_apply_corruption_stage(raw, path)
     if kind == "on_chip_adam":
         return _parse_on_chip_adam_stage(raw, path)
+    if kind == "on_chip_adam_diagnostic":
+        return _parse_on_chip_adam_diagnostic_stage(raw, path)
+    if kind == "fresh_apparent_diagnostic":
+        return _parse_fresh_apparent_diagnostic_stage(raw, path)
     raise config_error(f"{path}.kind", f"to be one of {list(STAGE_KINDS)!r}", kind)
 
 
@@ -1007,6 +1260,24 @@ def parse_staged_crossbar_config(payload: Mapping[str, Any]) -> StagedCrossbarCo
             "to equal 'tuning_validation_only' for off-chip HWA",
             evaluation.profile,
         )
+    if isinstance(
+        stage,
+        (OnChipAdamDiagnosticStageSettings, FreshApparentDiagnosticStageSettings),
+    ) and evaluation.profile != "diagnostic_validation_only":
+        raise config_error(
+            "config.evaluation.profile",
+            "to equal 'diagnostic_validation_only' for diagnostic stages",
+            evaluation.profile,
+        )
+    if evaluation.profile == "diagnostic_validation_only" and not isinstance(
+        stage,
+        (OnChipAdamDiagnosticStageSettings, FreshApparentDiagnosticStageSettings),
+    ):
+        raise config_error(
+            "config.evaluation.profile",
+            "to be used only by a diagnostic stage",
+            evaluation.profile,
+        )
     return StagedCrossbarConfig(
         schema_version=SCHEMA_VERSION,
         experiment_id=EXPERIMENT_ID,
@@ -1048,6 +1319,9 @@ def resolve_staged_crossbar_spec(
 
 
 __all__ = [
+    "ADAM_DIAGNOSTIC_LEARNING_RATE_GRID",
+    "ADAM_DIAGNOSTIC_OBJECTIVES",
+    "ADAM_DIAGNOSTIC_PULSE_CAP_PER_CELL",
     "ADAM_LEARNING_RATE_GRID",
     "ADAM_PULSE_CAP_GRID",
     "DEPLOY_SOURCE_KINDS",
@@ -1060,12 +1334,15 @@ __all__ = [
     "DataSettings",
     "DeployStageSettings",
     "DeviceSettings",
+    "DiagnosticLiteralAdamHyperparameters",
     "EvaluationSettings",
     "LiteralAdamHyperparameters",
     "MappingSettings",
     "ModelSettings",
     "OffchipForwardNoiseSettings",
     "OffchipHwaStageSettings",
+    "FreshApparentDiagnosticStageSettings",
+    "OnChipAdamDiagnosticStageSettings",
     "OnChipAdamStageSettings",
     "RuntimeSettings",
     "SelectionReceiptAdamHyperparameters",

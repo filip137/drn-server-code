@@ -1,21 +1,26 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import torch
 
+from experiments.mnist_analog_relu import staged_runtime as runtime
 from experiments.mnist_analog_relu.staged_config import (
     ApplyCorruptionStageSettings,
     DataSettings,
     DeployStageSettings,
     DeviceSettings,
+    DiagnosticLiteralAdamHyperparameters,
+    FreshApparentDiagnosticStageSettings,
     EvaluationSettings,
     LiteralAdamHyperparameters,
     MappingSettings,
     ModelSettings,
     OnChipAdamStageSettings,
+    OnChipAdamDiagnosticStageSettings,
     RuntimeSettings,
     SelectionReceiptAdamHyperparameters,
     StagedCrossbarTrainSpec,
@@ -23,10 +28,17 @@ from experiments.mnist_analog_relu.staged_config import (
 )
 from experiments.mnist_analog_relu.staged_runtime import (
     _ADAM_IMPLEMENTATION,
+    _adam_objective_loss,
+    _adam_selection_objective_metric,
+    _adam_selection_rank,
     _authenticate_selected_teacher_metrics,
+    _fresh_apparent_diagnostic_seed,
     _layout,
     _load_teacher,
     _runtime_receipt,
+    _resolve_adam_settings,
+    _run_fresh_apparent_diagnostic,
+    _validate_diagnostic_resume,
     _validate_origin,
     _validate_request,
     _validate_resume,
@@ -118,6 +130,36 @@ def _adam_stage(*, receipt: bool) -> OnChipAdamStageSettings:
     )
 
 
+def _diagnostic_adam_stage(
+    *, objective: str = "teacher_kl", learning_rate: float = 1e-5
+) -> OnChipAdamDiagnosticStageSettings:
+    return OnChipAdamDiagnosticStageSettings(
+        kind="on_chip_adam_diagnostic",
+        start_state="hwa_healthy_p0",
+        epochs=3,
+        optimizer="pulse_adam",
+        objective=objective,
+        repair_examples=55000,
+        maximum_batches=3438,
+        beta_1=0.9,
+        beta_2=0.999,
+        epsilon=1e-8,
+        layer_scope="all",
+        forward_state="held_apparent_q",
+        write_state="persistent_q",
+        gradient_estimator="identity_ste_apparent_q_to_persistent_pulse_update",
+        checkpoint_policy=(
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        hyperparameters=DiagnosticLiteralAdamHyperparameters(
+            source="literal_diagnostic_grid",
+            learning_rate=learning_rate,
+            pulse_cap_per_cell=640,
+        ),
+    )
+
+
 def _spec(stage, *, production: bool = False) -> StagedCrossbarTrainSpec:
     return StagedCrossbarTrainSpec(
         experiment_id="mnist_ibm_om_crossbar_relu.v2",
@@ -133,13 +175,21 @@ def _spec(stage, *, production: bool = False) -> StagedCrossbarTrainSpec:
             profile=(
                 "production_full_validation_and_test"
                 if production
-                else "tuning_validation_only"
+                else (
+                    "diagnostic_validation_only"
+                    if isinstance(stage, OnChipAdamDiagnosticStageSettings)
+                    else "tuning_validation_only"
+                )
             ),
             evaluate_validation=True,
             evaluate_test=production,
             validation_points=5000,
             test_points=10000 if production else None,
-            selection_metric="fixed_final_epoch_no_selection",
+            selection_metric=(
+                "stage_declared_held_apparent_validation"
+                if isinstance(stage, OnChipAdamDiagnosticStageSettings)
+                else "fixed_final_epoch_no_selection"
+            ),
             primary_state="held_apparent_q",
             secondary_state="hidden_persistent_q_diagnostic",
         ),
@@ -320,6 +370,87 @@ def test_adam_is_explicitly_labeled_as_digitally_assisted() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("objective", "metric"),
+    [
+        (
+            "supervised_cross_entropy",
+            "validation.apparent_forward.cross_entropy",
+        ),
+        ("teacher_kl", "validation.apparent_forward.kl_teacher_student"),
+    ],
+)
+def test_diagnostic_adam_accuracy_first_selection_and_objective_tie_break_are_matched(
+    objective: str, metric: str
+) -> None:
+    stage = _diagnostic_adam_stage(objective=objective, learning_rate=0.0)
+    rate, cap, selection = _resolve_adam_settings(
+        stage=stage,
+        profile="diagnostic_validation_only",
+        selection_path=None,
+    )
+
+    assert (rate, cap) == (0.0, 640)
+    assert selection == {
+        "source": "literal_diagnostic_grid",
+        "checkpoint_policy": (
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        "objective": objective,
+    }
+    assert _adam_selection_objective_metric(objective) == (
+        metric,
+        metric.rsplit(".", 1)[-1],
+    )
+
+    candidates = [
+        (0.95, 0.01, 0),
+        (0.96, 0.20, 1),
+        (0.96, 0.10, 2),
+        (0.96, 0.10, 3),
+    ]
+    assert min(
+        candidates,
+        key=lambda item: _adam_selection_rank(
+            student_accuracy=item[0], objective_value=item[1], epoch=item[2]
+        ),
+    ) == (0.96, 0.10, 2)
+
+
+def test_teacher_kl_objective_matches_evaluation_direction_and_backpropagates() -> None:
+    logits = torch.tensor(
+        [[0.2, -0.1, 0.7], [-0.4, 0.9, 0.1]],
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    teacher_logits = torch.tensor(
+        [[0.6, 0.0, -0.2], [-0.1, 0.2, 0.8]], dtype=torch.float32
+    )
+    teacher = SimpleNamespace(logits=lambda _inputs: teacher_logits)
+    inputs = torch.zeros((2, 1), dtype=torch.float32)
+    labels = torch.tensor([2, 1], dtype=torch.long)
+
+    loss = _adam_objective_loss(
+        objective="teacher_kl",
+        logits=logits,
+        labels=labels,
+        inputs=inputs,
+        teacher=teacher,
+    )
+    teacher_log_probability = torch.log_softmax(teacher_logits, dim=1)
+    expected = (
+        teacher_log_probability.exp()
+        * (teacher_log_probability - torch.log_softmax(logits, dim=1))
+    ).sum(dim=1).mean()
+
+    assert torch.equal(loss, expected)
+    loss.backward()
+    assert logits.grad is not None
+    assert bool(torch.all(torch.isfinite(logits.grad)))
+    assert float(logits.grad.abs().sum()) > 0.0
+
+
 def test_selection_receipt_recomputes_full_grid_and_tie_break() -> None:
     rate, cap, report = _validate_selection_receipt(_selection_receipt())
     assert (rate, cap) == (3e-4, 128)
@@ -371,6 +502,77 @@ def test_on_chip_request_requires_origin_and_production_receipt(tmp_path: Path) 
         "origin_device_state",
         "adam_selection_receipt",
     ]
+
+
+def test_diagnostic_adam_request_requires_only_exact_origin_and_allows_resume(
+    tmp_path: Path,
+) -> None:
+    teacher = _touch(tmp_path / "teacher.pt")
+    origin = _touch(tmp_path / "origin.pt")
+    resume = _touch(tmp_path / "resume.pt")
+    receipt = _touch(tmp_path / "selection.json")
+    spec = _spec(_diagnostic_adam_stage())
+
+    records, sampler = _validate_request(
+        _request(
+            spec,
+            teacher_weights=teacher,
+            device_state=origin,
+            resume=resume,
+        )
+    )
+    assert sampler is None
+    assert [item["role"] for item in records] == [
+        "teacher_weights",
+        "origin_device_state",
+        "adam_epoch_resume",
+    ]
+    with pytest.raises(ValueError, match="selection-receipt"):
+        _validate_request(
+            _request(
+                spec,
+                teacher_weights=teacher,
+                device_state=origin,
+                selection_receipt=receipt,
+            )
+        )
+
+
+def test_fresh_apparent_request_forbids_resume_and_receipt(tmp_path: Path) -> None:
+    teacher = _touch(tmp_path / "teacher.pt")
+    origin = _touch(tmp_path / "origin.pt")
+    resume = _touch(tmp_path / "resume.pt")
+    stage = FreshApparentDiagnosticStageSettings(
+        kind="fresh_apparent_diagnostic",
+        start_state="hwa_healthy_p0",
+        intervention=(
+            "counterfactual_post_write_apparent_noise_redraw_without_device_write"
+        ),
+        draws=4,
+        relative_scale=1.0,
+        seed=2090701,
+        mutation_policy="do_not_mutate_held_apparent_or_persistent_state",
+        interpretation="diagnostic_only_not_physical_inference_read_noise",
+    )
+    spec = _spec(stage)
+
+    records, sampler = _validate_request(
+        _request(spec, teacher_weights=teacher, device_state=origin)
+    )
+    assert sampler is None
+    assert [item["role"] for item in records] == [
+        "teacher_weights",
+        "origin_device_state",
+    ]
+    with pytest.raises(ValueError, match="--resume"):
+        _validate_request(
+            _request(
+                spec,
+                teacher_weights=teacher,
+                device_state=origin,
+                resume=resume,
+            )
+        )
 
 
 def test_corruption_rejects_resume_and_deploy_hwa_requires_master(
@@ -538,3 +740,334 @@ def test_resume_validation_binds_complete_selection_summary() -> None:
             total_epochs=10,
             selection={"source": "different_receipt"},
         )
+
+
+def test_diagnostic_resume_accepts_selected_epoch_zero_exactly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    apparent = torch.tensor([0.1], dtype=torch.float32)
+    persistent = torch.tensor([0.2], dtype=torch.float32)
+    current = SimpleNamespace(
+        layout=("layout",),
+        digital_scales=(1.0, 1.0),
+        state_kind="healthy",
+        population_fingerprint="population",
+        plant_state={"apparent": apparent, "persistent": persistent},
+        plant_state_sha256="a" * 64,
+    )
+    healthy_p0 = SimpleNamespace(plant_state_sha256="b" * 64)
+    population = SimpleNamespace(fingerprint="population")
+    origin = SimpleNamespace(
+        source_kind="hwa_master",
+        dims=(784, 256, 10),
+        assignment_seed=1,
+        endpoint_seed=2,
+        teacher_sha256="c" * 64,
+        source_artifact_sha256="e" * 64,
+        healthy_population=population,
+        published_population=population,
+        healthy_p0=healthy_p0,
+        current=current,
+    )
+    selection = {
+        "source": "literal_diagnostic_grid",
+        "checkpoint_policy": (
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        "objective": "teacher_kl",
+    }
+    generator_state = torch.Generator().get_state()
+    recovery = {
+        "schema": "ebl.ibm_om_crossbar_adam_diagnostic_recovery",
+        "schema_version": 2,
+        "origin_device_state_sha256": "d" * 64,
+        "start_state": "hwa_healthy_p0",
+        "completed_epochs": 0,
+        "total_epochs": 3,
+        "learning_rate": 1e-5,
+        "pulse_cap_per_cell": 640,
+        "objective": "teacher_kl",
+        "selection_metric": "validation.apparent_forward.student_accuracy",
+        "selection_objective_metric": (
+            "validation.apparent_forward.kl_teacher_student"
+        ),
+        "checkpoint_policy": (
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        "optimizer_state_dict": {},
+        "train_generator_state": generator_state,
+        "epoch_reports": [],
+        "initial": {
+            "validation": {
+                "apparent_forward": {
+                    "student_accuracy": 0.9,
+                    "kl_teacher_student": 0.1,
+                }
+            }
+        },
+        "selection": selection,
+        "best_epoch": 0,
+        "best_value": {"student_accuracy": 0.9, "objective_value": 0.1},
+        "best_current_state": {"token": "origin"},
+        "best_optimizer_state_dict": {},
+        "best_train_generator_state": generator_state,
+    }
+    resume = SimpleNamespace(
+        role="adam_final",
+        source_kind=origin.source_kind,
+        dims=origin.dims,
+        assignment_seed=origin.assignment_seed,
+        endpoint_seed=origin.endpoint_seed,
+        teacher_sha256=origin.teacher_sha256,
+        source_artifact_sha256=origin.source_artifact_sha256,
+        parent_device_state_sha256="d" * 64,
+        healthy_population=population,
+        published_population=population,
+        healthy_p0=healthy_p0,
+        current=current,
+        recovery=recovery,
+    )
+    monkeypatch.setattr(
+        runtime.IbmOmCrossbarStateBundle,
+        "from_state_dict",
+        staticmethod(lambda _value: current),
+    )
+
+    validated, best = _validate_diagnostic_resume(
+        resume,
+        origin=origin,
+        origin_sha="d" * 64,
+        start_state="hwa_healthy_p0",
+        learning_rate=1e-5,
+        pulse_cap=640,
+        total_epochs=3,
+        objective="teacher_kl",
+        selection_metric="validation.apparent_forward.student_accuracy",
+        selection_objective_metric=(
+            "validation.apparent_forward.kl_teacher_student"
+        ),
+        checkpoint_policy=(
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        selection=selection,
+    )
+
+    assert validated["completed_epochs"] == 0
+    assert best is current
+
+    recovery["best_value"]["objective_value"] = 0.2
+    with pytest.raises(ValueError, match="selection to replay"):
+        _validate_diagnostic_resume(
+            resume,
+            origin=origin,
+            origin_sha="d" * 64,
+            start_state="hwa_healthy_p0",
+            learning_rate=1e-5,
+            pulse_cap=640,
+            total_epochs=3,
+            objective="teacher_kl",
+            selection_metric="validation.apparent_forward.student_accuracy",
+            selection_objective_metric=(
+                "validation.apparent_forward.kl_teacher_student"
+            ),
+            checkpoint_policy=(
+                "best_held_apparent_validation_accuracy_then_objective_"
+                "then_earlier_epoch_including_epoch0"
+            ),
+            selection=selection,
+        )
+
+    recovery["completed_epochs"] = 1
+    recovery["epoch_reports"] = [
+        {
+            "epoch": 1,
+            "validation": {
+                "apparent_forward": {
+                    "student_accuracy": 0.91,
+                    "kl_teacher_student": 0.09,
+                }
+            },
+            "plant_state_sha256": current.plant_state_sha256,
+            "apparent_sha256": tensor_sha256(apparent),
+            "persistent_sha256": tensor_sha256(persistent),
+        }
+    ]
+    recovery["best_epoch"] = 1
+    recovery["best_value"] = {
+        "student_accuracy": 0.91,
+        "objective_value": 0.09,
+    }
+    validated, _ = _validate_diagnostic_resume(
+        resume,
+        origin=origin,
+        origin_sha="d" * 64,
+        start_state="hwa_healthy_p0",
+        learning_rate=1e-5,
+        pulse_cap=640,
+        total_epochs=3,
+        objective="teacher_kl",
+        selection_metric="validation.apparent_forward.student_accuracy",
+        selection_objective_metric=(
+            "validation.apparent_forward.kl_teacher_student"
+        ),
+        checkpoint_policy=(
+            "best_held_apparent_validation_accuracy_then_objective_"
+            "then_earlier_epoch_including_epoch0"
+        ),
+        selection=selection,
+    )
+    assert validated["best_epoch"] == 1
+
+    recovery["epoch_reports"][0]["plant_state_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="terminal and embedded best states"):
+        _validate_diagnostic_resume(
+            resume,
+            origin=origin,
+            origin_sha="d" * 64,
+            start_state="hwa_healthy_p0",
+            learning_rate=1e-5,
+            pulse_cap=640,
+            total_epochs=3,
+            objective="teacher_kl",
+            selection_metric="validation.apparent_forward.student_accuracy",
+            selection_objective_metric=(
+                "validation.apparent_forward.kl_teacher_student"
+            ),
+            checkpoint_policy=(
+                "best_held_apparent_validation_accuracy_then_objective_"
+                "then_earlier_epoch_including_epoch0"
+            ),
+            selection=selection,
+        )
+
+
+def test_fresh_apparent_diagnostic_is_replayable_and_does_not_mutate_plant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stage = FreshApparentDiagnosticStageSettings(
+        kind="fresh_apparent_diagnostic",
+        start_state="hwa_healthy_p0",
+        intervention=(
+            "counterfactual_post_write_apparent_noise_redraw_without_device_write"
+        ),
+        draws=4,
+        relative_scale=1.0,
+        seed=2090701,
+        mutation_policy="do_not_mutate_held_apparent_or_persistent_state",
+        interpretation="diagnostic_only_not_physical_inference_read_noise",
+    )
+    spec = SimpleNamespace(
+        stage=stage,
+        runtime=SimpleNamespace(seed=42),
+    )
+    plant = SimpleNamespace(
+        apparent=torch.tensor([0.2, -0.1], dtype=torch.float32),
+        persistent=torch.tensor([0.1, -0.2], dtype=torch.float32),
+    )
+    population = SimpleNamespace(nominal_dw_min=0.1, write_noise_std=0.2)
+    origin = SimpleNamespace(
+        role="healthy_p0",
+        source_kind="hwa_master",
+        assignment_seed=11,
+        endpoint_seed=12,
+        healthy_population=population,
+        current=SimpleNamespace(digital_scales=(1.0, 1.0)),
+    )
+    before_apparent = plant.apparent.clone()
+    before_persistent = plant.persistent.clone()
+
+    class Store:
+        run_dir = tmp_path
+
+        def __init__(self) -> None:
+            self.streamed: list[dict] = []
+
+        def append_metric(self, value: dict) -> None:
+            self.streamed.append(value)
+
+        def artifact_record(self, path: Path, *, kind: str) -> dict:
+            return {"path": str(path), "kind": kind}
+
+    store = Store()
+    monkeypatch.setattr(runtime, "sha256_file", lambda _path: "d" * 64)
+    monkeypatch.setattr(runtime, "load_device_state", lambda _path: origin)
+    monkeypatch.setattr(runtime, "_validate_origin", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime, "_restore_current", lambda *args, **kwargs: plant)
+    monkeypatch.setattr(
+        runtime,
+        "_evaluate_plant_splits",
+        lambda **kwargs: {
+            "validation": {
+                "apparent_forward": {"student_accuracy": 0.97},
+                "persistent_diagnostic": {"student_accuracy": 0.91},
+            }
+        },
+    )
+
+    def evaluate_fresh(*, state: torch.Tensor, **_kwargs) -> dict:
+        mean = float(state.mean().item())
+        return {
+            "validation": {
+                "student_accuracy": 0.9 + mean * 0.01,
+                "kl_teacher_student": 0.1 - mean * 0.01,
+                "cross_entropy": 0.2 - mean * 0.01,
+            }
+        }
+
+    monkeypatch.setattr(runtime, "_evaluate_effective_splits", evaluate_fresh)
+    monkeypatch.setattr(runtime, "_base_metrics", lambda **kwargs: {"base": True})
+
+    metrics, artifacts = _run_fresh_apparent_diagnostic(
+        request=SimpleNamespace(device_state=tmp_path / "origin.pt"),
+        store=store,
+        spec=spec,
+        teacher=SimpleNamespace(),
+        teacher_sha256="c" * 64,
+        teacher_validation={},
+        data=SimpleNamespace(),
+        layout=(),
+        device=torch.device("cpu"),
+    )
+
+    assert len(metrics["draws"]) == 4
+    assert len({item["fresh_apparent_q_sha256"] for item in metrics["draws"]}) == 4
+    assert metrics["mutation_check"]["passed"] is True
+    assert metrics["physical_read_claim"] is False
+    assert metrics["matched_across_start_states"] is True
+    healthy_seed, healthy_receipt = _fresh_apparent_diagnostic_seed(
+        configured_seed=stage.seed,
+        runtime_seed=spec.runtime.seed,
+        assignment_seed=origin.assignment_seed,
+        endpoint_seed=origin.endpoint_seed,
+        start_state="hwa_healthy_p0",
+        intervention=stage.intervention,
+    )
+    faulted_seed, faulted_receipt = _fresh_apparent_diagnostic_seed(
+        configured_seed=stage.seed,
+        runtime_seed=spec.runtime.seed,
+        assignment_seed=origin.assignment_seed,
+        endpoint_seed=origin.endpoint_seed,
+        start_state="hwa_published_fault",
+        intervention=stage.intervention,
+    )
+    assert healthy_seed == faulted_seed == metrics["resolved_seed"]
+    assert healthy_receipt == faulted_receipt == metrics["seed_derivation"]
+    assert metrics["seed_derivation"]["excluded_pairing_dimension"] == "start_state"
+    assert torch.equal(plant.apparent, before_apparent)
+    assert torch.equal(plant.persistent, before_persistent)
+    assert len(store.streamed) == 4
+    assert artifacts == [
+        {
+            "path": str(
+                tmp_path / "artifacts" / "fresh_apparent_diagnostic_report.json"
+            ),
+            "kind": "crossbar_fresh_apparent_diagnostic_report",
+        }
+    ]
+    payload = json.loads(
+        (tmp_path / "artifacts" / "fresh_apparent_diagnostic_report.json").read_text()
+    )
+    assert payload["mutation_check"]["before"] == payload["mutation_check"]["after"]
