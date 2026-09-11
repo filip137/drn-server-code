@@ -5,6 +5,10 @@ Monte Carlo adjoint correction, using NumPy in float64. It is a standalone toy
 under `labs/`, so it does not depend on or modify the main checkout's ongoing
 Hopfield work. No GPU, downloaded dataset, autograd, or remote launch is needed.
 
+The [measurement-method and recurrent digits follow-up](adjoint_measurement_methods.md)
+extends this first toy with response fitting, projection estimators, actual
+contrastive recurrent-weight learning, and a ten-class handwritten-digit task.
+
 Branch: `codex/hopfield-random-nudge-adjoint`. Worktree:
 `/home/filip/server_code_random_nudge`. Base: `9083aa2217ff244e816b562353e3bf937ee1c13e`.
 
