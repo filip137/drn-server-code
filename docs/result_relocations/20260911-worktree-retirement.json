@@ -1,0 +1,112 @@
+{
+  "schema_version": "git-worktree-retirement/v1",
+  "status": "complete",
+  "completed_at": "2026-09-11T09:35:02Z",
+  "destination_worktree": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow",
+  "retired_worktrees": [
+    {
+      "former_worktree": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/physical-kcl-energy-fix",
+      "retained_branch": "codex/fix-physical-kcl-energy",
+      "retained_commit": "8da94c10a69192e1a005fd4b781c8be83ea22360",
+      "uncommitted_files": [
+        "HANDOFF.md"
+      ],
+      "backup": "results/worktree-retirement-20260911/physical-kcl-energy-fix-uncommitted.tar.gz",
+      "status": "removed"
+    },
+    {
+      "former_worktree": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/simple-conv-launcher",
+      "retained_branch": "codex/simple-conv-launcher",
+      "retained_commit": "e9363b884e561666b27b08824629e2e1a1992a4e",
+      "uncommitted_files": [
+        "README.md",
+        "experiments/simple_conv_launcher.py",
+        "labs/tests/test_simple_conv_launcher.py"
+      ],
+      "backup": "results/worktree-retirement-20260911/simple-conv-launcher-uncommitted.tar.gz",
+      "status": "removed"
+    },
+    {
+      "former_worktree": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/short-launch-protocol",
+      "retained_branch": "codex/short-launch-protocol",
+      "retained_commit": "1142b2b1701d680c8c4e434a7b83ca44343f459e",
+      "uncommitted_files": [
+        "docs/AGENTS.md",
+        "experiments/experiment_flow.py",
+        "experiments/experiment_tracker.py",
+        "experiments/user_launch.py",
+        "labs/tests/test_experiment_tracker.py",
+        "labs/tests/test_user_launch.py",
+        "skills/run-experiment-pipeline/SKILL.md",
+        "skills/run-experiment-pipeline/scripts/validate_current_experiments.py"
+      ],
+      "backup": "results/worktree-retirement-20260911/short-launch-protocol-uncommitted.tar.gz",
+      "status": "removed"
+    },
+    {
+      "former_worktree": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/implement_wan_weights",
+      "retained_branch": "implement_wan_weights",
+      "retained_commit": "8adf6b1185808665169beb6f2b234428ca12ccbd",
+      "uncommitted_files": [],
+      "backup": null,
+      "status": "removed"
+    },
+    {
+      "former_worktree": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/multistage-failstop",
+      "retained_branch": "codex/multistage-failstop",
+      "retained_commit": "7adb1e5b6e77fc8869e2ec20d71b306714c1f308",
+      "uncommitted_files": [],
+      "backup": null,
+      "status": "removed"
+    }
+  ],
+  "archive_files": [
+    {
+      "path": "results/worktree-retirement-20260911/physical-kcl-energy-fix-uncommitted.tar.gz",
+      "sha256": "4f2fe6c42f89a1397d25716bb8867aa48924c1ccd8bd0d0c41691ff809360f4b"
+    },
+    {
+      "path": "results/worktree-retirement-20260911/simple-conv-launcher-uncommitted.tar.gz",
+      "sha256": "7806d7cad0d7ec2aed5627bda30169d3ccf2423e8f04cbe490b1c5dc1c010c83"
+    },
+    {
+      "path": "results/worktree-retirement-20260911/short-launch-protocol-uncommitted.tar.gz",
+      "sha256": "0a89b838984ca7cad626b84a8748bc564c40dc04dff375aafd8342fe7bb8d5ed"
+    },
+    {
+      "path": "results/worktree-retirement-20260911/simple-conv-launcher.patch",
+      "sha256": "748b512e8cfcda58a9b2c73ad95fec354622a935f039d2894c24b3e07d25388a"
+    },
+    {
+      "path": "results/worktree-retirement-20260911/short-launch-protocol.patch",
+      "sha256": "6a8f46f33304196e2f21647bfe6781cdeaeea01261f2e0561aa770285bfd36f7"
+    },
+    {
+      "path": "results/worktree-retirement-20260911/README.md",
+      "sha256": "40dc893508597c60e719e752bcf9e239fb6880d2bb706861a165c0c868d0ce58"
+    }
+  ],
+  "preservation": {
+    "uncommitted_files": 12,
+    "archive_comparison": "All three tar archives compared successfully against their original files immediately before removal.",
+    "branches_retained": true,
+    "results_preserved": true,
+    "physical_kcl_regular_files": 103,
+    "physical_kcl_symlinks": 56,
+    "short_launch_regular_files": 16844,
+    "post_removal_checksums": "Regular-file, directory, and symlink digests match both relocation records exactly.",
+    "post_removal_physical_kcl_bundle_validation": {
+      "status": "passed",
+      "bundles": 10
+    }
+  },
+  "compatibility_paths": "Temporary symlinks in the former worktrees were removed with those worktrees. Use the canonical result paths in the relocation records; historical manifests and logs retain their original absolute paths.",
+  "recovery_readme": "results/worktree-retirement-20260911/README.md",
+  "retained_worktrees_in_scope": [
+    "lean-experiment-workflow",
+    "lean-experiment-workflow/.codex/worktrees/physical-kcl-reruns-jz",
+    "pdconfirm-jz-successor-20260728",
+    "signed-scaled-bias"
+  ],
+  "discarded": "Redundant tracked checkouts and disposable Python/pytest caches only; all uncommitted files and experimental outputs were preserved."
+}

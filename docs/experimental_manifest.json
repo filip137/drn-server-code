@@ -1,0 +1,61 @@
+{
+  "schema_version": "experimental-manifest/v1",
+  "entries": [
+    {
+      "record_id": "result_8e83d1988d679af4e465e3e3",
+      "experiment_id": "perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
+      "attempt_id": "local-relocation-20260911",
+      "result_id": "complete-study",
+      "target": "local",
+      "source": "local_execution",
+      "remote_result_path": null,
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
+      "local_state": "locally_validated",
+      "completion_state": "relocation_complete",
+      "scientific_validation": "passed",
+      "transfer_receipts": {},
+      "completion_receipt": {
+        "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/docs/result_relocations/20260911-physical-kcl.json",
+        "sha256": "bdc8d80ba850f7c573e1e740624d8e81c3178849a6e4610ba6ebea2fef2f1b03"
+      },
+      "latest_inventory": {
+        "regular_files": 103,
+        "regular_file_bytes": 17299681,
+        "symlinks": 56,
+        "broken_symlinks": 0,
+        "regular_files_sha256": "9fd74a10d4792461cd31e0057828b02bfc3d77a0c08c3973f86c3090be89ede0",
+        "symlink_topology_sha256": "b430c1975dea1e5229f43a1fd427127435210a18fdf334c5b8f7dcc9909f6903",
+        "directory_topology_sha256": "4cd68903d70bb92b706c7a07c9874f1542bab2cc2faee9806120627c22ab5608"
+      },
+      "updated_at": "2026-09-11T09:16:32Z"
+    },
+    {
+      "record_id": "result_eef311e3479068d64addf2cf",
+      "experiment_id": "short-launch-protocol-archive-20260911",
+      "attempt_id": "local-relocation-20260911",
+      "result_id": "historical-launch-artifacts",
+      "target": "local",
+      "source": "local_execution",
+      "remote_result_path": null,
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/short-launch-protocol-archive-20260911",
+      "local_state": "local_result_available",
+      "completion_state": "relocation_complete",
+      "scientific_validation": "pending",
+      "transfer_receipts": {},
+      "completion_receipt": {
+        "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/docs/result_relocations/20260911-short-launch-protocol.json",
+        "sha256": "0b99de7a05f72bafde11e200b5e42e0b9ec75ac310f06a1c91fd0aa5438c3e3b"
+      },
+      "latest_inventory": {
+        "regular_files": 16844,
+        "regular_file_bytes": 1393431577,
+        "symlinks": 0,
+        "broken_symlinks": 0,
+        "regular_files_sha256": "7c6834351f8bd0ad86948eee1fde6672533243d10c2d7207bd3e58b40a2d8f51",
+        "symlink_topology_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "directory_topology_sha256": "941acddc3c1fad01651a7313a2911a9917a1c064d0749dff49cf4c192fd0d42f"
+      },
+      "updated_at": "2026-09-11T09:16:32Z"
+    }
+  ]
+}

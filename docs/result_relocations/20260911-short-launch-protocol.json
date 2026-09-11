@@ -1,0 +1,41 @@
+{
+  "schema_version": "local-result-relocation/v1",
+  "status": "relocation_complete",
+  "completed_at": "2026-09-11T09:16:32Z",
+  "source_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/short-launch-protocol/results",
+  "destination_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/short-launch-protocol-archive-20260911",
+  "source_branch": "codex/short-launch-protocol",
+  "source_worktree_head": "1142b2b1701d680c8c4e434a7b83ca44343f459e",
+  "method": "same-filesystem directory rename; original results directory recreated with compatibility symlinks for launch_inputs, launch_requests, launch_snapshots, and launches",
+  "before": {
+    "regular_files": 16844,
+    "regular_file_bytes": 1393431577,
+    "symlinks": 0,
+    "broken_symlinks": 0,
+    "regular_files_sha256": "7c6834351f8bd0ad86948eee1fde6672533243d10c2d7207bd3e58b40a2d8f51",
+    "symlink_topology_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "directory_topology_sha256": "941acddc3c1fad01651a7313a2911a9917a1c064d0749dff49cf4c192fd0d42f"
+  },
+  "after": {
+    "regular_files": 16844,
+    "regular_file_bytes": 1393431577,
+    "symlinks": 0,
+    "broken_symlinks": 0,
+    "regular_files_sha256": "7c6834351f8bd0ad86948eee1fde6672533243d10c2d7207bd3e58b40a2d8f51",
+    "symlink_topology_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "directory_topology_sha256": "941acddc3c1fad01651a7313a2911a9917a1c064d0749dff49cf4c192fd0d42f"
+  },
+  "byte_and_topology_identity_verified": true,
+  "retained_subdirectories": [
+    "launch_inputs",
+    "launch_requests",
+    "launch_snapshots",
+    "launches"
+  ],
+  "canonical_bundle_validation": {
+    "status": "not_applicable",
+    "reason": "Historical launcher artifacts, including immutable source snapshots; no new scientific completion claim."
+  },
+  "scientific_review": "Not reassessed. Archived launcher states are historical records, not current observations of live processes.",
+  "provenance_note": "Original requests, state files, logs, input bindings, snapshots, and absolute paths are unchanged. Uncommitted source edits remain in the source worktree."
+}

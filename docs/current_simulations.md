@@ -1,6 +1,6 @@
 # Current Simulations
 
-Updated: 2026-09-02
+Updated: 2026-09-11
 
 The Active section is generated from local `results/**/status.json` files.
 Maintain the persistent directory index and other sections manually. Every
@@ -23,6 +23,13 @@ terminal, collected locally, and validated as recorded below and in
 its eight unrun cells are optional follow-up, not missing scheduled work.  No
 additional long paper rerun is queued or implied.  Online write-noise studies
 are a separate experiment lineage and are not part of this closeout.
+
+The Conv1 checkpoint/same-LR artifacts were relocated from
+`physical-kcl-energy-fix` into this worktree on 2026-09-11. All file and
+directory/link checksums match and all ten canonical bundles validate. The
+source worktree was subsequently retired; use the result paths in this
+worktree. See the [relocation record](result_relocations/20260911-physical-kcl.json)
+and [worktree retirement record](result_relocations/20260911-worktree-retirement.json).
 
 ## Active
 
@@ -82,6 +89,9 @@ after submission.
 
 | Results | State | Summary |
 |---|---|---|
+| [Three-table paper result collection](../paper_ready_results/) | `planned` | Collect the available bundles for the 216-run plan dated 2026-09-11, validate their local copies, and record the remaining training and official-test evaluation work in `docs/paper_ready_results_manifest.md`. Collection only; the existing metrics retain their validation evidence class. |
+| [Retired worktree source archives](../results/worktree-retirement-20260911/) | `complete` | Five redundant worktrees were removed on 2026-09-11 after preserving the physical-KCL handoff and all uncommitted simple/short launcher files. All 12 files are recoverable from verified archives; Git branch references and consolidated experimental artifacts remain. See the [recovery guide](../results/worktree-retirement-20260911/README.md) and [retirement record](result_relocations/20260911-worktree-retirement.json). |
+| [Short-launch-protocol historical launch archive](../results/short-launch-protocol-archive-20260911/) | `complete` | Local requests, frozen source snapshots, launch logs, historical states, and inputs were relocated from `short-launch-protocol/results/` on 2026-09-11. All 16,844 regular files and directory checksums still match after retiring the source worktree; use the archive's canonical paths. This is a preservation archive, not a new scientific completion claim. See the [relocation record](result_relocations/20260911-short-launch-protocol.json). |
 | [Conv2 legacy-Adam clean/noisy EqProp physical-KCL repeats](../results/perfectdiode-conv2-legacy-adam-clean-noisy-eqprop-physical-kcl-reruns-seed0-20260826-v1/) | `complete` | Corrected legacy `(A,B)=(4,.25)` exact-config repeats on `umg@v100`: clean/noisy jobs `1416203/1416204` completed `0:0` in `02:04:11/02:11:25`, with best validation `98.30/95.76%` and final validation `98.06/95.76%`. Both retained injected beta `.03` (base beta `.0001171875`), `T=K=6`, seed/order `0`, 30 epochs, the archived Adam learning-rate vector, exact-zero bias rates, ordinary-MNIST train/validation only, and no official-test read. Both remote and local canonical validators pass. The authoritative local production tree is topology- and checksum-identical to Jean Zay: 56 regular files, 28 symlinks, regular digest `ebfada9e...b7c113`, symlink digest `af037b66...cea6a0`, result-archive SHA-256 `b346e86c...380dc1`; local smoke evidence is preserved separately. Frozen source commit `f9ac1533`, source-archive SHA-256 `35852204...ed5d6b`; smokes, 41 focused tests, guards, and both scheduler requests pass. Remote root: `/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode-conv2-legacy-adam-clean-noisy-eqprop-physical-kcl-reruns-seed0-20260826-v1`. |
 | [Remaining Conv3 legacy-Adam physical-KCL repeats](../results/perfectdiode-conv3-remaining-legacy-adam-physical-kcl-reruns-seed0-20260826-v1/) | `complete` | Five corrected `(A,B)=(4,.25)` Adam repeats completed `0:0`: clean/noisy centered EqProp `1399200/1399201` reached best/final validation `98.84/98.78%` and `78.64/74.94%`; fixed-initialization bounded BPTT `Gmax=1e-4/5e-4/1e-3` jobs `1399202/1399203/1399204` reached `93.56/93.56%`, `97.68/97.66%`, and `97.80/97.80%`. All five remote and local canonical bundles validate, every guard passes, and official-test access stayed disabled. The authoritative local root is topology- and checksum-identical to the complete Jean Zay archive: 122 regular files, 70 symlinks, regular digest `77725a41...9a82`, symlink digest `879ee15e...759`, result-archive SHA-256 `c6b70a4c...03565`. The exact archived configs and budgets were retained. Frozen source commit `ce2e077a`, source-archive SHA-256 `557b2cdc...1911ac`; all five smokes, 168 local and staged tests, and scheduler requests pass. Remote root: `/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode-conv3-remaining-legacy-adam-physical-kcl-reruns-seed0-20260826-v1`. |
 | [Conv2/Conv3 legacy-Adam physical-KCL same-LR BPTT repeat](../results/perfectdiode-conv23-legacy-adam-physical-kcl-same-lr-bptt-rerun-seed0-20260826-v1/) | `complete` | Corrected legacy `(A,B)=(4,.25)` compatibility wave using the unchanged ordinary-MNIST zero-bias Adam configs, seed/order `0`, full 30-epoch budgets, Conv2 `T=K=6`, Conv3 `T=K=8`, and no official-test read. Conv2 `1398318` completed `0:0` in `01:44:46` with best/final validation `98.30/98.08%`; Conv3 `1398320` completed `0:0` in `03:16:51` with `98.84/98.78%`. The authoritative local tree is topology- and checksum-identical to Jean Zay (42 regular files, 28 symlinks, regular digest `0a598a6e...d89e9`, symlink digest `cba1ad9a...2912d`), and both remote and local canonical validators pass. Both exact-config CPU smokes and 115 local plus 115 frozen-source focused tests passed. Frozen source commit is `0efbfc4a`, source-archive SHA-256 `09439c41...ce8503`, and result-archive SHA-256 `15776b9a...01770a`. Remote root: `/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/perfectdiode-conv23-legacy-adam-physical-kcl-same-lr-bptt-rerun-seed0-20260826-v1`. |

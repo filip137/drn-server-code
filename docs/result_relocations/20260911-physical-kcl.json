@@ -1,0 +1,36 @@
+{
+  "schema_version": "local-result-relocation/v1",
+  "status": "relocation_complete",
+  "completed_at": "2026-09-11T09:16:32Z",
+  "source_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/physical-kcl-energy-fix/results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
+  "destination_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
+  "source_branch": "codex/fix-physical-kcl-energy",
+  "source_worktree_head": "8da94c10a69192e1a005fd4b781c8be83ea22360",
+  "method": "same-filesystem directory rename; original location replaced with a symlink to the destination",
+  "before": {
+    "regular_files": 103,
+    "regular_file_bytes": 17299681,
+    "symlinks": 56,
+    "broken_symlinks": 0,
+    "regular_files_sha256": "9fd74a10d4792461cd31e0057828b02bfc3d77a0c08c3973f86c3090be89ede0",
+    "symlink_topology_sha256": "b430c1975dea1e5229f43a1fd427127435210a18fdf334c5b8f7dcc9909f6903",
+    "directory_topology_sha256": "4cd68903d70bb92b706c7a07c9874f1542bab2cc2faee9806120627c22ab5608"
+  },
+  "after": {
+    "regular_files": 103,
+    "regular_file_bytes": 17299681,
+    "symlinks": 56,
+    "broken_symlinks": 0,
+    "regular_files_sha256": "9fd74a10d4792461cd31e0057828b02bfc3d77a0c08c3973f86c3090be89ede0",
+    "symlink_topology_sha256": "b430c1975dea1e5229f43a1fd427127435210a18fdf334c5b8f7dcc9909f6903",
+    "directory_topology_sha256": "4cd68903d70bb92b706c7a07c9874f1542bab2cc2faee9806120627c22ab5608"
+  },
+  "byte_and_topology_identity_verified": true,
+  "canonical_bundle_validation": {
+    "status": "passed",
+    "bundles": 10,
+    "command": "python -m experiments.reporting validate-run <bundle>"
+  },
+  "scientific_review": "Existing reviewed conclusion in docs/experimental_manifest.md retained unchanged; relocation performed no training or evaluation.",
+  "provenance_note": "Original manifests, absolute source/config paths, logs, and result contents are unchanged."
+}
