@@ -124,7 +124,8 @@ def settle(network, drive, initial=None, *, labels=None, hidden=None,
     margin = network.margin - cost_bound
     if margin <= 0:
         raise ValueError(f"Expected cost-force bound below stability margin; got {cost_bound} >= {network.margin}")
-    coupling_norm = float(np.linalg.norm(w, 2)) + cost_bound
+    coupling_norm = (network.weight_norm if skew_correction is None
+                     else float(np.linalg.norm(w, 2))) + cost_bound
     # ||I+dt*G'||/(1+dt)<1 if dt < 2*margin/(||G'||²-1).
     dt = min(0.8, margin / max(coupling_norm**2 - 1, 1e-12))
     a, b = 1 + dt, dt * network.cubic

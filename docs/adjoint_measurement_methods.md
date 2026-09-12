@@ -2,6 +2,9 @@
 
 Exploratory research note, 11 September 2026. The completed measurement sweep supports using well-conditioned probe designs and choosing a nudge amplitude above the read-noise floor. It does not establish that better individual adjoint estimates necessarily improve training. A separate recurrent digits experiment tests that question with trainable recurrent weights and actual state-dependent cost nudging.
 
+The [12 September scaling follow-up](random_nudge_scaling.md) checks fixed and
+increasing Monte Carlo probe budgets as the state dimension grows.
+
 ## What is measured
 
 For a free equilibrium satisfying \(F(s^0,\theta)=0\), use the convention \(F(s(b),\theta)-b=0\). With \(J=\partial_sF\), \(R=J^{-1}\), and \(c=\nabla_sC(s^0)\), ordinary small-error nudging gives \(q=Rc\), while the parameter gradient requires

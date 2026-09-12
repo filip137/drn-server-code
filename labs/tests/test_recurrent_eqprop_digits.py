@@ -140,7 +140,7 @@ def test_learning_rate_calibration_never_evaluates_held_out_test(monkeypatch, tm
     data = dict(train_x=rng.normal(size=(4, 3)), train_y=np.array([0, 1, 0, 1]),
                 val_x=rng.normal(size=(2, 3)), val_y=np.array([0, 1]),
                 test_x=rng.normal(size=(2, 3)), test_y=np.array([1, 0]))
-    monkeypatch.setattr(digits, "make_classifier", lambda seed, asymmetry:
+    monkeypatch.setattr(digits, "make_classifier", lambda seed, asymmetry, **kwargs:
                         make_classifier(seed, size=8, outputs=2, input_size=3, asymmetry=asymmetry))
     original_evaluate = digits.evaluate
     calls = []
@@ -159,3 +159,26 @@ def test_learning_rate_calibration_never_evaluates_held_out_test(monkeypatch, tm
     assert len(calls) == 4  # train/validation before and after the one update
     assert len(rows) == 2
     assert all("test_loss" not in row and "test_accuracy" not in row for row in rows)
+
+
+@pytest.mark.parametrize("method", ["mc0", "mc-1", "mc1.5", "unknown8", "orthogonal17"])
+def test_scaling_rejects_invalid_probe_budgets(method):
+    with pytest.raises(ValueError, match="Expected"):
+        digits.probe_specification(method, size=16)
+
+
+def test_scaling_honors_configured_width_and_probe_count(tmp_path):
+    data = digits.dataset(quick=True)
+    data["train_x"], data["train_y"] = data["train_x"][:4], data["train_y"][:4]
+    data["val_x"], data["val_y"] = data["val_x"][:4], data["val_y"][:4]
+    config = dict(size=16, outputs=10, asymmetry=1.0, epochs=1,
+                  learning_rate=0.01, batch_size=4, beta=0.01, read_noise=0.0, audit=False)
+    rows = digits.train_one(data, "mc16", 0, config, tmp_path,
+                            lambda detail, advance: None, calibration=True)
+    with np.load(tmp_path/"mc16_seed0_lr0.01.npz") as values:
+        assert values["symmetric"].shape == (16,16)
+        assert values["inputs"].shape == (6,64)
+        assert np.linalg.norm(values["symmetric"]-values["initial_symmetric"]) > 0
+    assert rows[-1]["equilibrations"] == 4*(3+2*16)
+    assert rows[-1]["gradient_seconds"] > 0
+    assert rows[-1]["update_seconds"] > 0

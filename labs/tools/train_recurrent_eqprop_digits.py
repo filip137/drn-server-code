@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import subprocess
 import sys
@@ -34,6 +35,24 @@ METHODS = ["adjoint", "contrastive_ep", "known_skew_asymep", "mc8", "kaczmarz8",
            "lstsq8", "ridge8", "orthogonal8", "orthogonal32"]
 # Separate exploratory follow-up; preserve the original nine-method default.
 METHOD_CHOICES = METHODS + ["orthogonal_mc8"]
+
+
+def probe_specification(method, size=None):
+    """Validate a learning method and resolve its physical probe budget."""
+    if method in ("adjoint", "contrastive_ep", "known_skew_asymep"):
+        return None
+    match = re.fullmatch(r"(orthogonal_mc|orthogonal|mc|kaczmarz|lstsq|ridge)([1-9][0-9]*)", method)
+    if match is None:
+        raise ValueError(f"Expected adjoint/contrastive_ep/known_skew_asymep or estimator plus positive probe count; got {method!r}")
+    name, count = match.group(1), int(match.group(2))
+    design = "hadamard" if name.startswith("orthogonal") else "random_sign"
+    estimator = "mc" if name == "orthogonal_mc" else name
+    if size is not None and design == "hadamard":
+        if size & (size-1):
+            raise ValueError(f"Expected a power-of-two state count for Hadamard probes; got {size}")
+        if estimator == "orthogonal" and count > size:
+            raise ValueError(f"Expected at most {size} probes for a single orthogonal projection; got {count}")
+    return estimator, design, count
 
 
 def dataset(quick=False):
@@ -65,6 +84,7 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
     Any dense derivative below is either the named oracle or a post-estimation
     audit. Disabling audit removes it completely from physical-method steps.
     """
+    specification = probe_specification(method, model.size)
     net = model.network()
     drive = model.drive(x)
     free = settle(net, drive, tolerance=tolerance)
@@ -89,14 +109,7 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
         if method in ("contrastive_ep", "known_skew_asymep"):
             gradient = contrastive_gradient(model, x, pair)
         else:
-            if method == "orthogonal_mc8":
-                estimator, design, m = "mc", "hadamard", 8
-            elif method.startswith("orthogonal"):
-                estimator, design = "orthogonal", "hadamard"
-                m = int(method.removeprefix("orthogonal"))
-            else:
-                estimator = method.rstrip("0123456789")
-                design, m = "random_sign", int(method[len(estimator):])
+            estimator, design, m = specification
             probes = np.stack([make_probes(rng, model.size, m, design) for _ in range(len(x))])
             responses, equilibrations, iterations, residual = probe_responses(
                 net, drive, free.state, probes, beta, sigma=sigma, rng=rng, tolerance=tolerance)
@@ -131,11 +144,14 @@ def evaluate(model, x, y):
 
 
 def train_one(data, method, seed, config, output, progress, *, calibration=False):
-    model = make_classifier(seed, asymmetry=config["asymmetry"])
+    model = make_classifier(seed, size=config.get("size", 32),
+                            outputs=config.get("outputs", 10),
+                            input_size=data["train_x"].shape[1], asymmetry=config["asymmetry"])
     shuffle = np.random.default_rng(10000+seed)
     probes = np.random.default_rng(20000+seed)
     cumulative = dict(equilibrations=0, state_reads=0, relaxation_iterations=0,
-                      total_probe_excitation_sq=0.0, total_error_excitation_sq=0.0)
+                      total_probe_excitation_sq=0.0, total_error_excitation_sq=0.0,
+                      gradient_seconds=0.0, update_seconds=0.0)
     rows = []
     start = time.time()
     projected = 0
@@ -158,10 +174,14 @@ def train_one(data, method, seed, config, output, progress, *, calibration=False
         epoch_residual = 0.0
         for batch_index, begin in enumerate(range(0,len(order),config["batch_size"])):
             indices = order[begin:begin+config["batch_size"]]
+            step_start = time.perf_counter()
             gradient, meta = gradient_step(model, data["train_x"][indices],data["train_y"][indices],
                                             method, probes, beta=config["beta"], sigma=config["read_noise"],
                                             audit=batch_index==0 and config["audit"])
+            cumulative["gradient_seconds"] += time.perf_counter()-step_start
+            update_start = time.perf_counter()
             projected += model.update(gradient, config["learning_rate"])
+            cumulative["update_seconds"] += time.perf_counter()-update_start
             for key in cumulative:
                 cumulative[key] += meta.get(key,0)
             epoch_residual = max(epoch_residual,meta["max_residual"])
@@ -248,7 +268,10 @@ def main():
     parser.add_argument("--epochs",type=int)
     parser.add_argument("--learning-rate",type=float,default=0.1)
     parser.add_argument("--seeds",type=int,nargs="+",default=[0,1,2])
-    parser.add_argument("--methods",nargs="+",choices=METHOD_CHOICES,default=METHODS)
+    parser.add_argument("--methods",nargs="+",default=METHODS,
+                        help="Baselines or estimator/count names, e.g. mc8 mc64 orthogonal_mc16")
+    parser.add_argument("--size",type=int,default=32)
+    parser.add_argument("--batch-size",type=int,default=96)
     parser.add_argument("--beta",type=float,default=0.01)
     parser.add_argument("--read-noise",type=float,default=1e-5)
     parser.add_argument("--asymmetry",type=float,default=1.0)
@@ -259,11 +282,20 @@ def main():
     epochs = args.epochs if args.epochs is not None else (2 if args.quick else (8 if args.calibrate else 15))
     if epochs < 1 or not np.isfinite(args.learning_rate) or args.learning_rate <= 0:
         parser.error("Expected positive epochs and finite positive learning rate")
+    if args.size <= 10 or args.batch_size < 1:
+        parser.error(f"Expected size > 10 and positive batch size; got {args.size}, {args.batch_size}")
+    if not np.isfinite(args.beta) or args.beta <= 0 or not np.isfinite(args.read_noise) or args.read_noise < 0:
+        parser.error("Expected finite positive beta and finite nonnegative read noise")
+    try:
+        for method in args.methods:
+            probe_specification(method, args.size)
+    except ValueError as error:
+        parser.error(str(error))
     data = dataset(args.quick)
-    config = dict(epochs=epochs,learning_rate=args.learning_rate,batch_size=96,
+    config = dict(epochs=epochs,learning_rate=args.learning_rate,batch_size=args.batch_size,
                   beta=args.beta,read_noise=args.read_noise,asymmetry=args.asymmetry,audit=not args.no_audit,
                   seeds=[0] if args.quick or args.calibrate else args.seeds,methods=args.methods,
-                  dataset="sklearn bundled digits, train-only standardization",size=32,hidden=22,outputs=10,
+                  dataset="sklearn bundled digits, train-only standardization",size=args.size,hidden=args.size-10,outputs=10,
                   train_samples=len(data["train_y"]),validation_samples=len(data["val_y"]),test_samples=len(data["test_y"]),
                   evidence_tier="exploratory, non-canonical",ridge_rule="0.1*m/n",probe_norm="L2=1")
     if args.calibrate:
