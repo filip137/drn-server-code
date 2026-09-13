@@ -204,3 +204,18 @@ states, sufficient recording time, and known wiring. This is a structural prior;
 it is not a dimension-independent solution for unknown dense non-reciprocity.
 Experiments and their status are tracked in
 [the circulation experiment record](circulation_feedback_experiments.md).
+
+The subsequent [swapped-response calibration](response_loop_calibration.md)
+replaces stochastic circulation with paired DC measurements on those known
+loops. Its measured gain update is twice the gradient of log det(-J_C), and
+decreases the same skew-error target under a negative definite symmetric part.
+It does not evaluate that determinant or reconstruct J_C. In the four-gain toy,
+ten updates used 160 perturbed equilibrations plus one anchor, after which the
+controller stayed fixed throughout actual contrastive EqProp training. Verified
+three-seed test accuracy was 95.28% at 64 states and 95.19% at 256 states, close
+to known-skew controls with common optimizer settings. No new random adjoint
+probes were used during training. Full accounting and limitations are in the
+[matched training report](../simulation_results/circulation_feedback_20260913/response_training_verified/report.md).
+This is a proposed physical adaptation with a strong known-wiring assumption;
+it is not a claim that the paper's digital five-probe regularizer can identify
+arbitrary physical adjoints from five scalar readings.

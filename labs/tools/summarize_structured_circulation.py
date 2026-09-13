@@ -329,6 +329,11 @@ def report(output, calibration, training, verification):
                 axis.errorbar([r["size"] for r in values], [r[method]["mean"] for r in values],
                               yerr=[r[method]["std"] for r in values], marker="o", capsize=3,
                               label=f"{label}, protocol {index}")
+    positive_errors = [row[method]["mean"] for row in calibration
+                       for method in ("structured_error", "dense_error") if method in row]
+    if positive_errors and min(positive_errors) > 0:
+        axis.set_yscale("log")
+    axis.set_xticks(sorted({row["size"] for row in calibration}))
     axis.set(xlabel="State count n", ylabel="Controller relative Frobenius error", title="Matched calibration budgets")
     axis.legend(fontsize=8)
     if training:
@@ -343,6 +348,7 @@ def report(output, calibration, training, verification):
                           yerr=[100*r["test_accuracy"]["std"] for r in selected], marker="o", capsize=3,
                           label=LABELS[method])
         axis.set(xlabel="State count n", ylabel="Final test accuracy (%)", title="Training from matched initialization")
+        axis.set_xticks(sorted({row["size"] for row in training}))
         axis.legend(fontsize=8)
     figure.savefig(output/"structured_results.png", dpi=180)
     figure.savefig(output/"structured_results.svg")
