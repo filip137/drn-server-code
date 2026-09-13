@@ -169,6 +169,10 @@ still depend on a reusable approximate map and its drift, not imply constant
 cost for identifying unrestricted inverse responses. Wider networks and a
 harder task remain necessary follow-ups.
 
+The subsequent [Jacobian homeostasis connection](jacobian_homeostasis_connection.md)
+identifies a complementary way to improve the network's intrinsic feedback,
+and explains why its raw asymmetry penalty is constant in the current fixed-skew toy.
+
 Reproduce the diagnostic from the worktree with fresh output paths:
 
 ```bash
