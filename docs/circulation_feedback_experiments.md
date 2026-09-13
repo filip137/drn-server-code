@@ -51,3 +51,25 @@ and state reads. A continuous noise record is not free or dimension independent:
 a dense skew controller stores n(n-1)/2 coefficients. The fixed K in this toy
 makes once-only calibration unusually favorable; later experiments should test
 drifting or state-dependent non-reciprocity and constrained controller support.
+
+The 51-test gate passed. Smoke source 96b70775, exec session 47794, completed
+one calibration and all three training trajectories in 0.6 seconds. All final
+checkpoints replayed their validation/test metrics and charged three training
+equilibrations per example. The calibrated controller had relative error 0.185;
+two-epoch quick-data performance is an operational check only.
+
+Next declared exploratory coverage: sizes 32, 64 and 256, seeds 0/1/2, each with
+calibration duration 400, dt .02, 32 records, temperature .05, rate .1,
+10-step updates, burn-in 10 and averaging after 50. Train ordinary EP,
+known-skew AsymEP, circulation-calibrated AsymEP, exact adjoint and learned-MC4
+for 15 epochs at common LR .1 and EMA .9 on the complete existing digits split.
+This is 9 calibrations and 45 trajectories, with no optimizer search. Common
+settings are for a controlled exploratory comparison, not best-achievable
+performance claims. The learned-MC4 setting differs from its earlier selected
+LR .3 and must be labeled accordingly.
+
+Separate numerical refinement: size 64, seeds 0/1/2, identical duration and
+physical update interval, dt .01 and 20-step updates, gradient audits only.
+This tests whether the practical conclusion changes under timestep refinement;
+independent Brownian paths mean it is not a paired deterministic error bound.
+All calibration observation time and state-read counts remain explicit.
