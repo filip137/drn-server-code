@@ -46,6 +46,11 @@ stochastic feedback outperforms the exact gradient: the exact control and the
 noisy methods use different selected optimizers, and only one small dataset and
 three seeds were tested.
 
+A subsequent [direct feedback alignment connection](direct_feedback_alignment_connection.md)
+examines using the predictor directly and learning from vector output responses.
+Its frozen-checkpoint audit is separate from these completed training results;
+lower-probe training has not yet been tested there.
+
 The selected learned-four method uses 155,115 training equilibrations per seed,
 versus 327,465 for tuned ordinary-eight and 2,257,785 for ordinary-64 at 15 epochs.
 Those are 2.11 and 14.56 times fewer phases, respectively, excluding screening,
