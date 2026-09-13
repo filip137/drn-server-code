@@ -1,5 +1,9 @@
 # Random-sign Monte Carlo scaling
 
+The follow-up [baseline and optimizer experiments](random_nudge_improvements.md)
+test whether past measurements can reduce the fixed-eight-probe deficit at 256
+states, with four/eight probe budgets and validation-only optimizer selection.
+
 Exploratory, non-canonical follow-up, 12 September 2026. This study checks the
 dimension/probe scaling of the estimator and whether the earlier 32-state digits
 training result extends to larger recurrent networks. The original outputs are

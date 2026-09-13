@@ -81,10 +81,11 @@ def oracle_adjoint(network, state, c):
 
 def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
                   audit=False, learner=None, audit_sink=None):
-    """Produce a gradient; corrected methods receive measured q and y only.
+    """Correct a measured, local-slope, or past-measurement baseline.
 
-    Any dense derivative below is either the named oracle or a post-estimation
-    audit. Disabling audit removes it completely from physical-method steps.
+    Current probe readings provide the correction. Any dense derivative below
+    is either the named oracle or a post-estimation audit. Disabling audit
+    removes it completely from physical-method steps and predictor updates.
     """
     specification = probe_specification(method, model.size)
     net = model.network()
