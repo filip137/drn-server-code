@@ -87,7 +87,9 @@ def main():
         'Each perturbed equilibrium supplies one measured scalar. Four unknown gains and known '
         'wiring are essential assumptions; the fixed wiring contains 8n coefficients. No process '
         'noise is injected. Exact gradients are audit references only. Settling time and hardware '
-        'overhead are not inferred from equilibrium counts.', '', '![Calibration](calibration.png)', '']
+        'overhead are not inferred from equilibrium counts.', '',
+        'Plot lines are seed means; shaded bands show the minimum and maximum across seeds.',
+        '', '![Calibration](calibration.png)', '']
     (args.output/'report.md').write_text('\n'.join(lines))
 
 

@@ -295,3 +295,36 @@ response rule or its cancellation proof above. A bounded search found no exact
 match for this combination, which is not evidence sufficient to establish
 novelty. Its practical value still needs calibration measurements at matched
 nudge, readout and settling budgets, followed by separate learning experiments.
+
+A further four-query originality check found close calibration precedents.
+[Bharadwaj et al., APL Photonics 11, 096101 (2026)](https://doi.org/10.1063/5.0337399)
+learn structured optical calibration operators by reducing measured matrix
+asymmetry, using full transmission matrices and multiplicative corrections.
+[Petermann et al., WSA 2011](https://www.ant.uni-bremen.de/sixcms/media.php/102/10597/full_paper_wsa2011.pdf)
+calibrate transceiver filters from exchanged noisy measurements and reuse the
+calibration across transmissions. Thus calibration from reciprocity errors is
+established. The narrower candidate here combines additive internal skew
+feedback, scalar equilibrium response measurements, and the log-determinant
+flow above. Its mathematical ingredients are standard; absence from this small
+set of inspected methods does not establish novelty of the combination.
+
+## Exploratory measurements in the toy model
+
+The [paired-DC runner](../labs/tools/test_response_loop_feedback.py) implemented
+this rule for four known loop patterns with independently generated unknown
+gains. It supplied no Jacobian or reference gains to calibration. At 64 and 256
+states, three seeds each, ten updates required 160 perturbed equilibrations
+plus one free anchor. At amplitude .01 and independent scalar read noise 1e-5,
+mean relative gain errors were 1.38% and 1.28%, respectively. Every tested
+initial gradient cosine exceeded .99994. Sixty updates reduced mean gain error
+to about .028%, at 960 perturbed equilibrations. Each equilibrium returned one
+scalar projection; the anchor required eight projections. The calibration
+injected no process noise. These are six cases at each of two fixed budgets,
+not independent datasets or evidence for arbitrary dense non-reciprocity.
+
+The [verified report and plot](../simulation_results/circulation_feedback_20260913/response_verified/report.md)
+check declared coverage, wiring, saved controller reconstruction, true error,
+measurement budgets and trajectory endpoints. Exact gradients are read-only
+audit references. Separate training with the ten-update controllers is tracked
+in [the experiment record](circulation_feedback_experiments.md); calibration
+accuracy alone does not establish training performance or hardware speed.
