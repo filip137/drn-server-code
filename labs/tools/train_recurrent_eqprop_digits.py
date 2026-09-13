@@ -24,6 +24,7 @@ from sklearn.model_selection import train_test_split
 import sklearn
 
 from labs.adjoint_estimators import estimate_adjoint, make_probes
+from labs.adjoint_baselines import AveragedMomentum, MeasuredBaseline, local_slope_baseline
 from labs.recurrent_eqprop import (
     Classifier, contrastive_gradient, cost_gradient, error_pair, flatten_gradient,
     loss_accuracy, make_classifier, parameter_gradient, probe_responses, settle,
@@ -41,12 +42,12 @@ def probe_specification(method, size=None):
     """Validate a learning method and resolve its physical probe budget."""
     if method in ("adjoint", "contrastive_ep", "known_skew_asymep"):
         return None
-    match = re.fullmatch(r"(orthogonal_mc|orthogonal|mc|kaczmarz|lstsq|ridge)([1-9][0-9]*)", method)
+    match = re.fullmatch(r"(learned_mc|local_mc|orthogonal_mc|orthogonal|mc|kaczmarz|lstsq|ridge)([1-9][0-9]*)", method)
     if match is None:
         raise ValueError(f"Expected adjoint/contrastive_ep/known_skew_asymep or estimator plus positive probe count; got {method!r}")
     name, count = match.group(1), int(match.group(2))
     design = "hadamard" if name.startswith("orthogonal") else "random_sign"
-    estimator = "mc" if name == "orthogonal_mc" else name
+    estimator = "mc" if name.endswith("_mc") else name
     if size is not None and design == "hadamard":
         if size & (size-1):
             raise ValueError(f"Expected a power-of-two state count for Hadamard probes; got {size}")
@@ -78,7 +79,8 @@ def oracle_adjoint(network, state, c):
     return np.linalg.solve(np.swapaxes(j, -1, -2), c[..., None])[..., 0]
 
 
-def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9, audit=False):
+def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
+                  audit=False, learner=None, audit_sink=None):
     """Produce a gradient; corrected methods receive measured q and y only.
 
     Any dense derivative below is either the named oracle or a post-estimation
@@ -95,17 +97,28 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
                     mean_free_error_force_norm=float(np.linalg.norm(c, axis=-1).mean()))
     if method == "adjoint":
         feedback = oracle_adjoint(net, free.state, c)
+        baseline = feedback
         gradient = parameter_gradient(model, x, free.state, feedback)
     else:
-        pair = error_pair(model, net, x, labels, free.state, beta,
-                          known_skew=method == "known_skew_asymep", sigma=sigma, rng=rng, tolerance=tolerance)
-        feedback = pair.response
-        metadata["equilibrations"] += pair.equilibrations
-        metadata["state_reads"] += pair.equilibrations
-        metadata["relaxation_iterations"] += pair.iterations
-        metadata["max_residual"] = max(metadata["max_residual"], pair.residual)
-        # Initial +/- error current has the same norm cap as one probe current.
-        metadata["total_error_excitation_sq"] = float(2*np.sum((pair.effective_beta*np.linalg.norm(c, axis=-1))**2))
+        if method.startswith("local_mc"):
+            feedback = local_slope_baseline(free.state, c, model.cubic)
+        elif method.startswith("learned_mc"):
+            if learner is None:
+                raise ValueError("Expected a persistent MeasuredBaseline for learned_mc training")
+            # This prediction is frozen BEFORE drawing the current probes.
+            feedback = learner.predict(free.state, c, model.cubic)
+            metadata["predictor_previous_observations"] = learner.observations
+        else:
+            pair = error_pair(model, net, x, labels, free.state, beta,
+                              known_skew=method == "known_skew_asymep", sigma=sigma, rng=rng, tolerance=tolerance)
+            feedback = pair.response
+            metadata["equilibrations"] += pair.equilibrations
+            metadata["state_reads"] += pair.equilibrations
+            metadata["relaxation_iterations"] += pair.iterations
+            metadata["max_residual"] = max(metadata["max_residual"], pair.residual)
+            # Initial +/- error current has the same norm cap as one probe current.
+            metadata["total_error_excitation_sq"] = float(2*np.sum((pair.effective_beta*np.linalg.norm(c, axis=-1))**2))
+        baseline = feedback.copy()
         if method in ("contrastive_ep", "known_skew_asymep"):
             gradient = contrastive_gradient(model, x, pair)
         else:
@@ -123,17 +136,28 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
             metadata["max_residual"] = max(metadata["max_residual"], residual)
             metadata["probe_count"] = m
             metadata["total_probe_excitation_sq"] = 2*len(x)*m*beta**2
+            if method.startswith("learned_mc"):
+                started = time.perf_counter()
+                # Current gradient is already formed. Only future minibatches
+                # may use information learned from these measurements.
+                learner.observe(free.state, c, model.cubic, probes, readings)
+                metadata["predictor_update_seconds"] = time.perf_counter()-started
+                metadata["predictor_observations"] = learner.observations
     if audit:
         exact = oracle_adjoint(net, free.state, c)
-        exact_gradient = flatten_gradient(parameter_gradient(model, x, free.state, exact))
+        reference = parameter_gradient(model, x, free.state, exact)
+        exact_gradient = flatten_gradient(reference)
         actual_gradient = flatten_gradient(gradient)
         j = net.jacobian(free.state)
         metadata.update(
             gradient_cosine=cosine(actual_gradient, exact_gradient),
             gradient_relative_error=float(np.linalg.norm(actual_gradient-exact_gradient)/max(np.linalg.norm(exact_gradient),1e-20)),
             adjoint_relative_error=float(np.linalg.norm(feedback-exact)/max(np.linalg.norm(exact),1e-20)),
+            baseline_relative_error=float(np.linalg.norm(baseline-exact)/max(np.linalg.norm(exact),1e-20)),
             realized_jacobian_asymmetry=float(np.mean(np.linalg.norm(j-np.swapaxes(j,-1,-2),axis=(-2,-1))/np.linalg.norm(j,axis=(-2,-1)))),
         )
+        if audit_sink is not None:
+            audit_sink["reference_gradient"] = reference
     return gradient, metadata
 
 
@@ -149,9 +173,12 @@ def train_one(data, method, seed, config, output, progress, *, calibration=False
                             input_size=data["train_x"].shape[1], asymmetry=config["asymmetry"])
     shuffle = np.random.default_rng(10000+seed)
     probes = np.random.default_rng(20000+seed)
+    optimizer = AveragedMomentum(config.get("momentum", 0.0))
+    learner = (MeasuredBaseline.zeros(model.size, model.outputs, config.get("predictor_relaxation", 0.25))
+               if method.startswith("learned_mc") else None)
     cumulative = dict(equilibrations=0, state_reads=0, relaxation_iterations=0,
                       total_probe_excitation_sq=0.0, total_error_excitation_sq=0.0,
-                      gradient_seconds=0.0, update_seconds=0.0)
+                      gradient_seconds=0.0, update_seconds=0.0, predictor_update_seconds=0.0)
     rows = []
     start = time.time()
     projected = 0
@@ -160,6 +187,7 @@ def train_one(data, method, seed, config, output, progress, *, calibration=False
         train = evaluate(model, data["train_x"], data["train_y"])
         validation = evaluate(model, data["val_x"], data["val_y"])
         row = dict(method=method, seed=seed, epoch=epoch, learning_rate=config["learning_rate"],
+                   momentum=config.get("momentum", 0.0),
                    train_loss=train["loss"], train_accuracy=train["accuracy"],
                    validation_loss=validation["loss"], validation_accuracy=validation["accuracy"],
                    max_force_residual=max(train["residual"],validation["residual"]),
@@ -174,30 +202,49 @@ def train_one(data, method, seed, config, output, progress, *, calibration=False
         epoch_residual = 0.0
         for batch_index, begin in enumerate(range(0,len(order),config["batch_size"])):
             indices = order[begin:begin+config["batch_size"]]
+            audited = batch_index==0 and config["audit"]
+            audit_sink = {} if audited else None
             step_start = time.perf_counter()
             gradient, meta = gradient_step(model, data["train_x"][indices],data["train_y"][indices],
                                             method, probes, beta=config["beta"], sigma=config["read_noise"],
-                                            audit=batch_index==0 and config["audit"])
+                                            audit=audited, learner=learner, audit_sink=audit_sink)
             cumulative["gradient_seconds"] += time.perf_counter()-step_start
+            direction = optimizer.direction(gradient)
+            if audited:
+                old = flatten_gradient((model.symmetric, model.inputs, model.bias))
+                reference_model = copy.deepcopy(model)
+                reference_model.update(audit_sink["reference_gradient"], config["learning_rate"])
+                reference_update = flatten_gradient((reference_model.symmetric, reference_model.inputs, reference_model.bias))-old
             update_start = time.perf_counter()
-            projected += model.update(gradient, config["learning_rate"])
+            projected += model.update(direction, config["learning_rate"])
             cumulative["update_seconds"] += time.perf_counter()-update_start
+            if audited:
+                actual_update = flatten_gradient((model.symmetric, model.inputs, model.bias))-old
+                row.update(applied_update_cosine=cosine(actual_update, reference_update),
+                           applied_update_relative_error=float(np.linalg.norm(actual_update-reference_update)/max(np.linalg.norm(reference_update),1e-20)),
+                           applied_update_norm=float(np.linalg.norm(actual_update)),
+                           gradient_norm=float(np.linalg.norm(flatten_gradient(gradient))))
             for key in cumulative:
                 cumulative[key] += meta.get(key,0)
             epoch_residual = max(epoch_residual,meta["max_residual"])
             if batch_index == 0:
-                for key in ("gradient_cosine","gradient_relative_error","adjoint_relative_error","realized_jacobian_asymmetry"):
+                for key in ("gradient_cosine","gradient_relative_error","adjoint_relative_error",
+                            "baseline_relative_error","realized_jacobian_asymmetry",
+                            "predictor_previous_observations", "predictor_observations"):
                     if key in meta:
                         row[key] = meta[key]
         row["max_force_residual"] = max(row["max_force_residual"], epoch_residual)
         rows.append(row)
         write_csv(output / "current.csv",rows)
-        progress(f"{method} seed={seed}, epoch={epoch+1}/{config['epochs']}, val={validation['accuracy']:.3f}", advance=False)
+        progress(f"{method} seed={seed}, completed epoch={epoch+1}/{config['epochs']}, pre-update val={validation['accuracy']:.3f}", advance=False)
+    extra = {} if learner is None else dict(predictor_matrix=learner.matrix,
+                                            predictor_observations=learner.observations,
+                                            predictor_relaxation=learner.relaxation)
     np.savez_compressed(output / f"{method}_seed{seed}_lr{config['learning_rate']:g}.npz",
                         symmetric=model.symmetric, skew=model.skew, inputs=model.inputs,bias=model.bias,
                         initial_symmetric=initial_model.symmetric,initial_inputs=initial_model.inputs,
                         outputs=model.outputs,cubic=model.cubic,logit_scale=model.logit_scale,
-                        symmetric_cap=model.symmetric_cap,**data)
+                        symmetric_cap=model.symmetric_cap,momentum=optimizer.momentum,**extra,**data)
     progress(f"{method} seed={seed} finished: validation={row['validation_accuracy']:.3f}", advance=True)
     return rows
 
