@@ -161,7 +161,7 @@ class NudgedPair:
 
 
 def error_pair(model, network, x, labels, free, beta, *, known_skew=False,
-               sigma=0.0, rng=None, tolerance=1e-9):
+               skew_estimate=None, sigma=0.0, rng=None, tolerance=1e-9):
     """Actual +/- cost nudging, with normalized free-phase error force.
 
     beta_eff=beta/max(||c0||,1) keeps the initial error force <= beta and prevents
@@ -170,11 +170,14 @@ def error_pair(model, network, x, labels, free, beta, *, known_skew=False,
     """
     if not np.isfinite(beta) or beta <= 0 or not np.isfinite(sigma) or sigma < 0:
         raise ValueError(f"Expected finite beta > 0 and sigma >= 0; got {beta}, {sigma}")
+    if known_skew and skew_estimate is not None:
+        raise ValueError("Expected either known skew or a measured estimate, not both")
+    correction = model.skew if known_skew else skew_estimate
     c = cost_gradient(free, labels, model.hidden, model.logit_scale)
     effective = beta / np.maximum(np.linalg.norm(c, axis=-1), 1.0)
     kw = dict(labels=labels, hidden=model.hidden, logit_scale=model.logit_scale,
-              skew_correction=model.skew if known_skew else None,
-              center=free if known_skew else None, tolerance=tolerance)
+              skew_correction=correction,
+              center=free if correction is not None else None, tolerance=tolerance)
     drive = model.drive(x)
     plus = settle(network, drive, free, cost_scale=effective, **kw)
     minus = settle(network, drive, free, cost_scale=-effective, **kw)

@@ -40,7 +40,7 @@ METHOD_CHOICES = METHODS + ["orthogonal_mc8"]
 
 def probe_specification(method, size=None):
     """Validate a learning method and resolve its physical probe budget."""
-    if method in ("adjoint", "contrastive_ep", "known_skew_asymep"):
+    if method in ("adjoint", "contrastive_ep", "known_skew_asymep", "circulation_asymep"):
         return None
     match = re.fullmatch(r"(learned_mc|local_mc|orthogonal_mc|orthogonal|mc|kaczmarz|lstsq|ridge)([1-9][0-9]*)", method)
     if match is None:
@@ -80,7 +80,7 @@ def oracle_adjoint(network, state, c):
 
 
 def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
-                  audit=False, learner=None, audit_sink=None):
+                  audit=False, learner=None, audit_sink=None, feedback_controller=None):
     """Correct a measured, local-slope, or past-measurement baseline.
 
     Current probe readings provide the correction. Any dense derivative below
@@ -88,6 +88,8 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
     removes it completely from physical-method steps and predictor updates.
     """
     specification = probe_specification(method, model.size)
+    if method == "circulation_asymep" and feedback_controller is None:
+        raise ValueError("Expected a previously calibrated skew feedback controller for circulation_asymep")
     net = model.network()
     drive = model.drive(x)
     free = settle(net, drive, tolerance=tolerance)
@@ -111,7 +113,9 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
             metadata["predictor_previous_observations"] = learner.observations
         else:
             pair = error_pair(model, net, x, labels, free.state, beta,
-                              known_skew=method == "known_skew_asymep", sigma=sigma, rng=rng, tolerance=tolerance)
+                              known_skew=method == "known_skew_asymep",
+                              skew_estimate=-feedback_controller if method == "circulation_asymep" else None,
+                              sigma=sigma, rng=rng, tolerance=tolerance)
             feedback = pair.response
             metadata["equilibrations"] += pair.equilibrations
             metadata["state_reads"] += pair.equilibrations
@@ -120,7 +124,7 @@ def gradient_step(model, x, labels, method, rng, *, beta, sigma, tolerance=1e-9,
             # Initial +/- error current has the same norm cap as one probe current.
             metadata["total_error_excitation_sq"] = float(2*np.sum((pair.effective_beta*np.linalg.norm(c, axis=-1))**2))
         baseline = feedback.copy()
-        if method in ("contrastive_ep", "known_skew_asymep"):
+        if method in ("contrastive_ep", "known_skew_asymep", "circulation_asymep"):
             gradient = contrastive_gradient(model, x, pair)
         else:
             estimator, design, m = specification
@@ -168,7 +172,7 @@ def evaluate(model, x, y):
     return dict(loss=loss, accuracy=accuracy, residual=settled.residual)
 
 
-def train_one(data, method, seed, config, output, progress, *, calibration=False):
+def train_one(data, method, seed, config, output, progress, *, calibration=False, feedback_controller=None):
     model = make_classifier(seed, size=config.get("size", 32),
                             outputs=config.get("outputs", 10),
                             input_size=data["train_x"].shape[1], asymmetry=config["asymmetry"])
@@ -208,7 +212,8 @@ def train_one(data, method, seed, config, output, progress, *, calibration=False
             step_start = time.perf_counter()
             gradient, meta = gradient_step(model, data["train_x"][indices],data["train_y"][indices],
                                             method, probes, beta=config["beta"], sigma=config["read_noise"],
-                                            audit=audited, learner=learner, audit_sink=audit_sink)
+                                            audit=audited, learner=learner, audit_sink=audit_sink,
+                                            feedback_controller=feedback_controller)
             cumulative["gradient_seconds"] += time.perf_counter()-step_start
             direction = optimizer.direction(gradient)
             if audited:
@@ -241,6 +246,8 @@ def train_one(data, method, seed, config, output, progress, *, calibration=False
     extra = {} if learner is None else dict(predictor_matrix=learner.matrix,
                                             predictor_observations=learner.observations,
                                             predictor_relaxation=learner.relaxation)
+    if feedback_controller is not None:
+        extra["feedback_controller"] = np.asarray(feedback_controller)
     np.savez_compressed(output / f"{method}_seed{seed}_lr{config['learning_rate']:g}.npz",
                         symmetric=model.symmetric, skew=model.skew, inputs=model.inputs,bias=model.bias,
                         initial_symmetric=initial_model.symmetric,initial_inputs=initial_model.inputs,
@@ -337,6 +344,8 @@ def main():
     try:
         for method in args.methods:
             probe_specification(method, args.size)
+            if method == "circulation_asymep":
+                parser.error("Expected circulation_asymep to be launched through labs.tools.test_circulation_feedback with its calibration record")
     except ValueError as error:
         parser.error(str(error))
     data = dataset(args.quick)
