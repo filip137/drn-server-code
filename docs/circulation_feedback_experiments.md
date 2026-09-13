@@ -73,3 +73,31 @@ physical update interval, dt .01 and 20-step updates, gradient audits only.
 This tests whether the practical conclusion changes under timestep refinement;
 independent Brownian paths mean it is not a paired deterministic error bound.
 All calibration observation time and state-read counts remain explicit.
+
+Launcher record: main_n32 session 1130 and main_n64 session 77885 have completed;
+main_n256 session 19817 is active, with two calibrations and nine trajectories
+finished at its 677-second heartbeat. Refinement session 8856 completed. All use
+source 2538bd84 and the commands/configs recorded in their run.json. Final
+coverage and checkpoint replay remain pending for the combined main grid.
+
+14 September extension: a known physical loop basis restricts the unknown skew
+to four independently drawn gains. The wiring is generated independently of the
+gains; no Jacobian-derived basis enters calibration. The new controller learns
+four scalar coefficients from eight projected measurement channels. Noise still
+excites all physical states. Compare against a dense controller on the identical
+structured physical K, with the same duration, replicas and process-noise seed;
+charge this reference calibration separately.
+
+The combined 71-test gate passed, including ten projected-controller tests and
+ten sign-routing architecture tests. A small all-method integration smoke is
+being independently replayed before launching this extension. Declared main
+extension coverage after that gate: sizes 64 and 256, seeds 0/1/2, four loops,
+duration 100, dt .02, eight independent records, temperature .05, rate .1,
+updates every ten steps, burn-in 10, averaging after 30. Run the matched dense
+calibration control for each of the six cases. Train ordinary EP, known-skew
+AsymEP, projected-circulation AsymEP and learned-MC4 for 15 epochs, full digits
+split, common LR .1 and EMA .9. Thus six structured calibrations, six additional
+dense calibrations, and 24 training trajectories are required. This compares
+methods within the same structured model; its physical prior differs from the
+unrestricted-skew main grid. Expected duration is minutes per size. Use the same
+foreground one-thread launcher and status/log/checkpoint monitoring contract.

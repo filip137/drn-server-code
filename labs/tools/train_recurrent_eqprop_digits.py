@@ -172,10 +172,12 @@ def evaluate(model, x, y):
     return dict(loss=loss, accuracy=accuracy, residual=settled.residual)
 
 
-def train_one(data, method, seed, config, output, progress, *, calibration=False, feedback_controller=None):
-    model = make_classifier(seed, size=config.get("size", 32),
-                            outputs=config.get("outputs", 10),
-                            input_size=data["train_x"].shape[1], asymmetry=config["asymmetry"])
+def train_one(data, method, seed, config, output, progress, *, calibration=False,
+              feedback_controller=None, model_override=None):
+    model = (copy.deepcopy(model_override) if model_override is not None else
+             make_classifier(seed, size=config.get("size", 32),
+                             outputs=config.get("outputs", 10),
+                             input_size=data["train_x"].shape[1], asymmetry=config["asymmetry"]))
     shuffle = np.random.default_rng(10000+seed)
     probes = np.random.default_rng(20000+seed)
     optimizer = AveragedMomentum(config.get("momentum", 0.0))
