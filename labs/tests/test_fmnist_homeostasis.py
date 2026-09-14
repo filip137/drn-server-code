@@ -142,3 +142,19 @@ def test_fashion_loader_rejects_mnist_or_corrupt_files(monkeypatch):
     monkeypatch.setattr(data,'read_idx',lambda p:(np.zeros(1,dtype=np.uint8),'incorrect'))
     with pytest.raises(ValueError,match='Expected verified Fashion-MNIST'):
         data.load_fashion_mnist('/unused')
+
+
+def test_replay_detects_two_cycle_even_when_even_horizons_agree():
+    from labs.tools.report_fmnist_homeostasis import replay
+    # Strong negative reciprocal feedback produces an attracting period-two
+    # cycle. Comparing 150 with 300 alone would mistakenly report convergence.
+    w=dict(input=np.zeros((1,2)),forward1=np.array([[-4.]]),backward1=np.array([[-4.]]),
+           forward2=np.array([[4.],[-4.]]),backward2=np.zeros((1,2)),
+           bias=np.array([2.,2.,-2.,2.]),readout=np.eye(2),readout_bias=np.zeros(2))
+    x=np.zeros((2,2));y=np.array([0,1])
+    even=replay(w,x,y,150)
+    doubled=replay(w,x,y,300)
+    assert even['accuracy']==doubled['accuracy']
+    assert even['nonconverged_examples']==2
+    assert even['period_two_examples']==2
+    assert even['prediction_changes_after_one_step']==2

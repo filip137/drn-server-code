@@ -1,6 +1,6 @@
 # Fashion-MNIST: shortened Jacobian-homeostasis comparison
 
-Status: implementation and validation, 14 September 2026. The user selected
+Status: full runs in progress, 14 September 2026. The user selected
 [Laborieux & Zenke, arXiv:2309.02214v2](https://arxiv.org/html/2309.02214v2)
 and explicitly reduced the training budget from 50 to **10 epochs**.
 Target: the adjacent-layer, independently trainable forward/backward network
@@ -63,6 +63,9 @@ has its direct cross-entropy gradient.
    Only after the current correction is formed are those observations used to
    update H. No Jacobian, transpose, homeostatic AD, or reference gradients enter
    this training path. The free local parameter-force derivatives remain known.
+   The predictor also uses the known local activation slope `D`; zero-order
+   refers to measuring the recurrent response through nudges, not to eliminating
+   all knowledge of local element derivatives.
 
 For 522 states the ideal residual-estimator variance factor is `(522-1)/4=130.25`.
 Few probes do not guarantee a precise per-example direction. A finite 20-step
@@ -127,3 +130,42 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 KMP_DISABLE_SHM=1 \
   /home/filip/miniconda3/envs/py312/bin/python -m labs.tools.train_fmnist_homeostasis \
   --output simulation_results/fmnist_homeostasis_20260914/main --workers 4 --epochs 10
 ```
+
+## Live execution and additional validity checks
+
+Training source is commit `a1361fdc`. The main batch runs in unified exec session
+`83374`, local CPU, four single-thread workers. The full-width, four-method smoke
+run (`55830`, exit 0) and 156 lab tests passed before launch. The main source
+snapshot remains frozen while separate analysis tools are added.
+
+The full-data run exposed non-equilibrated examples that were absent in the
+2,000-example smoke gate. A spot check at seed-0 epochs 2-4 found force residual
+norm above 1e-3 on roughly 3-5% of 500 test examples. A large one-step change
+with a small two-step change suggests period-two dynamics. An even-horizon
+comparison alone can miss such oscillations. This is retained as a scientific
+limitation of the fixed-step runs; the protocol is not silently retuned.
+
+The final reporter independently replays all 10,000 test examples and records
+residual quantiles, the fraction above 1e-3, period-two counts, and prediction
+changes after one additional step. A separate float64 audit filters the original
+eight-example training cohort by force residual below 1e-7 before reporting
+equilibrium feedback/parameter-gradient alignment. The original unfiltered
+training audits are retained, but inverses at non-equilibria are not interpreted
+as true equilibrium task gradients.
+
+A direct parity check executes the authors' actual MLP vector-field and dynamics
+routines under isolated JAX 0.4.35/Flax 0.10.2. On a small-network fixture, states,
+VF responses, every parameter-gradient block, and the homeostatic loss/gradient
+agree to numerical precision. To load the public modules, unused CNN pooling and
+two missing, unused constraint-helper imports are omitted. Common Gaussian draws
+are supplied for the homeostasis comparison. Public computation routines are
+otherwise unchanged. A full-width trained-checkpoint parity check is also run.
+All source hashes and detailed errors are retained in `parity_*.json` alongside
+fixtures and the public source snapshot.
+
+The trained 522-state parity fixture selects the three largest-residual examples
+among the first 500 test images of seed-0 VF at epoch 10. It passed as well:
+maximum state difference 4.0e-15, force difference 4.9e-15, and translated VF
+response difference 1.1e-15. Every task and homeostatic parameter-gradient block
+passed. This confirms equation parity at these weights; it does not establish
+that the original published training trajectories had the same convergence issue.
