@@ -148,11 +148,42 @@ def summarize(root,rows):
                     entry[key+"_std"]=float(np.std(values))
             groups.append(entry)
     write_json(root/"aggregate.json",groups)
+    methods=list(dict.fromkeys(r["method"] for r in rows))
+    angles=sorted({r["alpha"] for r in rows})
+    accuracy_key="test_accuracy" if rows[0]["test_accuracy"] is not None else "validation_accuracy"
+    lines=["# Directed EqProp on MNIST", "",
+        "Exploratory comparison, fixed final epoch. Values are mean ± population SD across seeds.", "",
+        "| Method | "+" | ".join(f"Initial mixing {a:g}° (%)" for a in angles)+" | Training equilibrations / example |",
+        "|---|"+"---:|"*(len(angles)+1)]
+    for method in methods:
+        cells=[]
+        for angle in angles:
+            g=next(g for g in groups if g["method"]==method and g["alpha"]==angle)
+            cells.append(f"{100*g[accuracy_key+'_mean']:.2f} ± {100*g[accuracy_key+'_std']:.2f}")
+        phases=next(r["phases_per_example"] for r in rows if r["method"]==method)
+        lines.append("| "+method+" | "+" | ".join(cells)+f" | {phases} |")
+    lines += ["", f"Metric: {accuracy_key.replace('_',' ')}. Full coverage: {len(rows)} trajectories.", "",
+        "Homeostasis adds five Gaussian vectors, ten forward JVPs and parameter AD per example. "
+        "The adjoint reference additionally uses digital transposed-weight iterations. Phase counts "
+        "do not equate these digital operations with physical equilibrations.", "",
+        "The membrane VF control measures membrane changes under the membrane cost gradient. "
+        "Activity EP measures activated-state changes under the activity cost gradient, matching "
+        "the homeostasis implementation's convention. The main code symmetry score refers to W-I; "
+        "the actual membrane Jacobian W D-I is recorded separately.", "",
+        "Four-probe residual estimates use either measured activity EP or the learned feedback "
+        "predictor as baseline. Learned predictors are updated only after forming the current "
+        "gradient; audits do not train them. All network parameters use the same Adam settings.", "",
+        "![Final comparisons](comparison.png)", "", "![Validation learning curves](learning_curves.png)", "",
+        "All final validation and enabled test predictions/losses were independently replayed "
+        "with NumPy. Coverage, phase counts, finite weights, recurrent norm bounds and symmetry "
+        "metrics were checked. See verification.json, summary.csv and per-case artifacts.", "",
+        "Limits: two small hidden layers, a recurrent contraction constraint, five training epochs "
+        "in the main run, two seeds, no read noise, and a common learning rate without tuning. "
+        "These are mechanism comparisons, not a reproduction of published accuracy or a hardware speed claim.", ""]
+    (root/"report.md").write_text("\n".join(lines))
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    methods=list(dict.fromkeys(r["method"] for r in rows))
-    angles=sorted({r["alpha"] for r in rows})
     fig,axes=plt.subplots(2,3,figsize=(15,8),constrained_layout=True)
     metrics=(("test_accuracy" if rows[0]["test_accuracy"] is not None else "validation_accuracy","Accuracy"),
              ("hidden1_feedback_cosine","First hidden-layer feedback cosine"),

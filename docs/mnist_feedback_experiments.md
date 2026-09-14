@@ -1,5 +1,13 @@
 # Scaling the physical-feedback comparison to MNIST
 
+**Superseded experiment.** The fixed-four-gain full-MNIST grid was cancelled on
+14 September 2026 at the user's request, before any final training trajectory
+completed. Partial outputs remain under `simulation_results/mnist_eqprop_20260914/main`
+with `cancellation.json`. The replacement uses untied directed weights and
+trainable Jacobian homeostasis; see
+[directed_eqprop_mnist.md](directed_eqprop_mnist.md). The notes below describe
+the earlier protocol and interim observations, not completed MNIST evidence.
+
 14 September 2026. Exploratory extension of the four-gain Hopfield comparison.
 Use the existing `codex/hopfield-random-nudge-adjoint` branch and worktree.
 
@@ -138,11 +146,3 @@ bias gradients dominate the aggregate measure. Therefore the final report
 must retain blockwise audits and training accuracy; a large overall cosine is
 not by itself evidence of successful feature learning. These observations do
 not change any run settings or select the final epoch.
-# Superseded experiment
-
-The fixed-four-gain full-MNIST grid was cancelled on 14 September 2026 at the
-user's request, before any final training trajectory completed. Its partial
-outputs are preserved with `main/cancellation.json`. The replacement uses
-untied directed weights and trainable Jacobian homeostasis; see
-[directed_eqprop_mnist.md](directed_eqprop_mnist.md). The notes below describe
-the earlier protocol and interim observations, not completed MNIST evidence.
