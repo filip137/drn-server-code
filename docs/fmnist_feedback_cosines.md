@@ -91,6 +91,15 @@ Only epochs 0 and 10 are available in this comparison. Plot:
 The two seeds, screened cohort, and eight probe trials support a cheap diagnostic,
 not a conclusion about training accuracy, generalization, or hardware efficiency.
 
+The earlier digits predictor cosine of 0.985 was measured on a whole-minibatch
+parameter gradient; it is not directly comparable to the per-example hidden
+feedback cosines above. The earlier untied MNIST study also showed that noisy
+four-probe feedback could train better despite much lower per-example cosine
+than homeostasis. Different models, batches and optimization/settling protocols
+prevent attributing the changed results to the probe method alone. See the
+[reconciled analysis](on_chip_asymmetry_direction.md) for the positive training
+evidence and the proposed matched minibatch audit.
+
 Reproduce:
 
 ```bash

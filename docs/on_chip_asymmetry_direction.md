@@ -1,11 +1,12 @@
 # On-chip asymmetry: evidence and research direction
 
-Analysis prepared 14 September 2026. The recommendation is to use perturbations
-to maintain useful feedback across many learning updates. The first priority is
-a measured homeostatic calibration rule if local state clamping and current
-readout are available. With equilibrium current injection and output readout,
-the immediate alternative is a reusable feedback map learned from vector-valued
-probe responses. Neither is yet demonstrated on-chip by our experiments.
+Analysis prepared 14 September 2026. The recommendation is to retain learned
+equilibrium probing as a leading on-chip candidate and investigate feedback
+reuse. The immediate priority is a matched comparison that reconciles its
+successful earlier training with the recent instantaneous cosine diagnostics.
+A measured homeostatic calibration rule is a complementary candidate if local
+state clamping and current readout are available. Neither route is yet
+demonstrated on-chip by our experiments.
 
 The target remains independently trainable forward/backward couplings, as in
 the VF/homeostasis Fashion-MNIST model. Earlier fixed-skew and four-known-gain
@@ -14,8 +15,29 @@ non-reciprocity is cheaply correctable.
 
 ## What the completed results support
 
-The [frozen Fashion-MNIST comparison](fmnist_feedback_cosines.md) is the most
-relevant evidence. It uses 522 dynamical states, two seeds, and the same 27
+The earlier experiments provide positive evidence that must be retained:
+
+- [Digits, 256 states](random_nudge_improvements.md): the learned baseline with
+  four fresh probes reached 96.30% test accuracy over three seeds, using nine
+  training equilibrations per example. Tuned ordinary eight-probe correction
+  reached 94.54% using nineteen. This was a constrained fixed-skew toy.
+- [Untied-weight MNIST](zero_order_vs_vf_homeostasis.md): with independently
+  initialized forward/backward weights, learned four-probe training reached
+  75.18%, versus 34.28% for VF and 35.86% for homeostasis, after five epochs over
+  two seeds. This model already has the requested directional asymmetry. The
+  probe arm uses three times the equilibrations per epoch; at a common count
+  of 495,000 training equilibrations, its validation accuracy was 54.84%,
+  versus 31.31% for VF and 32.69% for homeostasis. The recurrent norm cap was
+  active on almost every update, so this is a restricted training regime.
+
+In that same untied MNIST experiment, homeostasis had first-hidden feedback
+cosine about 0.998, while probing had about 0.208, yet probing trained better
+under independent initialization. Thus per-example feedback cosine alone is
+already known to be an insufficient ranking of these learning algorithms.
+
+The [frozen Fashion-MNIST comparison](fmnist_feedback_cosines.md) tests the
+paper's wider architecture and supplies a different kind of evidence. It uses
+522 dynamical states, two seeds, and the same 27
 examples across checkpoints. Those 27 are the intersection of 40 candidates
 that settled at every checkpoint. Results are conditional on that screening.
 
@@ -33,9 +55,18 @@ it helped train. It did not estimate the adjoint of the unchanged VF checkpoint.
 
 On the separate learned-feedback checkpoint, prediction alone reaches 0.454
 first-hidden cosine; adding four fresh MC probes reduces it to 0.030.
-Projection retains 0.453. This supports removing the compulsory fresh MC
-correction, but the predictor itself is still inadequate. Its earlier 0.985
-gradient cosine on a fixed-skew digits toy did not transfer to this model.
+Projection retains 0.453. This supports testing prediction without the fresh MC
+correction; it does not establish that removing that correction improves
+training. The earlier 0.985 was a whole-minibatch parameter-gradient cosine for
+the predictor alone on digits, after substantial probe-based fitting. The
+0.454 here is a mean per-example first-hidden feedback cosine. These are not
+matched metrics and must not be used as a numerical measure of transfer loss.
+
+The experiments also changed dataset, force/nonlinearity, width, preprocessing,
+optimizer, batch size and settling protocol. The Fashion-MNIST parameter-gradient
+audit used batches of ten, versus training batches of fifty; the earlier digits
+predictor audit used a batch of ninety-six. No controlled ablation yet assigns
+the changed results to any one of these factors.
 
 The [probe-error audit](../simulation_results/fmnist_homeostasis_20260914/probe_error_seed0.json)
 separates measurement from reconstruction. At amplitude 0.01, paired nudges
@@ -58,7 +89,7 @@ completed, four were partial, and nine never started. No claim about a completed
 five-seed accuracy comparison follows. The older MNIST comparison also had a
 recurrent norm cap active on almost every update, limiting its relevance here.
 
-## Why reducing a fresh correction to a few probes has stalled
+## What the per-example variance result does and does not establish
 
 Use activity coordinates, with equilibrium force G(r), J=partial_r G,
 R=J^-1, cost derivative c, VF response q=Rc, and adjoint lambda=R^T c.
@@ -93,8 +124,17 @@ ideal MSE relative to baseline squared error is
 The optimum is alpha=m/(n-1+m), giving only a 4/525, or 0.762%, expected MSE
 reduction for four probes here. Four uniformly sampled orthogonal directions
 give an expected 4/522 reduction by projection. These are full-vector MSE
-statements, not layerwise cosine guarantees. Read noise further reduces the
-case for a large fresh correction.
+statements about an individual adjoint, not layerwise cosine, minibatch-gradient,
+or training-improvement guarantees. Read noise increases that adjoint MSE.
+
+For independent, zero-mean probe errors, the covariance of the average of B
+parameter-gradient errors is B^-2 times the sum of their covariances. Batching
+can therefore suppress probe noise while preserving systematic corrections.
+Also, mean cosine of noisy estimates and cosine of their mean are different
+statistics. Optimizer history adds another effect that must be audited
+separately. The earlier successful training is compatible with a noisy
+single-example adjoint; the 130.25 factor and 0.762% shrinkage result do not
+demonstrate poor optimization or inefficient end-to-end learning.
 
 Estimating n unrelated adjoint components from fewer than n scalar linear
 measurements is underdetermined without additional structure. A small output
@@ -102,7 +142,7 @@ dimension helps parameterize a reusable map; it does not reveal that map's
 unknown state-space directions for free. The useful question is how much
 calibration can be reused as inputs and weights change.
 
-## Priority 1: perturbation-driven homeostasis with local access
+## Candidate requiring local access: perturbation-driven homeostasis
 
 [Laborieux and Zenke](https://arxiv.org/html/2309.02214v2) motivate reducing
 functional Jacobian asymmetry and optimize a stochastic penalty using AD.
@@ -171,7 +211,7 @@ Test accumulated orthogonal patterns, averaging, decreasing calibration steps,
 read noise and programming mismatch. Locality makes accumulation plausible;
 it does not remove the number of measurements needed for arbitrary couplings.
 
-## Priority 2: reusable feedback from equilibrium probes
+## Candidate using equilibrium probes: reusable feedback
 
 If only equilibrium injection and voltage readout are available, start here.
 Let P select the ten dynamical outputs and c=P^T e. Define
@@ -250,8 +290,18 @@ controller evidence does not solve that problem for unrestricted untied weights.
 
 ## Next experiment and decision criteria
 
-Run a calibration-only pilot on copies of the existing initialization and VF
-epoch-10 checkpoints, with the homeostasis endpoints as reference outcomes.
+First perform a matched read-only audit at the actual training batch sizes:
+predictor alone, predictor plus fresh probes, and VF feedback on identical
+weights, inputs and equilibria. Report per-example feedback cosine, cosine of
+the averaged parameter gradient, gradient magnitude, and probe-trial variance
+separately. Then vary batch size at fixed weights and compare the earlier
+successful checkpoint with the Fashion-MNIST checkpoint under the same metric.
+Keep optimizer effects separate from raw gradients. This bridge experiment
+does not need classifier training and should precede demoting equilibrium
+probing or requiring new clamping hardware.
+
+Next run a calibration-only pilot on copies of the existing initialization and
+VF epoch-10 checkpoints, with the homeostasis endpoints as reference outcomes.
 Keep the untied architecture. Use separate calibration and held-out cohorts
 drawn from training data; do not tune on the already examined official test
 examples. No classifier-training epochs are needed for this pilot.
@@ -259,25 +309,25 @@ examples. No classifier-training epochs are needed for this pilot.
 1. Establish a residual-controlled damped solver and separately check response
    settling. Record failures and basin changes; do not discard failures silently
    or restore the previous global norm cap.
-2. For physical repair, compare the digital homeostatic update with the measured
-   local update at matched calibration settings. Recompute the true task gradient
-   of each resulting network as an offline diagnostic. Measure free-output drift
-   and task loss as well as feedback alignment.
-3. For compensation of fixed weights, compare prediction alone, scalar-fit and
+2. For compensation of fixed weights, compare prediction alone, scalar-fit and
    vector-fit feedback at identical total probe counts. Assess held-out inputs
    and freshness after controlled weight changes. Keep current MC/projection
    results as baselines and distinguish representational error from fit error.
+3. If local clamping/current access is realistic, compare the digital homeostatic
+   update with the measured local update at matched calibration settings.
+   Recompute the true task gradient of each resulting network as an offline
+   diagnostic. Measure free-output drift and task loss as well as alignment.
 4. Plot first-hidden feedback and every parameter-block cosine, relative error,
    norm ratio, and convergence coverage versus **cumulative physical work**.
    Count calibration, refresh, audit probes, all read channels, settling time,
    total excitation and parameter writes. A clamped-current experiment and an
    equilibrium phase are different resources.
-5. Only candidates with useful held-out alignment should progress to noise,
-   width and drift sweeps. A practical proposed gate is mean first-hidden and
-   input-gradient cosine above 0.9 with controlled magnitude error and no
-   collapse of sensitivity; this is a decision target, not an observed result.
-   Then test whether the amortized measurement cost stays acceptable as width
-   grows. Short training runs follow only after this mechanism test passes.
+5. Assess candidates using held-out minibatch gradient direction, magnitude,
+   sensitivity and measurement cost, then test noise, width and drift. Do not
+   impose a 0.9 per-example hidden-feedback cosine gate: it would reject the
+   earlier probe learner despite its observed training success. Short matched
+   training runs can resolve cases where these diagnostics disagree, after
+   the inexpensive comparison isolates the suspected mechanism.
 
 The central research question is whether local or reusable physical structure
 lets a small ongoing calibration budget maintain useful feedback. The present
