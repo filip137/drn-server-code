@@ -108,6 +108,8 @@ def aggregate(root, output, results):
                 validation_accuracy_mean=float(val.mean()), validation_accuracy_sd=float(val.std()),
                 final_gradient_cosine_mean=float(np.mean([r["final_audit"]["gradient_cosine"] for r in runs])),
                 initial_gradient_cosine_mean=float(np.mean([r["initial_audit"]["gradient_cosine"] for r in runs])),
+                final_inputs_gradient_cosine_mean=float(np.mean([r["final_audit"]["inputs_gradient_cosine"] for r in runs])),
+                final_inputs_gradient_cosine_sd=float(np.std([r["final_audit"]["inputs_gradient_cosine"] for r in runs])),
                 final_gradient_relative_error_mean=float(np.mean([r["final_audit"]["gradient_relative_error"] for r in runs])),
                 final_baseline_relative_error_mean=float(np.mean([r["final_audit"]["baseline_relative_error"] for r in runs])),
                 training_equilibrations_per_seed=phases,
@@ -161,10 +163,30 @@ def aggregate(root, output, results):
     fig.savefig(output/"learning_curves.png", dpi=180)
     fig.savefig(output/"learning_curves.pdf")
     plt.close(fig)
+    fig, axes = plt.subplots(1, len(sizes), figsize=(6*len(sizes), 4.5), squeeze=False,
+                             constrained_layout=True)
+    blocks = ("symmetric", "inputs", "bias")
+    for ax, size in zip(axes[0], sizes):
+        values = np.array([[np.mean([r["final_audit"][block+"_gradient_cosine"]
+            for r in results if r["size"] == size and r["method"] == method])
+            for method in methods] for block in blocks])
+        chart = ax.imshow(values, vmin=-1, vmax=1, cmap="RdBu", aspect="auto")
+        ax.set_xticks(range(len(methods)), [LABELS[m].replace(" + ", "\n+ ") for m in methods], rotation=23, ha="right")
+        ax.set_yticks(range(3), ["Symmetric recurrence", "Input weights", "Bias"])
+        ax.set_title(f"{size} states, final epoch")
+        for i in range(3):
+            for j in range(len(methods)):
+                ax.text(j, i, f"{values[i,j]:.3f}", ha="center", va="center",
+                        color="white" if abs(values[i,j])>.6 else "black")
+    fig.colorbar(chart, ax=axes[0].tolist(), label="Cosine with exact gradient", shrink=.8)
+    fig.suptitle("Raw gradient audits before momentum · fixed 16-training-image cohort\nMean across seeds; these audit measurements never train the model")
+    fig.savefig(output/"gradient_audits.png", dpi=180)
+    fig.savefig(output/"gradient_audits.pdf")
+    plt.close(fig)
     lines = ["# Full-MNIST physical feedback comparison", "", "Exploratory; final epoch fixed in advance. Mean ± population SD across seeds.", "",
-             "| States | Method | Test accuracy (%) | Final audit gradient cosine | Training equilibria |", "|---:|---|---:|---:|---:|"]
+             "| States | Method | Test accuracy (%) | Overall gradient cosine | Input-gradient cosine | Training equilibria |", "|---:|---|---:|---:|---:|---:|"]
     for row in rows:
-        lines.append(f"| {row['size']} | {LABELS[row['method']]} | {100*row['test_accuracy_mean']:.2f} ± {100*row['test_accuracy_sd']:.2f} | {row['final_gradient_cosine_mean']:.4f} | {row['training_equilibrations_per_seed']:,} |")
+        lines.append(f"| {row['size']} | {LABELS[row['method']]} | {100*row['test_accuracy_mean']:.2f} ± {100*row['test_accuracy_sd']:.2f} | {row['final_gradient_cosine_mean']:.4f} | {row['final_inputs_gradient_cosine_mean']:.4f} | {row['training_equilibrations_per_seed']:,} |")
     dc_row = next((r for r in rows if r["method"] == "dc_asymep"), None)
     noise_row = next((r for r in rows if r["method"] == "noise_asymep"), None)
     if dc_row is not None:
@@ -175,6 +197,7 @@ def aggregate(root, output, results):
               "Both calibrated controllers exploit the same fixed four-gain wiring prior; no unrestricted Jacobian is estimated. MC4 is the prior measured-baseline algorithm with four fresh unit-norm random-sign probe pairs per training example. The other methods use centered contrastive EqProp.", "",
               "All methods use common LR 0.1 and bias-corrected gradient EMA 0.9, with 250-image batches. These settings were not separately tuned for each method. Error bars describe seed variation and do not establish statistical equivalence.", "",
               "Gradient audits use the same 16 training images, extra measured phases, and post-estimation exact adjoints. Audits never update the live predictor, model or optimizer. Independent NumPy replay verifies final validation and test metrics from every checkpoint.", ""]
+    lines += ["The aggregate gradient cosine can conceal disagreement in the input weights when recurrent/bias gradients dominate the norm. The blockwise audit figure reports that distinction. MC4 audits are raw 16-image estimates before the 250-image training average and momentum; their sampling noise is not the same as the applied training-update noise.", ""]
     (output/"report.md").write_text("\n".join(lines))
 
 

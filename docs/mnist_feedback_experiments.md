@@ -130,3 +130,19 @@ and are operational measurements, not a controlled hardware speed comparison.
 The number of equilibria and scalar calibration reads is the explicit physical
 measurement comparison. All eight initial workers have advancing CPU time and
 batch counters; none is waiting on a GPU or another remote machine.
+
+Interim scientific observation, at the predeclared epoch-five audit: ordinary
+EqProp's overall gradient cosines were .945/.982/.983 across the three 256-state
+seeds, but its input-weight cosines were -.663/.223/-.457. Its recurrent and
+bias gradients dominate the aggregate measure. Therefore the final report
+must retain blockwise audits and training accuracy; a large overall cosine is
+not by itself evidence of successful feature learning. These observations do
+not change any run settings or select the final epoch.
+# Superseded experiment
+
+The fixed-four-gain full-MNIST grid was cancelled on 14 September 2026 at the
+user's request, before any final training trajectory completed. Its partial
+outputs are preserved with `main/cancellation.json`. The replacement uses
+untied directed weights and trainable Jacobian homeostasis; see
+[directed_eqprop_mnist.md](directed_eqprop_mnist.md). The notes below describe
+the earlier protocol and interim observations, not completed MNIST evidence.
