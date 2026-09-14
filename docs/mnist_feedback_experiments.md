@@ -99,3 +99,34 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 KMP_DISABLE_SHM=1 \
 Largest probe-heavy jobs are submitted first to reduce the parallel makespan.
 Each case uses independent deterministic RNGs, so scheduling does not change
 its model initialization, shuffle, probe directions or measurement noise.
+
+Launch receipt: source commit `3a5707f5`, local unified-exec session `1412`.
+The parent process and eight intended workers produced manifests and initial
+validation metrics; a second check confirmed advancing batch counters, fresh
+worker heartbeats and no tracebacks. All 12 calibrations completed. DC controller
+relative errors were 0.0084--0.0136; noise-controller errors were 0.0317--0.0703.
+These references are post-calibration diagnostics, not stopping criteria.
+
+Accounting at the declared full budget: 825,000 training-image presentations
+per trajectory. Each EqProp variant therefore charges 2,475,000 training
+equilibria; MC4 charges 7,425,000 (825,000 free equilibria and 3,300,000 paired
+probes). DC adds 80 calibration probe pairs and one anchor before training.
+All controlled error-nudge phases remain charged; zero additional random
+adjoint probes does not mean zero nudged training phases. Validation/test and
+fixed-cohort audits are additional costs in each terminal result.
+
+Relative to the small-digits experiments, the input-weight parameter count
+increases with 784 pixels, while the four unknown physical gains remain fixed.
+There are 44,416 trainable scalar degrees of freedom at 64 states and 225,760
+at 256 states, counting the independent off-diagonal symmetric couplings.
+The calibrated unknown has four degrees of freedom in either case. MC4 still
+learns an n-by-10 feedback predictor from measurements. Increasing the dataset
+provides more observations of this shared predictor; the larger minibatch also
+averages more probe noise. Neither effect removes the generic n/m variance
+of a single unstructured random-projection estimate.
+
+Reported wall-clock times include contention among the local worker processes
+and are operational measurements, not a controlled hardware speed comparison.
+The number of equilibria and scalar calibration reads is the explicit physical
+measurement comparison. All eight initial workers have advancing CPU time and
+batch counters; none is waiting on a GPU or another remote machine.
