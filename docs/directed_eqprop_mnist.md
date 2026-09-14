@@ -5,6 +5,12 @@ full-MNIST trajectories finished, and all 147 available lab tests passed.
 Worktree `/home/filip/server_code_random_nudge`, branch
 `codex/hopfield-random-nudge-adjoint`.
 
+The user's subsequent focus is the three-way comparison of VF EqProp, Jacobian
+homeostasis and zero-order feedback on these untied weights. See
+[zero_order_vs_vf_homeostasis.md](zero_order_vs_vf_homeostasis.md) for the focused
+results, including an exactly matched equilibrium-count comparison. The full
+eight-method study below remains the underlying evidence.
+
 The user requested that the tests reflect vector-field EqProp and Jacobian
 homeostasis. This supersedes the fixed-four-gain MNIST study described in
 `mnist_feedback_experiments.md`. That study was cancelled before any final
