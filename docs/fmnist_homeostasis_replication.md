@@ -1,12 +1,19 @@
 # Fashion-MNIST: shortened Jacobian-homeostasis comparison
 
-Status: full runs in progress, 14 September 2026. The user selected
+Status: training cancelled on user steering; read-only cosine analysis completed,
+14 September 2026. The user selected
 [Laborieux & Zenke, arXiv:2309.02214v2](https://arxiv.org/html/2309.02214v2)
 and explicitly reduced the training budget from 50 to **10 epochs**.
 Target: the adjacent-layer, independently trainable forward/backward network
 in Figure 4a-d, comparing its VF rule, homeostasis, and measured feedback.
 This study does not reproduce the paper's 50-epoch endpoints, loop architecture,
 predictive-coding experiment, or complex-nudge Table 1 sweep.
+
+The user subsequently requested cosine-similarity analysis instead of further
+accuracy training. The training launcher was stopped with exit 130: seven cases
+completed, four retain partial checkpoints, and nine never started. The original
+20-case grid is **not complete**. See `main/cancellation.json` for exact coverage.
+The active deliverable is [fmnist_feedback_cosines.md](fmnist_feedback_cosines.md).
 
 ## Source and fixed protocol
 
