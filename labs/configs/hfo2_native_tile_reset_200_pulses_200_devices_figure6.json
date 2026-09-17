@@ -1,0 +1,58 @@
+{
+  "schema": "ebl.lab.hfo2_native_tile_reset_figure6",
+  "schema_version": 1,
+  "probe_id": "hfo2-native-tile-reset-200-pulses-200-devices-figure6-20260903-v1",
+  "evidence_class": "model_based_aihwkit_preset",
+  "source": {
+    "preset": "ReRamArrayHfO2PresetDevice",
+    "required_aihwkit_version": "1.1.0",
+    "construction_seed": 960903,
+    "enable_published_corruption": false
+  },
+  "population": {
+    "num_devices": 200,
+    "tile_out_size": 1
+  },
+  "initialization": {
+    "operation": "tile.reset",
+    "reset_probability": 1.0,
+    "branching": "same_native_tile_and_device_population_with_one_independent_reset_call_per_arm"
+  },
+  "update": {
+    "pulses_per_arm": 200,
+    "pulse_type": "DeterministicImplicit",
+    "desired_bl": 1,
+    "fixed_bl": true,
+    "update_bl_management": false,
+    "update_management": false,
+    "learning_rate": "preset_dw_min",
+    "unit_x": 1.0,
+    "set_d": -1.0,
+    "reset_d": 1.0
+  },
+  "figure6_target_user_supplied_us": {
+    "reset": {
+      "minimum": 5.0,
+      "median": 12.57,
+      "maximum": 32.3
+    },
+    "set": {
+      "minimum": 153.9,
+      "median": 247.8,
+      "maximum": 321.0
+    }
+  },
+  "comparison": {
+    "physical_calibration": "one_shared_affine_map_from_simulated_persistent_reset_and_set_medians_to_user_supplied_experimental_medians",
+    "held_out_checks": [
+      "reset_minimum",
+      "reset_maximum",
+      "set_minimum",
+      "set_maximum"
+    ],
+    "coordinates": [
+      "offset_subtracted_weight_w",
+      "raw_active_state_a_equals_w_plus_reference"
+    ]
+  }
+}
