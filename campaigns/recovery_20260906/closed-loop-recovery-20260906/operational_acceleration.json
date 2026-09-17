@@ -1,0 +1,20 @@
+{
+  "original_launcher_pid": 3270768,
+  "attempts": [
+    {
+      "pid": 3273329,
+      "signal_sent": 15,
+      "reason": "Replaced with bitwise-verified faster P&V implementation; scientific contract unchanged.",
+      "time": 1788694282.8319557,
+      "preserved_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/attempts/drn-healthy-closed_loop_pv-reference-slow"
+    },
+    {
+      "pid": 3276028,
+      "signal_sent": 15,
+      "reason": "Replaced with bitwise-verified faster P&V implementation; scientific contract unchanged.",
+      "time": 1788694282.8322237,
+      "preserved_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/attempts/drn-faulted-closed_loop_pv-reference-slow"
+    }
+  ],
+  "parity_receipt": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/smoke/full-controller-parity.json"
+}

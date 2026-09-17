@@ -1,0 +1,36 @@
+# Reconstructed source dependencies.
+**/drn_code/
+**/crossbar_code/
+**/readout_code/
+**/ibm-om-cell-aware-quantized/
+
+# Generated experiment and readout artifacts.
+**/__pycache__/
+**/.pytest_cache/
+**/runs/
+**/run/
+**/results/
+**/simulation_results*/
+**/analysis/
+**/smoke/
+**/canaries/
+**/attempts/
+**/logs/
+**/triton_cache/
+**/*collected/
+**/drn_screen*/
+**/drn_confirmation*/
+**/drn_readouts*/
+**/drn_lr_boundary/
+**/drn_inputs/
+**/*.log
+**/*.jsonl
+**/*.pt
+**/*.npz
+**/*.tar
+**/*.png
+**/*.svg
+**/*.pdf
+**/*launch.json
+**/*queue_status.json
+**/*terminal.json

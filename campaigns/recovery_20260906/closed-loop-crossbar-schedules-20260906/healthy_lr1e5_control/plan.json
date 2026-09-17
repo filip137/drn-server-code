@@ -1,0 +1,70 @@
+{
+  "evidence_class": "exploratory_noncanonical",
+  "question": "Does healthy crossbar P&V improve when its constant learning rate matches the corrupt P&V run at 1e-5?",
+  "coverage": "One new healthy closed-loop P&V arm, constant learning rate 1e-5, 30 full epochs. Compare with the preserved healthy 3e-6 and corrupt 1e-5 constant P&V arms.",
+  "objective": "teacher_kl",
+  "selection": "Minimum held-apparent validation KL, then higher accuracy, then earlier epoch; P0 eligible. Plot all epochs and fixed-final outcomes as well.",
+  "data": "Original splits, normalization, teacher, gain, batch size16 and data order within every pair; 55000 training examples and 5000 validation examples.",
+  "maximum_verify_pulses_per_update": 128,
+  "total_pulse_cap": 640,
+  "closed_loop_contract": "Digital desired target starts at current apparent state and accumulates Adam updates. Pulse direction and stopping use only target, apparent observations and controller pulse history. All true bounds, faults and pulse parameters stay in the physical plant. No RESET preacceptance, no fault-mask skipping, no fresh noise on reads. Desired targets are retained even if outside true bounds.",
+  "runtime_gate": "Benchmark pulse-resolved P&V before full coverage. If forecast exceeds two hours or 10x open-loop writing, an explicitly documented bounded noisy-write approximation may replace the production PV arm, preserving the exact P0, bounds and immutable faults.",
+  "monitoring": {
+    "launcher": "local CUDA subprocess sequence",
+    "heartbeat": "100 minibatches and each epoch",
+    "watchdog_interval_seconds": 1800,
+    "safe_retries": "Only operational fixes; new attempt directory and source identity; do not alter LR, tolerance, budgets, data or fault definitions."
+  },
+  "crossbar": {
+    "source_revision": "207a8f6b25105b6ceaee85f00bf5f5826b9821b2 plus the frozen September 6 schedule extension",
+    "config": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/crossbar_code/examples/mnist_analog_relu/ibm_om_crossbar_hwa_recovery_canary/adam-healthy-kl-lr1em5.json",
+    "healthy_p0": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8/hwa_healthy_p0.pt",
+    "faulted_p0": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8/hwa_faulted_p0.pt",
+    "teacher": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8/teacher_weights.pt",
+    "learning_rates": {
+      "healthy": 1e-05,
+      "faulted": 1e-05
+    },
+    "verify_tolerance_q": 0.04745
+  },
+  "limitations": [
+    "Exploratory one development array/write; no new-array or statistical architecture claim.",
+    "The selected schedules were tuned for open-loop recovery. Transferring them to P&V tests the requested schedule, not a P&V-specific optimum.",
+    "Keep the original DRN three-epoch evidence distinct from this thirty-epoch crossbar comparison.",
+    "Held apparent write-noise state is the primary forward state; persistent diagnostics reported separately.",
+    "Test does not select hyperparameters or checkpoints, but this development comparison is not an untouched confirmatory study."
+  ],
+  "epochs": 30,
+  "schedules": {
+    "constant": {
+      "kind": "constant",
+      "final_factor": 1.0,
+      "decay_epochs": 10
+    },
+    "exponential": {
+      "kind": "exponential",
+      "final_factor": 0.01,
+      "decay_epochs": 10
+    }
+  },
+  "schedule_rule": "Set multiplier at the start of epoch e: final_factor ** min((e-1)/(decay_epochs-1),1). Multiply each bias-corrected Adam command without resetting moments or target memory. Epochs numbered from 1.",
+  "schedule_authority": {
+    "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/plan.json": "0e2136cece349b480c5d84669292823d8523f149ec591a702612c9249572eb61",
+    "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/crossbar_confirmation_collected/frozen_selection.json": "2933b296d7828e455ce72c6398d44eb24c8f2ee774425b9fd1eec75f04541ab7",
+    "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/extend_crossbar.py": "8e0d5339346f9f94bb92bf1119402c1453b048037f36fd3fce85b6fb5a3b948f"
+  },
+  "original_comparison": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/plan.json",
+  "tolerance_policy": "Keep verify_tolerance_q=0.04745 fixed. Do not retune tolerance based on new outcomes; measure and report no-op or delayed writes.",
+  "control_authority": "Follow-up to the user asking whether the healthy rerun proposed at 1e-5 was done; run the named matched-rate control.",
+  "comparison_sources": {
+    "healthy": {
+      "path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/runs/healthy-constant-closed_loop_pv/result.json",
+      "sha256": "c4e674384488ea8c05b8e0bf704d8358895c35fcd3175a996f95f5e837d0aa24"
+    },
+    "faulted": {
+      "path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/runs/faulted-constant-closed_loop_pv/result.json",
+      "sha256": "312e435fc37e5cb377288e57bd6687075e5c05d401b3c93f8f528df6c7992720"
+    }
+  },
+  "parent_plan_sha256": "eacf40b84e704194a4d47162cab94fc3b3ec24b95e3dc5dfc868d6241a601d3f"
+}

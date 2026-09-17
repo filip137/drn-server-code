@@ -1,0 +1,373 @@
+{
+  "schema": "ebl.exploratory_recovery_source_archive.v1",
+  "captured_on": "2026-09-17",
+  "evidence_class": "exploratory_noncanonical",
+  "files": {
+    "closed-loop-crossbar-schedules-20260906/MONITOR.md": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/MONITOR.md",
+      "sha256": "701237ac6b9a4d97a1b0099e424daf538b3dc68a31a6899f632da1e95f4b12af"
+    },
+    "closed-loop-crossbar-schedules-20260906/README.md": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/README.md",
+      "sha256": "b2fbd0b8fa7493dc0471265cc4cdfeaac70fc16a670dd542abd28196ff1c9a60"
+    },
+    "closed-loop-crossbar-schedules-20260906/check_native_loop.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/check_native_loop.py",
+      "sha256": "8836fc8b48a32af432c22e09fbacedb48be0429669cecd19b2783f485ec4cadd"
+    },
+    "closed-loop-crossbar-schedules-20260906/closed_loop.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/closed_loop.py",
+      "sha256": "3a7eefd91af308a529cc1f8630a5cfaf8087dc2866ca2cca665ad535685edd88"
+    },
+    "closed-loop-crossbar-schedules-20260906/healthy_lr1e5_control/MONITOR.md": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/healthy_lr1e5_control/MONITOR.md",
+      "sha256": "faea96e76c343f509ef002d238655d22a65fb8774f5ab2f2a031aeec110cd16c"
+    },
+    "closed-loop-crossbar-schedules-20260906/healthy_lr1e5_control/launch.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/healthy_lr1e5_control/launch.py",
+      "sha256": "9b7b36d9cba2aa374517271360c1cdad16b2b9c978840c599547fcc8cb4c02a8"
+    },
+    "closed-loop-crossbar-schedules-20260906/healthy_lr1e5_control/plan.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/healthy_lr1e5_control/plan.json",
+      "sha256": "8d7a8862de49c1a82886f1b7111218b0c58a92315fb6fac2ff58c1ffa9d77287"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/analyze.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/analyze.py",
+      "sha256": "3ccd172b01e49087746505198a4168fe374eb4992f541ec0d5cb266ca24c9dd8"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/analyze_healthy_rate_control.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/analyze_healthy_rate_control.py",
+      "sha256": "2ff7e1df59f4b608bed5ffb14f39a9c6477bc7f9e4557530893b898ff5622488"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/plot_digital_hwa_pv_open_loop.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/plot_digital_hwa_pv_open_loop.py",
+      "sha256": "3754658dddce66e04db3a80c67381f6cc3ebfa70d36d22eb99a3212953e2b8d4"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/plot_hwa_noise_sweep.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/plot_hwa_noise_sweep.py",
+      "sha256": "3fae268ca3e5214a9fe5235461d49f912cb24e5bc01013efe738d6c3f132edd2"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/plot_maxence_open_closed.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/plot_maxence_open_closed.py",
+      "sha256": "878520526cc8fe82572a1686f6fda2238a49e3b9ab4fe1f4f89ba8aab86f0e1c"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/plot_recovery_overview.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/plot_recovery_overview.py",
+      "sha256": "21d8d966a69e78a33f460ce60748916fb2cbb4a1025a5c1683895fc92062c7a9"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/plot_single_recovery_graph.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/plot_single_recovery_graph.py",
+      "sha256": "35ea7d9b08d860a94d91959cb3414f21988a5a7afd9741090975eda3eacdaa8c"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/plot_updated_full_recovery_kl.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/plot_updated_full_recovery_kl.py",
+      "sha256": "ccb3fc8007e1bd671303801ec0cf5c5e3a8d439817bf57b7ec7b10ece41ca8b8"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/progress.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/progress.py",
+      "sha256": "7b6e0d98f19e6faba6c5e68ac89b35bb44363a74bd00a790cc6d3687da89edb0"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/readout_drn_hwa_digital.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/readout_drn_hwa_digital.py",
+      "sha256": "099799089d1f8ae2fde00046cf0572bc29b6310a5e730ea9be14420f46d7fe6c"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/readout_hwa_before_pv.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/readout_hwa_before_pv.py",
+      "sha256": "fbbe6de4be8a4446f072be1f36864775c57edf37483b2c310ef4f456ccfcdfad"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/readout_stochastic_hwa_before_deployment.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/readout_stochastic_hwa_before_deployment.py",
+      "sha256": "0ca6fa722f5e20bcfad40060dc25c7a798b63aaf86e1411a1e38b254e60d70fe"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/reconstruct_hwa_population.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/reconstruct_hwa_population.py",
+      "sha256": "ebacc61475a468a269994fd30b8fa25ff6c7b43c004abe551e2cd7a05906601d"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/run_hwa_noise_sweep.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/run_hwa_noise_sweep.py",
+      "sha256": "5eb3b854ab41bbd96609b272925f95f5be0e8c14c159b84d22e4be799d816c81"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/verify_completed_hwa_noise_sweep.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/verify_completed_hwa_noise_sweep.py",
+      "sha256": "63ef4cec89d696e1c77fe1320d741e25ea5d55876fbfcbcefcf091b2b029e940"
+    },
+    "closed-loop-crossbar-schedules-20260906/labs/tools/verify_hwa_noise_controls.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/labs/tools/verify_hwa_noise_controls.py",
+      "sha256": "c37a9d6abf72b317627d148d13d80e7f006a6e509cc5a10eb61f00a8b4e4bebc"
+    },
+    "closed-loop-crossbar-schedules-20260906/launch.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/launch.py",
+      "sha256": "15d8c9a860c185d25327ec287bcc1644f1e182c822f2211267d41ff78f04ff7d"
+    },
+    "closed-loop-crossbar-schedules-20260906/plan.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/plan.json",
+      "sha256": "eacf40b84e704194a4d47162cab94fc3b3ec24b95e3dc5dfc868d6241a601d3f"
+    },
+    "closed-loop-crossbar-schedules-20260906/run_recovery.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/run_recovery.py",
+      "sha256": "61ff91acb2794fd1946002477d47c394d8d6cdf2b958c5347d0d0fb57838e182"
+    },
+    "closed-loop-crossbar-schedules-20260906/test_closed_loop.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/test_closed_loop.py",
+      "sha256": "a6c05060066d1aaba15a7c0b4740dc8df12a30abc79e67b5a0c2120888519411"
+    },
+    "closed-loop-crossbar-schedules-20260906/test_schedule.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-crossbar-schedules-20260906/test_schedule.py",
+      "sha256": "3b748c9766bb8eac5b99c1f48465b75a2847b43495dc38b693e575319e27d461"
+    },
+    "closed-loop-recovery-20260906/README.md": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/README.md",
+      "sha256": "df4b6be8ef70ec7119b8c80959e3f2265a637410c6566dfab69c8fba43a5c2d3"
+    },
+    "closed-loop-recovery-20260906/check_fast_pulse.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/check_fast_pulse.py",
+      "sha256": "a0843a10d166f98dc8c3228c6494f57f59d238590c39888e99103819392234f9"
+    },
+    "closed-loop-recovery-20260906/check_real_plant.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/check_real_plant.py",
+      "sha256": "67350fe7d08ac83c183ae48986758c0b627edc29aeb0cd0093353ef45a3790b5"
+    },
+    "closed-loop-recovery-20260906/closed_loop.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/closed_loop.py",
+      "sha256": "ea87ff955aa90cc849d3c0b0474d6d6533392016d0d81dfd8c23606c4c2ef9f3"
+    },
+    "closed-loop-recovery-20260906/fast_drn_pulse.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/fast_drn_pulse.py",
+      "sha256": "ed9350952c950c89bd0cb3e568f10c92b885ad36505a8ddf1658014266a266ea"
+    },
+    "closed-loop-recovery-20260906/labs/tools/analyze_recovery.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/labs/tools/analyze_recovery.py",
+      "sha256": "5ea4cc94a9c0ed838e7c49a2905a06009eaca9ceffa6e36d6fc174ca5713edeb"
+    },
+    "closed-loop-recovery-20260906/labs/tools/analyze_writer_state.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/labs/tools/analyze_writer_state.py",
+      "sha256": "3c3db8874aa81258349ab41805f39ccdc605942aa13e5f61a3c1162a50621ddf"
+    },
+    "closed-loop-recovery-20260906/labs/tools/status.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/labs/tools/status.py",
+      "sha256": "83124f6d7217c27e60102cfa05002e79b045394227f8cf39a6e1830e4274413d"
+    },
+    "closed-loop-recovery-20260906/launch.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/launch.py",
+      "sha256": "d0b405513999d56ec074144905ca42387a9dc35f1a8fb30a138f95e985576916"
+    },
+    "closed-loop-recovery-20260906/launch_accelerated.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/launch_accelerated.py",
+      "sha256": "495a40f5a292a665e8b83b9383664e0ceeb3a057a824d6139da68bee0faa4d1b"
+    },
+    "closed-loop-recovery-20260906/operational_acceleration.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/operational_acceleration.json",
+      "sha256": "23d333aaf2d54dbab829e23a5f4dc5fbeb777f07499aea886521cf6de53281e1"
+    },
+    "closed-loop-recovery-20260906/plan.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/plan.json",
+      "sha256": "250f75c58f1952938f89eb731463618478214b46552a76e85791f71af5329989"
+    },
+    "closed-loop-recovery-20260906/run_fast_recovery.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/run_fast_recovery.py",
+      "sha256": "7fcaefca3d202d59561ba55b5ba532a6e2d7af82b76979d909dc4dce370c9f20"
+    },
+    "closed-loop-recovery-20260906/run_recovery.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/run_recovery.py",
+      "sha256": "1aa92181a385ed2620c229acc20f10c980a3a489498d1db37116b0348ccdabbf"
+    },
+    "closed-loop-recovery-20260906/test_closed_loop.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/test_closed_loop.py",
+      "sha256": "a6c05060066d1aaba15a7c0b4740dc8df12a30abc79e67b5a0c2120888519411"
+    },
+    "recovery-lr-schedule-20260906/MONITOR.md": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/MONITOR.md",
+      "sha256": "d6ef1dd0d2d386b0cb8b1049bc2efebd3bede2d21ee9fa9d43c6c9caf81d3e65"
+    },
+    "recovery-lr-schedule-20260906/READOUT_PROTOCOL.md": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/READOUT_PROTOCOL.md",
+      "sha256": "4bf68bc4b05a7a1bbca60eb4fc6e83baad3087e8c9049862ca8f5438fd62d948"
+    },
+    "recovery-lr-schedule-20260906/analyze.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/analyze.py",
+      "sha256": "67668c0cbbf79d1668db6aee5ba6ea7acaaf0772203a464159464a202a83f4c2"
+    },
+    "recovery-lr-schedule-20260906/audit_completed.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/audit_completed.py",
+      "sha256": "5e3d69babb5d2049920c86378b06e645c16e32f5542a2aa26dfb06659dd06b65"
+    },
+    "recovery-lr-schedule-20260906/confirm.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/confirm.py",
+      "sha256": "481c35dc370ab8055f7bd2d82889090b0e7cac09c328daeb2fc10df6a640bfe3"
+    },
+    "recovery-lr-schedule-20260906/crossbar_confirmation_inputs.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/crossbar_confirmation_inputs.json",
+      "sha256": "c90646c98d6169b73eaa36fa83da15c8b51810d1412c56e73a599d9b135448c3"
+    },
+    "recovery-lr-schedule-20260906/drn_remote_payload/drn_input_receipt.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/drn_remote_payload/drn_input_receipt.json",
+      "sha256": "d7840e87f48837815145bd388d85b1a015d6443f3caca8795fb675736fb2df8b"
+    },
+    "recovery-lr-schedule-20260906/drn_remote_payload/drn_remote_plan.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/drn_remote_payload/drn_remote_plan.json",
+      "sha256": "bc23d4f820e4db504253e70df8e93b11910f978596d972676e0784ba498ed401"
+    },
+    "recovery-lr-schedule-20260906/drn_remote_payload/run_drn_remote.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/drn_remote_payload/run_drn_remote.py",
+      "sha256": "cd75c20f3a632a314d1ad2c630415e5b471d95cb7af3feb4f1c0b4dfd0ec2d4c"
+    },
+    "recovery-lr-schedule-20260906/extend_crossbar.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/extend_crossbar.py",
+      "sha256": "8e0d5339346f9f94bb92bf1119402c1453b048037f36fd3fce85b6fb5a3b948f"
+    },
+    "recovery-lr-schedule-20260906/finish_readouts.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/finish_readouts.py",
+      "sha256": "8361a4575e84de57d99d9446f39bc18132c5ccdeee25f8d9199bf2a512212e3d"
+    },
+    "recovery-lr-schedule-20260906/handoff_drn.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/handoff_drn.py",
+      "sha256": "28123b0d3fb4f0d08693e6ceba2000563d4684ec2e2960d0d306f0026ca33af7"
+    },
+    "recovery-lr-schedule-20260906/labs/tools/plot_notion_recovery.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/labs/tools/plot_notion_recovery.py",
+      "sha256": "f572a88f3f5afced7af700c62848c55c2805a16c2ef1ec4a1e05755923c5ed69"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_confirmation_boundary_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_confirmation_boundary_tmux.sh",
+      "sha256": "f0ae02d903a79c14213fa81b3606f10537e2a10ce3b004a0cea696ce8abd59d2"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_confirmation_parallel_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_confirmation_parallel_tmux.sh",
+      "sha256": "3adcf385526044b330ce9254972818de533ca12711c280c339b193974c7e89aa"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_confirmation_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_confirmation_tmux.sh",
+      "sha256": "f8d92c802ceafd84c5b9ca6d94fe21c0db18108cbac7624a94691dc6cbb3ca97"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_lr_boundary_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_lr_boundary_tmux.sh",
+      "sha256": "585171058623fbe4660de3324ccd998a036b5706bab247d7dd5dc4b0f4dd7c9c"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_parallel_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_parallel_tmux.sh",
+      "sha256": "b3f52df3edb4353c906ee6b8e3cde062a754e0f0a5a77fe2504f7e061d16bd69"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_readouts_boundary_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_readouts_boundary_tmux.sh",
+      "sha256": "58ce6f695d61f4851c691cbff37178c6d883143cb921d8498696dfcda28e1261"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_readouts_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_readouts_tmux.sh",
+      "sha256": "55d7c920a8f05056c83b9bf26811d35d7c254e4dee5a5e935483240d375f318e"
+    },
+    "recovery-lr-schedule-20260906/launchers/drn_tmux.sh": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/launchers/drn_tmux.sh",
+      "sha256": "b7a4b052996cab2b88b5d82c54e059b6e0720862a401c26b7fefe12029304b85"
+    },
+    "recovery-lr-schedule-20260906/lr_boundary_source_receipt.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/lr_boundary_source_receipt.json",
+      "sha256": "f7a43e31866cd1addc7e4ec9e587b7610d913eaaeda96796c9ea85acd0e8e303"
+    },
+    "recovery-lr-schedule-20260906/operational_source_receipt.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/operational_source_receipt.json",
+      "sha256": "1ec8b21050764f391a1d81c604c78b7f23359e3a8d0ada40b6dc8a19b0f376f4"
+    },
+    "recovery-lr-schedule-20260906/parallel_runs.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/parallel_runs.py",
+      "sha256": "5a67c62204f84d2bb0fd110363f3dc2127214ada050dfe957f2fc17d0a5e8d3c"
+    },
+    "recovery-lr-schedule-20260906/plan.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/plan.json",
+      "sha256": "0e2136cece349b480c5d84669292823d8523f149ec591a702612c9249572eb61"
+    },
+    "recovery-lr-schedule-20260906/plan.with_lr_boundary.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/plan.with_lr_boundary.json",
+      "sha256": "0240a8f54d1e7fa522ee7bcb0a77bf2a1450240d9b2328fe360a818f4937c16d"
+    },
+    "recovery-lr-schedule-20260906/plot_confirmations.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/plot_confirmations.py",
+      "sha256": "515c411e7c895d565116f77eaf9d5363e2ebde170564eb594ee9d433eb7538f4"
+    },
+    "recovery-lr-schedule-20260906/prepare.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/prepare.py",
+      "sha256": "d142da0bbc83862f470f2875abad0895a9ae8281472a4cb43c0fac32145e16ea"
+    },
+    "recovery-lr-schedule-20260906/progress.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/progress.py",
+      "sha256": "c96830e2bcf7719b0ca9b531c2ee1750daadb4ef446d39c6652565bae0e4829c"
+    },
+    "recovery-lr-schedule-20260906/readout_drn.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/readout_drn.py",
+      "sha256": "83c334be2a624a3f631c4bb15a14d20d7b2c8e62362da836592104d743ac73d6"
+    },
+    "recovery-lr-schedule-20260906/run_drn.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/run_drn.py",
+      "sha256": "f3dec46ef56ca7b5b96fd7cdecae286dfb7f16ecfdfd8cda5d9534e472f32114"
+    },
+    "recovery-lr-schedule-20260906/run_lr_boundary.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/run_lr_boundary.py",
+      "sha256": "cd921941dbe359e5a178d77c42c9bd42d8f9fa58213a653ef8a91d288dadd822"
+    },
+    "recovery-lr-schedule-20260906/run_screen.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/run_screen.py",
+      "sha256": "9941ffd1cc88b9516a685b9fc7f2e2b8719ff88492ebcfe19061b3c4de2308e2"
+    },
+    "recovery-lr-schedule-20260906/source_receipt.json": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/source_receipt.json",
+      "sha256": "3b7f728495c72c8ae67f5405f0b8748ea0711f4f645b4142bd65f7d9e5c4b9f4"
+    },
+    "recovery-lr-schedule-20260906/summarize_readouts.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/summarize_readouts.py",
+      "sha256": "ada986caed93c7e8e4c03d5a78d27944fd28d0b4c1e46a517f29961ca685135e"
+    },
+    "recovery-lr-schedule-20260906/verify_completion.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/verify_completion.py",
+      "sha256": "833df82bb2ddef09d3dfd9040ff05f873584affec2d06b2627f3d9545d40d93c"
+    },
+    "source_overlays/readout/ebl/cli.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/readout_code/ebl/cli.py",
+      "sha256": "13cfd96acad51ff8b3b081dd8542a7197acbacf2f8d11a55c4a20a4293a1a673"
+    },
+    "source_overlays/readout/experiments/mnist_analog_relu/recovery_readout.py": {
+      "original_path": "/home/filip/server_code/.codex/worktrees/recovery-lr-schedule-20260906/readout_code/experiments/mnist_analog_relu/recovery_readout.py",
+      "sha256": "5ba2374dd16b4dd387cac184809e04107a091a38eeb65f89579e124698333ddf"
+    }
+  },
+  "exports": {
+    "closed-loop-recovery-20260906/drn_code": {
+      "revision": "2b283365063931e9fdd41fbd30d2672e0e600f04"
+    },
+    "closed-loop-recovery-20260906/crossbar_code": {
+      "revision": "207a8f6b25105b6ceaee85f00bf5f5826b9821b2"
+    },
+    "recovery-lr-schedule-20260906/crossbar_code": {
+      "revision": "9cc1496dfb10b68702f66dbbbf7f6199c44d4711",
+      "checks": {
+        "experiments/mnist_analog_relu/staged_config.py": "c2f1c1b283a8158887a323ff02634dbc4785101a35f6f46c86a8f030cc121c54",
+        "experiments/mnist_analog_relu/staged_runtime.py": "17a1abf516874eeccb1c64ba8cfa053529b8a5b9aecd78d0b6289beba0a8d0c7",
+        "training/ibm_om_standard_crossbar.py": "61a443a3c2f32f8abd7d7ab605877d2c2bc304a7309b3bce01aa3586ca89225a"
+      }
+    },
+    "recovery-lr-schedule-20260906/readout_code": {
+      "revision": "9cc1496dfb10b68702f66dbbbf7f6199c44d4711",
+      "checks": {
+        "experiments/mnist_analog_relu/staged_config.py": "c2f1c1b283a8158887a323ff02634dbc4785101a35f6f46c86a8f030cc121c54",
+        "experiments/mnist_analog_relu/staged_runtime.py": "17a1abf516874eeccb1c64ba8cfa053529b8a5b9aecd78d0b6289beba0a8d0c7",
+        "training/ibm_om_standard_crossbar.py": "61a443a3c2f32f8abd7d7ab605877d2c2bc304a7309b3bce01aa3586ca89225a"
+      },
+      "overlays": {
+        "ebl/cli.py": "source_overlays/readout/ebl/cli.py",
+        "experiments/mnist_analog_relu/recovery_readout.py": "source_overlays/readout/experiments/mnist_analog_relu/recovery_readout.py"
+      }
+    },
+    "closed-loop-crossbar-schedules-20260906/crossbar_code": {
+      "revision": "9cc1496dfb10b68702f66dbbbf7f6199c44d4711",
+      "checks": {
+        "experiments/mnist_analog_relu/staged_config.py": "c2f1c1b283a8158887a323ff02634dbc4785101a35f6f46c86a8f030cc121c54",
+        "experiments/mnist_analog_relu/staged_runtime.py": "17a1abf516874eeccb1c64ba8cfa053529b8a5b9aecd78d0b6289beba0a8d0c7",
+        "training/ibm_om_standard_crossbar.py": "61a443a3c2f32f8abd7d7ab605877d2c2bc304a7309b3bce01aa3586ca89225a"
+      }
+    },
+    "ibm-om-cell-aware-quantized": {
+      "revision": "2b283365063931e9fdd41fbd30d2672e0e600f04"
+    },
+    "recovery-lr-schedule-20260906/ibm-om-cell-aware-quantized": {
+      "revision": "2b283365063931e9fdd41fbd30d2672e0e600f04"
+    }
+  }
+}

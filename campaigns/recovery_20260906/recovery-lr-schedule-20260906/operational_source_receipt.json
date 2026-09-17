@@ -1,0 +1,13 @@
+{
+  "note": "Scheduling and readout additions; original DRN numerical runner unchanged. Remote DRN wrapper adds only an explicit teacher pathname override.",
+  "sha256": {
+    "parallel_runs.py": "5a67c62204f84d2bb0fd110363f3dc2127214ada050dfe957f2fc17d0a5e8d3c",
+    "handoff_drn.py": "28123b0d3fb4f0d08693e6ceba2000563d4684ec2e2960d0d306f0026ca33af7",
+    "confirm.py": "6826ef0d7187d150b03a94a4d8506a60616cbe97876fcbc04bf33a1c82a789e1",
+    "finish_readouts.py": "262bbfe899aa2ad5d3a3020b2da90f047bfb72ee7c238d6f2b49b1c34ec56ede",
+    "readout_drn.py": "83c334be2a624a3f631c4bb15a14d20d7b2c8e62362da836592104d743ac73d6",
+    "drn_remote_payload/run_drn_remote.py": "cd75c20f3a632a314d1ad2c630415e5b471d95cb7af3feb4f1c0b4dfd0ec2d4c",
+    "drn_remote_payload/drn_remote_plan.json": "bc23d4f820e4db504253e70df8e93b11910f978596d972676e0784ba498ed401",
+    "drn_remote_source.tar": "92243874204e9a4b33510eca303b9ee1eebcd0b65f889273cfcde9149cda2a9a"
+  }
+}

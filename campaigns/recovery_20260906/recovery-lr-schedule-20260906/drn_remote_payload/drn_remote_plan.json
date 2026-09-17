@@ -1,0 +1,332 @@
+{
+  "evidence_class": "exploratory_noncanonical",
+  "question": "Can longer lower-rate or decaying pulse-Adam recovery improve teacher KL beyond previously accuracy-selected one-epoch states?",
+  "screen_epochs": 30,
+  "selection": "minimum held-apparent validation teacher KL, then higher accuracy, then earlier checkpoint; include P0",
+  "confirmation": "Freeze the best constant and best decaying schedule per architecture and condition; evaluate on two additional saved arrays, one write per array. Report per-array results.",
+  "extension": "If a screen winner is still improving near the 30-epoch boundary (best at epoch >=25 and >=1% KL improvement over the preceding five-epoch window), extend that schedule to 60 epochs with the same decay floor; report any unresolved boundary.",
+  "data": "Same original teacher, P0, batch size 16, 55000 examples/epoch, full 5000 validation examples; test remains closed during screening.",
+  "drn": {
+    "source_revision": "2b283365063931e9fdd41fbd30d2672e0e600f04",
+    "original_config": "/home/filiposana/staged/ibm-om-cell-aware-quantized/examples/mnist_relu_drn/figure6_om_784_256_10_postpv_fault/full.json",
+    "prepared": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/prepared.pt",
+    "arms": [
+      {
+        "name": "constant-3e-6",
+        "learning_rate": 3e-06,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-3e-6"
+      },
+      {
+        "name": "constant-3e-6",
+        "learning_rate": 3e-06,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-3e-6"
+      },
+      {
+        "name": "constant-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-1e-5"
+      },
+      {
+        "name": "constant-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-1e-5"
+      },
+      {
+        "name": "constant-3e-5",
+        "learning_rate": 3e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-3e-5"
+      },
+      {
+        "name": "constant-3e-5",
+        "learning_rate": 3e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-3e-5"
+      },
+      {
+        "name": "constant-1e-4",
+        "learning_rate": 0.0001,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-1e-4"
+      },
+      {
+        "name": "constant-1e-4",
+        "learning_rate": 0.0001,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-1e-4"
+      },
+      {
+        "name": "decay-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-decay-1e-5"
+      },
+      {
+        "name": "decay-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-decay-1e-5"
+      },
+      {
+        "name": "decay-3e-5",
+        "learning_rate": 3e-05,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-decay-3e-5"
+      },
+      {
+        "name": "decay-3e-5",
+        "learning_rate": 3e-05,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-decay-3e-5"
+      }
+    ],
+    "replicas": [
+      {
+        "id": "array-1-write-1",
+        "deployment": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-1-write-1-deployment.pt",
+        "repaired_population": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-1-write-1-population.npz"
+      },
+      {
+        "id": "array-2-write-1",
+        "deployment": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-2-write-1-deployment.pt",
+        "repaired_population": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-2-write-1-population.npz"
+      },
+      {
+        "id": "array-3-write-1",
+        "deployment": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-3-write-1-deployment.pt",
+        "repaired_population": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-3-write-1-population.npz"
+      }
+    ],
+    "teacher_override": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/teacher.pt"
+  },
+  "crossbar": {
+    "source_revision": "207a8f6b25105b6ceaee85f00bf5f5826b9821b2 plus recorded recovery extension",
+    "study_id": "mnist-ibm-om-crossbar-long-kl-schedules-20260906-v1",
+    "arms": [
+      {
+        "name": "constant-1e-6",
+        "learning_rate": 1e-06,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-1e-6"
+      },
+      {
+        "name": "constant-1e-6",
+        "learning_rate": 1e-06,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-1e-6"
+      },
+      {
+        "name": "constant-3e-6",
+        "learning_rate": 3e-06,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-3e-6"
+      },
+      {
+        "name": "constant-3e-6",
+        "learning_rate": 3e-06,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-3e-6"
+      },
+      {
+        "name": "constant-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-1e-5"
+      },
+      {
+        "name": "constant-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-1e-5"
+      },
+      {
+        "name": "constant-3e-5",
+        "learning_rate": 3e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-constant-3e-5"
+      },
+      {
+        "name": "constant-3e-5",
+        "learning_rate": 3e-05,
+        "schedule": {
+          "kind": "constant",
+          "final_factor": 1.0,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-constant-3e-5"
+      },
+      {
+        "name": "decay-3e-6",
+        "learning_rate": 3e-06,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-decay-3e-6"
+      },
+      {
+        "name": "decay-3e-6",
+        "learning_rate": 3e-06,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-decay-3e-6"
+      },
+      {
+        "name": "decay-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "healthy",
+        "arm_id": "healthy-decay-1e-5"
+      },
+      {
+        "name": "decay-1e-5",
+        "learning_rate": 1e-05,
+        "schedule": {
+          "kind": "exponential",
+          "final_factor": 0.01,
+          "decay_epochs": 10
+        },
+        "epochs": 30,
+        "condition": "faulted",
+        "arm_id": "faulted-decay-1e-5"
+      }
+    ],
+    "input_dir": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8",
+    "screen_assignment": 2090402,
+    "screen_endpoint": 2091402
+  },
+  "operational_note": "Akib copy of exact original inputs; only filesystem locations and explicit teacher path differ. Numeric tensors, seeds, rates and schedules unchanged."
+}

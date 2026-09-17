@@ -1,0 +1,48 @@
+{
+  "evidence_class": "exploratory_noncanonical",
+  "question": "Effect of open-loop one-pulse writes versus apparent-feedback P&V writes during recovery from exact reviewed HWA plus P&V deployments, healthy and faulted.",
+  "coverage": "One named array/write per architecture; healthy/faulted x open/PV; three full epochs per arm. This initial figure is exploratory.",
+  "objective": "teacher_kl",
+  "selection": "Minimum held-apparent validation KL, then higher accuracy, then earlier epoch; P0 eligible. Plot all epochs and fixed-final outcomes as well.",
+  "data": "Original splits, normalization, teacher, gain, batch size16 and data order within every pair; 55000 training examples and 5000 validation examples.",
+  "maximum_verify_pulses_per_update": 128,
+  "total_pulse_cap": 640,
+  "closed_loop_contract": "Digital desired target starts at current apparent state and accumulates Adam updates. Pulse direction and stopping use only target, apparent observations and controller pulse history. All true bounds, faults and pulse parameters stay in the physical plant. No RESET preacceptance, no fault-mask skipping, no fresh noise on reads. Desired targets are retained even if outside true bounds.",
+  "runtime_gate": "Benchmark pulse-resolved P&V before full coverage. If forecast exceeds two hours or 10x open-loop writing, an explicitly documented bounded noisy-write approximation may replace the production PV arm, preserving the exact P0, bounds and immutable faults.",
+  "monitoring": {
+    "launcher": "local CUDA subprocess sequence",
+    "heartbeat": "100 minibatches and each epoch",
+    "watchdog_interval_seconds": 1800,
+    "safe_retries": "Only operational fixes; new attempt directory and source identity; do not alter LR, tolerance, budgets, data or fault definitions."
+  },
+  "drn": {
+    "source_revision": "2b283365063931e9fdd41fbd30d2672e0e600f04",
+    "config": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/examples/mnist_relu_drn/figure6_om_784_256_10_postpv_fault/full.json",
+    "prepared": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/prepared.pt",
+    "deployment": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/deploy/array_1__write_1/20260904T200413.353946Z-334d4193-0e4ea9a0/checkpoints/deployment.pt",
+    "population": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_1_counterfactual_repaired.npz",
+    "learning_rates": {
+      "healthy": 0.0001,
+      "faulted": 0.0001
+    },
+    "verify_tolerance_progress": 0.023725
+  },
+  "crossbar": {
+    "source_revision": "207a8f6b25105b6ceaee85f00bf5f5826b9821b2",
+    "config": "/home/filip/server_code/.codex/worktrees/closed-loop-recovery-20260906/crossbar_code/examples/mnist_analog_relu/ibm_om_crossbar_hwa_recovery_canary/adam-healthy-kl-lr1em5.json",
+    "healthy_p0": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8/hwa_healthy_p0.pt",
+    "faulted_p0": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8/hwa_faulted_p0.pt",
+    "teacher": "/tmp/ibm-om-crossbar-hwa-canary-20260905/data/mnist_ibm_om_crossbar_hwa_canary_1f4ef1b8/teacher_weights.pt",
+    "learning_rates": {
+      "healthy": 1e-05,
+      "faulted": 3e-05
+    },
+    "verify_tolerance_q": 0.04745
+  },
+  "limitations": [
+    "Existing teachers and fault models differ across architectures; compare update-rule effects within each architecture.",
+    "Model-based devices; no physical energy claim.",
+    "Single array/write and reused development evidence; no population-level uncertainty or untouched confirmatory test.",
+    "Closed loop adds digital target memory and verify reads; epochs are matched, physical write budgets need not be used equally."
+  ]
+}

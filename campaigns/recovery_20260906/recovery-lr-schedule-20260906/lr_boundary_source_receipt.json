@@ -1,0 +1,11 @@
+{
+  "purpose": "One lower-grid-boundary DRN probe declared before DRN confirmation/test selection",
+  "files": {
+    "plan.json": "0e2136cece349b480c5d84669292823d8523f149ec591a702612c9249572eb61",
+    "plan.with_lr_boundary.json": "0240a8f54d1e7fa522ee7bcb0a77bf2a1450240d9b2328fe360a818f4937c16d",
+    "run_drn.py": "f3dec46ef56ca7b5b96fd7cdecae286dfb7f16ecfdfd8cda5d9534e472f32114",
+    "run_lr_boundary.py": "cd921941dbe359e5a178d77c42c9bd42d8f9fa58213a653ef8a91d288dadd822",
+    "confirm.py": "481c35dc370ab8055f7bd2d82889090b0e7cac09c328daeb2fc10df6a640bfe3",
+    "finish_readouts.py": "8361a4575e84de57d99d9446f39bc18132c5ccdeee25f8d9199bf2a512212e3d"
+  }
+}

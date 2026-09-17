@@ -1,0 +1,8 @@
+{
+  "run_drn.py": "f3dec46ef56ca7b5b96fd7cdecae286dfb7f16ecfdfd8cda5d9534e472f32114",
+  "run_screen.py": "9941ffd1cc88b9516a685b9fc7f2e2b8719ff88492ebcfe19061b3c4de2308e2",
+  "plan.json": "0e2136cece349b480c5d84669292823d8523f149ec591a702612c9249572eb61",
+  "crossbar_code/experiments/mnist_analog_relu/staged_config.py": "c2f1c1b283a8158887a323ff02634dbc4785101a35f6f46c86a8f030cc121c54",
+  "crossbar_code/experiments/mnist_analog_relu/staged_runtime.py": "17a1abf516874eeccb1c64ba8cfa053529b8a5b9aecd78d0b6289beba0a8d0c7",
+  "crossbar_code/training/ibm_om_standard_crossbar.py": "61a443a3c2f32f8abd7d7ab605877d2c2bc304a7309b3bce01aa3586ca89225a"
+}

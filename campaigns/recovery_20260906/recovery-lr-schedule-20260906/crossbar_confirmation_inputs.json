@@ -1,0 +1,30 @@
+[
+  {
+    "condition": "healthy",
+    "assignment_seed": 2090501,
+    "endpoint_seed": 2090601,
+    "run_dir": "/home/filiposana/staged/ibm_om_crossbar_784_256_1f4ef1b8/results/mnist-ibm-om-crossbar-784-256-production-20260904-v1/runs/hwa-deploy/20260904T221037.974824Z-e8e38e2e-3689e1e5",
+    "device_state_sha256": "7e8336ccbdc16d8197591c698043cc11c5b697a12444eb2c3070fbc459e10418"
+  },
+  {
+    "condition": "healthy",
+    "assignment_seed": 2090502,
+    "endpoint_seed": 2090611,
+    "run_dir": "/home/filiposana/staged/ibm_om_crossbar_784_256_1f4ef1b8/results/mnist-ibm-om-crossbar-784-256-production-20260904-v1/runs/hwa-deploy/20260904T224817.306603Z-b08738df-115aa8a6",
+    "device_state_sha256": "b01c321d2d54077e08fb78b0ee7abcb90e8f6b9db1ca6bea9e49734318202e96"
+  },
+  {
+    "condition": "faulted",
+    "assignment_seed": 2090501,
+    "endpoint_seed": 2090601,
+    "run_dir": "/home/filiposana/staged/ibm_om_crossbar_784_256_1f4ef1b8/results/mnist-ibm-om-crossbar-784-256-production-20260904-v1/runs/hwa-corrupt/20260904T221046.689123Z-56624158-09c07d9a",
+    "device_state_sha256": "bf580e76485dd40bc90f1188f59c5c3cb7a7ecec3ae98f2ccb1c6cf1a3dc2518"
+  },
+  {
+    "condition": "faulted",
+    "assignment_seed": 2090502,
+    "endpoint_seed": 2090611,
+    "run_dir": "/home/filiposana/staged/ibm_om_crossbar_784_256_1f4ef1b8/results/mnist-ibm-om-crossbar-784-256-production-20260904-v1/runs/hwa-corrupt/20260904T224826.220865Z-6462f91d-fcde792b",
+    "device_state_sha256": "7013ec48dabd6c54976adb55778d5d8383a10a3e8b8436392b450e62f001f62c"
+  }
+]

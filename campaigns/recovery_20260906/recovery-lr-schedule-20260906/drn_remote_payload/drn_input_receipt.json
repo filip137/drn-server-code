@@ -1,0 +1,50 @@
+[
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/teacher/20260904T194226.940352Z-891e921f-918138cb/checkpoints/weights.pt",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/teacher.pt",
+    "size": 815206,
+    "sha256": "a22be1ee0c3f4392dde455a5d87903e88e089d3f281c29a9cbe0aa3f378ba1d4"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/prepared.pt",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/prepared.pt",
+    "size": 1655104,
+    "sha256": "06e62185b39d892097ac48c020968db789e8e77cdf86f93004de07ae5abae1e6"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/deploy/array_1__write_1/20260904T200413.353946Z-334d4193-0e4ea9a0/checkpoints/deployment.pt",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-1-write-1-deployment.pt",
+    "size": 172431588,
+    "sha256": "5d87768e9ac7c7b1d53b1ee4a89ae207cbf1162dfc57d2b4a7ba220cfe63d0f2"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_1_counterfactual_repaired.npz",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-1-write-1-population.npz",
+    "size": 14630596,
+    "sha256": "87fb58171b17f03ebfb717dc08f7e520b97419cf7a7219675ccfad20737e3384"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/deploy/array_2__write_1/20260904T200545.319130Z-6b727afa-14d9d10d/checkpoints/deployment.pt",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-2-write-1-deployment.pt",
+    "size": 172431588,
+    "sha256": "f95ebe4a5ae8ffc23c57d03ece7f72e09716e902c3564c4d81dd0bc569ff38ea"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_2_counterfactual_repaired.npz",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-2-write-1-population.npz",
+    "size": 14630504,
+    "sha256": "44b792a6d08c739106ef2828ac72ae262a2c2ec53de65a911160056363df530f"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/deploy/array_3__write_1/20260904T200717.762161Z-cca88b79-857d451f/checkpoints/deployment.pt",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-3-write-1-deployment.pt",
+    "size": 172431588,
+    "sha256": "e1260feec7f58053e81061929ded0006c6306e3b9dc2076c978170b31990200e"
+  },
+  {
+    "source": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_3_counterfactual_repaired.npz",
+    "remote_path": "/home/filiposana/staged/recovery_lr_schedule_20260906/drn_inputs/array-3-write-1-population.npz",
+    "size": 14630643,
+    "sha256": "5fd0faa01e541555d53536c03afd438d5ee6734f2cd9a9f7a351857771c977ab"
+  }
+]
