@@ -21,6 +21,8 @@ SCHEMA_VERSION = 2
 ADAM_LEARNING_RATE_GRID = (3e-4, 1e-3, 3e-3)
 ADAM_PULSE_CAP_GRID = (128, None)
 ADAM_DIAGNOSTIC_LEARNING_RATE_GRID = (
+    3e-7,
+    1e-6,
     0.0,
     3e-6,
     1e-5,
@@ -240,6 +242,7 @@ class OnChipAdamDiagnosticStageSettings:
     gradient_estimator: str
     checkpoint_policy: str
     hyperparameters: DiagnosticLiteralAdamHyperparameters
+    learning_rate_schedule: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1041,7 +1044,7 @@ def _parse_on_chip_adam_diagnostic_stage(
         "checkpoint_policy",
         "hyperparameters",
     }
-    _keys(raw, path, required)
+    _keys(raw, path, required | ({'learning_rate_schedule'} if 'learning_rate_schedule' in raw else set()))
     start_state = raw["start_state"]
     allowed_start_states = ("hwa_healthy_p0", "hwa_published_fault")
     if start_state not in allowed_start_states:
@@ -1063,6 +1066,9 @@ def _parse_on_chip_adam_diagnostic_stage(
             "then_earlier_epoch_including_epoch0"
         ),
     }
+    kl_policy = 'best_held_apparent_validation_objective_then_accuracy_then_earlier_epoch_including_epoch0'
+    if raw['checkpoint_policy'] == kl_policy:
+        expected['checkpoint_policy'] = kl_policy
     for name, required_value in expected.items():
         if raw[name] != required_value:
             raise config_error(
@@ -1082,8 +1088,19 @@ def _parse_on_chip_adam_diagnostic_stage(
     maximum_batches = _integer(
         raw["maximum_batches"], f"{path}.maximum_batches", minimum=1
     )
-    if epochs != 3:
-        raise config_error(f"{path}.epochs", "to equal 3", raw["epochs"])
+    if epochs > 60:
+        raise config_error(f'{path}.epochs', 'to be between 1 and 60', raw['epochs'])
+    schedule = raw.get('learning_rate_schedule')
+    if schedule is not None:
+        schedule = _object(schedule, f'{path}.learning_rate_schedule')
+        _keys(schedule, f'{path}.learning_rate_schedule', {'kind', 'final_factor', 'decay_epochs'})
+        if schedule['kind'] not in {'constant', 'exponential'}:
+            raise config_error(f'{path}.learning_rate_schedule.kind', 'to be constant or exponential', schedule['kind'])
+        factor = _number(schedule['final_factor'], f'{path}.learning_rate_schedule.final_factor', minimum=0.0)
+        horizon = _integer(schedule['decay_epochs'], f'{path}.learning_rate_schedule.decay_epochs', minimum=2)
+        if not 0 < factor <= 1 or (schedule['kind'] == 'constant' and factor != 1):
+            raise ValueError('Expected 0 < final_factor <= 1, with factor 1 for a constant schedule.')
+        schedule = dict(kind=schedule['kind'], final_factor=factor, decay_epochs=horizon)
     if repair_examples != 55000:
         raise config_error(
             f"{path}.repair_examples", "to equal 55000", raw["repair_examples"]
@@ -1122,7 +1139,7 @@ def _parse_on_chip_adam_diagnostic_stage(
     return OnChipAdamDiagnosticStageSettings(
         kind="on_chip_adam_diagnostic",
         start_state=start_state,
-        epochs=3,
+        epochs=epochs,
         optimizer="pulse_adam",
         objective=objective,
         repair_examples=55000,
@@ -1135,6 +1152,7 @@ def _parse_on_chip_adam_diagnostic_stage(
         write_state="persistent_q",
         gradient_estimator=expected["gradient_estimator"],
         checkpoint_policy=expected["checkpoint_policy"],
+        learning_rate_schedule=schedule,
         hyperparameters=DiagnosticLiteralAdamHyperparameters(
             source="literal_diagnostic_grid",
             learning_rate=_diagnostic_learning_rate(

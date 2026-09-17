@@ -398,6 +398,7 @@ def test_diagnostic_adam_accuracy_first_selection_and_objective_tie_break_are_ma
             "then_earlier_epoch_including_epoch0"
         ),
         "objective": objective,
+        "learning_rate_schedule": None,
     }
     assert _adam_selection_objective_metric(objective) == (
         metric,

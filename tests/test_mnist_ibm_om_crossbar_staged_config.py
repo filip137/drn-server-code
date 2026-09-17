@@ -371,6 +371,8 @@ def test_hwa_only_diagnostic_adam_grid_is_strict_and_includes_noop(
     start_state: str,
 ) -> None:
     assert ADAM_DIAGNOSTIC_LEARNING_RATE_GRID == (
+        3e-7,
+        1e-6,
         0.0,
         3e-6,
         1e-5,
@@ -407,7 +409,7 @@ def test_hwa_only_diagnostic_adam_grid_is_strict_and_includes_noop(
 def test_diagnostic_adam_excludes_scratch_and_protocol_drift() -> None:
     for mutate in (
         lambda stage: stage.__setitem__("start_state", "scratch_healthy_p0"),
-        lambda stage: stage.__setitem__("epochs", 10),
+        lambda stage: stage.__setitem__("epochs", 61),
         lambda stage: stage.__setitem__("objective", "paired_squared_error"),
         lambda stage: stage["hyperparameters"].__setitem__(
             "pulse_cap_per_cell", 128

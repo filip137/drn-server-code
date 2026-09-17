@@ -2762,6 +2762,7 @@ class PulseAdam:
             None if pulse_cap_per_cell is None else int(pulse_cap_per_cell)
         )
         self.step_index = 0
+        self.learning_rate_scale = 1.0
         self.first_moment = torch.zeros(size, dtype=torch.float32, device=self.device)
         self.device = self.first_moment.device
         self.second_moment = torch.zeros_like(self.first_moment)
@@ -2801,6 +2802,9 @@ class PulseAdam:
         first_hat = self.first_moment / (1.0 - self.beta_1**self.step_index)
         second_hat = self.second_moment / (1.0 - self.beta_2**self.step_index)
         command = -self.learning_rate * first_hat / (second_hat.sqrt() + self.epsilon)
+        if not math.isfinite(self.learning_rate_scale) or not 0 < self.learning_rate_scale <= 1:
+            raise ValueError('Expected a finite learning-rate scale in (0,1].')
+        command = command * self.learning_rate_scale
         command = torch.where(self.enabled, command, torch.zeros_like(command))
         raw_probability = command.abs() / self.nominal_dw_min
         clipped = raw_probability > 1.0
@@ -2862,6 +2866,7 @@ class PulseAdam:
             "schema_version": 1,
             "contract": self.contract(),
             "step_index": self.step_index,
+            "learning_rate_scale": self.learning_rate_scale,
             "first_moment": self.first_moment.detach().cpu().clone(),
             "second_moment": self.second_moment.detach().cpu().clone(),
             "requested": self.requested,
@@ -2891,7 +2896,7 @@ class PulseAdam:
         }
         if (
             not isinstance(state, Mapping)
-            or set(state) != expected
+            or set(state) not in (expected, expected | {'learning_rate_scale'})
             or state.get("schema") != self.STATE_SCHEMA
             or isinstance(state.get("schema_version"), bool)
             or state.get("schema_version") != 1
@@ -2905,6 +2910,10 @@ class PulseAdam:
                 raise ValueError("Expected non-negative pulse-Adam counters.")
             return value
 
+        scale = float(state.get('learning_rate_scale', 1.0))
+        if not math.isfinite(scale) or not 0 < scale <= 1:
+            raise ValueError('Expected a saved learning-rate scale in (0,1].')
+        self.learning_rate_scale = scale
         step_index = nonnegative_integer("step_index")
         requested = nonnegative_integer("requested")
         applied = nonnegative_integer("applied")

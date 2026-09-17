@@ -1326,6 +1326,7 @@ def _resolve_adam_settings(
                 "source": "literal_diagnostic_grid",
                 "checkpoint_policy": stage.checkpoint_policy,
                 "objective": stage.objective,
+                "learning_rate_schedule": stage.learning_rate_schedule,
             },
         )
     if profile == "tuning_validation_only":
@@ -1389,7 +1390,7 @@ def _adam_selection_objective_metric(objective: str) -> tuple[str, str]:
 
 
 def _adam_selection_rank(
-    *, student_accuracy: float, objective_value: float, epoch: int
+    *, student_accuracy: float, objective_value: float, epoch: int, kl_first: bool = False
 ) -> tuple[float, float, int]:
     """Rank held-apparent checkpoints by accuracy, objective, then age."""
 
@@ -1404,7 +1405,7 @@ def _adam_selection_rank(
         or epoch < 0
     ):
         raise ValueError("Expected finite held-apparent checkpoint-selection values.")
-    return (-accuracy, loss, epoch)
+    return (loss, -accuracy, epoch) if kl_first else (-accuracy, loss, epoch)
 
 
 def _diagnostic_recovery_payload(
@@ -1714,6 +1715,7 @@ def _validate_diagnostic_resume(
             student_accuracy=candidates[epoch][0],
             objective_value=candidates[epoch][1],
             epoch=epoch,
+            kl_first='validation_objective_then' in checkpoint_policy,
         ),
     )
     if (
@@ -1797,6 +1799,10 @@ def _run_on_chip_adam(
     ):
         raise TypeError("Expected on-chip Adam stage settings.")
     diagnostic = isinstance(stage, OnChipAdamDiagnosticStageSettings)
+    kl_first = 'validation_objective_then' in stage.checkpoint_policy
+    def selection_rank(**values):
+        return _adam_selection_rank(**values, kl_first=kl_first)
+    schedule = stage.learning_rate_schedule if diagnostic else None
     origin_path = request.device_state.expanduser().resolve()
     origin_sha = sha256_file(origin_path)
     origin = load_device_state(origin_path)
@@ -1828,6 +1834,8 @@ def _run_on_chip_adam(
         selection_objective_metric_key,
     ) = _adam_selection_objective_metric(stage.objective)
 
+    if kl_first:
+        selection_metric = selection_objective_metric
     origin_plant = _restore_current(origin, layout=layout, device=device)
     initial = _evaluate_plant_splits(
         plant=origin_plant,
@@ -1937,6 +1945,12 @@ def _run_on_chip_adam(
     epoch_artifacts: list[ArtifactRecord] = []
     zero_learning_rate_control = diagnostic and learning_rate == 0.0
     for epoch in range(completed_epochs + 1, stage.epochs + 1):
+        if schedule and schedule['kind'] == 'exponential':
+            progress = min((epoch - 1) / (schedule['decay_epochs'] - 1), 1.0)
+            optimizer.learning_rate_scale = schedule['final_factor'] ** progress
+        else:
+            optimizer.learning_rate_scale = 1.0
+        effective_learning_rate = learning_rate * optimizer.learning_rate_scale
         objective_loss_sum = 0.0
         cross_entropy_sum = 0.0
         correct = 0
@@ -2037,6 +2051,8 @@ def _run_on_chip_adam(
             "batches": batches,
             "examples": examples,
             "train_objective": stage.objective,
+            "effective_learning_rate": effective_learning_rate,
+            "learning_rate_schedule": schedule,
             "train_objective_loss": (
                 None if zero_learning_rate_control else objective_loss_sum / examples
             ),
@@ -2082,11 +2098,11 @@ def _run_on_chip_adam(
                 selection_objective_metric_key
             ]
         )
-        if diagnostic and _adam_selection_rank(
+        if diagnostic and selection_rank(
             student_accuracy=candidate_accuracy,
             objective_value=candidate_objective_value,
             epoch=epoch,
-        ) < _adam_selection_rank(
+        ) < selection_rank(
             student_accuracy=best_accuracy,
             objective_value=best_objective_value,
             epoch=best_epoch,
@@ -2139,6 +2155,9 @@ def _run_on_chip_adam(
                 initial=initial,
                 selection=selection,
             )
+        # Keep recoverable epoch 1, every fifth epoch, and the terminal state.
+        if stage.epochs > 3 and epoch != 1 and epoch % 5 and epoch != stage.epochs:
+            continue
         checkpoint = StagedDeviceState(
             role="adam_final",
             source_kind=origin.source_kind,
@@ -2239,7 +2258,7 @@ def _run_on_chip_adam(
         )
         recomputed_best = min(
             selection_candidates,
-            key=lambda item: _adam_selection_rank(
+            key=lambda item: selection_rank(
                 student_accuracy=float(item["accuracy"]),
                 objective_value=float(item["objective_value"]),
                 epoch=int(item["epoch"]),
@@ -2358,12 +2377,12 @@ def _run_on_chip_adam(
             "selected_objective_value": best_objective_value,
             "selected_validation": recomputed_best["validation"],
             "non_degradation_passed": bool(
-                _adam_selection_rank(
+                selection_rank(
                     student_accuracy=best_accuracy,
                     objective_value=best_objective_value,
                     epoch=0,
                 )
-                <= _adam_selection_rank(
+                <= selection_rank(
                     student_accuracy=float(selection_candidates[0]["accuracy"]),
                     objective_value=float(
                         selection_candidates[0]["objective_value"]
