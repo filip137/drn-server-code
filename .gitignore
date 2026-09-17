@@ -50,6 +50,8 @@ labs/mnist_pytorch/
 
 # Images (generated outputs)
 *.png
+!docs/ibm_om_common_intervals_p50_p90_p99.png
+!docs/ibm_om_cell_bound_variation.png
 
 # Data / reports
 *.pdf

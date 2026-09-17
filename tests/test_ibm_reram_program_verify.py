@@ -10,6 +10,7 @@ from training.ibm_reram_program_verify import (
     HFO2_PRESET,
     IbmReramPlant,
     IbmReramPopulation,
+    IbmReramRawActivePlant,
     OM_PRESET,
     PopulationStepEstimator,
     make_buffered_normal_draws,
@@ -202,6 +203,37 @@ def test_plant_state_restores_exact_pulse_continuation() -> None:
 
     assert torch.equal(first.persistent, restored.persistent)
     assert torch.equal(first.apparent, restored.apparent)
+
+
+def test_raw_active_plant_uses_one_a_state_and_ignores_reference() -> None:
+    first_population = replace(
+        _synthetic_population(),
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        reference=torch.tensor([0.0, 0.0]),
+    )
+    second_population = replace(
+        first_population,
+        reference=torch.tensor([0.7, -0.6]),
+    )
+    kwargs = {
+        "seeds": [301, 302],
+        "coordinate_min": -3.0,
+        "coordinate_scale": 6.0,
+    }
+    first = IbmReramRawActivePlant(first_population, **kwargs)
+    second = IbmReramRawActivePlant(second_population, **kwargs)
+
+    assert first.controller_port().verify().tolist() == pytest.approx([0.5, 0.5])
+    first.pulse(torch.tensor([1, -1], dtype=torch.int8))
+    second.pulse(torch.tensor([1, -1], dtype=torch.int8))
+
+    assert first.persistent.tolist() == pytest.approx([0.1, -0.1])
+    torch.testing.assert_close(first.persistent, second.persistent)
+    torch.testing.assert_close(first.apparent, second.apparent)
+    torch.testing.assert_close(
+        first.controller_port().verify(), second.controller_port().verify()
+    )
 
 
 def test_buffered_normal_draws_keep_independent_seeded_rows() -> None:

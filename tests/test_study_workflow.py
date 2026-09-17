@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from io import StringIO
 import json
 from pathlib import Path
@@ -11,6 +12,7 @@ from experiments.artifacts import RunStore
 from experiments.study_workflow import (
     StudyWorkflowError,
     finalize_study,
+    load_review,
     load_study_plan,
     prepare_study,
     summarize_study,
@@ -202,8 +204,12 @@ def test_finalize_records_interpretation_and_is_idempotent(tmp_path: Path) -> No
     _write_json(
         review,
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "outcome": "supported",
+            "manifest_interpretation": (
+                "The smoke result supports the declared treatment, subject to "
+                "one-run exploratory coverage."
+            ),
             "final_interpretation": "The result supports the initial hypothesis.",
             "limitations": "This is a one-run exploratory workflow smoke.",
             "next_steps": ["Repeat with the real scientific configs."],
@@ -237,18 +243,177 @@ def test_finalize_records_interpretation_and_is_idempotent(tmp_path: Path) -> No
     final_path = Path(stdout.getvalue().strip())
     first_document = manifest.read_text(encoding="utf-8")
     final = json.loads(final_path.read_text(encoding="utf-8"))
+    report = (root / "analysis" / "report.md").read_text(encoding="utf-8")
+    assert final["schema_version"] == 2
     assert final["outcome"] == "supported"
+    assert final["manifest_interpretation"].startswith("The smoke result")
+    assert first_document.count("BEGIN EBL STUDY SUMMARY workflow-smoke-v1") == 1
+    assert first_document.count("BEGIN EBL STUDY workflow-smoke-v1") == 1
+    assert "### [workflow-smoke-v1](../results/workflow-smoke-v1/)" in first_document
+    assert "<summary>Full study record and provenance</summary>" in first_document
+    assert "[human report](../results/workflow-smoke-v1/analysis/report.md)" in first_document
     assert "Initial hypothesis" in first_document
     assert "Final interpretation" in first_document
     assert "The result supports the initial hypothesis" in first_document
     assert first_document.index("workflow-smoke-v1") < first_document.index(
         "## Shared validity notes"
     )
+    assert "**State:** `reviewed`" in report
+    assert "## Native runs and terminal evidence" in report
+    assert '"metric": 0.5' in report
+    assert "## Scientific closeout" in report
+    assert "### Manifest interpretation" in report
+    assert "### Final interpretation" in report
 
     assert (
         finalize_study(root, review_path=review, manifest_path=manifest)
         == final_path
     )
+    assert manifest.read_text(encoding="utf-8") == first_document
+
+
+def test_review_v2_requires_a_short_single_paragraph_manifest_text(
+    tmp_path: Path,
+) -> None:
+    review = tmp_path / "review.json"
+    base = {
+        "schema_version": 2,
+        "outcome": "supported",
+        "manifest_interpretation": "A concise supported result with a boundary.",
+        "final_interpretation": "The complete interpretation.",
+        "limitations": "One exploratory run.",
+        "next_steps": ["Repeat it."],
+    }
+    _write_json(review, base)
+    assert load_review(review)["manifest_interpretation"].startswith("A concise")
+
+    multiline = dict(base, manifest_interpretation="First line.\nSecond line.")
+    _write_json(review, multiline)
+    with pytest.raises(StudyWorkflowError, match="one paragraph"):
+        load_review(review)
+
+    overlength = dict(base, manifest_interpretation="x" * 601)
+    _write_json(review, overlength)
+    with pytest.raises(StudyWorkflowError, match="at most 600 characters"):
+        load_review(review)
+
+
+def test_new_finalization_rejects_a_legacy_review(tmp_path: Path) -> None:
+    root, _plan_path, config = _prepare(tmp_path)
+    _complete_run(root, config)
+    review = root / "analysis" / "review.json"
+    _write_json(
+        review,
+        {
+            "schema_version": 1,
+            "outcome": "supported",
+            "final_interpretation": "The legacy review supports the result.",
+            "limitations": "One run.",
+            "next_steps": ["Repeat it."],
+        },
+    )
+    manifest = tmp_path / "docs" / "experimental_manifest.md"
+    manifest.parent.mkdir(exist_ok=True)
+    manifest.write_text("# Experimental Manifest\n", encoding="utf-8")
+
+    with pytest.raises(StudyWorkflowError, match="review schema version 2"):
+        finalize_study(root, review_path=review, manifest_path=manifest)
+
+
+def test_summary_renders_an_existing_v1_final_record(tmp_path: Path) -> None:
+    root, _plan_path, config = _prepare(tmp_path)
+    _complete_run(root, config)
+    summarize_study(root)
+    study_sha = sha256((root / "study.json").read_bytes()).hexdigest()
+    _write_json(
+        root / "analysis" / "final.json",
+        {
+            "schema": "ebl.study.final",
+            "schema_version": 1,
+            "study_id": "workflow-smoke-v1",
+            "study_sha256": study_sha,
+            "outcome": "mixed",
+            "final_interpretation": "The legacy result remains mixed.",
+            "limitations": "Legacy single-run evidence.",
+            "next_steps": ["Retain the legacy conclusion."],
+        },
+    )
+
+    summary = summarize_study(root)
+    report = (root / "analysis" / "report.md").read_text(encoding="utf-8")
+    assert summary["state"] == "reviewed"
+    assert "The legacy result remains mixed." in report
+    assert "### Manifest interpretation" not in report
+
+
+def test_refinalizing_v1_preserves_final_and_migrated_manifest_summary(
+    tmp_path: Path,
+) -> None:
+    root, _plan_path, config = _prepare(tmp_path)
+    _complete_run(root, config)
+    review = root / "analysis" / "review.json"
+    _write_json(
+        review,
+        {
+            "schema_version": 1,
+            "outcome": "mixed",
+            "final_interpretation": "The legacy result remains mixed.",
+            "limitations": "Legacy single-run evidence.",
+            "next_steps": ["Retain the legacy conclusion."],
+        },
+    )
+    summarize_study(root)
+    study_sha = sha256((root / "study.json").read_bytes()).hexdigest()
+    final_path = root / "analysis" / "final.json"
+    _write_json(
+        final_path,
+        {
+            "schema": "ebl.study.final",
+            "schema_version": 1,
+            "study_id": "workflow-smoke-v1",
+            "finalized_at": "2026-08-01T00:00:00+00:00",
+            "study_sha256": study_sha,
+            "review_sha256": sha256(review.read_bytes()).hexdigest(),
+            "outcome": "mixed",
+            "final_interpretation": "The legacy result remains mixed.",
+            "limitations": "Legacy single-run evidence.",
+            "next_steps": ["Retain the legacy conclusion."],
+        },
+    )
+    final_before = final_path.read_bytes()
+    concise_entry = (
+        "<!-- BEGIN EBL STUDY SUMMARY workflow-smoke-v1 -->\n"
+        "### [workflow-smoke-v1](../results/workflow-smoke-v1/)\n\n"
+        "- **Outcome:** mixed\n"
+        "- **Interpretation:** A preserved migration-time summary.\n"
+        "<!-- END EBL STUDY SUMMARY workflow-smoke-v1 -->"
+    )
+    manifest = tmp_path / "docs" / "experimental_manifest.md"
+    manifest.parent.mkdir(exist_ok=True)
+    manifest.write_text(
+        "# Experimental Manifest\n\n## Concluded studies\n\n"
+        + concise_entry
+        + "\n\n<details>\n"
+        "<summary>Full study record and provenance</summary>\n\n"
+        "<!-- BEGIN EBL STUDY workflow-smoke-v1 -->\n"
+        "legacy placeholder\n"
+        "<!-- END EBL STUDY workflow-smoke-v1 -->\n\n"
+        "</details>\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        finalize_study(root, review_path=review, manifest_path=manifest)
+        == final_path
+    )
+    first_document = manifest.read_text(encoding="utf-8")
+    assert final_path.read_bytes() == final_before
+    assert concise_entry in first_document
+    assert "legacy placeholder" not in first_document
+    assert "The legacy result remains mixed." in first_document
+
+    finalize_study(root, review_path=review, manifest_path=manifest)
+    assert final_path.read_bytes() == final_before
     assert manifest.read_text(encoding="utf-8") == first_document
 
 

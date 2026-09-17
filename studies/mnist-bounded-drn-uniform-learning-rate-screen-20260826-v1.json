@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-bounded-drn-uniform-learning-rate-screen-20260826-v1",
+  "title": "Conductance-scale-informed learning-rate screen for full-range uniform bounded DRN training",
+  "hypothesis": "At least one predeclared layerwise schedule with W1 learning rate in {0.128,0.256,0.512} and W2 learning rate in {0.01,0.02} will achieve at least 90% validation accuracy after ten epochs from the fixed full-range uniform initialization, improving by at least five percentage points over the 83.74% validation result obtained with inherited learning rates [0.008,0.005].",
+  "motivation": "Read-only same-cohort gradient replay showed that the inherited schedule changes the uniform initialization by roughly 56 times less of the W1 contrast scale and 3.5 times less of the W2 contrast scale per minibatch than it changes the canonical Kaiming initialization. The grid brackets scale-matched estimates while keeping every other training choice fixed. It tests the learning-rate explanation without adapting the candidates from their trajectories.",
+  "evidence_class": "exploratory",
+  "arms": [
+    {
+      "arm_id": "w1-0p128-w2-0p01",
+      "description": "W1 learning rate 0.128 and W2 learning rate 0.01.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/w1_0p128_w2_0p01.json"
+      ]
+    },
+    {
+      "arm_id": "w1-0p128-w2-0p02",
+      "description": "W1 learning rate 0.128 and W2 learning rate 0.02.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/w1_0p128_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "w1-0p256-w2-0p01",
+      "description": "W1 learning rate 0.256 and W2 learning rate 0.01.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/w1_0p256_w2_0p01.json"
+      ]
+    },
+    {
+      "arm_id": "w1-0p256-w2-0p02",
+      "description": "W1 learning rate 0.256 and W2 learning rate 0.02.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/w1_0p256_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "w1-0p512-w2-0p01",
+      "description": "W1 learning rate 0.512 and W2 learning rate 0.01.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/w1_0p512_w2_0p01.json"
+      ]
+    },
+    {
+      "arm_id": "w1-0p512-w2-0p02",
+      "description": "W1 learning rate 0.512 and W2 learning rate 0.02.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/w1_0p512_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "validation-selected-test",
+      "description": "One full MNIST test evaluation of the checkpoint selected from the six completed development arms by the frozen validation-only rule.",
+      "experiment_id": "small_drn.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_uniform_lr_screen_20260826/selected_test.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "All six training configs differ from examples/small_drn/mnist_bounded_memristor_teacher_uniform_10ep.json only in modes.train.learning_rates and use the identical runtime/data/model/solver configuration, seed 17, and deterministic U[0.1020408197973068,1.0] conductance initialization.",
+    "Run every candidate for exactly ten epochs and 34,380 optimizer minibatches on the fixed 55,000-example training split; evaluate every epoch on the same complete 5,000-example validation split.",
+    "Within each arm, select the epoch checkpoint by the existing lowest-validation-mean-cost rule, retaining the earliest epoch on exact ties.",
+    "After all six arms complete, freeze one schedule by lowest selected validation mean cost; break an exact cost tie by higher selected validation accuracy, then by lexicographically smaller (W1 learning rate,W2 learning rate). Record every candidate metric and the selected checkpoint hash before accessing the test split.",
+    "Only the frozen validation-selected checkpoint is evaluated once on the untouched complete 10,000-example MNIST test split using selected_test.json.",
+    "The learning-rate hypothesis passes if at least one candidate reaches 90% selected validation accuracy and improves by at least five percentage points over the inherited-schedule 83.74% validation result. Do not add candidates, alter the grid, extend training, or choose by test accuracy after observing trajectories."
+  ],
+  "analysis_plan": [
+    "Verify exact config isolation, byte-identical initial states across all arms, complete epochs/minibatches/examples, finite conductances within [0.1020408197973068,1.0], and checkpoint provenance.",
+    "Tabulate for all six candidates the selected epoch, selected validation accuracy and mean cost, terminal validation accuracy and mean cost, plus each layer's conductance and logical-contrast statistics and bound occupancy.",
+    "Freeze the winner using the declared validation rule and store an immutable selection receipt containing all candidate run IDs, input hashes, selected checkpoint hash, and tie-break outcome before test evaluation.",
+    "Report the frozen winner's full 10,000-example test accuracy and mean cost. Compare descriptively with the inherited uniform result (83.74% validation,84.43% test) and canonical floor-shifted-Kaiming result (93.58% validation,94.29% test).",
+    "Interpret this as an ideal FP32 optimization study only; it does not establish the success of physical pulse-based from-scratch training or deployed-array recovery."
+  ]
+}

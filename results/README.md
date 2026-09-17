@@ -26,7 +26,14 @@ results/<study-id>/
 - `runs/` contains native `python -m ebl` run directories.
 - Optional `deployment/` contains device-programming or deployment outputs
   when used.
-- `analysis/` contains aggregate JSON, tables, and plots.
+- `analysis/summary.json` is the machine-readable coverage and terminal-metric
+  index.
+- `analysis/report.md` is the human-readable study report. It begins as a
+  coverage report and gains the reviewed scientific closeout after
+  finalization.
+- `analysis/review.json` contains the human-authored scientific decision, and
+  `analysis/final.json` binds that decision to the finalized study artifacts.
+- Other files under `analysis/` contain aggregate JSON, tables, and plots.
 - `study.json` and the study-local `README.md` retain the initial hypothesis
   and frozen plan inside the raw result directory.
 
@@ -56,9 +63,14 @@ python -m ebl study summarize --study-dir results/<study-id>
 ```
 
 After scientific review, `python -m ebl study finalize` writes
-`analysis/final.json` and reports the initial hypothesis and final
-interpretation in `docs/experimental_manifest.md`. See the complete
+`analysis/final.json`, completes `analysis/report.md`, and adds a concise
+linked interpretation to `docs/experimental_manifest.md`. See the complete
 [`experiment workflow`](../docs/experiment_workflow.md).
+
+Everything below `results/` except this README is ignored by Git. Links from
+tracked Markdown into a study folder are therefore local links: they resolve
+only in a workspace where that ignored study root has been retained or
+restored.
 
 ## Experiment indexes
 
@@ -66,12 +78,12 @@ interpretation in `docs/experimental_manifest.md`. See the complete
   [`docs/current_simulations.md`](../docs/current_simulations.md) is refreshed
   automatically from running native statuses below `results/`. Its paused,
   analyzing, and queued sections remain human-maintained.
-- [`docs/experimental_manifest.md`](../docs/experimental_manifest.md) lists
-  concluded studies and progress toward the LoRA/HWA research goal.
+- [`docs/experimental_manifest.md`](../docs/experimental_manifest.md) is the
+  concise index of concluded studies and links to their full local reports.
 
 The automatic refresh is informational and best-effort. Maintain the
 human-owned status and synthesis sections manually; use `study finalize` for
-workflow-managed finished-ledger entries. None of these documents approves,
+workflow-managed concluded-study entries. None of these documents approves,
 validates, or blocks a run.
 
 ## Existing raw results
@@ -82,5 +94,5 @@ Existing exploratory studies remain at their original locations:
 - `labs/cases/perfect_diode_hwa_lora_comparison/`
 - `labs/cases/mnist_perfect_diode_hwa_lora_comparison/`
 
-They are indexed in the finished-simulation ledger but are not moved into
+They are indexed in the experimental manifest but are not moved into
 `results/`.

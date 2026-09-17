@@ -1,9 +1,10 @@
 {
   "final_interpretation": "State what the collected evidence supports, refutes, or leaves unresolved. Distinguish the measurements from your inference.",
   "limitations": "State the important coverage, dataset, seed, model, and protocol limitations.",
+  "manifest_interpretation": "Summarize the conclusion and its most important boundary in one to three sentences and no more than 600 characters.",
   "next_steps": [
     "Name the smallest follow-up that would resolve the most important uncertainty."
   ],
   "outcome": "inconclusive",
-  "schema_version": 1
+  "schema_version": 2
 }

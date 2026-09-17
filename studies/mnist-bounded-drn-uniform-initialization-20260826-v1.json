@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-bounded-drn-uniform-initialization-20260826-v1",
+  "title": "Bounded DRN training from a full-range uniform initialization",
+  "hypothesis": "Changing only the bounded DRN initialization to independent uniform draws over the complete permitted conductance interval [0.1020408197973068, 1.0] will still produce at least 90% selected validation accuracy after ten epochs of otherwise unchanged clean FP32 BPTT training.",
+  "motivation": "The existing 94.29% test reference used a floor-shifted Kaiming initialization and therefore cannot establish the from-scratch performance of the intended full-range uniform initialization. This one-seed study changes only the initialization distribution before any physical pulse-writer or deployed-array recovery experiment is interpreted.",
+  "evidence_class": "exploratory",
+  "arms": [
+    {
+      "arm_id": "uniform-train-seed17",
+      "description": "Ten-epoch clean FP32 bounded-DRN training from deterministic U[0.1020408197973068, 1.0] conductances.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_memristor_teacher_uniform_10ep.json"
+      ]
+    },
+    {
+      "arm_id": "uniform-selected-test-seed17",
+      "description": "Full untouched 10,000-example MNIST test evaluation of the validation-selected checkpoint produced by uniform-train-seed17.",
+      "experiment_id": "small_drn.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/small_drn/mnist_bounded_memristor_teacher_uniform_10ep.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "The uniform config differs from examples/small_drn/mnist_bounded_memristor_teacher_10ep.json only in model.weight_init_mode, which is bounded_range_uniform.",
+    "With runtime seed 17, initialize every dense conductance independently and reproducibly from U[0.1020408197973068, 1.0], with no clipping-created point mass at either bound.",
+    "Train exactly one seed for ten epochs and 34,380 minibatches on the same 55,000-example training split, using batch size 16, bias-free [1568,100,20] topology, perfect-diode nonlinearity, four solver iterations, direct FP32 BPTT/SGD, and layer learning rates [0.008,0.005].",
+    "After each optimizer step, hard-clamp every conductance to [0.1020408197973068,1.0], matching the earlier bounded reference protocol.",
+    "Select the checkpoint only by the lowest clean mean cost on the fixed 5,000-example validation split; report both the selected epoch and the epoch-10 terminal metrics.",
+    "Only after training is complete, evaluate the selected checkpoint once on the untouched complete 10,000-example MNIST test split.",
+    "The mechanism hypothesis passes if selected validation accuracy is at least 90%. Regardless of outcome, retain the run as the uniform-initialization benchmark and do not tune the initialization interval, learning rates, seed, or epoch count from its trajectory."
+  ],
+  "analysis_plan": [
+    "Verify exact config isolation, completed epoch/minibatch coverage, checkpoint provenance, finite bounded conductances, and full validation/test example counts before interpreting accuracy.",
+    "Report initial conductance minimum, maximum, mean, standard deviation, and bound occupancy for each layer; then report the same statistics for the validation-selected checkpoint.",
+    "Report the complete ten-epoch training and validation trajectory, selected epoch, selected validation accuracy/cost, terminal validation accuracy/cost, and full test accuracy/cost.",
+    "Compare descriptively against the immutable floor-shifted-Kaiming seed-17 reference: 93.58% selected validation and 94.29% test. Attribute the difference only to initialization for this matched ideal-FP32 protocol.",
+    "Do not use this clean bounded result as evidence that noisy pulse-based physical training succeeds. Use it as the architecture-and-initialization reference for the separately declared IBM-OM from-scratch study."
+  ]
+}

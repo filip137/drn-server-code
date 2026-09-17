@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import math
+import re
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 from experiments.schema import (
@@ -40,6 +41,7 @@ from model.resistive.passive_layerwise_low_rank_config import (
 EXPERIMENT_ID = "small_drn.v1"
 SCHEMA_VERSION = 1
 _MAX_TORCH_SEED = 2**64 - 1
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -516,6 +518,44 @@ def _weight_modifier(value: Any, path: str) -> ComponentSettings:
     )
 
 
+def _adam_parameters(value: Any, path: str) -> dict[str, Any]:
+    parameters = _object(value, path)
+    _check_keys(
+        parameters,
+        path,
+        required=(
+            "beta1",
+            "beta2",
+            "epsilon",
+            "weight_decay",
+            "amsgrad",
+        ),
+    )
+    beta1 = _number(parameters["beta1"], f"{path}.beta1", minimum=0.0)
+    beta2 = _number(parameters["beta2"], f"{path}.beta2", minimum=0.0)
+    if beta1 >= 1.0 or beta2 >= 1.0:
+        raise config_error(
+            f"{path}.beta1 and {path}.beta2",
+            "to lie in [0, 1)",
+            {"beta1": beta1, "beta2": beta2},
+        )
+    return {
+        "beta1": beta1,
+        "beta2": beta2,
+        "epsilon": _number(
+            parameters["epsilon"],
+            f"{path}.epsilon",
+            strictly_positive=True,
+        ),
+        "weight_decay": _number(
+            parameters["weight_decay"],
+            f"{path}.weight_decay",
+            minimum=0.0,
+        ),
+        "amsgrad": _boolean(parameters["amsgrad"], f"{path}.amsgrad"),
+    }
+
+
 def _update_backend(value: Any, path: str) -> ComponentSettings:
     """Parse the explicitly supported gradient-application backends."""
 
@@ -526,6 +566,8 @@ def _update_backend(value: Any, path: str) -> ComponentSettings:
         f"{path}.type",
         choices=(
             "direct",
+            "direct_adam",
+            "ibm_om_fp32_bounds",
             "tiki_taka",
             "program_verify",
             "measured_cohort_a",
@@ -535,6 +577,124 @@ def _update_backend(value: Any, path: str) -> ComponentSettings:
     )
     parameters_path = f"{path}.parameters"
     parameters = _object(parsed["parameters"], parameters_path)
+    if backend_type == "direct_adam":
+        normalized = _adam_parameters(parameters, parameters_path)
+        return ComponentSettings(
+            type=backend_type,
+            parameters=freeze_json(normalized, path=parameters_path),
+        )
+    if backend_type == "ibm_om_fp32_bounds":
+        _check_keys(
+            parameters,
+            parameters_path,
+            required=(
+                "preset",
+                "assignment_seed",
+                "corruption_policy",
+                "bounds_coordinate",
+                "initialization_distribution",
+                "initialization_seed",
+                "expected_population_sha256",
+                "expected_population_fingerprint",
+                "optimizer",
+            ),
+        )
+        exact_strings = {
+            "preset": "reram_array_om",
+            "bounds_coordinate": "controller_clipped_0_1",
+            "initialization_distribution": (
+                "uniform_per_cell_effective_bounds"
+            ),
+        }
+        normalized: dict[str, Any] = {}
+        for name, expected in exact_strings.items():
+            normalized[name] = _string(
+                parameters[name],
+                f"{parameters_path}.{name}",
+                choices=(expected,),
+            )
+        normalized["assignment_seed"] = _integer(
+            parameters["assignment_seed"],
+            f"{parameters_path}.assignment_seed",
+            minimum=0,
+        )
+        normalized["corruption_policy"] = _string(
+            parameters["corruption_policy"],
+            f"{parameters_path}.corruption_policy",
+            choices=("published", "counterfactual_repaired"),
+        )
+        normalized["initialization_seed"] = _integer(
+            parameters["initialization_seed"],
+            f"{parameters_path}.initialization_seed",
+            minimum=0,
+        )
+        for name in (
+            "expected_population_sha256",
+            "expected_population_fingerprint",
+        ):
+            digest = parameters[name]
+            if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+                raise config_error(
+                    f"{parameters_path}.{name}",
+                    "to be a lowercase SHA-256 digest",
+                    digest,
+                )
+            normalized[name] = digest
+        optimizer_path = f"{parameters_path}.optimizer"
+        optimizer = _object(parameters["optimizer"], optimizer_path)
+        _check_keys(
+            optimizer,
+            optimizer_path,
+            required=("type", "parameters"),
+        )
+        optimizer_type = _string(
+            optimizer["type"],
+            f"{optimizer_path}.type",
+            choices=("sgd", "adam"),
+        )
+        optimizer_parameters_path = f"{optimizer_path}.parameters"
+        if optimizer_type == "adam":
+            optimizer_parameters = _adam_parameters(
+                optimizer["parameters"],
+                optimizer_parameters_path,
+            )
+        else:
+            raw_sgd = _object(
+                optimizer["parameters"],
+                optimizer_parameters_path,
+            )
+            _check_keys(
+                raw_sgd,
+                optimizer_parameters_path,
+                required=("momentum", "weight_decay"),
+            )
+            momentum = _number(
+                raw_sgd["momentum"],
+                f"{optimizer_parameters_path}.momentum",
+                minimum=0.0,
+            )
+            if momentum >= 1.0:
+                raise config_error(
+                    f"{optimizer_parameters_path}.momentum",
+                    "to lie in [0, 1)",
+                    momentum,
+                )
+            optimizer_parameters = {
+                "momentum": momentum,
+                "weight_decay": _number(
+                    raw_sgd["weight_decay"],
+                    f"{optimizer_parameters_path}.weight_decay",
+                    minimum=0.0,
+                ),
+            }
+        normalized["optimizer"] = {
+            "type": optimizer_type,
+            "parameters": optimizer_parameters,
+        }
+        return ComponentSettings(
+            type=backend_type,
+            parameters=freeze_json(normalized, path=parameters_path),
+        )
     if backend_type in {
         "measured_cohort_a",
         "measured_cohort_b",
@@ -1325,6 +1485,7 @@ def _parse_model(value: Any) -> ModelSettings:
                 "bounded_uniform",
                 "bounded_range_uniform",
                 "floor_shifted_kaiming_uniform",
+                "om_cell_bounds_uniform",
             ),
         ),
         include_biases=_boolean(
@@ -2001,6 +2162,56 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
         if "train" in modes
         else None
     )
+    if train_settings is not None:
+        om_bounds_backend = (
+            train_settings.update_backend.type == "ibm_om_fp32_bounds"
+        )
+        om_bounds_initialization = (
+            model.weight_init_mode == "om_cell_bounds_uniform"
+        )
+        if om_bounds_backend != om_bounds_initialization:
+            raise config_error(
+                "config.model.weight_init_mode and "
+                "config.modes.train.update_backend.type",
+                "to pair 'om_cell_bounds_uniform' exactly with "
+                "'ibm_om_fp32_bounds'",
+                {
+                    "weight_init_mode": model.weight_init_mode,
+                    "update_backend": train_settings.update_backend.type,
+                },
+            )
+        if om_bounds_backend:
+            constraints = {
+                "config.data.dataset": (data.dataset, "mnist"),
+                "config.model.dims": (model.dims, (1568, 100, 20)),
+                "config.model.weight_min": (model.weight_min, 0.0),
+                "config.model.weight_max": (model.weight_max, 1.0),
+                "config.model.include_biases": (model.include_biases, False),
+                "config.model.adapter.type": (model.adapter.type, "none"),
+                "config.modes.train.algorithm": (
+                    train_settings.algorithm,
+                    "backprop",
+                ),
+                "config.modes.train.weight_modifier.type": (
+                    train_settings.weight_modifier.type,
+                    "none",
+                ),
+            }
+            for constraint_path, (provided, expected) in constraints.items():
+                if provided != expected:
+                    raise config_error(
+                        constraint_path,
+                        "to equal "
+                        f"{expected!r} for ibm_om_fp32_bounds",
+                        provided,
+                    )
+            if data.validation_points is None:
+                raise config_error(
+                    "config.data.validation_points",
+                    "to define a held-out MNIST validation split for "
+                    "ibm_om_fp32_bounds",
+                    data.validation_points,
+                )
     if train_settings is not None and (
         train_settings.update_backend.type
         in {

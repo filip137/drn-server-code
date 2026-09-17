@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import asdict
 import json
 from pathlib import Path
@@ -15,6 +16,7 @@ from training.ibm_reram_hwa import (
     IbmReramArrayPopulation,
     IbmReramHwaConfig,
     _population_fingerprint,
+    commission_ibm_reram_reset_relative_baselines,
     map_ibm_reram_array_targets,
 )
 
@@ -186,6 +188,13 @@ def test_state_partitions_and_reversible_application_restore_exactly() -> None:
 
     originals = tuple(binding.state.clone() for binding in bindings)
     seen = []
+    state_contexts = []
+
+    @contextmanager
+    def state_context(name: str):
+        state_contexts.append(name)
+        yield
+
     outputs = decomposition.evaluate_reversible_states(
         bindings,
         {"mapped": mapped, "apparent": apparent},
@@ -195,10 +204,12 @@ def test_state_partitions_and_reversible_application_restore_exactly() -> None:
             torch.cat(tuple(binding.state.reshape(-1) for binding in bindings))
             .clone()
         ),
+        state_context=state_context,
     )
     assert outputs == {"mapped": None, "apparent": None}
     torch.testing.assert_close(seen[0], mapped)
     torch.testing.assert_close(seen[1], apparent)
+    assert state_contexts == ["mapped", "apparent"]
     assert all(
         torch.equal(binding.state, original)
         for binding, original in zip(bindings, originals)
@@ -344,6 +355,148 @@ def _pair_deployment_fixture() -> tuple[dict, IbmReramHwaConfig, str, str]:
     return deployment, config, selected_sha256, device_model_sha256
 
 
+def _reset_relative_deployment_fixture() -> tuple[
+    dict,
+    IbmReramHwaConfig,
+    str,
+    str,
+]:
+    key = "base.dense_weight.0"
+    shape = (2, 40)
+    size = 80
+    lower = torch.full((size,), -0.6, dtype=torch.float32)
+    upper = torch.full((size,), 0.8, dtype=torch.float32)
+    population_tensors = {
+        "max_bound": upper,
+        "min_bound": lower,
+        "dwmin_up": torch.full((size,), 0.2, dtype=torch.float32),
+        "dwmin_down": torch.full((size,), 0.2, dtype=torch.float32),
+        "reference": torch.zeros(size, dtype=torch.float32),
+        "corrupt": torch.zeros(size, dtype=torch.bool),
+        "published_corrupt": torch.zeros(size, dtype=torch.bool),
+    }
+    scalar_parameters = {
+        "aihwkit_version": "1.1.0",
+        "nominal_dw_min": 0.0949,
+        "dw_min_std": 0.0,
+        "write_noise_std": 0.0,
+    }
+    config = IbmReramHwaConfig(
+        execution="pulse_resolved",
+        assignment_seed=84001,
+        endpoint_seed=84003,
+        corruption_policy="counterfactual_repaired",
+        noisy_evaluation=True,
+        target_mapping="shared_reset_relative_quad",
+        dual_rail_layout_by_parameter={key: "halves"},
+        reset_relative_mode="quantized_9_level",
+        reset_relative_contrast_step=0.095849,
+        reset_read_samples=8,
+        reset_guard_standard_errors=3.0,
+        forward_logit_gain=562.0,
+    )
+    fingerprint = _population_fingerprint(
+        assignment_seed=config.assignment_seed,
+        corruption_policy=config.corruption_policy,
+        keys=(key,),
+        shapes=(shape,),
+        binding_sampling_seeds=(11,),
+        donor_sampling_seeds=(21,),
+        scalar_parameters=scalar_parameters,
+        tensors=population_tensors,
+    )
+    population = IbmReramArrayPopulation(
+        assignment_seed=config.assignment_seed,
+        corruption_policy=config.corruption_policy,
+        binding_keys=(key,),
+        binding_shapes=(shape,),
+        binding_sampling_seeds=(11,),
+        donor_sampling_seeds=(21,),
+        nominal_dw_min=0.0949,
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        max_bound=upper,
+        min_bound=lower,
+        dwmin_up=population_tensors["dwmin_up"],
+        dwmin_down=population_tensors["dwmin_down"],
+        reference=population_tensors["reference"],
+        corrupt=population_tensors["corrupt"],
+        published_corrupt=population_tensors["published_corrupt"],
+        fingerprint=fingerprint,
+        aihwkit_version="1.1.0",
+    )
+    commissioning = commission_ibm_reram_reset_relative_baselines(
+        population,
+        dual_rail_layout_by_parameter={key: "halves"},
+        read_samples=8,
+        guard_standard_errors=3.0,
+    )
+    global_target = torch.zeros(size, dtype=torch.float32)
+    global_target[0] = 0.125
+    global_target[60] = 0.125
+    mapped, mapping_report = map_ibm_reram_array_targets(
+        global_target,
+        population,
+        target_mapping=config.target_mapping,
+        dual_rail_layout_by_parameter={key: "halves"},
+        common_window_margin_fraction=0.0,
+        reset_commissioning=commissioning,
+        reset_relative_mode=config.reset_relative_mode,
+        reset_relative_contrast_step=config.reset_relative_contrast_step,
+    )
+    selected_sha256 = "c" * 64
+    device_model_sha256 = "d" * 64
+    programming_report = {
+        "execution": "pulse_resolved",
+        "devices": size,
+        "accepted": size,
+        "budget_exhausted": 0,
+        "corrupt": 0,
+        "saturated": 0,
+        "endpoint_clipped": 0,
+        "pulse_count": {"maximum": 0},
+        "population_fingerprint": fingerprint,
+        "endpoint_application_policy": IBM_RERAM_ENDPOINT_APPLICATION_POLICY,
+        "target_mapping": config.target_mapping,
+        "target_mapping_report": mapping_report,
+    }
+    deployment = {
+        "schema": "ebl.ibm_reram.om_pulse_resolved_deployment",
+        "schema_version": 1,
+        "device_model_sha256": device_model_sha256,
+        "population_fingerprint": fingerprint,
+        "population_sampling_receipt": None,
+        "config": asdict(config),
+        "binding_keys": (key,),
+        "binding_shapes": (shape,),
+        "binding_sampling_seeds": (11,),
+        "donor_sampling_seeds": (21,),
+        "population_scalars": {"preset": "reram_array_om", **scalar_parameters},
+        "population": population_tensors,
+        "reset_commissioning": commissioning.bundle(),
+        "global_requested_target": global_target,
+        "requested_target": mapped,
+        "raw_apparent_endpoint": mapped.clone(),
+        "apparent_endpoint": mapped.clone(),
+        "persistent_endpoint": mapped.clone(),
+        "accepted": torch.ones(size, dtype=torch.bool),
+        "budget_exhausted": torch.zeros(size, dtype=torch.bool),
+        "corrupt": torch.zeros(size, dtype=torch.bool),
+        "saturated": torch.zeros(size, dtype=torch.bool),
+        "set_count": torch.zeros(size, dtype=torch.int64),
+        "reset_count": torch.zeros(size, dtype=torch.int64),
+        "total_pulses": torch.zeros(size, dtype=torch.int64),
+        "verify_count": torch.ones(size, dtype=torch.int64),
+        "reversals": torch.zeros(size, dtype=torch.int64),
+        "target_mapping_report": mapping_report,
+        "endpoint_application_policy": IBM_RERAM_ENDPOINT_APPLICATION_POLICY,
+        "report": programming_report,
+        "selected_weights_sha256": selected_sha256,
+        "selected_epoch": 2,
+    }
+    return deployment, config, selected_sha256, device_model_sha256
+
+
 def test_deployment_contract_replays_population_and_fails_closed() -> None:
     deployment, config, selected_sha256, device_model_sha256 = (
         _pair_deployment_fixture()
@@ -399,6 +552,68 @@ def test_deployment_contract_replays_population_and_fails_closed() -> None:
         )
 
 
+def test_deployment_contract_replays_observed_reset_relative_commissioning() -> None:
+    deployment, config, selected_sha256, device_model_sha256 = (
+        _reset_relative_deployment_fixture()
+    )
+    tensors, loaded_config, contract = decomposition.validate_deployment_contract(
+        deployment,
+        expected_selected_weights_sha256=selected_sha256,
+        expected_binding_keys=deployment["binding_keys"],
+        expected_binding_shapes=deployment["binding_shapes"],
+        configured_modifiers=(asdict(config),),
+        checkpoint_metadata={
+            "selection_epoch": 2,
+            "device_model_sha256": device_model_sha256,
+        },
+    )
+    assert loaded_config == config
+    assert contract["mapping_report"]["reset_relative_signed_levels"] == 9
+    torch.testing.assert_close(
+        tensors["requested_target"],
+        deployment["requested_target"],
+    )
+
+    validation_deployment = dict(deployment)
+    validation_deployment["source_weights_sha256"] = validation_deployment.pop(
+        "selected_weights_sha256"
+    )
+    validation_deployment.pop("selected_epoch")
+    _tensors, _loaded_config, validation_contract = (
+        decomposition.validate_deployment_contract(
+            validation_deployment,
+            expected_selected_weights_sha256=selected_sha256,
+            expected_binding_keys=deployment["binding_keys"],
+            expected_binding_shapes=deployment["binding_shapes"],
+            configured_modifiers=(asdict(config),),
+            checkpoint_metadata={
+                "selection_epoch": 2,
+                "device_model_sha256": device_model_sha256,
+            },
+        )
+    )
+    assert validation_contract["selected_epoch"] == 2
+    assert validation_contract["weights_provenance_field"] == (
+        "source_weights_sha256"
+    )
+
+    tampered = dict(deployment)
+    commissioning = dict(deployment["reset_commissioning"])
+    commissioning["hidden_min_bound"] = torch.zeros(80)
+    tampered["reset_commissioning"] = commissioning
+    with pytest.raises(ValueError, match="strict observed RESET commissioning"):
+        decomposition.validate_deployment_contract(
+            tampered,
+            expected_selected_weights_sha256=selected_sha256,
+            expected_binding_keys=deployment["binding_keys"],
+            expected_binding_shapes=deployment["binding_shapes"],
+            configured_modifiers=(asdict(config),),
+            checkpoint_metadata={
+                "selection_epoch": 2,
+                "device_model_sha256": device_model_sha256,
+            },
+        )
+
 def test_cli_requires_all_inputs_writes_once_and_refuses_overwrite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -433,6 +648,7 @@ def test_cli_requires_all_inputs_writes_once_and_refuses_overwrite(
     }
     assert observed == {
         "config_path": Path(arguments[1]),
+        "deployment_config_path": None,
         "weights_path": Path(arguments[3]),
         "teacher_weights_path": Path(arguments[5]),
         "deployment_path": Path(arguments[7]),

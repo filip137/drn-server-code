@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-raw-active-p90-quantized-hwa-20260826-v1",
+  "title": "MNIST raw-active IBM OM p90 common-differential seven-level HWA",
+  "hypothesis": "Seven-level quantization-aware mapped HWA using one global D90 differential codebook and one variable within-quad baseline will achieve at least two percentage points higher mean held-out apparent programmed test accuracy than the matched continuous mapped-HWA control.",
+  "motivation": "The previous RESET-relative study represented AIHWKit's reference-shifted logical state and commissioned a shared baseline from noisy RESET reads. This study instead represents every DRN conductance by one independently pulsed raw active state, excludes the fixed AIHWKit reference from all numerics, applies one frozen array-wide coordinate, gives each complete quad one shared baseline, and reserves a common D90 differential supported by p90 development quads. It repeats the zero-update, clean-BPTT, continuous-HWA, and QAT decomposition surface. Training HWA is mapping-only because no raw-coordinate one-pulse compact endpoint fit exists; all selection and deployment are exact pulse-resolved. Unsupported quads remain explicit structural failures, so this is a stress path rather than a functional donor-reassigned deployment. No on-chip arm is included and no residual gap alone can establish that on-chip training is required.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "train-zero-update-quantized",
+      "description": "Zero optimizer updates from the frozen raw-coordinate shadow, selected by three exact seven-level development-array deployments.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/zero_update_quantized.json"]
+    },
+    {
+      "arm_id": "train-clean-bptt-quantized-deploy",
+      "description": "Ten epochs of clean FP32 BPTT followed by exact seven-level physical selection.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/clean_bptt_quantized_deploy.json"]
+    },
+    {
+      "arm_id": "train-continuous-mapped-hwa",
+      "description": "Ten epochs of continuous p90 mapped-target HWA with exact continuous physical selection.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/continuous_hwa.json"]
+    },
+    {
+      "arm_id": "train-quantized-qat",
+      "description": "Ten epochs of seven-level p90 QAT with exact seven-level physical selection.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/quantized_qat.json"]
+    },
+    {
+      "arm_id": "deploy-zero-update-heldout",
+      "description": "Five seven-level deployments of the zero-update checkpoint on held-out assignment 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85105.json"
+      ]
+    },
+    {
+      "arm_id": "deploy-clean-bptt-heldout",
+      "description": "Five matched seven-level deployments of the selected clean-BPTT checkpoint on held-out assignment 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85105.json"
+      ]
+    },
+    {
+      "arm_id": "deploy-continuous-hwa-heldout",
+      "description": "Five continuous deployments of the selected continuous-HWA checkpoint on held-out assignment 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_continuous_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_continuous_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_continuous_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_continuous_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_continuous_seed_85105.json"
+      ]
+    },
+    {
+      "arm_id": "deploy-quantized-qat-heldout",
+      "description": "Five seven-level deployments of the selected QAT checkpoint on held-out assignment 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/heldout_quantized_seed_85105.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Before launch, verify source full-span checkpoint SHA-256 e9a603833a607aa6fd9060781a4ba9353e0bcf9a04265ef5afb118146b435acb, raw-coordinate zero-update checkpoint SHA-256 97785347e39bfaf14026dc06bf8b28a7e0e30711543e7a566baf915022c860d5, derivation receipt SHA-256 da85b6069bc411426b857d7d695dfc59db5076e0c076479bc3ce9b8a8aa0478f, teacher SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, device-model SHA-256 3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3, and learning-rate selection receipt SHA-256 2cb4ce2762c8fafcfce52bac7c589d95f536f870d30fc0e38152dc5fcc28149f.",
+    "The zero-update derivation must prove zero optimizer updates, one array-wide affine transform from [0.1020408197973068,1] to [0,1], no cell-specific rescaling, no material clipping, reference exclusion, development population fingerprint 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac, clean gain 0.707945784384138, continuous mapped gain 251.18864315095797, and seven-level mapped gain 223.87211385683378.",
+    "Development roles use repaired assignment seed 84001, mapping-only endpoint seed 84002, exact selection endpoint seed 84003, canonical halves/paired layouts, A_min=-3.455834150314331, A_max=2.5384607315063477, S=5.994294881820679, D90=0.10354409442884083, and tau_g=0.00791586015294392. Changing only the AIHWKit reference must leave mapping and pulse numerics unchanged.",
+    "Every development preflight must cover exactly 158,800 cells and 39,700 complete quads, with exactly 35,730 p90-eligible quads, one baseline shared by all four cells within a quad, the same differential scale across every eligible quad, and explicit structural-failure masks for the remaining 3,970 quads. No target is clipped or cell-wise normalized.",
+    "The continuous mapper uses D=clamp(u,-1,1)D90. The seven-level mapper uses n=clamp(round-half-away-from-zero(3u),-3,3) and D=nD90/3. Each target is B plus or minus D/2 in canonical (++,+-,-+,--) order. The exact D report is half the historical four-cell contrast report.",
+    "Training HWA is explicitly mapping-only: eligible and exactly supported cells receive the mapped target, structural failures receive the transformed RESET bound, the clean [0,1] master is restored before every ideal off-chip update, and no compact endpoint density or pulse noise is claimed. Continuous rates are [0.00701276595744681,1.9031148936170215e-5], seven-level rates are [0.017647659574468084,4.789923404255319e-5], and clean rates are [0.1388429752066116,0.00037685950413223146].",
+    "Exact selection and deployment start every device trajectory at raw a=0, use a separate boundary-conditioning stream, apply RESET until four consecutive persistent raw changes below 2e-6 or 4,096 pulses, then independently run one-pulse SET-below/RESET-above P&V on programming-eligible devices with tau_g and a separate 128-pulse target budget. Apparent endpoint, persistent endpoint, apparent acceptance, persistent tolerance, support, conditioning success, exhaustion, pulses, verifies, reversals, saturation, population, and RNG continuation remain separate fields.",
+    "The zero-update arm performs no optimizer update. The other three arms complete exactly ten full epochs. Every checkpoint is selected by highest mean apparent programmed student accuracy across exactly three fixed development-array P&V repeats; strict improvement keeps the earliest exact tie. Selection may not use clean accuracy, persistent-state accuracy, KL, or test outcomes.",
+    "Assignment 85001 is not used by this study until all four development checkpoints and hashes are frozen. Its pre-existing immutable fixture must reproduce population NPZ SHA-256 8cf02438727c4090c4721976e09eee066e2408dad9c1c8cd8328ef3268965cab, fingerprint 2721e735ba6722df27a879a5373de2d1da02481cb5eec05b592f967d27e74310, and 35,898 D90-eligible quads. Each checkpoint then receives exactly five deployments with endpoint seeds 85101 through 85105 and no adaptation.",
+    "Every held-out deployment evaluates all 10,000 test examples using apparent programmed weights and retains the complete population and deployment sidecar. A structural failure, conditioning failure, budget exhaustion, or low accuracy is retained as an outcome; no donor, clipping, extra pulse budget, extra endpoint seed, or post-outcome reassignment is allowed.",
+    "The study is complete only with one valid development run for each of four pipelines and all twenty declared held-out deployments under artifact-hash verification, plus one read-only decomposition per held-out deployment. Failed and replacement attempts remain preserved. No Tiki-Taka, LoRA, direct pulse recovery, rail refresh, or other on-chip update is eligible evidence in this study."
+  ],
+  "analysis_plan": [
+    "The primary result is the five-seed paired difference in held-out apparent programmed test accuracy between seven-level QAT and continuous mapped HWA. Report each paired difference, mean, sample standard deviation, and a 95-percent paired bootstrap interval. Support requires a mean advantage of at least two percentage points.",
+    "For every checkpoint and deployment report clean selected, ideal global requested, ideal mapped target, apparent endpoint, and persistent endpoint diagnostic accuracy, teacher agreement, KL, score RMS, fixed gain, prediction flips, class margins, and cohort hashes. Only apparent endpoint accuracy is deployment accuracy.",
+    "Use zero-update, clean-BPTT, continuous-HWA, and seven-level QAT to separate initial mapping loss, ordinary off-chip retraining, continuous device-aware exposure, and quantization-aware exposure. Compare each pipeline after its own declared mapper.",
+    "For W1 and W2 report exact logical D target RMS and nonzero minimum, apparent and persistent D-error RMS, SNR, sign flips, code histograms, and error-to-signal ratio. Keep the historical unhalved contrast only as a compatibility diagnostic.",
+    "Report boundary-conditioning pulses and success separately from target-programming SET, RESET, total pulses, verify reads, reversals, apparent acceptance, accepted-persistent-within-tolerance, exhaustion, saturation, exact support, and structural failures. Do not count conditioning inside the 128-pulse target budget.",
+    "Compare the raw-active results descriptively with the completed RESET-relative study only after stating the changed coordinate, baseline policy, D budget, codebook, controller, gains, and learning rates. Do not present that cross-protocol difference as a single-intervention causal comparison.",
+    "This study has no on-chip recovery arm. If off-chip arms remain below a future deployment target, use the results to predeclare a matched recovery study starting from one named deployed state; do not conclude that on-chip training is necessary from this study alone."
+  ]
+}

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
@@ -82,6 +82,15 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "--deployment-config",
+        type=Path,
+        default=None,
+        help=(
+            "optional strict validate config for a held-out deployment; "
+            "--config remains the checkpoint-producing train config"
+        ),
+    )
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--teacher-weights", type=Path, required=True)
     parser.add_argument("--deployment", type=Path, required=True)
@@ -105,6 +114,12 @@ def _strict_torch_load(path: Path) -> Any:
         return torch.load(source, map_location="cpu", weights_only=True)
     except TypeError:  # pragma: no cover - older supported PyTorch
         return torch.load(source, map_location="cpu")
+
+
+def load_deployment_artifact(path: Path) -> Any:
+    """Load a tensor-only deployment bundle through the strict reader."""
+
+    return _strict_torch_load(path)
 
 
 def _json_value(value: Any) -> Any:
@@ -131,6 +146,19 @@ def _tensor_sha256(value: torch.Tensor) -> str:
     digest = sha256()
     digest.update(str(tensor.dtype).encode())
     digest.update(repr(tuple(tensor.shape)).encode())
+    digest.update(tensor.numpy().tobytes())
+    return digest.hexdigest()
+
+
+def _commissioning_tensor_sha256(value: torch.Tensor) -> str:
+    """Match the commissioning artifact's canonical tensor digest."""
+
+    tensor = value.detach().cpu().contiguous()
+    digest = sha256()
+    digest.update(str(tensor.dtype).encode("utf-8"))
+    digest.update(
+        torch.tensor(tuple(tensor.shape), dtype=torch.int64).numpy().tobytes()
+    )
     digest.update(tensor.numpy().tobytes())
     return digest.hexdigest()
 
@@ -549,6 +577,7 @@ def evaluate_reversible_states(
     conductance_min: float,
     conductance_max: float,
     evaluator: Callable[[], Any],
+    state_context: Callable[[str], Any] | None = None,
 ) -> dict[str, Any]:
     """Evaluate states in insertion order and prove final tensor restoration."""
 
@@ -557,11 +586,18 @@ def evaluate_reversible_states(
     outputs = {}
     try:
         for name, state in states.items():
-            with temporary_normalized_state(
-                selected,
-                state,
-                conductance_min=conductance_min,
-                conductance_max=conductance_max,
+            with (
+                temporary_normalized_state(
+                    selected,
+                    state,
+                    conductance_min=conductance_min,
+                    conductance_max=conductance_max,
+                ),
+                (
+                    state_context(name)
+                    if state_context is not None
+                    else nullcontext()
+                ),
             ):
                 outputs[name] = evaluator()
     finally:
@@ -596,6 +632,7 @@ def collect_evaluation_trace(
     loader: Iterable,
     *,
     maximum_batches: int | None,
+    sample_limit: int | None = None,
 ) -> EvaluationTrace:
     """Replay the production equations and retain ordered output diagnostics."""
 
@@ -607,7 +644,14 @@ def collect_evaluation_trace(
     label_pieces = []
     digest = sha256()
     with torch.no_grad():
+        examples_seen = 0
         for inputs, labels in limited(loader, maximum_batches):
+            if sample_limit is not None:
+                remaining = sample_limit - examples_seen
+                if remaining <= 0:
+                    break
+                inputs = inputs[:remaining]
+                labels = labels[:remaining]
             _update_cohort_digest(digest, inputs, labels)
             inputs = inputs.to(stack.device, dtype=torch.float32)
             labels = labels.to(stack.device, dtype=torch.long)
@@ -621,6 +665,7 @@ def collect_evaluation_trace(
             student_pieces.append(student_logits.detach().cpu())
             teacher_pieces.append(teacher_logits.detach().cpu())
             label_pieces.append(labels.detach().cpu())
+            examples_seen += int(labels.shape[0])
     if not student_pieces:
         raise ValueError("Expected decomposition evaluation to process examples.")
     raw_scores = torch.cat(raw_pieces)
@@ -778,13 +823,67 @@ def _cost_summary(
             }
         else:
             result[name] = None
-    for name in ("accepted", "budget_exhausted", "corrupt", "saturated"):
+    for name in (
+        "accepted",
+        "budget_exhausted",
+        "corrupt",
+        "saturated",
+        "structural_quad_eligible",
+        "structural_target_assignment_failure",
+        "exact_target_in_support",
+        "programming_eligible",
+        "persistent_within_tolerance",
+    ):
         value = deployment.get(name)
         result[name] = (
             int(value[selection].to(torch.bool).sum().item())
             if isinstance(value, torch.Tensor) and value.shape == selection.shape
             else None
         )
+    conditioning = deployment.get("conditioning")
+    conditioning_pulses = (
+        conditioning.get("pulse_count")
+        if isinstance(conditioning, Mapping)
+        else None
+    )
+    conditioning_success = (
+        conditioning.get("success")
+        if isinstance(conditioning, Mapping)
+        else None
+    )
+    if (
+        isinstance(conditioning_pulses, torch.Tensor)
+        and conditioning_pulses.shape == selection.shape
+    ):
+        selected = conditioning_pulses[selection].to(torch.int64)
+        result["boundary_conditioning"] = {
+            "devices": count,
+            "pulse_sum": int(selected.sum().item()),
+            "pulse_mean": (
+                float(selected.to(torch.float64).mean().item())
+                if count
+                else None
+            ),
+            "pulse_median": (
+                float(selected.to(torch.float64).median().item())
+                if count
+                else None
+            ),
+            "pulse_maximum": int(selected.max().item()) if count else 0,
+            "success": (
+                int(
+                    conditioning_success[selection]
+                    .to(torch.bool)
+                    .sum()
+                    .item()
+                )
+                if isinstance(conditioning_success, torch.Tensor)
+                and conditioning_success.shape == selection.shape
+                else None
+            ),
+        }
+    else:
+        result["boundary_conditioning"] = None
     raw = deployment.get("raw_apparent_endpoint")
     apparent = deployment.get("apparent_endpoint")
     result["endpoint_clipped"] = (
@@ -820,6 +919,7 @@ def _layer_decomposition(
     conductance_min: float,
     conductance_max: float,
     deployment: Mapping[str, Any],
+    raw_active_coordinate: bool,
 ) -> dict[str, Any]:
     layer_mask = _layer_device_mask(layer, size=size)
     span = conductance_max - conductance_min
@@ -892,6 +992,38 @@ def _layer_decomposition(
                 observed,
             ),
         }
+    differential_report = None
+    if raw_active_coordinate:
+        differentials = {
+            name: value / 2.0 for name, value in contrasts.items()
+        }
+        differential_target = differentials["mapped_target"]
+        differential_report = {
+            "definition": "D=(gpp-gpm-gmp+gmm)/2",
+            "coordinate": "array_wide_raw_active_g",
+            "logical_shape": list(differential_target.shape),
+            "mapped_target_signal": _summary(differential_target),
+        }
+        for name in (
+            "clean_selected",
+            "global_requested",
+            "apparent_endpoint",
+            "persistent_endpoint",
+        ):
+            observed = differentials[name]
+            error = observed - differential_target
+            differential_report[name] = {
+                "signal": _summary(observed),
+                "error_from_mapped_target": _summary(error),
+                "snr_from_mapped_target": _snr(
+                    differential_target,
+                    error,
+                ),
+                "sign_comparison_to_mapped_target": _sign_comparison(
+                    differential_target,
+                    observed,
+                ),
+            }
     mask_counts = {
         "accepted": int((layer_mask & accepted).sum().item()),
         "failed": int((layer_mask & ~accepted).sum().item()),
@@ -917,6 +1049,7 @@ def _layer_decomposition(
         "mask_counts": mask_counts,
         "cell_residuals": cell_residuals,
         "logical_differential_contrast": contrast_report,
+        "raw_active_logical_differential_D": differential_report,
         "programming_costs": _cost_summary(deployment, layer_mask),
     }
 
@@ -1014,6 +1147,147 @@ def _population_from_deployment(
     )
 
 
+def population_from_deployment(
+    deployment: Mapping[str, Any],
+    *,
+    config: Any,
+) -> Any:
+    """Reconstruct and revalidate the fixed population embedded in a bundle."""
+
+    return _population_from_deployment(deployment, config=config)
+
+
+def _reset_commissioning_from_deployment(
+    deployment: Mapping[str, Any],
+    *,
+    config: Any,
+    population: Any,
+) -> Any | None:
+    """Restore only the observed RESET commissioning state from a sidecar."""
+
+    from training.ibm_reram_hwa import IbmReramResetCommissioning
+
+    raw = deployment.get("reset_commissioning")
+    if config.target_mapping != "shared_reset_relative_quad":
+        if raw is not None:
+            raise ValueError(
+                "Expected RESET commissioning only for the shared "
+                "RESET-relative target mapping."
+            )
+        return None
+    if not isinstance(raw, Mapping) or set(raw) != {
+        "schema",
+        "schema_version",
+        "population_fingerprint",
+        "assignment_seed",
+        "commissioning_seed",
+        "read_samples",
+        "guard_standard_errors",
+        "binding_keys",
+        "binding_shapes",
+        "dual_rail_layout_by_parameter",
+        "observed",
+        "report",
+    }:
+        raise ValueError(
+            "Expected a strict observed RESET commissioning bundle for "
+            "shared RESET-relative mapper replay."
+        )
+    keys = tuple(raw.get("binding_keys", ()))
+    shapes = tuple(tuple(shape) for shape in raw.get("binding_shapes", ()))
+    layouts = raw.get("dual_rail_layout_by_parameter")
+    expected_layouts = dict(config.dual_rail_layout_by_parameter or ())
+    observed = raw.get("observed")
+    report = raw.get("report")
+    seed = raw.get("commissioning_seed")
+    reads = raw.get("read_samples")
+    guard = raw.get("guard_standard_errors")
+    if (
+        raw.get("schema") != "ebl.ibm_reram.reset_relative_commissioning"
+        or raw.get("schema_version") != 1
+        or raw.get("population_fingerprint") != population.fingerprint
+        or raw.get("assignment_seed") != config.assignment_seed
+        or keys != population.binding_keys
+        or shapes != population.binding_shapes
+        or layouts != expected_layouts
+        or not isinstance(observed, Mapping)
+        or set(observed)
+        != {"reset_mean", "reset_standard_error", "baseline"}
+        or not isinstance(report, Mapping)
+        or report.get("population_fingerprint") != population.fingerprint
+        or report.get("commissioning_seed") != seed
+        or report.get("read_samples") != reads
+        or report.get("guard_standard_errors") != guard
+        or report.get("controller_observations_only") is not True
+        or report.get("hidden_device_bounds_consumed_by_target_mapper")
+        is not False
+        or isinstance(seed, bool)
+        or not isinstance(seed, int)
+        or isinstance(reads, bool)
+        or not isinstance(reads, int)
+        or reads != config.reset_read_samples
+        or isinstance(guard, bool)
+        or not isinstance(guard, (int, float))
+        or float(guard) != config.reset_guard_standard_errors
+    ):
+        raise ValueError(
+            "Expected RESET commissioning identity, observation policy, and "
+            "config provenance to match the deployment exactly."
+        )
+    size = population.size
+    tensors = {
+        name: _validate_flat_tensor(
+            observed.get(name),
+            name=f"reset_commissioning.observed.{name}",
+            size=size,
+            dtype=torch.float32,
+        )
+        for name in ("reset_mean", "reset_standard_error", "baseline")
+    }
+    if bool(torch.any(tensors["reset_standard_error"] < 0.0)):
+        raise ValueError(
+            "Expected non-negative RESET commissioning standard errors."
+        )
+    # Validate that every report value is strict JSON without converting the
+    # tensor-bearing commissioning bundle itself.
+    normalized_report = _json_value(report)
+    saved_mapping_report = deployment.get("target_mapping_report")
+    if (
+        not isinstance(saved_mapping_report, Mapping)
+        or saved_mapping_report.get("commissioning") != normalized_report
+        or normalized_report.get("devices") != size
+        or not isinstance(normalized_report.get("quad_count"), int)
+        or normalized_report.get("quad_count") * 4 != size
+        or normalized_report.get("total_reset_pulses") != size * reads
+        or normalized_report.get("reset_mean_sha256")
+        != _commissioning_tensor_sha256(tensors["reset_mean"])
+        or normalized_report.get("reset_standard_error_sha256")
+        != _commissioning_tensor_sha256(tensors["reset_standard_error"])
+        or normalized_report.get("expanded_baseline_sha256")
+        != _commissioning_tensor_sha256(tensors["baseline"])
+    ):
+        raise ValueError(
+            "Expected RESET commissioning reports, tensor digests, and "
+            "mapping provenance to match the saved observations exactly."
+        )
+    return IbmReramResetCommissioning(
+        population_fingerprint=population.fingerprint,
+        assignment_seed=config.assignment_seed,
+        commissioning_seed=seed,
+        read_samples=reads,
+        guard_standard_errors=float(guard),
+        binding_keys=keys,
+        binding_shapes=shapes,
+        dual_rail_layout_by_parameter=tuple(
+            (key, str(expected_layouts[key])) for key in keys
+        ),
+        reset_mean=tensors["reset_mean"],
+        reset_standard_error=tensors["reset_standard_error"],
+        baseline=tensors["baseline"],
+        report=normalized_report,
+    )
+
+
 def validate_deployment_contract(
     deployment: Any,
     *,
@@ -1050,19 +1324,43 @@ def validate_deployment_contract(
         != ENDPOINT_APPLICATION_POLICY
     ):
         raise ValueError("Expected deployment report endpoint-policy parity.")
-    if deployment.get("selected_weights_sha256") != expected_selected_weights_sha256:
-        raise ValueError(
-            "Expected deployment selected-weight SHA-256 to match --weights."
-        )
-    selected_epoch = deployment.get("selected_epoch")
-    if (
-        isinstance(selected_epoch, bool)
-        or not isinstance(selected_epoch, int)
-        or selected_epoch != checkpoint_metadata.get("selection_epoch")
-    ):
-        raise ValueError(
-            "Expected deployment and selected checkpoint epoch provenance to match."
-        )
+    selected_weights_sha256 = deployment.get("selected_weights_sha256")
+    source_weights_sha256 = deployment.get("source_weights_sha256")
+    if selected_weights_sha256 is not None:
+        if (
+            source_weights_sha256 is not None
+            or selected_weights_sha256 != expected_selected_weights_sha256
+        ):
+            raise ValueError(
+                "Expected deployment selected-weight SHA-256 to match "
+                "--weights exclusively."
+            )
+        selected_epoch = deployment.get("selected_epoch")
+        if (
+            isinstance(selected_epoch, bool)
+            or not isinstance(selected_epoch, int)
+            or selected_epoch != checkpoint_metadata.get("selection_epoch")
+        ):
+            raise ValueError(
+                "Expected deployment and selected checkpoint epoch "
+                "provenance to match."
+            )
+        weights_provenance_field = "selected_weights_sha256"
+    else:
+        if (
+            source_weights_sha256 != expected_selected_weights_sha256
+            or deployment.get("selected_epoch") is not None
+        ):
+            raise ValueError(
+                "Expected validation deployment source-weight SHA-256 to "
+                "match --weights without an unbound selected epoch."
+            )
+        selected_epoch = checkpoint_metadata.get("selection_epoch")
+        if isinstance(selected_epoch, bool) or not isinstance(selected_epoch, int):
+            raise ValueError(
+                "Expected the source checkpoint to bind its selected epoch."
+            )
+        weights_provenance_field = "source_weights_sha256"
     device_model_sha256 = deployment.get("device_model_sha256")
     if (
         not isinstance(device_model_sha256, str)
@@ -1119,12 +1417,15 @@ def validate_deployment_contract(
             size=size,
             dtype=dtype,
         )
-    if not torch.equal(
-        tensors["apparent_endpoint"],
-        tensors["raw_apparent_endpoint"].clamp(0.0, 1.0),
-    ):
+    expected_apparent = (
+        tensors["raw_apparent_endpoint"]
+        if deployment_config.endpoint_policy == "preserve"
+        else tensors["raw_apparent_endpoint"].clamp(0.0, 1.0)
+    )
+    if not torch.equal(tensors["apparent_endpoint"], expected_apparent):
         raise ValueError(
-            "Expected apparent endpoint to equal the declared clipped raw endpoint."
+            "Expected apparent endpoint to implement the configured "
+            "preserve-or-clip policy exactly."
         )
     pulse_vectors = {}
     for name in ("budget_exhausted", "corrupt", "saturated"):
@@ -1175,6 +1476,11 @@ def validate_deployment_contract(
         deployment,
         config=deployment_config,
     )
+    reset_commissioning = _reset_commissioning_from_deployment(
+        deployment,
+        config=deployment_config,
+        population=population,
+    )
     remapped, remapping_report = map_ibm_reram_array_targets(
         tensors["global_requested_target"],
         population,
@@ -1185,14 +1491,35 @@ def validate_deployment_contract(
         common_window_margin_fraction=(
             deployment_config.common_window_margin_fraction
         ),
+        reset_commissioning=reset_commissioning,
+        reset_relative_mode=deployment_config.reset_relative_mode,
+        reset_relative_contrast_step=(
+            deployment_config.reset_relative_contrast_step
+        ),
+        raw_active_mode=deployment_config.raw_active_mode,
+        raw_active_unsupported_quad_policy=(
+            deployment_config.raw_active_unsupported_quad_policy
+        ),
     )
     validate_ibm_reram_target_mapping_preflight(remapping_report)
     if not torch.equal(remapped, tensors["requested_target"]):
         raise ValueError(
             "Expected saved requested targets to equal read-only mapper replay."
         )
-    integer_fields = (
-        (
+    if deployment_config.target_mapping == "raw_active_p90_quad":
+        integer_fields = (
+            "devices",
+            "quad_count",
+            "required_p90_quad_count",
+            "p90_eligible_quad_count",
+            "structural_failure_quad_count",
+            "structural_failure_cell_count",
+            "exact_target_supported_quad_count",
+            "mapped_target_below_lower_bound_empty_quad",
+            "mapped_target_above_upper_bound_empty_quad",
+        )
+    elif deployment_config.target_mapping == "dual_rail_quad_common_window":
+        integer_fields = (
             "devices",
             "quad_count",
             "common_window_empty_quad_count",
@@ -1201,9 +1528,8 @@ def validate_deployment_contract(
             "mapped_target_below_lower_bound_empty_quad",
             "mapped_target_above_upper_bound_empty_quad",
         )
-        if deployment_config.target_mapping
-        == "dual_rail_quad_common_window"
-        else (
+    elif deployment_config.target_mapping == "differential_pair_common_window":
+        integer_fields = (
             "devices",
             "pair_count",
             "common_window_empty_pair_count",
@@ -1212,7 +1538,15 @@ def validate_deployment_contract(
             "mapped_target_below_lower_bound_empty_pair",
             "mapped_target_above_upper_bound_empty_pair",
         )
-    )
+    else:
+        integer_fields = (
+            "devices",
+            "quad_count",
+            "fully_supported_quad_count",
+            "mapped_target_below_lower_bound_nonempty_quad",
+            "mapped_target_above_upper_bound_nonempty_quad",
+            "mapped_target_outside_0_1",
+        )
     if any(
         mapping_report.get(name) != remapping_report.get(name)
         for name in integer_fields
@@ -1244,6 +1578,57 @@ def validate_deployment_contract(
         raise ValueError(
             "Expected deployment report counts to match exact pulse tensors."
         )
+    if deployment_config.target_mapping == "raw_active_p90_quad":
+        coordinate = deployment.get("coordinate")
+        structural = _validate_flat_tensor(
+            deployment.get("structural_quad_eligible"),
+            name="structural_quad_eligible",
+            size=size,
+            dtype=torch.bool,
+        )
+        exact_support = _validate_flat_tensor(
+            deployment.get("exact_target_in_support"),
+            name="exact_target_in_support",
+            size=size,
+            dtype=torch.bool,
+        )
+        programming_eligible = _validate_flat_tensor(
+            deployment.get("programming_eligible"),
+            name="programming_eligible",
+            size=size,
+            dtype=torch.bool,
+        )
+        if (
+            not isinstance(coordinate, Mapping)
+            or coordinate.get("version")
+            != "ibm_om_raw_active_development_assignment_84001_v1"
+            or coordinate.get("reference_excluded_from_numerics") is not True
+            or not torch.equal(
+                programming_eligible,
+                structural
+                & exact_support
+                & _validate_flat_tensor(
+                    deployment.get("conditioning", {}).get("success")
+                    if isinstance(deployment.get("conditioning"), Mapping)
+                    else None,
+                    name="conditioning.success",
+                    size=size,
+                    dtype=torch.bool,
+                ),
+            )
+            or report.get("structural_quad_eligible")
+            != int(structural.sum().item())
+            or report.get("exact_target_in_support")
+            != int(exact_support.sum().item())
+            or report.get("programming_eligible")
+            != int(programming_eligible.sum().item())
+            or report.get("reference_consumed_by_plant_or_controller")
+            is not False
+        ):
+            raise ValueError(
+                "Expected strict raw-active coordinate, structural support, "
+                "conditioning, and controller-capability provenance."
+            )
     receipt = deployment.get("population_sampling_receipt")
     if receipt is not None:
         request = receipt.get("request") if isinstance(receipt, Mapping) else None
@@ -1266,6 +1651,7 @@ def validate_deployment_contract(
         "schema": schema,
         "population_fingerprint": fingerprint,
         "selected_epoch": selected_epoch,
+        "weights_provenance_field": weights_provenance_field,
         "device_model_sha256": device_model_sha256,
         "mapping_report": _json_value(mapping_report),
         "programming_report": _json_value(report),
@@ -1275,6 +1661,7 @@ def validate_deployment_contract(
 def run_decomposition(
     *,
     config_path: Path,
+    deployment_config_path: Path | None = None,
     weights_path: Path,
     teacher_weights_path: Path,
     deployment_path: Path,
@@ -1293,6 +1680,11 @@ def run_decomposition(
     from training.checkpoint import load_named_weights
 
     config_path = _require_file(config_path, label="--config")
+    deployment_config_path = (
+        _require_file(deployment_config_path, label="--deployment-config")
+        if deployment_config_path is not None
+        else None
+    )
     weights_path = _require_file(weights_path, label="--weights")
     teacher_weights_path = _require_file(
         teacher_weights_path,
@@ -1302,21 +1694,67 @@ def run_decomposition(
     definition, spec = resolve_experiment_config(config_path, RunMode.TRAIN)
     if definition.experiment_id != "mnist_relu_drn_kd.v1":
         raise ValueError("Expected the strict MNIST ReLU DRN KD experiment.")
-    expected_target_mapping = {
-        "single": "dual_rail_quad_common_window",
-        "differential": "differential_pair_common_window",
+    expected_target_mappings = {
+        "single": {
+            "dual_rail_quad_common_window",
+            "shared_reset_relative_quad",
+            "raw_active_p90_quad",
+        },
+        "differential": {"differential_pair_common_window"},
     }.get(spec.model.encoding)
-    modifiers = (
-        spec.settings.weight_modifier,
-        spec.settings.selection_weight_modifier,
-    )
+    deployment_spec = None
+    if deployment_config_path is None:
+        modifiers = (
+            spec.settings.weight_modifier,
+            spec.settings.selection_weight_modifier,
+        )
+    else:
+        deployment_definition, deployment_spec = resolve_experiment_config(
+            deployment_config_path,
+            RunMode.VALIDATE,
+        )
+        if deployment_definition.experiment_id != definition.experiment_id:
+            raise ValueError(
+                "Expected checkpoint and deployment configs to select one "
+                "experiment."
+            )
+        for field in (
+            "runtime",
+            "data",
+            "teacher",
+            "model",
+            "solver",
+            "mapping",
+        ):
+            if getattr(deployment_spec, field) != getattr(spec, field):
+                raise ValueError(
+                    "Expected checkpoint and deployment configs to match "
+                    f"exactly for {field!r}."
+                )
+        checkpoint_modifier = spec.settings.selection_weight_modifier
+        deployment_modifier = deployment_spec.settings.weight_modifier
+        checkpoint_parameters = dict(checkpoint_modifier.parameters)
+        deployment_parameters = dict(deployment_modifier.parameters)
+        for seed_field in ("assignment_seed", "endpoint_seed"):
+            checkpoint_parameters.pop(seed_field, None)
+            deployment_parameters.pop(seed_field, None)
+        if (
+            checkpoint_modifier.type != deployment_modifier.type
+            or checkpoint_parameters != deployment_parameters
+        ):
+            raise ValueError(
+                "Expected held-out deployment modifier to differ from the "
+                "checkpoint selection modifier only in assignment and "
+                "endpoint seeds."
+            )
+        modifiers = (deployment_modifier,)
     configured_ibm = tuple(
         dict(modifier.parameters)
         for modifier in modifiers
         if modifier.type == "ibm_reram_om_program_verify"
     )
     if not configured_ibm or any(
-        parameters.get("target_mapping") != expected_target_mapping
+        parameters.get("target_mapping") not in expected_target_mappings
         for parameters in configured_ibm
     ):
         raise ValueError(
@@ -1369,13 +1807,17 @@ def run_decomposition(
     bindings = tuple(stack.bundle.catalog.trainable)
     keys, shapes, sections = _binding_layout(bindings)
     selected_flat = torch.cat(
-        tuple(binding.state.detach().cpu().reshape(-1) for binding in bindings)
+        tuple(binding.state.detach().reshape(-1) for binding in bindings)
     )
     conductance_min = float(spec.model.conductance_min)
     conductance_max = float(spec.model.conductance_max)
+    # Reproduce the modifier's arithmetic on the model device before moving
+    # to CPU.  Performing this subtraction/division after a CPU copy can
+    # differ by one FP32 ULP from the saved CUDA global target.
     selected_normalized = (
         selected_flat - conductance_min
     ) / (conductance_max - conductance_min)
+    selected_normalized = selected_normalized.detach().cpu()
     selected_sha256 = sha256_file(weights_path)
     deployment = _strict_torch_load(deployment_path)
     tensors, deployment_config, contract = validate_deployment_contract(
@@ -1446,6 +1888,24 @@ def run_decomposition(
             "fallback": fallback_mask,
         },
     )
+    physical_gain = (
+        float(deployment_config.forward_logit_gain)
+        if deployment_config.forward_logit_gain is not None
+        else float(fixed_gain)
+    )
+
+    @contextmanager
+    def state_gain(state_name: str) -> Iterator[None]:
+        original_gain = float(stack.cost.gain)
+        stack.cost.gain = (
+            float(fixed_gain)
+            if state_name in {"clean_selected", "ideal_global_requested"}
+            else physical_gain
+        )
+        try:
+            yield
+        finally:
+            stack.cost.gain = original_gain
 
     data = build_mnist_loaders(
         spec.data,
@@ -1453,6 +1913,27 @@ def run_decomposition(
         calibration_examples=spec.mapping.calibration_examples,
         calibration_batch_size=spec.mapping.calibration_batch_size,
     )
+    if deployment_spec is None:
+        evaluation_loader = data.validation
+        evaluation_split = "validation"
+        maximum_batches = spec.settings.max_validation_batches
+        sample_limit = None
+        expected_examples = int(spec.data.validation_points)
+        if maximum_batches is not None:
+            expected_examples = min(
+                expected_examples,
+                int(maximum_batches) * int(spec.data.batch_size),
+            )
+    else:
+        evaluation_split = deployment_spec.settings.split
+        evaluation_loader = (
+            data.validation if evaluation_split == "validation" else data.test
+        )
+        maximum_batches = None
+        sample_limit = deployment_spec.settings.sample_limit
+        expected_examples = len(evaluation_loader.dataset)
+        if sample_limit is not None:
+            expected_examples = min(expected_examples, int(sample_limit))
     traces = evaluate_reversible_states(
         bindings,
         states,
@@ -1461,21 +1942,17 @@ def run_decomposition(
         evaluator=lambda: collect_evaluation_trace(
             stack,
             teacher,
-            data.validation,
-            maximum_batches=spec.settings.max_validation_batches,
+            evaluation_loader,
+            maximum_batches=maximum_batches,
+            sample_limit=sample_limit,
         ),
+        state_context=state_gain,
     )
     cohort_digests = {trace.cohort_sha256 for trace in traces.values()}
     example_counts = {trace.metrics["examples"] for trace in traces.values()}
     if len(cohort_digests) != 1 or len(example_counts) != 1:
         raise RuntimeError(
             "Expected every state to replay one identical ordered cohort."
-        )
-    expected_examples = int(spec.data.validation_points)
-    if spec.settings.max_validation_batches is not None:
-        expected_examples = min(
-            expected_examples,
-            int(spec.settings.max_validation_batches) * int(spec.data.batch_size),
         )
     if example_counts != {expected_examples}:
         raise RuntimeError(
@@ -1514,6 +1991,10 @@ def run_decomposition(
             conductance_min=conductance_min,
             conductance_max=conductance_max,
             deployment=deployment,
+            raw_active_coordinate=(
+                deployment_config.target_mapping
+                == "raw_active_p90_quad"
+            ),
         )
         for layer in layers
     }
@@ -1528,6 +2009,14 @@ def run_decomposition(
                 "path": str(config_path),
                 "sha256": sha256_file(config_path),
             },
+            "deployment_config": (
+                {
+                    "path": str(deployment_config_path),
+                    "sha256": sha256_file(deployment_config_path),
+                }
+                if deployment_config_path is not None
+                else None
+            ),
             "selected_weights": {
                 "path": str(weights_path),
                 "sha256": selected_sha256,
@@ -1546,6 +2035,8 @@ def run_decomposition(
             "experiment_id": definition.experiment_id,
             "encoding": spec.model.encoding,
             "target_mapping": deployment_config.target_mapping,
+            "logical_checkpoint_gain": float(fixed_gain),
+            "physical_mapper_forward_gain": physical_gain,
             "endpoint_application_policy": ENDPOINT_APPLICATION_POLICY,
             "binding_keys": list(keys),
             "binding_shapes": [list(shape) for shape in shapes],
@@ -1558,7 +2049,7 @@ def run_decomposition(
             "modifier_constructed": False,
         },
         "cohort": {
-            "split": "validation",
+            "split": evaluation_split,
             "data_seed": int(spec.runtime.data_seed),
             "validation_points": int(spec.data.validation_points),
             "batch_size": int(spec.data.batch_size),
@@ -1614,6 +2105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     report = run_decomposition(
         config_path=args.config,
+        deployment_config_path=args.deployment_config,
         weights_path=args.weights,
         teacher_weights_path=args.teacher_weights,
         deployment_path=args.deployment,

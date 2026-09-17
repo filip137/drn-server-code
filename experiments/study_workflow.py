@@ -25,10 +25,13 @@ STUDY_SCHEMA_VERSION = 1
 SUMMARY_SCHEMA = "ebl.study.summary"
 FINAL_SCHEMA = "ebl.study.final"
 RUN_SCHEMA = "ebl.run"
+REVIEW_SCHEMA_VERSION = 2
+FINAL_SCHEMA_VERSION = 2
 _MODES = {"train", "linspace", "validate", "characterize"}
 _OUTCOMES = {"supported", "refuted", "mixed", "inconclusive"}
 _IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_MANIFEST_INTERPRETATION_MAX_LENGTH = 600
 
 
 class StudyWorkflowError(ValueError):
@@ -161,6 +164,22 @@ def _text(value: Any, *, label: str) -> str:
             f"Provided value: {value!r}."
         )
     return value.strip()
+
+
+def _manifest_interpretation(value: Any) -> str:
+    result = _text(value, label="study review manifest_interpretation")
+    if "\n" in result or "\r" in result:
+        raise StudyWorkflowError(
+            "Expected study review manifest_interpretation to be one paragraph. "
+            f"Provided value: {value!r}."
+        )
+    if len(result) > _MANIFEST_INTERPRETATION_MAX_LENGTH:
+        raise StudyWorkflowError(
+            "Expected study review manifest_interpretation to contain at most "
+            f"{_MANIFEST_INTERPRETATION_MAX_LENGTH} characters. "
+            f"Provided value: length={len(result)}."
+        )
+    return result
 
 
 def _identifier(value: Any, *, label: str) -> str:
@@ -352,8 +371,9 @@ def _study_readme(study: Mapping[str, Any]) -> str:
         "## Workflow\n\n"
         "Write each native run below `runs/<arm-id>/` using `python -m ebl`. "
         "Then run `python -m ebl study summarize --study-dir .`. After human "
-        "review, finalize with a review JSON file so the interpretation is "
-        "recorded in `docs/experimental_manifest.md`.\n"
+        "review, finalize with a review JSON file so the full closeout is "
+        "rendered in `analysis/report.md` and its concise interpretation is "
+        "indexed in `docs/experimental_manifest.md`.\n"
     )
 
 
@@ -893,7 +913,11 @@ def _bundle_record(
     }
 
 
-def _summary_report(summary: Mapping[str, Any]) -> str:
+def _summary_report(
+    summary: Mapping[str, Any],
+    *,
+    final_record: Mapping[str, Any] | None = None,
+) -> str:
     rows = []
     for arm in summary["arms"]:
         rows.append(
@@ -927,8 +951,72 @@ def _summary_report(summary: Mapping[str, Any]) -> str:
     )
     if not problems:
         problems = ["- None."]
+
+    runs = []
+    for run in summary["runs"]:
+        validity = "valid" if run["valid"] else "invalid"
+        metrics = run.get("metrics")
+        metric_block = ""
+        if metrics is not None:
+            metric_block = (
+                "\n\nTerminal metrics:\n\n"
+                "```json\n"
+                + json.dumps(
+                    metrics,
+                    allow_nan=False,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n```"
+            )
+        runs.append(
+            f"### [`{run['path']}`](../{run['path']})\n\n"
+            f"- **Status:** `{run['status']}`\n"
+            f"- **Validity:** {validity}\n"
+            f"- **Experiment:** `{run['experiment_id']}`\n"
+            f"- **Artifacts:** {run['artifact_count']}{metric_block}"
+        )
+    if not runs:
+        runs = ["- None."]
+
+    closeout = ""
+    if final_record is not None:
+        next_steps = "\n".join(
+            f"- {item}" for item in final_record["next_steps"]
+        )
+        manifest_interpretation = ""
+        if final_record.get("manifest_interpretation") is not None:
+            manifest_interpretation = (
+                "### Manifest interpretation\n\n"
+                f"{final_record['manifest_interpretation']}\n\n"
+            )
+        closeout = (
+            "\n## Scientific closeout\n\n"
+            f"- **Outcome:** `{final_record['outcome']}`\n\n"
+            f"{manifest_interpretation}"
+            "### Final interpretation\n\n"
+            f"{final_record['final_interpretation']}\n\n"
+            "### Limitations\n\n"
+            f"{final_record['limitations']}\n\n"
+            "### Next steps\n\n"
+            f"{next_steps}\n"
+        )
+
+    study_files = [
+        "- [Study root](../)",
+        "- [Materialized study plan](../study.json)",
+        "- [Machine-readable summary](summary.json)",
+    ]
+    if final_record is not None:
+        study_files.extend(
+            [
+                "- [Human scientific review](review.json)",
+                "- [Finalized record](final.json)",
+            ]
+        )
     return (
-        f"# {summary['title']} — study status\n\n"
+        f"# {summary['title']} — study report\n\n"
         f"- **Study ID:** `{summary['study_id']}`\n"
         f"- **State:** `{summary['state']}`\n"
         f"- **Ready for review:** `{str(summary['ready_for_review']).lower()}`\n"
@@ -939,10 +1027,73 @@ def _summary_report(summary: Mapping[str, Any]) -> str:
         "| Arm | Expected | Complete | Running | Failed attempts | Invalid | Covered |\n"
         "|---|---:|---:|---:|---:|---:|---|\n"
         + "\n".join(rows)
+        + "\n\n## Native runs and terminal evidence\n\n"
+        + "\n".join(runs)
         + "\n\n## Validation problems\n\n"
         + "\n".join(problems)
         + "\n"
+        + closeout
+        + "\n## Study files\n\n"
+        + "\n".join(study_files)
+        + "\n"
     )
+
+
+def _normalize_final_record(
+    value: Mapping[str, Any],
+    *,
+    study_id: str,
+    study_sha256: str,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    errors: list[str] = []
+    version = value.get("schema_version")
+    if (
+        value.get("schema") != FINAL_SCHEMA
+        or isinstance(version, bool)
+        or version not in {1, FINAL_SCHEMA_VERSION}
+    ):
+        errors.append(
+            "Expected analysis/final.json to use ebl.study.final schema "
+            "version 1 or 2."
+        )
+    if value.get("study_id") != study_id:
+        errors.append("Expected analysis/final.json study_id to match study.json.")
+    if value.get("study_sha256") != study_sha256:
+        errors.append("Expected analysis/final.json study hash to match study.json.")
+    if errors:
+        return None, errors
+    try:
+        outcome = value.get("outcome")
+        if outcome not in _OUTCOMES:
+            raise StudyWorkflowError(
+                "Expected analysis/final.json outcome to be one of "
+                f"{sorted(_OUTCOMES)!r}. Provided value: {outcome!r}."
+            )
+        normalized = {
+            "schema_version": version,
+            "outcome": outcome,
+            "final_interpretation": _text(
+                value.get("final_interpretation"),
+                label="analysis/final.json final_interpretation",
+            ),
+            "limitations": _text(
+                value.get("limitations"),
+                label="analysis/final.json limitations",
+            ),
+            "next_steps": _text_list(
+                value.get("next_steps"),
+                label="analysis/final.json next_steps",
+            ),
+            "manifest_interpretation": None,
+        }
+        if version == FINAL_SCHEMA_VERSION:
+            normalized["manifest_interpretation"] = _manifest_interpretation(
+                value.get("manifest_interpretation")
+            )
+    except StudyWorkflowError as error:
+        errors.append(str(error))
+        return None, errors
+    return normalized, errors
 
 
 def summarize_study(
@@ -1018,6 +1169,7 @@ def summarize_study(
 
     final_path = root / "analysis" / "final.json"
     finalization_errors: list[str] = []
+    normalized_final: dict[str, Any] | None = None
     reviewed = False
     if final_path.is_file():
         final_record = _read_bundle_object(
@@ -1026,24 +1178,13 @@ def summarize_study(
             "analysis/final.json",
         )
         if final_record is not None:
-            if (
-                final_record.get("schema") != FINAL_SCHEMA
-                or isinstance(final_record.get("schema_version"), bool)
-                or final_record.get("schema_version") != 1
-            ):
-                finalization_errors.append(
-                    "Expected analysis/final.json to use ebl.study.final "
-                    "schema version 1."
-                )
-            if final_record.get("study_id") != study["study_id"]:
-                finalization_errors.append(
-                    "Expected analysis/final.json study_id to match study.json."
-                )
-            if final_record.get("study_sha256") != study_sha:
-                finalization_errors.append(
-                    "Expected analysis/final.json study hash to match study.json."
-                )
-            reviewed = not finalization_errors
+            normalized_final, validation_errors = _normalize_final_record(
+                final_record,
+                study_id=study["study_id"],
+                study_sha256=study_sha,
+            )
+            finalization_errors.extend(validation_errors)
+            reviewed = normalized_final is not None and not finalization_errors
 
     total_running = sum(arm["running"] for arm in arms_summary)
     total_invalid = (
@@ -1090,37 +1231,49 @@ def summarize_study(
     analysis = root / "analysis"
     analysis.mkdir(exist_ok=True)
     _atomic_write_json(analysis / "summary.json", summary)
-    _atomic_write_text(analysis / "report.md", _summary_report(summary))
+    _atomic_write_text(
+        analysis / "report.md",
+        _summary_report(summary, final_record=normalized_final if reviewed else None),
+    )
     return summary
 
 
 def load_review(path: Path | str) -> dict[str, Any]:
     review_path = Path(path).expanduser().resolve()
     raw = _load_json_object(review_path, label="--review")
+    version = raw.get("schema_version")
+    if isinstance(version, bool) or version not in {1, REVIEW_SCHEMA_VERSION}:
+        raise StudyWorkflowError(
+            "Expected study review schema_version to be 1 or 2. "
+            f"Provided value: {version!r}."
+        )
+    required = {
+        "schema_version",
+        "outcome",
+        "final_interpretation",
+        "limitations",
+        "next_steps",
+    }
+    if version == REVIEW_SCHEMA_VERSION:
+        required.add("manifest_interpretation")
     _exact_keys(
         raw,
         label="study review",
-        required={
-            "schema_version",
-            "outcome",
-            "final_interpretation",
-            "limitations",
-            "next_steps",
-        },
+        required=required,
     )
-    if isinstance(raw["schema_version"], bool) or raw["schema_version"] != 1:
-        raise StudyWorkflowError(
-            "Expected study review schema_version to be 1. "
-            f"Provided value: {raw['schema_version']!r}."
-        )
     if raw["outcome"] not in _OUTCOMES:
         raise StudyWorkflowError(
             f"Expected study review outcome to be one of {sorted(_OUTCOMES)!r}. "
             f"Provided value: {raw['outcome']!r}."
         )
     return {
-        "schema_version": 1,
+        "schema_version": version,
         "outcome": raw["outcome"],
+        "manifest_interpretation": (
+            _manifest_interpretation(raw["manifest_interpretation"])
+            if version == REVIEW_SCHEMA_VERSION
+            else None
+        ),
         "final_interpretation": _text(
             raw["final_interpretation"], label="study review final_interpretation"
         ),
@@ -1134,7 +1287,7 @@ def _indent(value: str) -> str:
     return value.replace("\n", "\n  ")
 
 
-def _manifest_entry(
+def _manifest_record(
     *,
     study: Mapping[str, Any],
     summary: Mapping[str, Any],
@@ -1167,19 +1320,103 @@ def _manifest_entry(
     )
 
 
-def _insert_manifest_entry(document: str, *, study_id: str, entry: str) -> str:
-    begin = f"<!-- BEGIN EBL STUDY {study_id} -->"
-    end = f"<!-- END EBL STUDY {study_id} -->"
+def _manifest_href(display_root: str, suffix: str = "") -> str:
+    root = display_root.rstrip("/")
+    href = f"{root}/{suffix.lstrip('/')}" if suffix else f"{root}/"
+    if PurePosixPath(root).is_absolute():
+        return href
+    return f"../{href}"
+
+
+def _manifest_summary(
+    *,
+    study: Mapping[str, Any],
+    review: Mapping[str, Any],
+    finalized_at: str,
+    display_root: str,
+) -> str:
+    study_id = study["study_id"]
+    folder_href = _manifest_href(display_root)
+    report_href = _manifest_href(display_root, "analysis/report.md")
+    summary_href = _manifest_href(display_root, "analysis/summary.json")
+    return (
+        f"<!-- BEGIN EBL STUDY SUMMARY {study_id} -->\n"
+        f"### [{study_id}]({folder_href})\n\n"
+        f"**{study['title']}**\n\n"
+        f"- **Finished:** {finalized_at[:10]}\n"
+        f"- **Evidence class:** `{study['evidence_class']}`\n"
+        f"- **Outcome:** {review['outcome']}\n"
+        f"- **Interpretation:** {review['manifest_interpretation']}\n"
+        f"- **Details:** [human report]({report_href}) · "
+        f"[machine summary]({summary_href}) · [local study folder]({folder_href})\n"
+        f"<!-- END EBL STUDY SUMMARY {study_id} -->"
+    )
+
+
+def _replace_marked_block(
+    document: str,
+    *,
+    begin: str,
+    end: str,
+    replacement: str,
+) -> tuple[str, bool]:
     begin_index = document.find(begin)
     end_index = document.find(end)
-    if begin_index >= 0 or end_index >= 0:
-        if begin_index < 0 or end_index < begin_index:
-            raise StudyWorkflowError(
-                "Expected existing experimental-manifest study markers to be "
-                f"paired. Provided value: study_id={study_id!r}."
+    if begin_index < 0 and end_index < 0:
+        return document, False
+    if begin_index < 0 or end_index < begin_index:
+        raise StudyWorkflowError(
+            "Expected experimental-manifest markers to be paired. "
+            f"Provided value: begin={begin!r}, end={end!r}."
+        )
+    end_index += len(end)
+    return document[:begin_index] + replacement + document[end_index:], True
+
+
+def _insert_manifest_entry(
+    document: str,
+    *,
+    study_id: str,
+    record: str,
+    summary_entry: str | None,
+) -> str:
+    begin = f"<!-- BEGIN EBL STUDY {study_id} -->"
+    end = f"<!-- END EBL STUDY {study_id} -->"
+    updated, record_exists = _replace_marked_block(
+        document,
+        begin=begin,
+        end=end,
+        replacement=record,
+    )
+    summary_begin = f"<!-- BEGIN EBL STUDY SUMMARY {study_id} -->"
+    summary_end = f"<!-- END EBL STUDY SUMMARY {study_id} -->"
+    summary_exists = summary_begin in updated or summary_end in updated
+    if summary_entry is not None:
+        updated, summary_replaced = _replace_marked_block(
+            updated,
+            begin=summary_begin,
+            end=summary_end,
+            replacement=summary_entry,
+        )
+        summary_exists = summary_replaced
+    if record_exists:
+        if summary_entry is not None and not summary_exists:
+            record_index = updated.find(begin)
+            details_index = updated.rfind("<details>", 0, record_index)
+            insert_at = details_index if details_index >= 0 else record_index
+            updated = (
+                updated[:insert_at].rstrip()
+                + "\n\n"
+                + summary_entry
+                + "\n\n"
+                + updated[insert_at:].lstrip("\n")
             )
-        end_index += len(end)
-        return document[:begin_index] + entry + document[end_index:]
+        return updated
+    if summary_exists:
+        raise StudyWorkflowError(
+            "Expected a manifest summary not to exist without its full study "
+            f"record. Provided value: study_id={study_id!r}."
+        )
     if re.search(rf"^###\s+`?{re.escape(study_id)}`?\s*$", document, re.MULTILINE):
         raise StudyWorkflowError(
             "Expected a workflow-managed study ID not to collide with an "
@@ -1194,9 +1431,17 @@ def _insert_manifest_entry(document: str, *, study_id: str, entry: str) -> str:
         ),
         len(document),
     )
+    full_entry = record
+    if summary_entry is not None:
+        full_entry = (
+            summary_entry
+            + "\n\n<details>\n<summary>Full study record and provenance</summary>\n\n"
+            + record
+            + "\n\n</details>"
+        )
     prefix = document[:position].rstrip()
     suffix = document[position:].lstrip("\n")
-    return prefix + "\n\n" + entry + "\n\n" + suffix
+    return prefix + "\n\n" + full_entry + "\n\n" + suffix
 
 
 def finalize_study(
@@ -1222,7 +1467,7 @@ def finalize_study(
         document = manifest.read_text(encoding="utf-8")
     except OSError as error:
         raise StudyWorkflowError(
-            "Expected --manifest to name the finished-study Markdown ledger. "
+            "Expected --manifest to name the concluded-study Markdown index. "
             f"Provided value: {str(manifest)!r}. {error}"
         ) from error
 
@@ -1235,6 +1480,16 @@ def finalize_study(
     study_sha = _sha256_file(root / "study.json")
     review_sha = review["source"]["sha256"]
     if existing is not None:
+        existing_version = existing.get("schema_version")
+        if (
+            existing.get("schema") != FINAL_SCHEMA
+            or isinstance(existing_version, bool)
+            or existing_version not in {1, FINAL_SCHEMA_VERSION}
+        ):
+            raise StudyWorkflowError(
+                "Expected an existing final.json to use ebl.study.final "
+                "schema version 1 or 2."
+            )
         if (
             existing.get("study_sha256") != study_sha
             or existing.get("review_sha256") != review_sha
@@ -1245,6 +1500,12 @@ def finalize_study(
             )
         finalized_at = existing["finalized_at"]
     else:
+        if review["schema_version"] != REVIEW_SCHEMA_VERSION:
+            raise StudyWorkflowError(
+                "Expected a new study finalization to use review schema "
+                f"version {REVIEW_SCHEMA_VERSION} with a concise "
+                "manifest_interpretation."
+            )
         finalized_at = datetime.now(timezone.utc).isoformat()
 
     repo_root = manifest.parent.parent
@@ -1252,32 +1513,55 @@ def finalize_study(
         display_root = root.relative_to(repo_root).as_posix()
     except ValueError:
         display_root = str(root)
-    entry = _manifest_entry(
+    record = _manifest_record(
         study=study,
         summary=summary,
         review=review,
         finalized_at=finalized_at,
         display_root=display_root,
     )
-    updated = _insert_manifest_entry(document, study_id=study["study_id"], entry=entry)
+    summary_entry = None
+    if review["manifest_interpretation"] is not None:
+        summary_entry = _manifest_summary(
+            study=study,
+            review=review,
+            finalized_at=finalized_at,
+            display_root=display_root,
+        )
+    updated = _insert_manifest_entry(
+        document,
+        study_id=study["study_id"],
+        record=record,
+        summary_entry=summary_entry,
+    )
     _atomic_write_text(manifest, updated)
+    if existing is not None:
+        return final_path
+    assert summary_entry is not None
     final = {
         "schema": FINAL_SCHEMA,
-        "schema_version": 1,
+        "schema_version": FINAL_SCHEMA_VERSION,
         "study_id": study["study_id"],
         "finalized_at": finalized_at,
         "study_sha256": study_sha,
-        "summary_sha256": _sha256_file(root / "analysis" / "summary.json"),
+        "review_ready_summary_sha256": _sha256_file(
+            root / "analysis" / "summary.json"
+        ),
         "review_sha256": review_sha,
         "outcome": review["outcome"],
+        "manifest_interpretation": review["manifest_interpretation"],
         "final_interpretation": review["final_interpretation"],
         "limitations": review["limitations"],
         "next_steps": review["next_steps"],
         "manifest": str(manifest),
-        "manifest_entry_sha256": sha256(entry.encode("utf-8")).hexdigest(),
+        "manifest_entry_sha256": sha256(record.encode("utf-8")).hexdigest(),
+        "manifest_summary_sha256": sha256(
+            summary_entry.encode("utf-8")
+        ).hexdigest(),
         "validation_mode": summary["validation_mode"],
     }
     _atomic_write_json(final_path, final)
+    summarize_study(root, verify_artifacts=verify_artifacts)
     return final_path
 
 

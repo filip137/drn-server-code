@@ -63,6 +63,12 @@ from experiments.reram_program_verify.config import (
     parse_reram_program_verify_config,
     resolve_reram_program_verify_spec,
 )
+from experiments.reram_program_verify.raw_active_cell_config import (
+    EXPERIMENT_ID as RAW_ACTIVE_CELL_PROGRAM_VERIFY_EXPERIMENT_ID,
+    SCHEMA_VERSION as RAW_ACTIVE_CELL_PROGRAM_VERIFY_SCHEMA_VERSION,
+    parse_raw_active_cell_program_verify_config,
+    resolve_raw_active_cell_program_verify_spec,
+)
 
 
 _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
@@ -75,6 +81,22 @@ _SMALL_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = (
         ExtensionSelection("none", "none", "direct", "backprop"),
         "validated",
         "Reference backpropagation path.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection("none", "none", "direct_adam", "backprop"),
+        "experimental",
+        "Bounded backpropagation with ordinary digital Adam updates.",
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "none",
+            "none",
+            "ibm_om_fp32_bounds",
+            "backprop",
+        ),
+        "experimental",
+        "Array-specific ideal FP32 training projected into each sampled IBM "
+        "OM cell's effective controller bounds.",
     ),
     ValidatedCombination(
         ExtensionSelection("none", "none", "tiki_taka", "ep"),
@@ -296,6 +318,19 @@ RERAM_PROGRAM_VERIFY_V1 = ExperimentDefinition(
 )
 
 
+RAW_ACTIVE_CELL_PROGRAM_VERIFY_V1 = ExperimentDefinition(
+    experiment_id=RAW_ACTIVE_CELL_PROGRAM_VERIFY_EXPERIMENT_ID,
+    schema_version=RAW_ACTIVE_CELL_PROGRAM_VERIFY_SCHEMA_VERSION,
+    description=(
+        "Pulse-resolved single-active-state IBM OM characterization of one "
+        "array-wide p90 nine-level physical-cell codebook."
+    ),
+    supported_modes=(RunMode.CHARACTERIZE,),
+    parser=parse_raw_active_cell_program_verify_config,
+    resolver=resolve_raw_active_cell_program_verify_spec,
+)
+
+
 _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
     ValidatedCombination(
         ExtensionSelection(encoding, "none", backend, "teacher_kl"),
@@ -452,6 +487,20 @@ _MNIST_RELU_DRN_COMBINATIONS: Tuple[ValidatedCombination, ...] = tuple(
             "Eight-device cohort-A paired-common-window initialization "
             "followed by the same threshold-gated one-pulse-down rule on "
             "each physical G+/G- conductance tensor."
+        ),
+    ),
+    ValidatedCombination(
+        ExtensionSelection(
+            "single",
+            "none",
+            "ibm_om_deployed_recovery",
+            "teacher_kl",
+        ),
+        "experimental",
+        (
+            "Pulse-compatible recovery from one exact saved IBM OM apparent/"
+            "persistent deployment using rail refresh, direct pulses, or a "
+            "matched Tiki-Taka transfer path."
         ),
     ),
 )
@@ -806,6 +855,9 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1.experiment_id: MNIST_RELU_DRN_RESET_LEGACY_BIAS_V1,
     MNIST_RELU_DRN_RESET_FACTORIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_FACTORIAL_V1,
     RERAM_PROGRAM_VERIFY_V1.experiment_id: RERAM_PROGRAM_VERIFY_V1,
+    RAW_ACTIVE_CELL_PROGRAM_VERIFY_V1.experiment_id: (
+        RAW_ACTIVE_CELL_PROGRAM_VERIFY_V1
+    ),
 }
 
 

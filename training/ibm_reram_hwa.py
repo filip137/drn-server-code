@@ -47,13 +47,17 @@ from training.ibm_reram_program_verify import (
 
 
 _STATE_VERSION = 2
-_EXECUTIONS = ("compact_endpoint", "pulse_resolved")
+_EXECUTIONS = ("mapped_target", "compact_endpoint", "pulse_resolved")
 _CORRUPTION_POLICIES = ("counterfactual_repaired", "published")
 _TARGET_MAPPINGS = (
     "literal_global",
     "dual_rail_quad_common_window",
     "differential_pair_common_window",
+    "shared_reset_relative_quad",
+    "raw_active_p90_quad",
 )
+_RESET_RELATIVE_MODES = ("continuous", "quantized_9_level")
+_RAW_ACTIVE_MODES = ("continuous", "quantized_7_level")
 _STREAMS = ("train", "evaluation")
 _EVALUATION_STREAM_XOR = 0x4F4D5F50565F4556
 _ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +71,23 @@ _MAX_EMPTY_COMMON_WINDOW_PAIRS = 20
 IBM_RERAM_ENDPOINT_APPLICATION_POLICY = (
     "aihwkit_apparent_forward_persistent_update_state"
 )
+
+# Frozen by docs/ibm_om_raw_active_state_program_verify.md from the complete
+# repaired development assignment (seed 84001).  These values define one
+# array-wide coordinate; they must never be recomputed per cell or per later
+# assignment.
+IBM_OM_RAW_ACTIVE_COORDINATE_VERSION = (
+    "ibm_om_raw_active_development_assignment_84001_v1"
+)
+IBM_OM_RAW_ACTIVE_A_MIN = -3.455834150314331
+IBM_OM_RAW_ACTIVE_A_MAX = 2.5384607315063477
+IBM_OM_RAW_ACTIVE_SCALE = 5.994294881820679
+IBM_OM_RAW_ACTIVE_D90 = 0.10354409442884083
+IBM_OM_RAW_ACTIVE_QUANTIZED_LEVELS = 7
+IBM_OM_RAW_ACTIVE_TOLERANCE = 0.00791586015294392
+IBM_OM_RAW_ACTIVE_CONDITIONING_QUIET_STEPS = 4
+IBM_OM_RAW_ACTIVE_CONDITIONING_CHANGE_THRESHOLD = 2e-6
+IBM_OM_RAW_ACTIVE_CONDITIONING_MAXIMUM_PULSES = 4096
 
 
 def _normalize_dual_rail_layouts(
@@ -114,6 +135,13 @@ class IbmReramHwaConfig:
     target_mapping: str = "literal_global"
     dual_rail_layout_by_parameter: tuple[tuple[str, str], ...] | None = None
     common_window_margin_fraction: float = 0.0
+    reset_relative_mode: str | None = None
+    reset_relative_contrast_step: float | None = None
+    reset_read_samples: int | None = None
+    reset_guard_standard_errors: float | None = None
+    raw_active_mode: str | None = None
+    raw_active_unsupported_quad_policy: str | None = None
+    forward_logit_gain: float | None = None
 
     def __post_init__(self) -> None:
         if self.execution not in _EXECUTIONS:
@@ -133,13 +161,20 @@ class IbmReramHwaConfig:
                     f"Expected {name} to be an integer in [0, 2**63). "
                     f"Provided value: {value!r}."
                 )
+        raw_active = self.target_mapping == "raw_active_p90_quad"
         exact = {
             "preset": (self.preset, OM_PRESET),
-            "controller": (self.controller, "adaptive"),
+            "controller": (
+                self.controller,
+                "one_pulse" if raw_active else "adaptive",
+            ),
             "start_protocol": (self.start_protocol, "lower_to_target"),
             "tolerance_step_ratio": (self.tolerance_step_ratio, 0.5),
             "maximum_program_pulses": (self.maximum_program_pulses, 128),
-            "endpoint_policy": (self.endpoint_policy, "clip_0_1"),
+            "endpoint_policy": (
+                self.endpoint_policy,
+                "preserve" if raw_active else "clip_0_1",
+            ),
             "target_out_of_support": (self.target_out_of_support, "error"),
         }
         mismatches = {
@@ -149,7 +184,7 @@ class IbmReramHwaConfig:
         }
         if mismatches:
             raise ValueError(
-                "Expected the declared IBM OM adaptive lower-from-RESET cap-128 "
+                "Expected the declared IBM OM lower-from-RESET cap-128 "
                 f"protocol. Provided value: {mismatches!r}."
             )
         if not isinstance(self.noisy_evaluation, bool):
@@ -175,20 +210,146 @@ class IbmReramHwaConfig:
                 f"[0, 0.5). Provided value: {margin!r}."
             )
         object.__setattr__(self, "common_window_margin_fraction", float(margin))
-        if self.target_mapping == "dual_rail_quad_common_window":
+        forward_gain = self.forward_logit_gain
+        if forward_gain is not None and (
+            isinstance(forward_gain, bool)
+            or not isinstance(forward_gain, (int, float))
+            or not math.isfinite(float(forward_gain))
+            or float(forward_gain) <= 0.0
+        ):
+            raise ValueError(
+                "Expected forward_logit_gain to be null or a positive finite "
+                f"number. Provided value: {forward_gain!r}."
+            )
+        object.__setattr__(
+            self,
+            "forward_logit_gain",
+            None if forward_gain is None else float(forward_gain),
+        )
+        reset_fields = {
+            "reset_relative_mode": self.reset_relative_mode,
+            "reset_relative_contrast_step": self.reset_relative_contrast_step,
+            "reset_read_samples": self.reset_read_samples,
+            "reset_guard_standard_errors": self.reset_guard_standard_errors,
+        }
+        raw_active_fields = {
+            "raw_active_mode": self.raw_active_mode,
+            "raw_active_unsupported_quad_policy": (
+                self.raw_active_unsupported_quad_policy
+            ),
+        }
+        if self.target_mapping in {
+            "dual_rail_quad_common_window",
+            "shared_reset_relative_quad",
+        }:
             if layouts is None:
                 raise ValueError(
                     "Expected dual_rail_layout_by_parameter for "
-                    "dual_rail_quad_common_window."
+                    f"{self.target_mapping}."
                 )
-        elif self.target_mapping == "differential_pair_common_window":
+        if self.target_mapping == "shared_reset_relative_quad":
+            if float(margin) != 0.0:
+                raise ValueError(
+                    "Expected shared_reset_relative_quad to use zero "
+                    "common_window_margin_fraction; it does not consume a "
+                    "characterized common window."
+                )
+            if self.reset_relative_mode not in _RESET_RELATIVE_MODES:
+                raise ValueError(
+                    "Expected reset_relative_mode to be 'continuous' or "
+                    "'quantized_9_level' for shared_reset_relative_quad. "
+                    f"Provided value: {self.reset_relative_mode!r}."
+                )
+            step = self.reset_relative_contrast_step
+            if (
+                isinstance(step, bool)
+                or not isinstance(step, (int, float))
+                or not math.isfinite(float(step))
+                or not 0.0 < float(step) <= 0.5
+            ):
+                raise ValueError(
+                    "Expected reset_relative_contrast_step to be finite in "
+                    f"(0, 0.5]. Provided value: {step!r}."
+                )
+            reads = self.reset_read_samples
+            if isinstance(reads, bool) or not isinstance(reads, int) or reads < 2:
+                raise ValueError(
+                    "Expected reset_read_samples to be an integer of at "
+                    f"least two. Provided value: {reads!r}."
+                )
+            guard = self.reset_guard_standard_errors
+            if (
+                isinstance(guard, bool)
+                or not isinstance(guard, (int, float))
+                or not math.isfinite(float(guard))
+                or float(guard) < 0.0
+            ):
+                raise ValueError(
+                    "Expected reset_guard_standard_errors to be a finite "
+                    f"non-negative number. Provided value: {guard!r}."
+                )
+            object.__setattr__(
+                self, "reset_relative_contrast_step", float(step)
+            )
+            object.__setattr__(
+                self, "reset_guard_standard_errors", float(guard)
+            )
+        elif any(value is not None for value in reset_fields.values()):
+            raise ValueError(
+                "Expected RESET-relative commissioning fields only for "
+                "shared_reset_relative_quad. Provided value: "
+                f"{reset_fields!r}."
+            )
+        if self.target_mapping == "raw_active_p90_quad":
+            if layouts is None:
+                raise ValueError(
+                    "Expected dual_rail_layout_by_parameter for "
+                    "raw_active_p90_quad."
+                )
+            if float(margin) != 0.0:
+                raise ValueError(
+                    "Expected raw_active_p90_quad to use the frozen D90 "
+                    "budget without an additional common-window margin."
+                )
+            if self.raw_active_mode not in _RAW_ACTIVE_MODES:
+                raise ValueError(
+                    "Expected raw_active_mode to be 'continuous' or "
+                    "'quantized_7_level' for raw_active_p90_quad. "
+                    f"Provided value: {self.raw_active_mode!r}."
+                )
+            if self.raw_active_unsupported_quad_policy != "structural_failure":
+                raise ValueError(
+                    "Expected raw_active_unsupported_quad_policy to equal "
+                    "'structural_failure' until a versioned donor stream is "
+                    "declared. Provided value: "
+                    f"{self.raw_active_unsupported_quad_policy!r}."
+                )
+            if self.execution == "compact_endpoint":
+                raise ValueError(
+                    "Expected raw_active_p90_quad not to use the historical "
+                    "q-coordinate compact endpoint model. Use mapped_target "
+                    "for minibatch QAT or pulse_resolved for deployment."
+                )
+        elif any(value is not None for value in raw_active_fields.values()):
+            raise ValueError(
+                "Expected raw-active fields only for raw_active_p90_quad. "
+                f"Provided value: {raw_active_fields!r}."
+            )
+        if self.execution == "mapped_target" and not raw_active:
+            raise ValueError(
+                "Expected mapped_target execution only for the raw-active "
+                "array-aware training mapper."
+            )
+        if self.target_mapping == "differential_pair_common_window":
             if layouts is not None:
                 raise ValueError(
                     "Expected differential_pair_common_window to have null "
                     "dual_rail_layout_by_parameter; pairing is fixed by the "
                     "canonical adjacent plus/minus binding catalog."
                 )
-        elif layouts is not None or float(margin) != 0.0:
+        elif self.target_mapping == "literal_global" and (
+            layouts is not None or float(margin) != 0.0
+        ):
             raise ValueError(
                 "Expected literal_global target mapping to have null "
                 "dual_rail_layout_by_parameter and zero "
@@ -311,6 +472,90 @@ class IbmReramArrayPopulation:
         }
 
 
+@dataclass(frozen=True)
+class IbmReramResetCommissioning:
+    """Controller-visible RESET/read estimates used by the shared mapper.
+
+    The target mapper consumes only these observed statistics and the expanded
+    per-quad baseline.  Hidden sampled device bounds deliberately do not occur
+    in this object.
+    """
+
+    population_fingerprint: str
+    assignment_seed: int
+    commissioning_seed: int
+    read_samples: int
+    guard_standard_errors: float
+    binding_keys: tuple[str, ...]
+    binding_shapes: tuple[tuple[int, ...], ...]
+    dual_rail_layout_by_parameter: tuple[tuple[str, str], ...]
+    reset_mean: torch.Tensor
+    reset_standard_error: torch.Tensor
+    baseline: torch.Tensor
+    report: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        size = sum(math.prod(shape) for shape in self.binding_shapes)
+        if (
+            not self.population_fingerprint
+            or len(self.binding_keys) != len(self.binding_shapes)
+            or len(set(self.binding_keys)) != len(self.binding_keys)
+            or set(dict(self.dual_rail_layout_by_parameter))
+            != set(self.binding_keys)
+        ):
+            raise ValueError(
+                "Expected RESET commissioning to identify one exact binding "
+                "layout and physical population."
+            )
+        for name in ("reset_mean", "reset_standard_error", "baseline"):
+            value = getattr(self, name)
+            if (
+                value.shape != (size,)
+                or value.dtype != torch.float32
+                or value.device.type != "cpu"
+                or not bool(torch.all(torch.isfinite(value)))
+            ):
+                raise ValueError(
+                    f"Expected commissioning {name} to be a finite CPU "
+                    f"float32 vector of length {size}."
+                )
+        if bool(torch.any(self.reset_standard_error < 0.0)):
+            raise ValueError(
+                "Expected non-negative RESET commissioning standard errors."
+            )
+
+    @property
+    def size(self) -> int:
+        return int(self.baseline.numel())
+
+    def tensor_state(self) -> dict[str, torch.Tensor]:
+        return {
+            "reset_mean": self.reset_mean.detach().cpu().clone(),
+            "reset_standard_error": (
+                self.reset_standard_error.detach().cpu().clone()
+            ),
+            "baseline": self.baseline.detach().cpu().clone(),
+        }
+
+    def bundle(self) -> dict[str, Any]:
+        return {
+            "schema": "ebl.ibm_reram.reset_relative_commissioning",
+            "schema_version": 1,
+            "population_fingerprint": self.population_fingerprint,
+            "assignment_seed": self.assignment_seed,
+            "commissioning_seed": self.commissioning_seed,
+            "read_samples": self.read_samples,
+            "guard_standard_errors": self.guard_standard_errors,
+            "binding_keys": self.binding_keys,
+            "binding_shapes": self.binding_shapes,
+            "dual_rail_layout_by_parameter": dict(
+                self.dual_rail_layout_by_parameter
+            ),
+            "observed": self.tensor_state(),
+            "report": dict(self.report),
+        }
+
+
 def _selected_array_population(
     population: IbmReramArrayPopulation,
     selection: torch.Tensor,
@@ -363,6 +608,120 @@ def _tensor_summary(value: torch.Tensor) -> dict[str, float]:
         "mean": float(flattened.mean().item()),
         "maximum": float(flattened.max().item()),
     }
+
+
+def _tensor_sha256(value: torch.Tensor) -> str:
+    contiguous = value.detach().cpu().contiguous()
+    digest = sha256()
+    digest.update(str(contiguous.dtype).encode("utf-8"))
+    digest.update(np.asarray(contiguous.shape, dtype=np.int64).tobytes())
+    digest.update(contiguous.numpy().tobytes())
+    return digest.hexdigest()
+
+
+def _quad_axes(
+    shape: tuple[int, ...],
+    layout: str,
+    *,
+    device: torch.device,
+) -> tuple[tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
+    if len(shape) != 2 or shape[0] % 2 or shape[1] % 2:
+        raise ValueError(
+            "Expected four-cell dual-rail bindings to be even-by-even "
+            f"rank-2 tensors. Provided shape: {shape!r}."
+        )
+    if layout not in {"halves", "paired"}:
+        raise ValueError(
+            "Expected a four-cell dual-rail layout of 'halves' or 'paired'. "
+            f"Provided value: {layout!r}."
+        )
+    input_count = shape[0] // 2
+    output_count = shape[1] // 2
+    plus_rows = torch.arange(input_count, device=device)
+    minus_rows = plus_rows + input_count
+    if layout == "halves":
+        plus_columns = torch.arange(output_count, device=device)
+        minus_columns = plus_columns + output_count
+    else:
+        plus_columns = torch.arange(output_count, device=device) * 2
+        minus_columns = plus_columns + 1
+    return (plus_rows, minus_rows), (plus_columns, minus_columns)
+
+
+def _round_half_away_from_zero(value: torch.Tensor) -> torch.Tensor:
+    return torch.sign(value) * torch.floor(torch.abs(value) + 0.5)
+
+
+def _raw_active_structural_cell_mask(
+    population: IbmReramArrayPopulation,
+    layouts: Mapping[str, str] | Sequence[Sequence[str]],
+    *,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return exact raw-coordinate bounds and the frozen-D90 cell mask."""
+
+    normalized = _normalize_dual_rail_layouts(layouts)
+    if normalized is None or set(dict(normalized)) != set(
+        population.binding_keys
+    ):
+        raise ValueError(
+            "Expected raw-active layouts to match the population bindings."
+        )
+    lower = (
+        population.min_bound.to(device=device) - IBM_OM_RAW_ACTIVE_A_MIN
+    ) / IBM_OM_RAW_ACTIVE_SCALE
+    upper = (
+        population.max_bound.to(device=device) - IBM_OM_RAW_ACTIVE_A_MIN
+    ) / IBM_OM_RAW_ACTIVE_SCALE
+    corrupt = population.corrupt.to(device=device)
+    eligible_cells = torch.zeros(
+        population.size, dtype=torch.bool, device=device
+    )
+    layout_by_key = dict(normalized)
+    offset = 0
+    for key, shape in zip(
+        population.binding_keys, population.binding_shapes
+    ):
+        count = math.prod(shape)
+        parameter_lower = lower[offset : offset + count].reshape(shape)
+        parameter_upper = upper[offset : offset + count].reshape(shape)
+        parameter_corrupt = corrupt[offset : offset + count].reshape(shape)
+        parameter_eligible = eligible_cells[
+            offset : offset + count
+        ].reshape(shape)
+        row_groups, column_groups = _quad_axes(
+            shape,
+            layout_by_key[key],
+            device=device,
+        )
+        indices = tuple(
+            (rows[:, None], columns)
+            for rows in row_groups
+            for columns in column_groups
+        )
+        group_lower = torch.stack(
+            tuple(parameter_lower[index] for index in indices)
+        )
+        group_upper = torch.stack(
+            tuple(parameter_upper[index] for index in indices)
+        )
+        capacity = group_upper.amin(dim=0) - group_lower.amax(dim=0)
+        group_corrupt = torch.stack(
+            tuple(parameter_corrupt[index] for index in indices)
+        ).any(dim=0)
+        eligible = (
+            (capacity >= IBM_OM_RAW_ACTIVE_D90)
+            & (group_lower >= 0.0).all(dim=0)
+            & ~group_corrupt
+        )
+        for index in indices:
+            parameter_eligible[index] = eligible
+        offset += count
+    if offset != population.size:  # pragma: no cover - population validates
+        raise RuntimeError(
+            "Expected raw-active structural mask to cover every cell."
+        )
+    return eligible_cells, lower, upper
 
 
 def _canonical_differential_pair_layout(
@@ -491,6 +850,11 @@ def map_ibm_reram_array_targets(
         Mapping[str, str] | Sequence[Sequence[str]] | None
     ),
     common_window_margin_fraction: float,
+    reset_commissioning: IbmReramResetCommissioning | None = None,
+    reset_relative_mode: str | None = None,
+    reset_relative_contrast_step: float | None = None,
+    raw_active_mode: str | None = None,
+    raw_active_unsupported_quad_policy: str | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """Map clean global fractions onto one fixed IBM OM array assignment.
 
@@ -534,7 +898,11 @@ def map_ibm_reram_array_targets(
     differential_pairs: tuple[
         tuple[int, str, str, tuple[int, int]], ...
     ] = ()
-    if target_mapping == "dual_rail_quad_common_window":
+    if target_mapping in {
+        "dual_rail_quad_common_window",
+        "shared_reset_relative_quad",
+        "raw_active_p90_quad",
+    }:
         expected_keys = set(population.binding_keys)
         provided_keys = set(dict(layouts or ()))
         if provided_keys != expected_keys:
@@ -548,10 +916,82 @@ def map_ibm_reram_array_targets(
         if bool(torch.any(outside_global)):
             offending = global_targets[outside_global]
             raise ValueError(
-                "Expected quad-mapped clean conductance fractions inside "
+                "Expected four-cell-mapped clean conductance fractions inside "
                 "[0, 1]. Provided extrema: "
                 f"minimum={float(offending.min().item())}, "
                 f"maximum={float(offending.max().item())}."
+            )
+        if target_mapping == "shared_reset_relative_quad":
+            if margin != 0.0:
+                raise ValueError(
+                    "Expected shared_reset_relative_quad to use zero "
+                    "common-window margin."
+                )
+            if (
+                not isinstance(reset_commissioning, IbmReramResetCommissioning)
+                or reset_commissioning.population_fingerprint
+                != population.fingerprint
+                or reset_commissioning.binding_keys != population.binding_keys
+                or reset_commissioning.binding_shapes
+                != population.binding_shapes
+                or reset_commissioning.dual_rail_layout_by_parameter
+                != layouts
+            ):
+                raise ValueError(
+                    "Expected shared_reset_relative_quad to receive the "
+                    "controller-observed commissioning artifact for this "
+                    "exact population and layout."
+                )
+            if reset_relative_mode not in _RESET_RELATIVE_MODES:
+                raise ValueError(
+                    "Expected reset_relative_mode to be 'continuous' or "
+                    "'quantized_9_level'."
+                )
+            step = reset_relative_contrast_step
+            if (
+                isinstance(step, bool)
+                or not isinstance(step, (int, float))
+                or not math.isfinite(float(step))
+                or not 0.0 < float(step) <= 0.5
+            ):
+                raise ValueError(
+                    "Expected a finite RESET-relative contrast step in "
+                    f"(0, 0.5]. Provided value: {step!r}."
+                )
+            reset_relative_contrast_step = float(step)
+        elif target_mapping == "raw_active_p90_quad":
+            if margin != 0.0:
+                raise ValueError(
+                    "Expected raw_active_p90_quad to use zero common-window "
+                    "margin around the frozen D90 budget."
+                )
+            if raw_active_mode not in _RAW_ACTIVE_MODES:
+                raise ValueError(
+                    "Expected raw_active_mode to be 'continuous' or "
+                    "'quantized_7_level'."
+                )
+            if raw_active_unsupported_quad_policy != "structural_failure":
+                raise ValueError(
+                    "Expected the versioned raw-active unsupported-quad "
+                    "policy to equal 'structural_failure'."
+                )
+            if (
+                reset_commissioning is not None
+                or reset_relative_mode is not None
+                or reset_relative_contrast_step is not None
+            ):
+                raise ValueError(
+                    "Expected raw_active_p90_quad not to consume RESET-relative "
+                    "commissioning inputs."
+                )
+        elif (
+            reset_commissioning is not None
+            or reset_relative_mode is not None
+            or reset_relative_contrast_step is not None
+        ):
+            raise ValueError(
+                "Expected RESET-relative mapper inputs only for "
+                "shared_reset_relative_quad."
             )
     elif target_mapping == "differential_pair_common_window":
         if layouts is not None:
@@ -581,8 +1021,22 @@ def map_ibm_reram_array_targets(
 
     device = global_targets.device
     dtype = global_targets.dtype
-    lower = ((population.logical_min.to(device=device, dtype=dtype) + 1.0) / 2.0)
-    upper = ((population.logical_max.to(device=device, dtype=dtype) + 1.0) / 2.0)
+    if target_mapping == "raw_active_p90_quad":
+        lower = (
+            population.min_bound.to(device=device, dtype=dtype)
+            - IBM_OM_RAW_ACTIVE_A_MIN
+        ) / IBM_OM_RAW_ACTIVE_SCALE
+        upper = (
+            population.max_bound.to(device=device, dtype=dtype)
+            - IBM_OM_RAW_ACTIVE_A_MIN
+        ) / IBM_OM_RAW_ACTIVE_SCALE
+    else:
+        lower = (
+            population.logical_min.to(device=device, dtype=dtype) + 1.0
+        ) / 2.0
+        upper = (
+            population.logical_max.to(device=device, dtype=dtype) + 1.0
+        ) / 2.0
     corrupt = population.corrupt.to(device=device)
     published_corrupt = population.published_corrupt.to(device=device)
     noncorrupt = ~corrupt
@@ -613,6 +1067,14 @@ def map_ibm_reram_array_targets(
         ),
         "parameters": {},
     }
+    if target_mapping == "raw_active_p90_quad":
+        report["coordinate"] = {
+            "version": IBM_OM_RAW_ACTIVE_COORDINATE_VERSION,
+            "a_min": IBM_OM_RAW_ACTIVE_A_MIN,
+            "a_max": IBM_OM_RAW_ACTIVE_A_MAX,
+            "scale": IBM_OM_RAW_ACTIVE_SCALE,
+            "reference_consumed": False,
+        }
     if target_mapping == "literal_global":
         mapped = global_targets.detach().clone()
         report.update(
@@ -640,6 +1102,523 @@ def map_ibm_reram_array_targets(
                 "mapped_target_below_lower_bound_empty_group": 0,
                 "mapped_target_above_upper_bound_empty_group": 0,
                 "mapped_target_support": support_counts(mapped),
+            }
+        )
+        return mapped, report
+
+    if target_mapping == "raw_active_p90_quad":
+        assert raw_active_mode is not None
+        assert raw_active_unsupported_quad_policy is not None
+        layout_by_key = dict(layouts or ())
+        mapped = torch.empty_like(global_targets)
+        expanded_eligible = torch.zeros(
+            population.size, dtype=torch.bool, device=device
+        )
+        expanded_capacity = torch.empty_like(global_targets)
+        expanded_baseline = torch.empty_like(global_targets)
+        all_capacity: list[torch.Tensor] = []
+        all_baseline: list[torch.Tensor] = []
+        all_baseline_low: list[torch.Tensor] = []
+        all_baseline_high: list[torch.Tensor] = []
+        all_eligible: list[torch.Tensor] = []
+        all_exact_support: list[torch.Tensor] = []
+        all_corrupt_quad: list[torch.Tensor] = []
+        all_passive_compatible: list[torch.Tensor] = []
+        all_logical_u: list[torch.Tensor] = []
+        all_code: list[torch.Tensor] = []
+        all_differential: list[torch.Tensor] = []
+        offset = 0
+        for key, shape in zip(
+            population.binding_keys, population.binding_shapes
+        ):
+            count = math.prod(shape)
+            target = global_targets[offset : offset + count].reshape(shape)
+            target_mapped = mapped[offset : offset + count].reshape(shape)
+            cell_lower = lower[offset : offset + count].reshape(shape)
+            cell_upper = upper[offset : offset + count].reshape(shape)
+            cell_corrupt = corrupt[offset : offset + count].reshape(shape)
+            cell_eligible = expanded_eligible[
+                offset : offset + count
+            ].reshape(shape)
+            cell_capacity = expanded_capacity[
+                offset : offset + count
+            ].reshape(shape)
+            cell_baseline = expanded_baseline[
+                offset : offset + count
+            ].reshape(shape)
+            row_groups, column_groups = _quad_axes(
+                shape,
+                layout_by_key[key],
+                device=device,
+            )
+            plus_rows, minus_rows = row_groups
+            plus_columns, minus_columns = column_groups
+            cell_indices = tuple(
+                (rows[:, None], columns)
+                for rows in row_groups
+                for columns in column_groups
+            )
+            group_lower = torch.stack(
+                tuple(cell_lower[index] for index in cell_indices)
+            )
+            group_upper = torch.stack(
+                tuple(cell_upper[index] for index in cell_indices)
+            )
+            group_corrupt = torch.stack(
+                tuple(cell_corrupt[index] for index in cell_indices)
+            ).any(dim=0)
+            common_lower = group_lower.amax(dim=0)
+            common_upper = group_upper.amin(dim=0)
+            capacity = common_upper - common_lower
+            passive_compatible = (group_lower >= 0.0).all(dim=0)
+            eligible = (
+                (capacity >= IBM_OM_RAW_ACTIVE_D90)
+                & passive_compatible
+                & ~group_corrupt
+            )
+            baseline_low = common_lower + IBM_OM_RAW_ACTIVE_D90 / 2.0
+            baseline_high = common_upper - IBM_OM_RAW_ACTIVE_D90 / 2.0
+            # The midpoint is also well-defined for an unsupported quad.  It
+            # is retained only to make the structural failure auditable; that
+            # quad receives no target-programming pulses.
+            baseline = 0.5 * (common_lower + common_upper)
+
+            q_pp = target[plus_rows[:, None], plus_columns]
+            q_pm = target[plus_rows[:, None], minus_columns]
+            q_mp = target[minus_rows[:, None], plus_columns]
+            q_mm = target[minus_rows[:, None], minus_columns]
+            logical_u = 0.5 * (q_pp - q_pm - q_mp + q_mm)
+            bounded_u = logical_u.clamp(-1.0, 1.0)
+            if raw_active_mode == "quantized_7_level":
+                code = _round_half_away_from_zero(
+                    3.0 * bounded_u
+                ).clamp(-3.0, 3.0)
+                differential = (
+                    code * (IBM_OM_RAW_ACTIVE_D90 / 3.0)
+                )
+            else:
+                code = bounded_u
+                differential = bounded_u * IBM_OM_RAW_ACTIVE_D90
+            positive = baseline + differential / 2.0
+            negative = baseline - differential / 2.0
+            target_mapped[plus_rows[:, None], plus_columns] = positive
+            target_mapped[plus_rows[:, None], minus_columns] = negative
+            target_mapped[minus_rows[:, None], plus_columns] = negative
+            target_mapped[minus_rows[:, None], minus_columns] = positive
+
+            for index in cell_indices:
+                cell_eligible[index] = eligible
+                cell_capacity[index] = capacity
+                cell_baseline[index] = baseline
+            exact_cell_support = torch.stack(
+                tuple(
+                    (target_mapped[index] >= cell_lower[index])
+                    & (target_mapped[index] <= cell_upper[index])
+                    for index in cell_indices
+                )
+            )
+            exact_quad_support = exact_cell_support.all(dim=0)
+            parameter_mapped = target_mapped.reshape(-1)
+            parameter_noncorrupt = ~cell_corrupt.reshape(-1)
+            parameter_below = parameter_noncorrupt & (
+                parameter_mapped < cell_lower.reshape(-1)
+            )
+            parameter_above = parameter_noncorrupt & (
+                parameter_mapped > cell_upper.reshape(-1)
+            )
+            report["parameters"][key] = {
+                "dual_rail_layout": layout_by_key[key],
+                "devices": count,
+                "quad_count": int(capacity.numel()),
+                "p90_eligible_quad_count": int(eligible.sum().item()),
+                "p90_eligible_quad_fraction": float(
+                    eligible.to(torch.float64).mean().item()
+                ),
+                "structural_failure_quad_count": int(
+                    (~eligible).sum().item()
+                ),
+                "capacity": _tensor_summary(capacity),
+                "eligible_baseline": (
+                    _tensor_summary(baseline[eligible])
+                    if bool(torch.any(eligible))
+                    else None
+                ),
+                "requested_logical_u": _tensor_summary(logical_u),
+                "requested_differential": _tensor_summary(differential),
+                "exact_target_supported_quad_count": int(
+                    exact_quad_support.sum().item()
+                ),
+                "mapped_target_below_lower_bound": int(
+                    parameter_below.sum().item()
+                ),
+                "mapped_target_above_upper_bound": int(
+                    parameter_above.sum().item()
+                ),
+            }
+            all_capacity.append(capacity.reshape(-1))
+            all_baseline.append(baseline.reshape(-1))
+            all_baseline_low.append(baseline_low.reshape(-1))
+            all_baseline_high.append(baseline_high.reshape(-1))
+            all_eligible.append(eligible.reshape(-1))
+            all_exact_support.append(exact_quad_support.reshape(-1))
+            all_corrupt_quad.append(group_corrupt.reshape(-1))
+            all_passive_compatible.append(
+                passive_compatible.reshape(-1)
+            )
+            all_logical_u.append(logical_u.reshape(-1))
+            all_code.append(code.reshape(-1))
+            all_differential.append(differential.reshape(-1))
+            offset += count
+        if offset != population.size:  # pragma: no cover - validated layout
+            raise RuntimeError(
+                "Expected raw-active target mapping to cover every cell."
+            )
+        capacity = torch.cat(all_capacity)
+        baseline = torch.cat(all_baseline)
+        baseline_low = torch.cat(all_baseline_low)
+        baseline_high = torch.cat(all_baseline_high)
+        eligible = torch.cat(all_eligible)
+        exact_support = torch.cat(all_exact_support)
+        corrupt_quad = torch.cat(all_corrupt_quad)
+        passive_compatible = torch.cat(all_passive_compatible)
+        logical_u = torch.cat(all_logical_u)
+        code = torch.cat(all_code)
+        differential = torch.cat(all_differential)
+        mapped_support = support_counts(mapped)
+        code_histogram = None
+        if raw_active_mode == "quantized_7_level":
+            code_histogram = {
+                str(index): int((code == float(index)).sum().item())
+                for index in range(-3, 4)
+            }
+        eligible_cells = expanded_eligible
+        report.update(
+            {
+                "common_window_grouping": "raw_active_p90_quad",
+                "common_window_group_size": 4,
+                "common_window_group_count": int(capacity.numel()),
+                "common_window_empty_group_count": int(
+                    (~eligible).sum().item()
+                ),
+                "quad_count": int(capacity.numel()),
+                "candidate_quad_count": int(capacity.numel()),
+                "required_p90_quad_count": int(
+                    math.ceil(0.9 * capacity.numel())
+                ),
+                "p90_eligible_quad_count": int(eligible.sum().item()),
+                "p90_eligible_quad_fraction": float(
+                    eligible.to(torch.float64).mean().item()
+                ),
+                "structural_failure_quad_count": int(
+                    (~eligible).sum().item()
+                ),
+                "structural_failure_cell_count": int(
+                    (~eligible_cells).sum().item()
+                ),
+                "corrupt_quad_count": int(corrupt_quad.sum().item()),
+                "passive_compatible_quad_count": int(
+                    passive_compatible.sum().item()
+                ),
+                "exact_target_supported_quad_count": int(
+                    exact_support.sum().item()
+                ),
+                "raw_active_mode": raw_active_mode,
+                "raw_active_unsupported_quad_policy": (
+                    raw_active_unsupported_quad_policy
+                ),
+                "frozen_differential_budget": IBM_OM_RAW_ACTIVE_D90,
+                "one_cell_full_scale_displacement": (
+                    IBM_OM_RAW_ACTIVE_D90 / 2.0
+                ),
+                "quantized_level_count": (
+                    IBM_OM_RAW_ACTIVE_QUANTIZED_LEVELS
+                    if raw_active_mode == "quantized_7_level"
+                    else None
+                ),
+                "quantized_differential_spacing": (
+                    IBM_OM_RAW_ACTIVE_D90 / 3.0
+                    if raw_active_mode == "quantized_7_level"
+                    else None
+                ),
+                "logical_code_histogram": code_histogram,
+                "requested_logical_u": _tensor_summary(logical_u),
+                "requested_differential": _tensor_summary(differential),
+                "quad_capacity": _tensor_summary(capacity),
+                "eligible_quad_baseline": (
+                    _tensor_summary(baseline[eligible])
+                    if bool(torch.any(eligible))
+                    else None
+                ),
+                "eligible_quad_baseline_low": (
+                    _tensor_summary(baseline_low[eligible])
+                    if bool(torch.any(eligible))
+                    else None
+                ),
+                "eligible_quad_baseline_high": (
+                    _tensor_summary(baseline_high[eligible])
+                    if bool(torch.any(eligible))
+                    else None
+                ),
+                "baseline_shared_within_every_quad": True,
+                "differential_scale_shared_across_eligible_quads": True,
+                "reference_consumed_by_target_mapper": False,
+                "mapped_target_below_lower_bound_nonempty_quad": 0,
+                "mapped_target_above_upper_bound_nonempty_quad": 0,
+                "mapped_target_below_lower_bound_empty_quad": (
+                    mapped_support["below_lower_bound"]
+                ),
+                "mapped_target_above_upper_bound_empty_quad": (
+                    mapped_support["above_upper_bound"]
+                ),
+                "mapped_target_below_lower_bound_nonempty_group": 0,
+                "mapped_target_above_upper_bound_nonempty_group": 0,
+                "mapped_target_below_lower_bound_empty_group": (
+                    mapped_support["below_lower_bound"]
+                ),
+                "mapped_target_above_upper_bound_empty_group": (
+                    mapped_support["above_upper_bound"]
+                ),
+                "mapped_target_support": mapped_support,
+                "mapped_target_outside_0_1": int(
+                    ((mapped < 0.0) | (mapped > 1.0)).sum().item()
+                ),
+                "expanded_quad_capacity_sha256": _tensor_sha256(
+                    expanded_capacity
+                ),
+                "expanded_quad_baseline_sha256": _tensor_sha256(
+                    expanded_baseline
+                ),
+                "expanded_quad_eligibility_sha256": _tensor_sha256(
+                    expanded_eligible
+                ),
+            }
+        )
+        return mapped, report
+
+    if target_mapping == "shared_reset_relative_quad":
+        assert reset_commissioning is not None
+        assert reset_relative_mode is not None
+        assert reset_relative_contrast_step is not None
+        baseline_flat = reset_commissioning.baseline.to(
+            device=device, dtype=dtype
+        )
+        layout_by_key = dict(layouts or ())
+        mapped = torch.empty_like(global_targets)
+        all_quad_supported: list[torch.Tensor] = []
+        all_codes: list[torch.Tensor] = []
+        all_nonzero_contrast: list[torch.Tensor] = []
+        all_corrupt_quad: list[torch.Tensor] = []
+        all_published_corrupt_quad: list[torch.Tensor] = []
+        offset = 0
+        for key, shape in zip(
+            population.binding_keys, population.binding_shapes
+        ):
+            count = math.prod(shape)
+            target = global_targets[offset : offset + count].reshape(shape)
+            target_mapped = mapped[offset : offset + count].reshape(shape)
+            baseline = baseline_flat[offset : offset + count].reshape(shape)
+            cell_lower = lower[offset : offset + count].reshape(shape)
+            cell_upper = upper[offset : offset + count].reshape(shape)
+            cell_corrupt = corrupt[offset : offset + count].reshape(shape)
+            cell_published_corrupt = published_corrupt[
+                offset : offset + count
+            ].reshape(shape)
+            row_groups, column_groups = _quad_axes(
+                shape,
+                layout_by_key[key],
+                device=device,
+            )
+            plus_rows, minus_rows = row_groups
+            plus_columns, minus_columns = column_groups
+            q_pp = target[plus_rows[:, None], plus_columns]
+            q_pm = target[plus_rows[:, None], minus_columns]
+            q_mp = target[minus_rows[:, None], plus_columns]
+            q_mm = target[minus_rows[:, None], minus_columns]
+            logical_u = 0.5 * (q_pp - q_pm - q_mp + q_mm)
+            raw_code = (4.0 * logical_u).clamp(-4.0, 4.0)
+            code = (
+                _round_half_away_from_zero(raw_code).clamp(-4.0, 4.0)
+                if reset_relative_mode == "quantized_9_level"
+                else raw_code
+            )
+            contrast = code * reset_relative_contrast_step
+            positive_offset = contrast.clamp_min(0.0) / 2.0
+            negative_offset = (-contrast).clamp_min(0.0) / 2.0
+            # Every cell receives one of five shared RESET-relative offsets.
+            # Only the observed per-quad RESET baseline varies by placement.
+            target_mapped[plus_rows[:, None], plus_columns] = (
+                baseline[plus_rows[:, None], plus_columns] + positive_offset
+            )
+            target_mapped[plus_rows[:, None], minus_columns] = (
+                baseline[plus_rows[:, None], minus_columns] + negative_offset
+            )
+            target_mapped[minus_rows[:, None], plus_columns] = (
+                baseline[minus_rows[:, None], plus_columns] + negative_offset
+            )
+            target_mapped[minus_rows[:, None], minus_columns] = (
+                baseline[minus_rows[:, None], minus_columns] + positive_offset
+            )
+            group_inside = torch.stack(
+                tuple(
+                    (~cell_corrupt[rows[:, None], columns])
+                    & (
+                        target_mapped[rows[:, None], columns]
+                        >= cell_lower[rows[:, None], columns]
+                    )
+                    & (
+                        target_mapped[rows[:, None], columns]
+                        <= cell_upper[rows[:, None], columns]
+                    )
+                    for rows in row_groups
+                    for columns in column_groups
+                )
+            ).all(dim=0)
+            group_corrupt = torch.stack(
+                tuple(
+                    cell_corrupt[rows[:, None], columns]
+                    for rows in row_groups
+                    for columns in column_groups
+                )
+            ).any(dim=0)
+            group_published_corrupt = torch.stack(
+                tuple(
+                    cell_published_corrupt[rows[:, None], columns]
+                    for rows in row_groups
+                    for columns in column_groups
+                )
+            ).any(dim=0)
+            parameter_mapped = target_mapped.reshape(-1)
+            parameter_noncorrupt = ~cell_corrupt.reshape(-1)
+            parameter_below = parameter_noncorrupt & (
+                parameter_mapped < cell_lower.reshape(-1)
+            )
+            parameter_above = parameter_noncorrupt & (
+                parameter_mapped > cell_upper.reshape(-1)
+            )
+            report["parameters"][key] = {
+                "dual_rail_layout": layout_by_key[key],
+                "devices": count,
+                "quad_count": int(code.numel()),
+                "reset_relative_mode": reset_relative_mode,
+                "reset_relative_contrast_step": (
+                    reset_relative_contrast_step
+                ),
+                "quad_baseline": _tensor_summary(
+                    baseline[plus_rows[:, None], plus_columns]
+                ),
+                "logical_u": _tensor_summary(logical_u),
+                "logical_code": _tensor_summary(code),
+                "logical_contrast": _tensor_summary(contrast),
+                "fully_supported_quad_count": int(group_inside.sum().item()),
+                "fully_supported_quad_fraction": float(
+                    group_inside.to(torch.float64).mean().item()
+                ),
+                "mapped_target_below_lower_bound": int(
+                    parameter_below.sum().item()
+                ),
+                "mapped_target_above_upper_bound": int(
+                    parameter_above.sum().item()
+                ),
+            }
+            all_quad_supported.append(group_inside.reshape(-1))
+            all_codes.append(code.reshape(-1))
+            all_nonzero_contrast.append(contrast.reshape(-1))
+            all_corrupt_quad.append(group_corrupt.reshape(-1))
+            all_published_corrupt_quad.append(
+                group_published_corrupt.reshape(-1)
+            )
+            offset += count
+        if offset != population.size:  # pragma: no cover - validated layout
+            raise RuntimeError("Expected RESET-relative mapping to cover all cells.")
+        quad_supported = torch.cat(all_quad_supported)
+        codes = torch.cat(all_codes)
+        contrasts = torch.cat(all_nonzero_contrast)
+        corrupt_quad = torch.cat(all_corrupt_quad)
+        published_corrupt_quad = torch.cat(all_published_corrupt_quad)
+        mapped_support = support_counts(mapped)
+        code_histogram = None
+        if reset_relative_mode == "quantized_9_level":
+            code_histogram = {
+                str(index): int((codes == float(index)).sum().item())
+                for index in range(-4, 5)
+            }
+        report.update(
+            {
+                "common_window_grouping": "shared_reset_relative_quad",
+                "common_window_group_size": 4,
+                "common_window_group_count": int(quad_supported.numel()),
+                "common_window_empty_group_count": 0,
+                "corrupt_group_count": int(corrupt_quad.sum().item()),
+                "published_corrupt_group_count": int(
+                    published_corrupt_quad.sum().item()
+                ),
+                "differential_pair_binding": None,
+                "quad_count": int(quad_supported.numel()),
+                "common_window_empty_quad_count": 0,
+                "common_window_empty_fraction": 0.0,
+                "corrupt_quad_count": int(corrupt_quad.sum().item()),
+                "published_corrupt_quad_count": int(
+                    published_corrupt_quad.sum().item()
+                ),
+                "raw_common_span": None,
+                "inner_common_span": None,
+                "nonempty_inner_common_span": None,
+                "reset_relative_mode": reset_relative_mode,
+                "reset_relative_contrast_step": reset_relative_contrast_step,
+                "reset_relative_signed_levels": (
+                    9
+                    if reset_relative_mode == "quantized_9_level"
+                    else None
+                ),
+                "reset_relative_cell_offsets": (
+                    [
+                        0.0,
+                        reset_relative_contrast_step / 2.0,
+                        reset_relative_contrast_step,
+                        1.5 * reset_relative_contrast_step,
+                        2.0 * reset_relative_contrast_step,
+                    ]
+                    if reset_relative_mode == "quantized_9_level"
+                    else None
+                ),
+                "reset_relative_maximum_absolute_contrast": (
+                    4.0 * reset_relative_contrast_step
+                ),
+                "reset_relative_maximum_cell_offset": (
+                    2.0 * reset_relative_contrast_step
+                ),
+                "logical_code": _tensor_summary(codes),
+                "logical_code_histogram": code_histogram,
+                "logical_contrast": _tensor_summary(contrasts),
+                "fully_supported_quad_count": int(
+                    quad_supported.sum().item()
+                ),
+                "fully_supported_quad_fraction": float(
+                    quad_supported.to(torch.float64).mean().item()
+                ),
+                "hidden_support_is_audit_only": True,
+                "hidden_device_bounds_consumed_by_target_mapper": False,
+                "commissioning": dict(reset_commissioning.report),
+                "mapped_target_below_lower_bound_nonempty_quad": (
+                    mapped_support["below_lower_bound"]
+                ),
+                "mapped_target_above_upper_bound_nonempty_quad": (
+                    mapped_support["above_upper_bound"]
+                ),
+                "mapped_target_below_lower_bound_empty_quad": 0,
+                "mapped_target_above_upper_bound_empty_quad": 0,
+                "mapped_target_below_lower_bound_nonempty_group": (
+                    mapped_support["below_lower_bound"]
+                ),
+                "mapped_target_above_upper_bound_nonempty_group": (
+                    mapped_support["above_upper_bound"]
+                ),
+                "mapped_target_below_lower_bound_empty_group": 0,
+                "mapped_target_above_upper_bound_empty_group": 0,
+                "mapped_target_support": mapped_support,
+                "mapped_target_outside_0_1": int(
+                    ((mapped < 0.0) | (mapped > 1.0)).sum().item()
+                ),
             }
         )
         return mapped, report
@@ -1121,7 +2100,136 @@ def validate_ibm_reram_target_mapping_preflight(
     if target_mapping not in {
         "dual_rail_quad_common_window",
         "differential_pair_common_window",
+        "shared_reset_relative_quad",
+        "raw_active_p90_quad",
     }:
+        return
+    if target_mapping == "raw_active_p90_quad":
+        devices = report.get("devices")
+        quad_count = report.get("quad_count")
+        required = report.get("required_p90_quad_count")
+        eligible = report.get("p90_eligible_quad_count")
+        structural = report.get("structural_failure_quad_count")
+        mapped_support = report.get("mapped_target_support")
+        coordinate = report.get("coordinate")
+        if (
+            not isinstance(devices, int)
+            or devices < 1
+            or not isinstance(quad_count, int)
+            or quad_count < 1
+            or devices != 4 * quad_count
+            or required != math.ceil(0.9 * quad_count)
+            or not isinstance(eligible, int)
+            or not 0 <= eligible <= quad_count
+            or structural != quad_count - eligible
+            or report.get("structural_failure_cell_count")
+            != 4 * structural
+            or report.get("common_window_grouping")
+            != "raw_active_p90_quad"
+            or report.get("common_window_group_size") != 4
+            or report.get("common_window_group_count") != quad_count
+            or report.get("frozen_differential_budget")
+            != IBM_OM_RAW_ACTIVE_D90
+            or report.get("baseline_shared_within_every_quad") is not True
+            or report.get(
+                "differential_scale_shared_across_eligible_quads"
+            )
+            is not True
+            or report.get("reference_consumed_by_target_mapper") is not False
+            or report.get("raw_active_unsupported_quad_policy")
+            != "structural_failure"
+            or report.get("raw_active_mode") not in _RAW_ACTIVE_MODES
+            or not isinstance(mapped_support, Mapping)
+            or set(mapped_support)
+            != {"below_lower_bound", "above_upper_bound", "inside_bounds"}
+            or sum(mapped_support.values()) != devices
+            or not isinstance(coordinate, Mapping)
+            or coordinate.get("version")
+            != IBM_OM_RAW_ACTIVE_COORDINATE_VERSION
+            or coordinate.get("reference_consumed") is not False
+        ):
+            raise ValueError(
+                "Expected a strict raw-active p90 quad target-mapping "
+                "preflight report."
+            )
+        if report.get("global_target_outside_0_1") != 0:
+            raise ValueError(
+                "Expected raw-active source targets inside [0, 1]."
+            )
+        if (
+            report.get("mapped_target_below_lower_bound_nonempty_quad") != 0
+            or report.get("mapped_target_above_upper_bound_nonempty_quad")
+            != 0
+        ):
+            raise ValueError(
+                "Expected every p90-eligible raw-active target to remain "
+                "inside its exact per-cell support."
+            )
+        return
+    if target_mapping == "shared_reset_relative_quad":
+        devices = report.get("devices")
+        quad_count = report.get("quad_count")
+        supported = report.get("fully_supported_quad_count")
+        supported_fraction = report.get("fully_supported_quad_fraction")
+        mapped_support = report.get("mapped_target_support")
+        commissioning = report.get("commissioning")
+        if (
+            not isinstance(devices, int)
+            or devices < 1
+            or not isinstance(quad_count, int)
+            or quad_count < 1
+            or devices != 4 * quad_count
+            or not isinstance(supported, int)
+            or not 0 <= supported <= quad_count
+            or not isinstance(supported_fraction, (int, float))
+            or not math.isfinite(float(supported_fraction))
+            or not math.isclose(
+                float(supported_fraction),
+                supported / quad_count,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or not isinstance(mapped_support, Mapping)
+            or set(mapped_support)
+            != {"below_lower_bound", "above_upper_bound", "inside_bounds"}
+            or sum(mapped_support.values()) != devices
+            or not isinstance(commissioning, Mapping)
+            or commissioning.get("controller_observations_only") is not True
+            or commissioning.get(
+                "hidden_device_bounds_consumed_by_target_mapper"
+            )
+            is not False
+            or report.get("hidden_support_is_audit_only") is not True
+            or report.get("hidden_device_bounds_consumed_by_target_mapper")
+            is not False
+            or report.get("common_window_grouping")
+            != "shared_reset_relative_quad"
+            or report.get("common_window_group_size") != 4
+            or report.get("common_window_group_count") != quad_count
+            or report.get("common_window_empty_group_count") != 0
+            or report.get("common_window_empty_quad_count") != 0
+        ):
+            raise ValueError(
+                "Expected a strict shared RESET-relative target-mapping "
+                "preflight report."
+            )
+        if float(supported_fraction) < 0.95:
+            raise ValueError(
+                "Expected at least 95 percent of RESET-relative quads to be "
+                "fully inside their hidden per-cell support in the audit. "
+                f"Provided value: {float(supported_fraction):.9f}."
+            )
+        if report.get("global_target_outside_0_1") != 0:
+            raise ValueError(
+                "Expected RESET-relative source targets inside [0, 1]."
+            )
+        if report.get("mapped_target_outside_0_1") != 0:
+            raise ValueError(
+                "Expected RESET-relative commissioned targets inside the "
+                "shared characterized coordinate [0, 1] without clipping. "
+                f"Provided outside count: "
+                f"{report.get('mapped_target_outside_0_1')!r}."
+            )
         return
     if target_mapping == "dual_rail_quad_common_window":
         if (
@@ -1545,6 +2653,23 @@ def sample_om_array_population(
     )
 
 
+def sample_om_array_population_layout(
+    binding_keys: Sequence[str],
+    binding_shapes: Sequence[tuple[int, ...]],
+    *,
+    assignment_seed: int,
+    corruption_policy: str,
+) -> IbmReramArrayPopulation:
+    """Sample a fixed OM population for an explicit auxiliary-array layout."""
+
+    return _sample_om_array_population_layout(
+        binding_keys,
+        binding_shapes,
+        assignment_seed=assignment_seed,
+        corruption_policy=corruption_policy,
+    )
+
+
 _ARRAY_POPULATION_FIELDS = {
     "schema",
     "schema_version",
@@ -1781,6 +2906,44 @@ def sample_om_array_population_external(
     """Sample OM cells in pinned AIHWKit while training stays in CUDA PyTorch."""
 
     keys, shapes = _binding_layout(bindings)
+    return sample_om_array_population_layout_external(
+        keys,
+        shapes,
+        assignment_seed=assignment_seed,
+        corruption_policy=corruption_policy,
+        aihwkit_python=aihwkit_python,
+        population_path=population_path,
+        receipt_path=receipt_path,
+    )
+
+
+def sample_om_array_population_layout_external(
+    binding_keys: Sequence[str],
+    binding_shapes: Sequence[tuple[int, ...]],
+    *,
+    assignment_seed: int,
+    corruption_policy: str,
+    aihwkit_python: Path,
+    population_path: Path,
+    receipt_path: Path,
+) -> tuple[IbmReramArrayPopulation, dict[str, Any]]:
+    """Sample pinned OM cells for an explicit auxiliary-array layout."""
+
+    keys = tuple(str(key) for key in binding_keys)
+    shapes = tuple(tuple(int(value) for value in shape) for shape in binding_shapes)
+    if (
+        not keys
+        or len(keys) != len(shapes)
+        or len(set(keys)) != len(keys)
+        or any(not key for key in keys)
+        or any(
+            len(shape) != 2 or any(value < 1 for value in shape)
+            for shape in shapes
+        )
+    ):
+        raise ValueError(
+            "Expected unique named two-dimensional auxiliary OM bindings."
+        )
     sampler = aihwkit_python.expanduser().resolve()
     if not sampler.is_file() or not os.access(sampler, os.X_OK):
         raise RuntimeError(
@@ -1948,6 +3111,9 @@ class _ArrayPlant:
         return _ArrayControllerPort(self)
 
 
+IbmReramPulsePlant = _ArrayPlant
+
+
 class _ArrayControllerPort:
     def __init__(self, plant: _ArrayPlant) -> None:
         self._plant = plant
@@ -1980,6 +3146,335 @@ class _ArrayControllerPort:
                     torch.zeros_like(direction),
                 )
             )
+
+
+class _RawActiveArrayPlant:
+    """Explicit IBM OM plant whose persistent state is the active state ``a``.
+
+    Unlike :class:`_ArrayPlant`, this plant never subtracts or consults the
+    AIHWKit reference tensor.  It starts at raw ``a=0`` and exposes only the
+    frozen array-wide ``g`` coordinate through its controller port.
+    """
+
+    def __init__(
+        self,
+        population: IbmReramArrayPopulation,
+        *,
+        generator: torch.Generator,
+        device: torch.device,
+    ) -> None:
+        self.population = population.to(device)
+        self.device = device
+        self.generator = generator
+        self.persistent_a = torch.zeros(
+            population.size, dtype=torch.float32, device=device
+        )
+        self.apparent_a = self.persistent_a.clone()
+
+    @property
+    def size(self) -> int:
+        return self.population.size
+
+    def _normal_all(self) -> torch.Tensor:
+        return torch.randn(
+            (self.size,),
+            dtype=torch.float32,
+            device=self.device,
+            generator=self.generator,
+        )
+
+    def pulse(self, directions: torch.Tensor) -> None:
+        direction = torch.as_tensor(
+            directions, dtype=torch.int8, device=self.device
+        )
+        if direction.shape != (self.size,) or bool(
+            torch.any((direction < -1) | (direction > 1))
+        ):
+            raise ValueError(
+                "Expected one raw-active {-1,0,1} pulse direction per cell."
+            )
+        active = direction != 0
+        if not bool(torch.any(active)):
+            return
+        population = self.population
+        current = self.persistent_a
+        cycle = self._normal_all()
+        candidate = current.clone()
+        up = direction > 0
+        down = direction < 0
+        if bool(torch.any(up)):
+            normalized = torch.where(
+                population.max_bound > 0.0,
+                current / population.max_bound,
+                torch.zeros_like(current),
+            )
+            response = population.dwmin_up * (
+                1.0 - normalized + population.dw_min_std * cycle
+            )
+            candidate[up] = current[up] + response[up]
+        if bool(torch.any(down)):
+            normalized = torch.where(
+                population.min_bound < 0.0,
+                current / population.min_bound,
+                torch.zeros_like(current),
+            )
+            response = population.dwmin_down * (
+                1.0 - normalized + population.dw_min_std * cycle
+            )
+            candidate[down] = current[down] - response[down]
+        candidate = torch.maximum(candidate, population.min_bound)
+        candidate = torch.minimum(candidate, population.max_bound)
+        self.persistent_a[active] = candidate[active]
+        write_scale = (
+            population.write_noise_std * population.nominal_dw_min
+        )
+        apparent = self.persistent_a + write_scale * self._normal_all()
+        self.apparent_a[active] = apparent[active]
+
+    def condition_lower_boundary(self) -> dict[str, torch.Tensor]:
+        active = torch.ones(
+            self.size, dtype=torch.bool, device=self.device
+        )
+        consecutive = torch.zeros(
+            self.size, dtype=torch.int64, device=self.device
+        )
+        pulse_count = torch.zeros_like(consecutive)
+        for _pulse_index in range(
+            IBM_OM_RAW_ACTIVE_CONDITIONING_MAXIMUM_PULSES
+        ):
+            before = self.persistent_a.clone()
+            self.pulse(-active.to(dtype=torch.int8))
+            change = torch.abs(self.persistent_a - before)
+            consecutive = torch.where(
+                active
+                & (
+                    change
+                    < IBM_OM_RAW_ACTIVE_CONDITIONING_CHANGE_THRESHOLD
+                ),
+                consecutive + 1,
+                torch.where(
+                    active,
+                    torch.zeros_like(consecutive),
+                    consecutive,
+                ),
+            )
+            pulse_count[active] += 1
+            active = consecutive < IBM_OM_RAW_ACTIVE_CONDITIONING_QUIET_STEPS
+            if not bool(torch.any(active)):
+                break
+        return {
+            "success": ~active,
+            "pulse_count": pulse_count,
+            "persistent_a": self.persistent_a.clone(),
+            "apparent_a": self.apparent_a.clone(),
+        }
+
+    def controller_port(self) -> "_RawActiveArrayControllerPort":
+        return _RawActiveArrayControllerPort(self)
+
+
+class _RawActiveArrayControllerPort:
+    """Capability-limited apparent ``g`` view of a raw-active plant."""
+
+    def __init__(self, plant: _RawActiveArrayPlant) -> None:
+        self.__plant = plant
+
+    @property
+    def size(self) -> int:
+        return self.__plant.size
+
+    def verify(self) -> torch.Tensor:
+        return (
+            self.__plant.apparent_a.clone() - IBM_OM_RAW_ACTIVE_A_MIN
+        ) / IBM_OM_RAW_ACTIVE_SCALE
+
+    def apply_identical_pulses(
+        self,
+        directions: torch.Tensor,
+        counts: torch.Tensor,
+    ) -> None:
+        direction = torch.as_tensor(
+            directions, dtype=torch.int8, device=self.__plant.device
+        )
+        count = torch.as_tensor(
+            counts, dtype=torch.int64, device=self.__plant.device
+        )
+        if (
+            direction.shape != (self.size,)
+            or count.shape != (self.size,)
+            or bool(torch.any(count < 0))
+        ):
+            raise ValueError(
+                "Expected valid raw-active pulse directions and counts."
+            )
+        maximum = int(count.max().item()) if count.numel() else 0
+        for pulse_index in range(maximum):
+            self.__plant.pulse(
+                torch.where(
+                    count > pulse_index,
+                    direction,
+                    torch.zeros_like(direction),
+                )
+            )
+
+
+def commission_ibm_reram_reset_relative_baselines(
+    population: IbmReramArrayPopulation,
+    *,
+    dual_rail_layout_by_parameter: (
+        Mapping[str, str] | Sequence[Sequence[str]]
+    ),
+    read_samples: int,
+    guard_standard_errors: float,
+) -> IbmReramResetCommissioning:
+    """Commission shared targets using only repeated RESET/read observations.
+
+    Each sample applies one RESET pulse and then reads the apparent state.  A
+    quad baseline is the maximum over its four cell estimates after adding the
+    declared standard-error guard.  The returned artifact intentionally has no
+    per-cell minimum or maximum conductance field.
+    """
+
+    layouts = _normalize_dual_rail_layouts(dual_rail_layout_by_parameter)
+    if layouts is None or set(dict(layouts)) != set(population.binding_keys):
+        raise ValueError(
+            "Expected RESET-relative commissioning layouts to match the "
+            "fixed population bindings exactly."
+        )
+    if isinstance(read_samples, bool) or not isinstance(read_samples, int) or read_samples < 2:
+        raise ValueError(
+            "Expected RESET-relative commissioning to use at least two "
+            f"RESET/read samples. Provided value: {read_samples!r}."
+        )
+    if (
+        isinstance(guard_standard_errors, bool)
+        or not isinstance(guard_standard_errors, (int, float))
+        or not math.isfinite(float(guard_standard_errors))
+        or float(guard_standard_errors) < 0.0
+    ):
+        raise ValueError(
+            "Expected a finite non-negative RESET standard-error guard. "
+            f"Provided value: {guard_standard_errors!r}."
+        )
+    guard = float(guard_standard_errors)
+    seed = derive_seed(
+        population.assignment_seed,
+        "shared_reset_relative_commissioning",
+        population.fingerprint,
+        read_samples,
+        format(guard, ".17g"),
+    )
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(seed)
+    plant = _ArrayPlant(population, generator=generator, device=torch.device("cpu"))
+    port = plant.controller_port()
+    reset_direction = -torch.ones(population.size, dtype=torch.int8)
+    reset_count = torch.ones(population.size, dtype=torch.int64)
+    observed = []
+    for _sample_index in range(read_samples):
+        port.apply_identical_pulses(reset_direction, reset_count)
+        value = port.verify()
+        if not bool(torch.all(torch.isfinite(value))):
+            raise RuntimeError(
+                "Expected finite apparent RESET reads during commissioning."
+            )
+        observed.append(value)
+    reads = torch.stack(observed).to(dtype=torch.float32, device="cpu")
+    reset_mean = reads.mean(dim=0)
+    reset_standard_error = reads.std(dim=0, unbiased=True) / math.sqrt(
+        read_samples
+    )
+    guarded_reset = reset_mean + guard * reset_standard_error
+    baseline = torch.empty_like(reset_mean)
+    layout_by_key = dict(layouts)
+    parameter_reports: dict[str, Any] = {}
+    offset = 0
+    quad_count = 0
+    baseline_values = []
+    for key, shape in zip(population.binding_keys, population.binding_shapes):
+        count = math.prod(shape)
+        guarded = guarded_reset[offset : offset + count].reshape(shape)
+        mapped_baseline = baseline[offset : offset + count].reshape(shape)
+        row_groups, column_groups = _quad_axes(
+            shape,
+            layout_by_key[key],
+            device=torch.device("cpu"),
+        )
+        group_guarded = torch.stack(
+            tuple(
+                guarded[rows[:, None], columns]
+                for rows in row_groups
+                for columns in column_groups
+            )
+        )
+        raw_group_baseline = group_guarded.amax(dim=0)
+        # The DRN's characterized normalized conductance coordinate is public
+        # and shared by every cell.  RESET observations below that global
+        # coordinate cannot be represented by the network, so commissioning
+        # raises only those baselines to zero.  It never clips against a
+        # hidden per-cell lower or upper bound.
+        group_baseline = raw_group_baseline.clamp_min(0.0)
+        for rows in row_groups:
+            for columns in column_groups:
+                mapped_baseline[rows[:, None], columns] = group_baseline
+        parameter_reports[key] = {
+            "dual_rail_layout": layout_by_key[key],
+            "devices": count,
+            "quad_count": int(group_baseline.numel()),
+            "reset_mean": _tensor_summary(
+                reset_mean[offset : offset + count]
+            ),
+            "reset_standard_error": _tensor_summary(
+                reset_standard_error[offset : offset + count]
+            ),
+            "quad_baseline": _tensor_summary(group_baseline),
+            "raw_quad_baseline": _tensor_summary(raw_group_baseline),
+        }
+        quad_count += int(group_baseline.numel())
+        baseline_values.append(group_baseline.reshape(-1))
+        offset += count
+    if offset != population.size:  # pragma: no cover - population validates it
+        raise RuntimeError("Expected commissioning to cover every population cell.")
+    compact_baselines = torch.cat(baseline_values)
+    report = {
+        "schema": "ebl.ibm_reram.reset_relative_commissioning_receipt",
+        "schema_version": 1,
+        "algorithm": "reset_pulse_verify_mean_quad_max_guarded_se",
+        "controller_observations_only": True,
+        "hidden_device_bounds_consumed_by_target_mapper": False,
+        "population_fingerprint": population.fingerprint,
+        "assignment_seed": population.assignment_seed,
+        "commissioning_seed": seed,
+        "read_samples": read_samples,
+        "guard_standard_errors": guard,
+        "devices": population.size,
+        "quad_count": quad_count,
+        "reset_pulses_per_device": read_samples,
+        "total_reset_pulses": population.size * read_samples,
+        "reset_mean": _tensor_summary(reset_mean),
+        "reset_standard_error": _tensor_summary(reset_standard_error),
+        "quad_baseline": _tensor_summary(compact_baselines),
+        "reset_mean_sha256": _tensor_sha256(reset_mean),
+        "reset_standard_error_sha256": _tensor_sha256(
+            reset_standard_error
+        ),
+        "expanded_baseline_sha256": _tensor_sha256(baseline),
+        "parameters": parameter_reports,
+    }
+    return IbmReramResetCommissioning(
+        population_fingerprint=population.fingerprint,
+        assignment_seed=population.assignment_seed,
+        commissioning_seed=seed,
+        read_samples=read_samples,
+        guard_standard_errors=guard,
+        binding_keys=population.binding_keys,
+        binding_shapes=population.binding_shapes,
+        dual_rail_layout_by_parameter=layouts,
+        reset_mean=reset_mean,
+        reset_standard_error=reset_standard_error,
+        baseline=baseline,
+        report=report,
+    )
 
 
 def _result_mapping(result: ProgramVerifyResult) -> dict[str, Any]:
@@ -2026,6 +3521,14 @@ class IbmReramHwaParameterModifier:
         self._config = config
         self._conductance_min = float(conductance_min)
         self._conductance_max = float(conductance_max)
+        if config.target_mapping == "raw_active_p90_quad" and (
+            self._conductance_min != 0.0 or self._conductance_max != 1.0
+        ):
+            raise ValueError(
+                "Expected raw_active_p90_quad to use the shared g coordinate "
+                "directly as model conductance bounds [0, 1], without a "
+                "second affine rescaling."
+            )
         differential_binding_pairs = ()
         if config.target_mapping == "differential_pair_common_window":
             differential_binding_pairs = _validate_differential_pair_bindings(
@@ -2093,7 +3596,11 @@ class IbmReramHwaParameterModifier:
                 f"sampling. Provided value: model={model_step}, "
                 f"sampled={self._population.nominal_dw_min}."
             )
-        if config.target_mapping == "dual_rail_quad_common_window":
+        if config.target_mapping in {
+            "dual_rail_quad_common_window",
+            "shared_reset_relative_quad",
+            "raw_active_p90_quad",
+        }:
             expected_layout_keys = set(self._population.binding_keys)
             provided_layout_keys = set(
                 dict(config.dual_rail_layout_by_parameter or ())
@@ -2115,9 +3622,26 @@ class IbmReramHwaParameterModifier:
             }
             if invalid_shapes:
                 raise ValueError(
-                    "Expected dual-rail quad bindings to be even-by-even "
+                    "Expected four-cell dual-rail bindings to be even-by-even "
                     f"rank-2 tensors. Provided value: {invalid_shapes!r}."
                 )
+        self._reset_commissioning: IbmReramResetCommissioning | None = None
+        self._reset_commissioning_artifact_paths: tuple[Path, Path] | None = None
+        if config.target_mapping == "shared_reset_relative_quad":
+            assert config.reset_read_samples is not None
+            assert config.reset_guard_standard_errors is not None
+            self._reset_commissioning = (
+                commission_ibm_reram_reset_relative_baselines(
+                    self._population,
+                    dual_rail_layout_by_parameter=(
+                        config.dual_rail_layout_by_parameter or ()
+                    ),
+                    read_samples=config.reset_read_samples,
+                    guard_standard_errors=(
+                        config.reset_guard_standard_errors
+                    ),
+                )
+            )
         self._generators: dict[str, dict[str, torch.Generator]] = {
             stream: {} for stream in _STREAMS
         }
@@ -2157,6 +3681,41 @@ class IbmReramHwaParameterModifier:
         if self._population_sampling_receipt is None:
             return None
         return json.loads(json.dumps(self._population_sampling_receipt))
+
+    @property
+    def reset_commissioning_bundle(self) -> dict[str, Any] | None:
+        if self._reset_commissioning is None:
+            return None
+        return self._reset_commissioning.bundle()
+
+    @property
+    def reset_commissioning_report(self) -> dict[str, Any] | None:
+        if self._reset_commissioning is None:
+            return None
+        return dict(self._reset_commissioning.report)
+
+    @property
+    def reset_commissioning_artifact_paths(self) -> tuple[Path, Path] | None:
+        return self._reset_commissioning_artifact_paths
+
+    def register_reset_commissioning_artifacts(
+        self,
+        bundle_path: Path,
+        receipt_path: Path,
+    ) -> None:
+        if self._reset_commissioning is None:
+            raise RuntimeError(
+                "Expected RESET commissioning before registering its artifacts."
+            )
+        resolved = (
+            bundle_path.expanduser().resolve(),
+            receipt_path.expanduser().resolve(),
+        )
+        if not all(path.is_file() for path in resolved):
+            raise RuntimeError(
+                "Expected durable RESET commissioning bundle and receipt files."
+            )
+        self._reset_commissioning_artifact_paths = resolved
 
     @property
     def programming_report(self) -> dict[str, Any] | None:
@@ -2216,6 +3775,15 @@ class IbmReramHwaParameterModifier:
             common_window_margin_fraction=(
                 self._config.common_window_margin_fraction
             ),
+            reset_commissioning=self._reset_commissioning,
+            reset_relative_mode=self._config.reset_relative_mode,
+            reset_relative_contrast_step=(
+                self._config.reset_relative_contrast_step
+            ),
+            raw_active_mode=self._config.raw_active_mode,
+            raw_active_unsupported_quad_policy=(
+                self._config.raw_active_unsupported_quad_policy
+            ),
         )
         validate_ibm_reram_target_mapping_preflight(report)
         return mapped.detach().clone(), report
@@ -2240,6 +3808,15 @@ class IbmReramHwaParameterModifier:
             common_window_margin_fraction=(
                 self._config.common_window_margin_fraction
             ),
+            reset_commissioning=self._reset_commissioning,
+            reset_relative_mode=self._config.reset_relative_mode,
+            reset_relative_contrast_step=(
+                self._config.reset_relative_contrast_step
+            ),
+            raw_active_mode=self._config.raw_active_mode,
+            raw_active_unsupported_quad_policy=(
+                self._config.raw_active_unsupported_quad_policy
+            ),
         )
         validate_ibm_reram_target_mapping_preflight(report)
         return global_targets, targets, layout, report
@@ -2258,8 +3835,103 @@ class IbmReramHwaParameterModifier:
             snapshots.append((state, clean))
             programmed = endpoint[offset : offset + count].reshape(shape)
             state.copy_(self._conductance_min + span * programmed.to(state))
-            binding.parameter.clamp_()
+            if self._config.target_mapping != "raw_active_p90_quad":
+                binding.parameter.clamp_()
         return snapshots
+
+    def _mapped_target(
+        self,
+        targets: torch.Tensor,
+        *,
+        mapping_report: Mapping[str, Any],
+    ) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any]]:
+        """Apply the raw p90 mapper without inventing a compact P&V fit.
+
+        Eligible quads receive their exact continuous or seven-level target.
+        A quad outside the frozen D90 support is an explicit structural
+        failure and is represented at its transformed RESET bound for this
+        deterministic training surrogate.  Exact deployment still performs
+        boundary conditioning and one-pulse P&V.
+        """
+
+        if self._config.target_mapping != "raw_active_p90_quad":
+            raise RuntimeError(
+                "Expected mapped_target execution only for raw-active p90."
+            )
+        population = self._population_on(targets.device)
+        structural, lower, upper = _raw_active_structural_cell_mask(
+            population,
+            self._config.dual_rail_layout_by_parameter or (),
+            device=targets.device,
+        )
+        target_in_support = (
+            torch.isfinite(targets)
+            & (targets >= 0.0)
+            & (targets >= lower)
+            & (targets <= upper)
+        )
+        accepted = structural & target_in_support
+        endpoint = torch.where(accepted, targets, lower)
+        below = targets < lower
+        above = targets > upper
+        zero_long = torch.zeros(
+            population.size, dtype=torch.int64, device=targets.device
+        )
+        report = {
+            "execution": "mapped_target",
+            "execution_detail": (
+                "deterministic_raw_target_with_structural_reset_bound_state"
+            ),
+            "devices": population.size,
+            "accepted": int(accepted.sum().item()),
+            "success_fraction": float(
+                accepted.to(torch.float64).mean().item()
+            ),
+            "structural_failure": int((~structural).sum().item()),
+            "exact_target_in_support": int(
+                target_in_support.sum().item()
+            ),
+            "target_below_lower_bound": int(below.sum().item()),
+            "target_above_upper_bound": int(above.sum().item()),
+            "endpoint_clipped": 0,
+            "pulse_count": {
+                "mean": 0.0,
+                "median": 0.0,
+                "maximum": 0,
+                "set_mean": 0.0,
+                "reset_mean": 0.0,
+            },
+            "mapping_only_training_surrogate": True,
+            "historical_q_compact_endpoint_model_consumed": False,
+        }
+        deployment = {
+            "schema": "ebl.ibm_reram.om_mapped_target_deployment",
+            "schema_version": 1,
+            "device_model_sha256": self._artifact_sha256,
+            "population_fingerprint": population.fingerprint,
+            "config": asdict(self._config),
+            "binding_keys": population.binding_keys,
+            "binding_shapes": population.binding_shapes,
+            "requested_target": targets.detach().cpu().clone(),
+            "raw_apparent_endpoint": endpoint.detach().cpu().clone(),
+            "apparent_endpoint": endpoint.detach().cpu().clone(),
+            "persistent_endpoint": endpoint.detach().cpu().clone(),
+            "accepted": accepted.detach().cpu().clone(),
+            "structural_quad_eligible": structural.detach().cpu().clone(),
+            "exact_target_in_support": (
+                target_in_support.detach().cpu().clone()
+            ),
+            "target_below_lower_bound": below.detach().cpu().clone(),
+            "target_above_upper_bound": above.detach().cpu().clone(),
+            "set_count": zero_long.detach().cpu().clone(),
+            "reset_count": zero_long.detach().cpu().clone(),
+            "total_pulses": zero_long.detach().cpu().clone(),
+            "verify_count": zero_long.detach().cpu().clone(),
+            "reversals": zero_long.detach().cpu().clone(),
+            "target_mapping_report": dict(mapping_report),
+            "report": report,
+        }
+        return endpoint.to(dtype=targets.dtype), report, deployment
 
     def _run_exact_programming(
         self,
@@ -2302,6 +3974,78 @@ class IbmReramHwaParameterModifier:
         )
         return result, plant
 
+    def _run_raw_active_programming(
+        self,
+        targets: torch.Tensor,
+        population: IbmReramArrayPopulation,
+        *,
+        generator: torch.Generator,
+    ) -> tuple[
+        ProgramVerifyResult,
+        _RawActiveArrayPlant,
+        dict[str, torch.Tensor],
+        dict[str, torch.Tensor],
+    ]:
+        """Condition raw ``a`` from zero, then run independent one-pulse P&V."""
+
+        conditioning_seed = derive_seed(
+            int(generator.initial_seed()),
+            population.fingerprint,
+            "raw_active_boundary_conditioning",
+        )
+        conditioning_generator = torch.Generator(device=targets.device)
+        conditioning_generator.manual_seed(conditioning_seed)
+        plant = _RawActiveArrayPlant(
+            population,
+            generator=conditioning_generator,
+            device=targets.device,
+        )
+        conditioning = plant.condition_lower_boundary()
+        conditioning_generator_state = (
+            conditioning_generator.get_state().detach().cpu().clone()
+        )
+        # Target programming owns a separate explicit RNG stream.  The
+        # conditioned persistent/apparent states remain unchanged.
+        plant.generator = generator
+        structural, lower, upper = _raw_active_structural_cell_mask(
+            population,
+            self._config.dual_rail_layout_by_parameter or (),
+            device=targets.device,
+        )
+        exact_target_in_support = (
+            torch.isfinite(targets)
+            & (targets >= 0.0)
+            & (targets >= lower)
+            & (targets <= upper)
+        )
+        conditioning_success = conditioning["success"]
+        programming_eligible = (
+            structural & exact_target_in_support & conditioning_success
+        )
+        result = run_program_verify(
+            plant.controller_port(),
+            targets=targets,
+            tolerance=IBM_OM_RAW_ACTIVE_TOLERANCE,
+            maximum_pulses=self._config.maximum_program_pulses,
+            settings=ControllerSettings(kind="one_pulse"),
+            estimator=None,
+            eligible=programming_eligible,
+        )
+        masks = {
+            "structural_quad_eligible": structural,
+            "exact_target_in_support": exact_target_in_support,
+            "programming_eligible": programming_eligible,
+            "lower": lower,
+            "upper": upper,
+            "conditioning_generator_state_after": (
+                conditioning_generator_state
+            ),
+            "conditioning_seed": torch.tensor(
+                conditioning_seed, dtype=torch.int64
+            ),
+        }
+        return result, plant, conditioning, masks
+
     def _compact(
         self,
         targets: torch.Tensor,
@@ -2335,6 +4079,24 @@ class IbmReramHwaParameterModifier:
             mapping_group_suffix = "quad"
         elif self._config.target_mapping == "differential_pair_common_window":
             mapping_group_suffix = "pair"
+        elif self._config.target_mapping == "shared_reset_relative_quad":
+            expected_support = mapping_report.get("mapped_target_support")
+            if not isinstance(expected_support, Mapping):
+                raise RuntimeError(
+                    "Expected RESET-relative compact execution to receive "
+                    "its authoritative hidden-support audit."
+                )
+            expected_below = expected_support.get("below_lower_bound")
+            expected_above = expected_support.get("above_upper_bound")
+            if (
+                expected_below != int(below.sum().item())
+                or expected_above != int(above.sum().item())
+            ):
+                raise RuntimeError(
+                    "Expected RESET-relative exact-fallback cells to equal "
+                    "the audit-only out-of-bound target set."
+                )
+            pulse_fallback_mask = outside_fixed_support
         if mapping_group_suffix is not None:
             expected_below = mapping_report.get(
                 f"mapped_target_below_lower_bound_empty_{mapping_group_suffix}"
@@ -2450,7 +4212,12 @@ class IbmReramHwaParameterModifier:
             "pulse_resolved_noncorrupt_out_of_bound_empty_pair_only"
             if self._config.target_mapping
             == "differential_pair_common_window"
-            else "pulse_resolved_noncorrupt_out_of_bound_empty_quad_only"
+            else (
+                "pulse_resolved_noncorrupt_out_of_bound_shared_reset_relative_only"
+                if self._config.target_mapping
+                == "shared_reset_relative_quad"
+                else "pulse_resolved_noncorrupt_out_of_bound_empty_quad_only"
+            )
         )
         fallback_report: dict[str, Any] = {
             "policy": fallback_policy,
@@ -2519,6 +4286,10 @@ class IbmReramHwaParameterModifier:
         if self._config.target_mapping == "differential_pair_common_window":
             fallback_execution_detail = (
                 "compact_endpoint_with_exact_empty_pair_fallback"
+            )
+        elif self._config.target_mapping == "shared_reset_relative_quad":
+            fallback_execution_detail = (
+                "compact_endpoint_with_exact_reset_relative_support_fallback"
             )
         else:
             fallback_execution_detail = (
@@ -2616,7 +4387,12 @@ class IbmReramHwaParameterModifier:
                 "compact_covered_exact_out_of_bound_empty_pair_fallback"
                 if self._config.target_mapping
                 == "differential_pair_common_window"
-                else "compact_covered_exact_out_of_bound_empty_quad_fallback"
+                else (
+                    "compact_covered_exact_out_of_bound_reset_relative_fallback"
+                    if self._config.target_mapping
+                    == "shared_reset_relative_quad"
+                    else "compact_covered_exact_out_of_bound_empty_quad_fallback"
+                )
             ),
             "requested_target": targets.detach().cpu().clone(),
             "apparent_endpoint": endpoint.detach().cpu().clone(),
@@ -2635,12 +4411,269 @@ class IbmReramHwaParameterModifier:
         }
         return endpoint.to(dtype=targets.dtype), report, deployment
 
+    def _pulse_resolved_raw_active(
+        self,
+        targets: torch.Tensor,
+        *,
+        generator: torch.Generator,
+    ) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any]]:
+        population = self._population_on(targets.device)
+        result, plant, conditioning, masks = (
+            self._run_raw_active_programming(
+                targets,
+                population,
+                generator=generator,
+            )
+        )
+        lower = masks["lower"]
+        upper = masks["upper"]
+        structural = masks["structural_quad_eligible"]
+        exact_support = masks["exact_target_in_support"]
+        programming_eligible = masks["programming_eligible"]
+        conditioning_success = conditioning["success"]
+        apparent_endpoint = result.apparent_endpoint
+        persistent_endpoint = (
+            plant.persistent_a - IBM_OM_RAW_ACTIVE_A_MIN
+        ) / IBM_OM_RAW_ACTIVE_SCALE
+        conditioned_persistent = (
+            conditioning["persistent_a"] - IBM_OM_RAW_ACTIVE_A_MIN
+        ) / IBM_OM_RAW_ACTIVE_SCALE
+        conditioned_apparent = (
+            conditioning["apparent_a"] - IBM_OM_RAW_ACTIVE_A_MIN
+        ) / IBM_OM_RAW_ACTIVE_SCALE
+        below = targets < lower
+        above = targets > upper
+        acceptance_window_intersects_exact_support = (
+            (targets + IBM_OM_RAW_ACTIVE_TOLERANCE >= lower)
+            & (targets - IBM_OM_RAW_ACTIVE_TOLERANCE <= upper)
+        )
+        persistent_within_tolerance = (
+            torch.abs(persistent_endpoint - targets)
+            <= IBM_OM_RAW_ACTIVE_TOLERANCE
+        )
+        accepted_persistent_within_tolerance = (
+            result.accepted & persistent_within_tolerance
+        )
+        saturated = (
+            torch.abs(plant.persistent_a - population.min_bound)
+            <= IBM_OM_RAW_ACTIVE_CONDITIONING_CHANGE_THRESHOLD
+        ) | (
+            torch.abs(plant.persistent_a - population.max_bound)
+            <= IBM_OM_RAW_ACTIVE_CONDITIONING_CHANGE_THRESHOLD
+        )
+
+        def residual_summary(
+            residual: torch.Tensor,
+            selection: torch.Tensor,
+        ) -> dict[str, float | int | None]:
+            selected = residual[selection]
+            if selected.numel() == 0:
+                return {
+                    "count": 0,
+                    "bias": None,
+                    "mae": None,
+                    "rmse": None,
+                }
+            return {
+                "count": int(selected.numel()),
+                "bias": float(selected.mean().item()),
+                "mae": float(selected.abs().mean().item()),
+                "rmse": float(selected.square().mean().sqrt().item()),
+            }
+
+        base_result = _result_mapping(result)
+        eligible_count = int(programming_eligible.sum().item())
+        eligible_accepted = int(
+            (result.accepted & programming_eligible).sum().item()
+        )
+        report = {
+            "execution": "pulse_resolved",
+            "execution_detail": (
+                "raw_active_boundary_conditioned_one_pulse_verify"
+            ),
+            **base_result,
+            "controller": "one_pulse",
+            "coordinate_version": IBM_OM_RAW_ACTIVE_COORDINATE_VERSION,
+            "coordinate_a_min": IBM_OM_RAW_ACTIVE_A_MIN,
+            "coordinate_a_max": IBM_OM_RAW_ACTIVE_A_MAX,
+            "coordinate_scale": IBM_OM_RAW_ACTIVE_SCALE,
+            "tolerance": IBM_OM_RAW_ACTIVE_TOLERANCE,
+            "corrupt": int(population.corrupt.sum().item()),
+            "published_corrupt": int(
+                population.published_corrupt.sum().item()
+            ),
+            "structural_quad_eligible": int(structural.sum().item()),
+            "structural_target_assignment_failure": int(
+                (~structural).sum().item()
+            ),
+            "exact_target_in_support": int(exact_support.sum().item()),
+            "programming_eligible": eligible_count,
+            "programming_eligible_accepted": eligible_accepted,
+            "programming_eligible_success_fraction": (
+                eligible_accepted / eligible_count if eligible_count else None
+            ),
+            "conditioning_success": int(
+                conditioning_success.sum().item()
+            ),
+            "conditioning_failure": int(
+                (~conditioning_success).sum().item()
+            ),
+            "conditioning_pulse_count": _tensor_summary(
+                conditioning["pulse_count"].to(torch.float32)
+            ),
+            "conditioning_total_pulses": int(
+                conditioning["pulse_count"].sum().item()
+            ),
+            "conditioning_quiet_steps": (
+                IBM_OM_RAW_ACTIVE_CONDITIONING_QUIET_STEPS
+            ),
+            "conditioning_change_threshold_raw_a": (
+                IBM_OM_RAW_ACTIVE_CONDITIONING_CHANGE_THRESHOLD
+            ),
+            "conditioning_maximum_pulses": (
+                IBM_OM_RAW_ACTIVE_CONDITIONING_MAXIMUM_PULSES
+            ),
+            "conditioning_seed": int(masks["conditioning_seed"].item()),
+            "target_below_lower_bound": int(below.sum().item()),
+            "target_inside_bounds": int((~below & ~above).sum().item()),
+            "target_above_upper_bound": int(above.sum().item()),
+            "acceptance_window_intersects_exact_support": int(
+                acceptance_window_intersects_exact_support.sum().item()
+            ),
+            "accepted_persistent_within_tolerance": int(
+                accepted_persistent_within_tolerance.sum().item()
+            ),
+            "accepted_persistent_outside_tolerance": int(
+                (
+                    result.accepted & ~persistent_within_tolerance
+                ).sum().item()
+            ),
+            "saturated": int(saturated.sum().item()),
+            "endpoint_clipped": 0,
+            "reference_consumed_by_plant_or_controller": False,
+            "accepted_apparent_residual": residual_summary(
+                apparent_endpoint - targets,
+                result.accepted,
+            ),
+            "accepted_persistent_residual": residual_summary(
+                persistent_endpoint - targets,
+                result.accepted,
+            ),
+        }
+        deployment = {
+            "schema": "ebl.ibm_reram.om_pulse_resolved_deployment",
+            "schema_version": 1,
+            "device_model_sha256": self._artifact_sha256,
+            "population_fingerprint": population.fingerprint,
+            "population_sampling_receipt": self.population_sampling_receipt,
+            "config": asdict(self._config),
+            "binding_keys": population.binding_keys,
+            "binding_shapes": population.binding_shapes,
+            "binding_sampling_seeds": population.binding_sampling_seeds,
+            "donor_sampling_seeds": population.donor_sampling_seeds,
+            "population_scalars": {
+                "preset": OM_PRESET,
+                "aihwkit_version": population.aihwkit_version,
+                "nominal_dw_min": population.nominal_dw_min,
+                "dw_min_std": population.dw_min_std,
+                "write_noise_std": population.write_noise_std,
+            },
+            "population": population.tensor_state(),
+            "coordinate": {
+                "version": IBM_OM_RAW_ACTIVE_COORDINATE_VERSION,
+                "a_min": IBM_OM_RAW_ACTIVE_A_MIN,
+                "a_max": IBM_OM_RAW_ACTIVE_A_MAX,
+                "scale": IBM_OM_RAW_ACTIVE_SCALE,
+                "reference_excluded_from_numerics": True,
+            },
+            "requested_target": targets.detach().cpu().clone(),
+            "persistent_endpoint": (
+                persistent_endpoint.detach().cpu().clone()
+            ),
+            "raw_apparent_endpoint": (
+                apparent_endpoint.detach().cpu().clone()
+            ),
+            "apparent_endpoint": apparent_endpoint.detach().cpu().clone(),
+            "accepted": result.accepted.detach().cpu().clone(),
+            "nonfinite": result.nonfinite.detach().cpu().clone(),
+            "budget_exhausted": (
+                result.budget_exhausted.detach().cpu().clone()
+            ),
+            "corrupt": population.corrupt.detach().cpu().clone(),
+            "structural_quad_eligible": structural.detach().cpu().clone(),
+            "structural_target_assignment_failure": (
+                (~structural).detach().cpu().clone()
+            ),
+            "exact_target_in_support": (
+                exact_support.detach().cpu().clone()
+            ),
+            "programming_eligible": (
+                programming_eligible.detach().cpu().clone()
+            ),
+            "target_below_lower_bound": below.detach().cpu().clone(),
+            "target_inside_bounds": (
+                (~below & ~above).detach().cpu().clone()
+            ),
+            "target_above_upper_bound": above.detach().cpu().clone(),
+            "acceptance_window_intersects_exact_support": (
+                acceptance_window_intersects_exact_support
+                .detach()
+                .cpu()
+                .clone()
+            ),
+            "persistent_within_tolerance": (
+                persistent_within_tolerance.detach().cpu().clone()
+            ),
+            "saturated": saturated.detach().cpu().clone(),
+            "set_count": result.set_count.detach().cpu().clone(),
+            "reset_count": result.reset_count.detach().cpu().clone(),
+            "total_pulses": result.total_pulses.detach().cpu().clone(),
+            "verify_count": result.verify_count.detach().cpu().clone(),
+            "reversals": result.reversals.detach().cpu().clone(),
+            "conditioning": {
+                "success": conditioning_success.detach().cpu().clone(),
+                "pulse_count": (
+                    conditioning["pulse_count"].detach().cpu().clone()
+                ),
+                "persistent_a": (
+                    conditioning["persistent_a"].detach().cpu().clone()
+                ),
+                "apparent_a": (
+                    conditioning["apparent_a"].detach().cpu().clone()
+                ),
+                "persistent_g": (
+                    conditioned_persistent.detach().cpu().clone()
+                ),
+                "apparent_g": conditioned_apparent.detach().cpu().clone(),
+                "seed": int(masks["conditioning_seed"].item()),
+                "generator_state_after": masks[
+                    "conditioning_generator_state_after"
+                ],
+            },
+            "persistent_a": plant.persistent_a.detach().cpu().clone(),
+            "apparent_a": plant.apparent_a.detach().cpu().clone(),
+            "generator_state_after_programming": generator.get_state()
+            .detach()
+            .cpu()
+            .clone(),
+            "endpoint_application_policy": (
+                IBM_RERAM_ENDPOINT_APPLICATION_POLICY
+            ),
+            "report": report,
+        }
+        return apparent_endpoint.to(dtype=targets.dtype), report, deployment
+
     def _pulse_resolved(
         self,
         targets: torch.Tensor,
         *,
         generator: torch.Generator,
     ) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any]]:
+        if self._config.target_mapping == "raw_active_p90_quad":
+            return self._pulse_resolved_raw_active(
+                targets,
+                generator=generator,
+            )
         population = self._population_on(targets.device)
         result, plant = self._run_exact_programming(
             targets,
@@ -2776,7 +4809,12 @@ class IbmReramHwaParameterModifier:
                 with torch.no_grad():
                     global_targets, targets, layout, mapping_report = self._targets()
                     generator = self._generator(stream, targets.device)
-                    if self._config.execution == "compact_endpoint":
+                    if self._config.execution == "mapped_target":
+                        endpoint, report, deployment = self._mapped_target(
+                            targets,
+                            mapping_report=mapping_report,
+                        )
+                    elif self._config.execution == "compact_endpoint":
                         endpoint, report, deployment = self._compact(
                             targets,
                             generator=generator,
@@ -2791,6 +4829,9 @@ class IbmReramHwaParameterModifier:
                         global_targets.detach().cpu().clone()
                     )
                     deployment["target_mapping_report"] = mapping_report
+                    deployment["reset_commissioning"] = (
+                        self.reset_commissioning_bundle
+                    )
                     self._last_report = {
                         **report,
                         "endpoint_application_policy": (
@@ -2811,6 +4852,14 @@ class IbmReramHwaParameterModifier:
                         "population_receipt_sha256": (
                             sha256_file(self._population_artifact_paths[1])
                             if self._population_artifact_paths is not None
+                            else None
+                        ),
+                        "reset_commissioning_receipt_sha256": (
+                            sha256_file(
+                                self._reset_commissioning_artifact_paths[1]
+                            )
+                            if self._reset_commissioning_artifact_paths
+                            is not None
                             else None
                         ),
                     }
@@ -2900,6 +4949,15 @@ class IbmReramHwaParameterModifier:
             saved_config.setdefault("target_mapping", "literal_global")
             saved_config.setdefault("dual_rail_layout_by_parameter", None)
             saved_config.setdefault("common_window_margin_fraction", 0.0)
+            saved_config.setdefault("reset_relative_mode", None)
+            saved_config.setdefault("reset_relative_contrast_step", None)
+            saved_config.setdefault("reset_read_samples", None)
+            saved_config.setdefault("reset_guard_standard_errors", None)
+            saved_config.setdefault("raw_active_mode", None)
+            saved_config.setdefault(
+                "raw_active_unsupported_quad_policy", None
+            )
+            saved_config.setdefault("forward_logit_gain", None)
         if state_dict["version"] != _STATE_VERSION or saved_config != asdict(
             self._config
         ):
@@ -2973,14 +5031,24 @@ def build_ibm_reram_hwa_modifier(
 
 __all__ = [
     "IBM_RERAM_ENDPOINT_APPLICATION_POLICY",
+    "IBM_OM_RAW_ACTIVE_A_MAX",
+    "IBM_OM_RAW_ACTIVE_A_MIN",
+    "IBM_OM_RAW_ACTIVE_COORDINATE_VERSION",
+    "IBM_OM_RAW_ACTIVE_D90",
+    "IBM_OM_RAW_ACTIVE_SCALE",
+    "IBM_OM_RAW_ACTIVE_TOLERANCE",
     "IbmReramArrayPopulation",
     "IbmReramHwaConfig",
     "IbmReramHwaParameterModifier",
+    "IbmReramResetCommissioning",
     "build_ibm_reram_hwa_modifier",
+    "commission_ibm_reram_reset_relative_baselines",
     "load_om_array_population",
     "map_ibm_reram_array_targets",
     "sample_om_array_population",
     "sample_om_array_population_external",
+    "sample_om_array_population_layout",
+    "sample_om_array_population_layout_external",
     "save_om_array_population",
     "validate_ibm_reram_target_mapping_preflight",
 ]

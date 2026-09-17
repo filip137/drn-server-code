@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1",
+  "title": "MNIST four-device IBM OM shared RESET-relative quantized HWA",
+  "hypothesis": "On an untouched repaired IBM OM array, nine-level quantization-aware HWA using one global RESET-relative contrast codebook will achieve higher apparent-forward test accuracy than a matched continuous shared-target HWA control because the minimum nonzero logical contrast is larger than the four-cell program-and-verify acceptance-error envelope.",
+  "motivation": "The completed four-device common-window pilot obtained 81.76 percent ideal mapped accuracy but only 62.98 percent apparent programmed accuracy. Its layer-1 logical contrast RMS was 0.008976 while apparent contrast-error RMS was 0.047501, and its target mapper consumed every assigned cell's sampled minimum and maximum. This study replaces that cell-specific affine mapping with commissioning information available on a newly deployed array: eight RESET-pulse/read observations per cell and one guarded shared RESET baseline per four-cell logical group. All arrays then use the same nine signed contrast levels with delta 0.095849. The development assignment is seed 84001; the assignment seed 85001 is not sampled until all development checkpoints are frozen. The study separates zero-update quantization, clean FP32 BPTT followed by quantized deployment, continuous shared-target HWA, and quantized QAT. It stops before Tiki-Taka, LoRA, or soft SET/RESET recovery, so a residual gap cannot by itself establish that on-chip training is required.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "train-zero-update-quantized",
+      "description": "Zero optimizer updates from the frozen full-span FP32 shadow, selected only through the nine-level development-array program-and-verify deployment.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/zero_update_quantized.json"]
+    },
+    {
+      "arm_id": "train-clean-bptt-quantized-deploy",
+      "description": "Ten epochs of clean FP32 BPTT followed by nine-level physical selection and deployment.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/clean_bptt_quantized_deploy.json"]
+    },
+    {
+      "arm_id": "train-continuous-shared-target-hwa",
+      "description": "Ten epochs of compact HWA with continuous contrasts on the same RESET-relative baseline and maximum range.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/continuous_hwa.json"]
+    },
+    {
+      "arm_id": "train-quantized-qat",
+      "description": "Ten epochs of compact endpoint HWA with the nine-level RESET-relative quantizer in every minibatch forward.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/quantized_qat.json"]
+    },
+    {
+      "arm_id": "deploy-zero-update-heldout",
+      "description": "Five pulse-resolved deployments of the frozen zero-update checkpoint on untouched repaired assignment seed 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85105.json"
+      ]
+    },
+    {
+      "arm_id": "deploy-clean-bptt-heldout",
+      "description": "Five matched nine-level deployments of the selected clean-BPTT checkpoint on untouched assignment seed 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85105.json"
+      ]
+    },
+    {
+      "arm_id": "deploy-continuous-hwa-heldout",
+      "description": "Five continuous shared-target deployments of the selected continuous-HWA checkpoint on untouched assignment seed 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_continuous_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_continuous_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_continuous_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_continuous_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_continuous_seed_85105.json"
+      ]
+    },
+    {
+      "arm_id": "deploy-quantized-qat-heldout",
+      "description": "Five nine-level deployments of the selected quantized-QAT checkpoint on untouched assignment seed 85001.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85101.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85102.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85103.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85104.json",
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_quantized_hwa/heldout_quantized_seed_85105.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Before any native run, verify the exact source checkpoint SHA-256 0865b16dbf504a902f42914c719ec1685e80189957b97a77d101efd85efbc4fb, frozen ReLU-teacher SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, device-model SHA-256 3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3, derived full-span checkpoint SHA-256 e9a603833a607aa6fd9060781a4ba9353e0bcf9a04265ef5afb118146b435acb, derivation-receipt SHA-256 5ff1d3a4e55e14f3220adf63f522f66ad460487bd8f5117185507916ae5ccd8d, and every prepared config hash. Every train command receives the same derived checkpoint through --weights, the same teacher through --teacher-weights, and the same device model through --device-model.",
+    "The full-span checkpoint must prove zero optimizer updates, exact source fractions 0.25 and 0.125, exact target fractions 1.0 and 1.0, no material clipping, the canonical two single-encoding tensor keys, and fixed gain 4.46683592150963. Replay must preserve the source signed logical matrices within FP32 tolerance before quantization.",
+    "Development roles must use counterfactual-repaired assignment seed 84001 with population fingerprint 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac. Compact training uses endpoint seed 84002 and pulse-resolved selection uses endpoint seed 84003. Training and selection must share the exact population, binding order, halves/paired layouts, RESET commissioning parameters, mapping mode, contrast step, and endpoint policy.",
+    "The authoritative commissioning path must apply and account for exactly eight RESET/read observations per cell, compute one guarded mean plus three-standard-error estimate per cell, take one shared maximum baseline over each canonical four-cell quad, and persist the observations, standard errors, baselines, tensor digests, layouts, pulse cost, and population fingerprint. Its target-construction artifact must contain no per-cell minimum or maximum; hidden bounds may appear only in the post-mapping physical-support audit and pulse plant.",
+    "The nine-level mapper must reconstruct one signed logical u per quad, use half-away-from-zero n=clamp(round(4u),-4,4), use delta=0.095849, and emit only signed contrasts n*delta and cell offsets from the fixed set {0, delta/2, delta, 3delta/2, 2delta}. The continuous control must use 4u*delta on the identical range. Neither path may clip a target to a hidden cell bound or the public [0,1] coordinate.",
+    "Before development training, the RESET-relative mapping preflight must cover exactly 158,800 cells and 39,700 quads, have finite targets inside [0,1], place at least 95 percent of quads fully inside hidden physical support, and record every below-bound, above-bound, corrupt-origin, and fallback cell. One exact cap-128 baseline programming canary must have at least 99 percent acceptance, at most one percent budget exhaustion, and no non-finite endpoint.",
+    "The zero-update arm must execute no optimizer update. Each other training arm must complete exactly ten epochs. Every checkpoint, including the clean-BPTT arm, must be selected by the highest mean apparent-forward student accuracy across exactly three fixed development-array program-and-verify repeats; strict improvement retains the earliest exact tie. Selection may not use KL or clean logical accuracy.",
+    "Quantized QAT and continuous HWA must use a compact programmed apparent endpoint in every minibatch forward, restore the clean continuous FP32 master before applying each ideal off-chip optimizer update, and never accumulate physical persistent state between minibatches. Their programming reports must distinguish compact covered cells from exact non-corrupt out-of-support fallback cells and preserve the apparent-forward/persistent-update-state endpoint policy.",
+    "Assignment seed 85001 must not be sampled, commissioned, preflighted, or used for checkpoint selection until all four development checkpoints and their hashes are frozen. Each selected checkpoint must then receive exactly five fresh pulse-resolved deployments on that one untouched assignment with predeclared endpoint seeds 85101 through 85105. The codebook, RESET-read count, guard, output gain, learning rates, and checkpoint epoch must not be adapted to held-out outcomes.",
+    "Every held-out deployment must cover all 10,000 test examples, use apparent programmed weights for inference, retain both current apparent and hidden persistent arrays plus population, commissioning, accepted/failure masks, pulse costs, RNG continuation, and exact selected-weight hash, and pass the same finite/support/programming gates. A structural support-gate failure is retained as a failed deployment result rather than repaired by inspecting per-cell ranges or substituting another assignment.",
+    "The study is complete only with one immutable valid development run for each of the four pipelines and all twenty declared held-out deployment runs under artifact-hash verification. Failed or partial attempts remain preserved. No Tiki-Taka, LoRA, soft SET/RESET update, cell reassignment after metrics, or additional endpoint seed is eligible evidence for this study."
+  ],
+  "analysis_plan": [
+    "The primary result is the mean held-out apparent-forward test accuracy of deploy-quantized-qat-heldout minus deploy-continuous-hwa-heldout across the five paired endpoint seeds. Report the signed difference, the five paired differences, mean, standard deviation, and 95-percent paired bootstrap interval. The hypothesis is supported only if the mean difference is at least two percentage points and quantized-QAT mean accuracy is above chance by at least 15 percentage points.",
+    "Report a complete decomposition for every selected checkpoint: clean full-span FP32 accuracy, ideal RESET-relative mapped-target accuracy, actual apparent programmed accuracy, teacher agreement, KL, raw and calibrated score RMS, fixed forward gain, and apparent prediction-flip rate relative to its ideal mapped state. Do not label hidden persistent-state inference accuracy as deployment accuracy.",
+    "Use the zero-update, clean-BPTT, continuous-HWA, and quantized-QAT pipelines to separate initial nine-level quantization loss, ordinary off-chip retraining, continuous hardware exposure, and quantization-aware exposure. Compare each pipeline only after its own declared mapper; do not compare a continuous ideal target to a quantized physical endpoint.",
+    "For both layers and every deployment report logical-code histograms, nonzero contrast RMS and minimum magnitude, apparent contrast-error RMS, error-to-signal ratio and dB SNR, sign-flip fraction, output margins and prediction flips. Test the mechanism directly by reporting whether the quantized minimum nonzero contrast exceeds both accepted-cell and all-cell contrast-error RMS.",
+    "Report commissioning and programming cost separately: RESET commissioning pulses and reads, compact versus exact-fallback counts, SET/RESET/total target-programming pulses, verify reads, reversals, acceptance, budget exhaustion, saturation, clipping, corrupt-origin repair counts, and below/above-support cells. Commissioning cost is never folded into the cap-128 target-programming budget.",
+    "Verify transfer without hidden range access by showing that target reconstruction from the durable commissioning bundle, clean checkpoint, layouts, mode, and global delta is bit-exact while removing hidden population bounds from the mapper input. Hidden bounds remain allowed only to reproduce the physical audit and exact pulse trajectory.",
+    "This study has no on-chip recovery comparison. If every off-chip arm remains below the predeclared deployment target, record that as motivation for a new matched recovery study; do not conclude that Tiki-Taka, LoRA, or soft SET/RESET is necessary from these arms alone."
+  ]
+}

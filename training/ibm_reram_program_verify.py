@@ -788,6 +788,167 @@ class _IbmReramControllerPort:
             self.__plant.pulse(active_direction)
 
 
+class IbmReramRawActivePlant(IbmReramPlant):
+    """Pulse plant whose persistent state is the single active state ``a``.
+
+    ``IbmReramPlant`` reproduces AIHWKit's tile-facing reference-relative
+    coordinate ``w=a-r``.  This variant evaluates the same sampled pulse
+    response directly in ``a`` and deliberately never reads ``reference``.
+    The controller sees one caller-declared array-wide affine coordinate
+    ``g=(a-coordinate_min)/coordinate_scale``.
+    """
+
+    def __init__(
+        self,
+        population: IbmReramPopulation,
+        *,
+        seeds: Sequence[int],
+        coordinate_min: float,
+        coordinate_scale: float,
+        device: torch.device | str = "cpu",
+        maximum_random_draws: int | None = None,
+        normal_draws: torch.Tensor | None = None,
+    ) -> None:
+        if (
+            not math.isfinite(coordinate_min)
+            or not math.isfinite(coordinate_scale)
+            or coordinate_scale <= 0.0
+        ):
+            raise ValueError(
+                "Expected a finite raw-active coordinate minimum and a "
+                "positive finite scale. Provided value: "
+                f"minimum={coordinate_min!r}, scale={coordinate_scale!r}."
+            )
+        self.coordinate_min = float(coordinate_min)
+        self.coordinate_scale = float(coordinate_scale)
+        super().__init__(
+            population,
+            seeds=seeds,
+            device=device,
+            maximum_random_draws=maximum_random_draws,
+            normal_draws=normal_draws,
+        )
+
+    @property
+    def persistent_a(self) -> torch.Tensor:
+        return self.persistent
+
+    @property
+    def apparent_a(self) -> torch.Tensor:
+        return self.apparent
+
+    def pulse(self, directions: torch.Tensor) -> None:
+        """Apply one raw-active pulse without subtracting a reference state."""
+
+        direction = torch.as_tensor(
+            directions, dtype=torch.int8, device=self.device
+        )
+        if direction.shape != self.persistent.shape or bool(
+            torch.any((direction < -1) | (direction > 1))
+        ):
+            raise ValueError(
+                "Expected directions to be a vector containing only -1, 0, "
+                f"or 1. Provided value: shape={tuple(direction.shape)!r}."
+            )
+        active = direction != 0
+        if not bool(torch.any(active)):
+            return
+
+        population = self.population
+        current = self.persistent
+        cycle = self._normal(active)
+        up = direction > 0
+        down = direction < 0
+        candidate = current.clone()
+        if bool(torch.any(up)):
+            normalized = torch.where(
+                population.max_bound > 0.0,
+                current / population.max_bound,
+                torch.zeros_like(current),
+            )
+            response = population.dwmin_up * (
+                1.0
+                - normalized
+                + population.dw_min_std * cycle
+            )
+            candidate[up] = current[up] + response[up]
+        if bool(torch.any(down)):
+            normalized = torch.where(
+                population.min_bound < 0.0,
+                current / population.min_bound,
+                torch.zeros_like(current),
+            )
+            response = population.dwmin_down * (
+                1.0
+                - normalized
+                + population.dw_min_std * cycle
+            )
+            candidate[down] = current[down] - response[down]
+        candidate = torch.maximum(candidate, population.min_bound)
+        candidate = torch.minimum(candidate, population.max_bound)
+        self.persistent[active] = candidate[active]
+
+        write_scale = population.write_noise_std * population.nominal_dw_min
+        if write_scale > 0.0:
+            write = self._normal(active)
+            self.apparent[active] = (
+                self.persistent + float(write_scale) * write
+            )[active]
+        else:
+            self.apparent[active] = self.persistent[active]
+
+    def controller_port(self) -> VerifyPort:
+        return _IbmReramRawActiveControllerPort(self)
+
+
+class _IbmReramRawActiveControllerPort:
+    """Capability-limited apparent-``g`` view of a raw-active plant."""
+
+    def __init__(self, plant: IbmReramRawActivePlant) -> None:
+        self.__plant = plant
+
+    @property
+    def size(self) -> int:
+        return self.__plant.size
+
+    def verify(self) -> torch.Tensor:
+        return (
+            self.__plant.apparent.clone() - self.__plant.coordinate_min
+        ) / self.__plant.coordinate_scale
+
+    def apply_identical_pulses(
+        self,
+        directions: torch.Tensor,
+        counts: torch.Tensor,
+    ) -> None:
+        direction = torch.as_tensor(
+            directions, dtype=torch.int8, device=self.__plant.device
+        )
+        count = torch.as_tensor(
+            counts, dtype=torch.int64, device=self.__plant.device
+        )
+        if direction.shape != (self.size,) or count.shape != (self.size,):
+            raise ValueError(
+                "Expected directions and counts to match the raw-active port "
+                f"size {self.size}. Provided value: direction="
+                f"{tuple(direction.shape)!r}, count={tuple(count.shape)!r}."
+            )
+        if bool(torch.any(count < 0)):
+            raise ValueError(
+                "Expected pulse counts to be non-negative. Provided value: "
+                f"minimum={int(count.min().item())}."
+            )
+        maximum = int(count.max().item()) if count.numel() else 0
+        for pulse_index in range(maximum):
+            self.__plant.pulse(
+                torch.where(
+                    count > pulse_index,
+                    direction,
+                    torch.zeros_like(direction),
+                )
+            )
+
+
 @dataclass(frozen=True)
 class ConditioningResult:
     success: torch.Tensor
@@ -1219,6 +1380,7 @@ __all__ = [
     "HFO2_PRESET",
     "IbmReramPlant",
     "IbmReramPopulation",
+    "IbmReramRawActivePlant",
     "OM_PRESET",
     "PUBLISHED_CORRUPT_PROBABILITY",
     "PopulationStepEstimator",

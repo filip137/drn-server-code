@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-raw-active-p90-canary-20260826-v1",
+  "title": "Raw-active p90 common-differential device-wise P&V canary",
+  "hypothesis": "The frozen assignment-84001 population can execute boundary-conditioned independent-device one-pulse program-and-verify for the seven-level p90 common-differential mapper without a non-finite endpoint or hidden reference use.",
+  "motivation": "This operational canary checks the newly versioned raw-active coordinate and controller before any learning-rate screen or production training. It is not scientific evidence about accuracy or on-chip recovery.",
+  "evidence_class": "model_based_aihwkit_preset_operational_canary",
+  "arms": [
+    {
+      "arm_id": "zero-update-quantized-canary",
+      "description": "Zero optimizer updates and one exact development-array quantized deployment evaluated on two validation minibatches.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/canary_zero_update_quantized.json"]
+    }
+  ],
+  "completion_criteria": [
+    "Use raw-active zero-update checkpoint SHA-256 97785347e39bfaf14026dc06bf8b28a7e0e30711543e7a566baf915022c860d5, teacher SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, and device-model SHA-256 3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3.",
+    "The mapping must contain 39,700 quads, exactly 35,730 structurally eligible quads, D90=0.10354409442884083, one within-quad baseline, seven global differential levels, and no reference consumption.",
+    "Condition every cell from raw a=0 with RESET pulses until four consecutive raw-state changes below 2e-6 or the 4096-pulse cap, then independently program only structurally and exactly supported cells with the one-pulse controller and a 128-pulse target budget.",
+    "Persist conditioning, target-programming, apparent and persistent endpoint, eligibility, tolerance, population, and RNG-continuation fields. Retain the 10-percent unsupported cells as explicit structural failures.",
+    "The canary passes operationally only with finite endpoints for all cells and a complete run receipt. No accuracy threshold is attached to this two-minibatch canary."
+  ],
+  "analysis_plan": [
+    "Report structural, exact-support, conditioning-success, programming-eligible, apparent-accepted, and accepted-persistent-within-tolerance counts separately.",
+    "Report RESET conditioning pulses separately from SET/RESET target-programming pulses, verify reads, reversals, and budget exhaustion.",
+    "Do not interpret this canary as a comparison of continuous HWA, QAT, or on-chip training."
+  ]
+}

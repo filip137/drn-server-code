@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -38,10 +39,26 @@ MEASURED_COHORT_A_BACKENDS = frozenset(
 )
 MEASURED_COHORT_B_BACKENDS = frozenset({"measured_cohort_b"})
 MEASURED_BACKENDS = MEASURED_COHORT_A_BACKENDS | MEASURED_COHORT_B_BACKENDS
+IBM_OM_DEPLOYED_RECOVERY_BACKEND = "ibm_om_deployed_recovery"
+IBM_OM_DEPLOYED_RECOVERY_TTV2_AIHWKIT_METHOD = (
+    "ttv2_aihwkit_1p1_minibatch_equation"
+)
+IBM_OM_DEPLOYED_RECOVERY_METHODS = frozenset(
+    {
+        "rail_refresh",
+        "direct_pulse",
+        "tiki_taka",
+        "ttv2",
+        IBM_OM_DEPLOYED_RECOVERY_TTV2_AIHWKIT_METHOD,
+    }
+)
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS = frozenset(
     {
         "dual_rail_quad_common_window",
         "differential_pair_common_window",
+        "shared_reset_relative_quad",
+        "raw_active_p90_quad",
     }
 )
 _MEASURED_KEYS = {
@@ -129,6 +146,7 @@ class StudentTrainSettings:
     max_validation_batches: int | None
     minimum_relative_kl_improvement: float
     selection_evaluation: str
+    selection_metric: str
     selection_noise_repeats: int
     weight_modifier: UpdateBackendSettings
     selection_weight_modifier: UpdateBackendSettings
@@ -632,7 +650,25 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             "dual_rail_layout_by_parameter",
             "common_window_margin_fraction",
         }
-        _keys(parameters, parameters_path, required, mapping_fields)
+        reset_relative_fields = {
+            "reset_relative_mode",
+            "reset_relative_contrast_step",
+            "reset_read_samples",
+            "reset_guard_standard_errors",
+        }
+        raw_active_fields = {
+            "raw_active_mode",
+            "raw_active_unsupported_quad_policy",
+        }
+        _keys(
+            parameters,
+            parameters_path,
+            required,
+            mapping_fields
+            | reset_relative_fields
+            | raw_active_fields
+            | {"forward_logit_gain"},
+        )
         provided_mapping_fields = mapping_fields & set(parameters)
         if provided_mapping_fields and provided_mapping_fields != mapping_fields:
             raise config_error(
@@ -657,13 +693,17 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             "literal_global",
             "dual_rail_quad_common_window",
             "differential_pair_common_window",
+            "shared_reset_relative_quad",
+            "raw_active_p90_quad",
         }:
             raise config_error(
                 f"{parameters_path}.target_mapping",
                 "to be 'literal_global' or "
                 "an array-specific common-window mapping "
-                "('dual_rail_quad_common_window' or "
-                "'differential_pair_common_window')",
+                "('dual_rail_quad_common_window', "
+                "'differential_pair_common_window', or "
+                "'shared_reset_relative_quad', or "
+                "'raw_active_p90_quad')",
                 target_mapping,
             )
         margin = _number(
@@ -678,7 +718,11 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             )
         normalized_parameters["common_window_margin_fraction"] = margin
         raw_layouts = normalized_parameters["dual_rail_layout_by_parameter"]
-        if target_mapping == "dual_rail_quad_common_window":
+        if target_mapping in {
+            "dual_rail_quad_common_window",
+            "shared_reset_relative_quad",
+            "raw_active_p90_quad",
+        }:
             expected_layouts = {
                 "base.dense_weight.0": "halves",
                 "base.dense_weight.1": "paired",
@@ -693,6 +737,108 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
             normalized_parameters["dual_rail_layout_by_parameter"] = dict(
                 raw_layouts
             )
+        if target_mapping == "shared_reset_relative_quad":
+            if margin != 0.0:
+                raise config_error(
+                    f"{parameters_path}.common_window_margin_fraction",
+                    "to equal 0.0 for shared_reset_relative_quad",
+                    margin,
+                )
+            if not reset_relative_fields <= set(parameters):
+                raise config_error(
+                    parameters_path,
+                    "to provide all RESET-relative commissioning fields for "
+                    "shared_reset_relative_quad",
+                    dict(parameters),
+                )
+            mode = normalized_parameters["reset_relative_mode"]
+            if mode not in {"continuous", "quantized_9_level"}:
+                raise config_error(
+                    f"{parameters_path}.reset_relative_mode",
+                    "to be 'continuous' or 'quantized_9_level'",
+                    mode,
+                )
+            step = _number(
+                normalized_parameters["reset_relative_contrast_step"],
+                f"{parameters_path}.reset_relative_contrast_step",
+            )
+            if step <= 0.0 or step > 0.5:
+                raise config_error(
+                    f"{parameters_path}.reset_relative_contrast_step",
+                    "to be in (0, 0.5]",
+                    step,
+                )
+            normalized_parameters["reset_relative_contrast_step"] = step
+            normalized_parameters["reset_read_samples"] = _integer(
+                normalized_parameters["reset_read_samples"],
+                f"{parameters_path}.reset_read_samples",
+                minimum=2,
+            )
+            guard = _number(
+                normalized_parameters["reset_guard_standard_errors"],
+                f"{parameters_path}.reset_guard_standard_errors",
+            )
+            if guard < 0.0:
+                raise config_error(
+                    f"{parameters_path}.reset_guard_standard_errors",
+                    "to be non-negative",
+                    guard,
+                )
+            normalized_parameters["reset_guard_standard_errors"] = guard
+            normalized_parameters.setdefault("forward_logit_gain", None)
+        elif target_mapping == "raw_active_p90_quad":
+            if margin != 0.0:
+                raise config_error(
+                    f"{parameters_path}.common_window_margin_fraction",
+                    "to equal 0.0 for raw_active_p90_quad",
+                    margin,
+                )
+            if not raw_active_fields <= set(parameters):
+                raise config_error(
+                    parameters_path,
+                    "to provide raw_active_mode and "
+                    "raw_active_unsupported_quad_policy for "
+                    "raw_active_p90_quad",
+                    dict(parameters),
+                )
+            mode = normalized_parameters["raw_active_mode"]
+            if mode not in {"continuous", "quantized_7_level"}:
+                raise config_error(
+                    f"{parameters_path}.raw_active_mode",
+                    "to be 'continuous' or 'quantized_7_level'",
+                    mode,
+                )
+            policy = normalized_parameters[
+                "raw_active_unsupported_quad_policy"
+            ]
+            if policy != "structural_failure":
+                raise config_error(
+                    f"{parameters_path}.raw_active_unsupported_quad_policy",
+                    "to equal 'structural_failure' until a donor-stream "
+                    "assignment protocol is versioned",
+                    policy,
+                )
+            if reset_relative_fields & set(parameters):
+                raise config_error(
+                    parameters_path,
+                    "to omit RESET-relative fields for raw_active_p90_quad",
+                    dict(parameters),
+                )
+            normalized_parameters.setdefault("forward_logit_gain", None)
+        elif reset_relative_fields & set(parameters):
+            raise config_error(
+                parameters_path,
+                "to omit RESET-relative commissioning fields unless "
+                "target_mapping is shared_reset_relative_quad",
+                dict(parameters),
+            )
+        elif raw_active_fields & set(parameters):
+            raise config_error(
+                parameters_path,
+                "to omit raw-active fields unless target_mapping is "
+                "raw_active_p90_quad",
+                dict(parameters),
+            )
         elif target_mapping == "differential_pair_common_window":
             if raw_layouts is not None:
                 raise config_error(
@@ -702,20 +848,37 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
                     "catalog",
                     raw_layouts,
                 )
-        elif raw_layouts is not None or margin != 0.0:
+        elif target_mapping == "literal_global" and (
+            raw_layouts is not None or margin != 0.0
+        ):
             raise config_error(
                 parameters_path,
                 "to use null dual_rail_layout_by_parameter and zero "
                 "common_window_margin_fraction for literal_global",
                 dict(normalized_parameters),
             )
+        if "forward_logit_gain" in normalized_parameters:
+            raw_gain = normalized_parameters["forward_logit_gain"]
+            if raw_gain is not None:
+                gain = _number(
+                    raw_gain,
+                    f"{parameters_path}.forward_logit_gain",
+                )
+                if gain <= 0.0:
+                    raise config_error(
+                        f"{parameters_path}.forward_logit_gain",
+                        "to be null or positive",
+                        gain,
+                    )
+                normalized_parameters["forward_logit_gain"] = gain
+        raw_active = target_mapping == "raw_active_p90_quad"
         exact = {
             "preset": "reram_array_om",
-            "controller": "adaptive",
+            "controller": "one_pulse" if raw_active else "adaptive",
             "start_protocol": "lower_to_target",
             "tolerance_step_ratio": 0.5,
             "maximum_program_pulses": 128,
-            "endpoint_policy": "clip_0_1",
+            "endpoint_policy": "preserve" if raw_active else "clip_0_1",
             "target_out_of_support": "error",
         }
         for name, expected in exact.items():
@@ -726,12 +889,30 @@ def _parse_weight_modifier(value: Any, path: str) -> UpdateBackendSettings:
                     normalized_parameters[name],
                 )
         if normalized_parameters["execution"] not in {
+            "mapped_target",
             "compact_endpoint",
             "pulse_resolved",
         }:
             raise config_error(
                 f"{parameters_path}.execution",
-                "to be 'compact_endpoint' or 'pulse_resolved'",
+                "to be 'mapped_target', 'compact_endpoint', or "
+                "'pulse_resolved'",
+                normalized_parameters["execution"],
+            )
+        if (
+            normalized_parameters["execution"] == "mapped_target"
+            and not raw_active
+        ):
+            raise config_error(
+                f"{parameters_path}.execution",
+                "to use mapped_target only for raw_active_p90_quad",
+                normalized_parameters["execution"],
+            )
+        if raw_active and normalized_parameters["execution"] == "compact_endpoint":
+            raise config_error(
+                f"{parameters_path}.execution",
+                "not to reuse the historical q-coordinate compact endpoint "
+                "model for raw_active_p90_quad",
                 normalized_parameters["execution"],
             )
         if normalized_parameters["corruption_policy"] not in {
@@ -843,6 +1024,519 @@ def _parse_program_verify(value: Any, path: str) -> Mapping[str, Any]:
     )
 
 
+def _parse_optional_seed(value: Any, path: str) -> int | None:
+    if value is None:
+        return None
+    result = _integer(value, path, minimum=0)
+    if result >= 2**63:
+        raise config_error(path, "to be an integer in [0, 2**63)", result)
+    return result
+
+
+def _parse_optional_positive(value: Any, path: str) -> float | None:
+    if value is None:
+        return None
+    result = _number(value, path)
+    if result <= 0.0:
+        raise config_error(path, "to be a positive finite number or null", value)
+    return result
+
+
+def _parse_ibm_om_deployed_recovery(value: Any, path: str) -> Mapping[str, Any]:
+    raw = _object(value, path)
+    keys = {
+        "method",
+        "slow_pulse_budget_per_cell",
+        "pulse_step_ratio",
+        "update_seed",
+        "allow_off_grid",
+        "recalibrate_logit_gain_each_epoch",
+        "terminal_epoch",
+        "source_forward_logit_gain",
+        "expected_source_weights_sha256",
+        "expected_source_selection_epoch",
+        "expected_device_model_sha256",
+        "expected_assignment_seed",
+        "expected_endpoint_seed",
+        "expected_target_mapping",
+        "expected_reset_relative_mode",
+        "expected_reset_relative_contrast_step",
+        "expected_corruption_policy",
+        "expected_reset_read_samples",
+        "expected_reset_guard_standard_errors",
+        "source_dual_rail_layout_by_parameter",
+        "direct_probability_calibration_batches",
+        "direct_probability_scale",
+        "fast_backend",
+        "fast_assignment_seed",
+        "fast_endpoint_seed",
+        "fast_reset_read_samples",
+        "fast_reset_guard_standard_errors",
+    }
+    optional_keys = {
+        "direct_gradient_magnitude_percentile",
+        "direct_probability_scale_source_report_sha256",
+        "ttv2_transfer_every",
+        "ttv2_gamma0",
+        "ttv2_fast_update_model",
+        "ttv2_fast_weight_limit",
+        "ttv2_scan_mode",
+        "ttv2_buffer_threshold",
+        "ttv2_buffer_residual_mode",
+        "ttv2_fast_lr_by_parameter",
+        "ttv2_transfer_lr",
+        "ttv2_scale_transfer_lr",
+        "ttv2_units_in_mbatch",
+        "ttv2_auto_scale",
+        "ttv2_fast_granularity_by_parameter",
+        "ttv2_buffer_granularity",
+        "ttv2_auto_granularity",
+        "ttv2_correct_gradient_magnitudes",
+        "ttv2_desired_bl",
+        "ttv2_momentum",
+        "ttv2_forget_buffer",
+        "ttv2_cap_scope",
+        "ttv2_cursor_policy",
+        "ttv2_in_chop_probability",
+    }
+    _keys(raw, path, keys, optional_keys)
+    method = raw["method"]
+    if method not in IBM_OM_DEPLOYED_RECOVERY_METHODS:
+        raise config_error(
+            f"{path}.method",
+            "to be 'rail_refresh', 'direct_pulse', 'tiki_taka', 'ttv2', "
+            "or 'ttv2_aihwkit_1p1_minibatch_equation'",
+            method,
+        )
+    budget = _number(raw["slow_pulse_budget_per_cell"], f"{path}.slow_pulse_budget_per_cell")
+    if budget not in {0.1, 1.0, 4.0}:
+        raise config_error(
+            f"{path}.slow_pulse_budget_per_cell",
+            "to equal 0.1, 1, or 4",
+            budget,
+        )
+    pulse_step = _number(raw["pulse_step_ratio"], f"{path}.pulse_step_ratio")
+    if pulse_step != 0.04745:
+        raise config_error(f"{path}.pulse_step_ratio", "to equal 0.04745", pulse_step)
+    update_seed = _parse_optional_seed(raw["update_seed"], f"{path}.update_seed")
+    if update_seed is None:
+        raise config_error(f"{path}.update_seed", "to be an integer seed", None)
+    exact = {
+        "allow_off_grid": True,
+        "recalibrate_logit_gain_each_epoch": True,
+        "expected_target_mapping": "shared_reset_relative_quad",
+        "expected_reset_relative_mode": "quantized_9_level",
+        "expected_reset_relative_contrast_step": 0.095849,
+        "expected_corruption_policy": "counterfactual_repaired",
+        "expected_reset_read_samples": 8,
+        "expected_reset_guard_standard_errors": 3.0,
+    }
+    for name, expected in exact.items():
+        if raw[name] != expected:
+            raise config_error(f"{path}.{name}", f"to equal {expected!r}", raw[name])
+    terminal_epoch = _integer(raw["terminal_epoch"], f"{path}.terminal_epoch", minimum=1)
+    source_gain = _number(raw["source_forward_logit_gain"], f"{path}.source_forward_logit_gain")
+    if source_gain <= 0.0:
+        raise config_error(f"{path}.source_forward_logit_gain", "to be positive", source_gain)
+    digests = {}
+    for name in ("expected_source_weights_sha256", "expected_device_model_sha256"):
+        digest = raw[name]
+        if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+            raise config_error(f"{path}.{name}", "to be a lowercase SHA-256 digest", digest)
+        digests[name] = digest
+    selection_epoch = _integer(
+        raw["expected_source_selection_epoch"],
+        f"{path}.expected_source_selection_epoch",
+        minimum=-1,
+    )
+    assignment_seed = _parse_optional_seed(raw["expected_assignment_seed"], f"{path}.expected_assignment_seed")
+    endpoint_seed = _parse_optional_seed(raw["expected_endpoint_seed"], f"{path}.expected_endpoint_seed")
+    assert assignment_seed is not None and endpoint_seed is not None
+    source_layouts = _object(
+        raw["source_dual_rail_layout_by_parameter"],
+        f"{path}.source_dual_rail_layout_by_parameter",
+    )
+    expected_source_layouts = {
+        "base.dense_weight.0": "halves",
+        "base.dense_weight.1": "paired",
+    }
+    if source_layouts != expected_source_layouts:
+        raise config_error(
+            f"{path}.source_dual_rail_layout_by_parameter",
+            f"to equal {expected_source_layouts!r}",
+            source_layouts,
+        )
+
+    calibration_batches = raw["direct_probability_calibration_batches"]
+    probability_scale = _parse_optional_positive(raw["direct_probability_scale"], f"{path}.direct_probability_scale")
+    gradient_percentile = raw.get("direct_gradient_magnitude_percentile")
+    scale_source_digest = raw.get(
+        "direct_probability_scale_source_report_sha256"
+    )
+    if method == "direct_pulse":
+        calibration_batches = _integer(
+            calibration_batches,
+            f"{path}.direct_probability_calibration_batches",
+            minimum=1,
+        )
+        if calibration_batches != 64:
+            raise config_error(
+                f"{path}.direct_probability_calibration_batches",
+                "to equal the frozen 64-minibatch calibration cohort",
+                calibration_batches,
+            )
+        if gradient_percentile is not None:
+            gradient_percentile = _number(
+                gradient_percentile,
+                f"{path}.direct_gradient_magnitude_percentile",
+            )
+            if gradient_percentile not in {90.0, 95.0, 99.0}:
+                raise config_error(
+                    f"{path}.direct_gradient_magnitude_percentile",
+                    "to equal 90, 95, or 99 when provided",
+                    gradient_percentile,
+                )
+        if probability_scale is None:
+            if scale_source_digest is not None:
+                raise config_error(
+                    f"{path}.direct_probability_scale_source_report_sha256",
+                    "to be omitted when direct_probability_scale is null",
+                    scale_source_digest,
+                )
+        elif (
+            not isinstance(scale_source_digest, str)
+            or _SHA256.fullmatch(scale_source_digest) is None
+        ):
+            raise config_error(
+                f"{path}.direct_probability_scale_source_report_sha256",
+                "to be the source recovery-report SHA-256 when using a frozen scale",
+                scale_source_digest,
+            )
+    elif any(
+        value is not None
+        for value in (
+            calibration_batches,
+            probability_scale,
+            gradient_percentile,
+            scale_source_digest,
+        )
+    ):
+        raise config_error(
+            path,
+            "to set direct probability and gradient-gate fields to null outside direct_pulse",
+            dict(raw),
+        )
+
+    fast_backend = raw["fast_backend"]
+    fast_assignment_seed = _parse_optional_seed(raw["fast_assignment_seed"], f"{path}.fast_assignment_seed")
+    fast_endpoint_seed = _parse_optional_seed(raw["fast_endpoint_seed"], f"{path}.fast_endpoint_seed")
+    fast_read_samples = raw["fast_reset_read_samples"]
+    fast_guard = raw["fast_reset_guard_standard_errors"]
+    ttv2_methods = {
+        "ttv2",
+        IBM_OM_DEPLOYED_RECOVERY_TTV2_AIHWKIT_METHOD,
+    }
+    if method not in {"tiki_taka", *ttv2_methods}:
+        if any(item is not None for item in (fast_backend, fast_assignment_seed, fast_endpoint_seed, fast_read_samples, fast_guard)):
+            raise config_error(
+                path,
+                "to set every fast-array field to null outside tiki_taka/TTv2",
+                dict(raw),
+            )
+    elif fast_backend == "ideal":
+        if any(item is not None for item in (fast_assignment_seed, fast_endpoint_seed, fast_read_samples, fast_guard)):
+            raise config_error(path, "to omit physical fast-array fields for the ideal backend", dict(raw))
+    elif fast_backend == "physical_om" and method == "tiki_taka":
+        if fast_assignment_seed is None or fast_endpoint_seed is None:
+            raise config_error(path, "to provide physical fast-array assignment and endpoint seeds", dict(raw))
+        fast_read_samples = _integer(fast_read_samples, f"{path}.fast_reset_read_samples", minimum=2)
+        fast_guard = _number(fast_guard, f"{path}.fast_reset_guard_standard_errors")
+        if fast_guard < 0.0:
+            raise config_error(f"{path}.fast_reset_guard_standard_errors", "to be non-negative", fast_guard)
+    else:
+        raise config_error(
+            f"{path}.fast_backend",
+            "to be 'ideal' for TTv2 methods or 'ideal'/'physical_om' "
+            "for legacy tiki_taka",
+            fast_backend,
+        )
+
+    common_ttv2_names = (
+        "ttv2_transfer_every",
+        "ttv2_fast_update_model",
+        "ttv2_fast_weight_limit",
+        "ttv2_scan_mode",
+        "ttv2_buffer_threshold",
+    )
+    legacy_ttv2_names = (
+        "ttv2_gamma0",
+        "ttv2_buffer_residual_mode",
+    )
+    aihwkit_ttv2_names = (
+        "ttv2_fast_lr_by_parameter",
+        "ttv2_transfer_lr",
+        "ttv2_scale_transfer_lr",
+        "ttv2_units_in_mbatch",
+        "ttv2_auto_scale",
+        "ttv2_fast_granularity_by_parameter",
+        "ttv2_buffer_granularity",
+        "ttv2_auto_granularity",
+        "ttv2_correct_gradient_magnitudes",
+        "ttv2_desired_bl",
+        "ttv2_momentum",
+        "ttv2_forget_buffer",
+        "ttv2_cap_scope",
+        "ttv2_cursor_policy",
+        "ttv2_in_chop_probability",
+    )
+    normalized_ttv2: dict[str, Any] = {}
+    if method in ttv2_methods:
+        transfer_every = _integer(
+            raw.get("ttv2_transfer_every"),
+            f"{path}.ttv2_transfer_every",
+            minimum=1,
+        )
+        if transfer_every != 1:
+            raise config_error(
+                f"{path}.ttv2_transfer_every",
+                "to equal the predeclared one-minibatch transfer period",
+                transfer_every,
+            )
+        fast_update_model = raw.get("ttv2_fast_update_model")
+        if fast_update_model != "symmetric_soft_bounds":
+            raise config_error(
+                f"{path}.ttv2_fast_update_model",
+                "to equal 'symmetric_soft_bounds'",
+                fast_update_model,
+            )
+        fast_weight_limit = _number(
+            raw.get("ttv2_fast_weight_limit"),
+            f"{path}.ttv2_fast_weight_limit",
+        )
+        if fast_weight_limit != 1.0:
+            raise config_error(
+                f"{path}.ttv2_fast_weight_limit",
+                "to equal 1",
+                fast_weight_limit,
+            )
+        scan_mode = raw.get("ttv2_scan_mode")
+        if scan_mode != "dual_rail_input_pair":
+            raise config_error(
+                f"{path}.ttv2_scan_mode",
+                "to equal 'dual_rail_input_pair'",
+                scan_mode,
+            )
+        buffer_threshold = _number(
+            raw.get("ttv2_buffer_threshold"),
+            f"{path}.ttv2_buffer_threshold",
+        )
+        if buffer_threshold != 1.0:
+            raise config_error(
+                f"{path}.ttv2_buffer_threshold",
+                "to equal one slow-pulse unit",
+                buffer_threshold,
+            )
+
+    if method == "ttv2":
+        provided = {
+            name: raw[name]
+            for name in aihwkit_ttv2_names
+            if name in raw
+        }
+        if provided:
+            raise config_error(
+                path,
+                "to omit AIHWKit-1.1 TTv2 fields for legacy method='ttv2'",
+                provided,
+            )
+        gamma0 = _number(raw.get("ttv2_gamma0"), f"{path}.ttv2_gamma0")
+        if gamma0 != 10000.0:
+            raise config_error(
+                f"{path}.ttv2_gamma0",
+                "to equal the predeclared 10000 transfer-scale constant",
+                gamma0,
+            )
+        residual_mode = raw.get("ttv2_buffer_residual_mode")
+        if residual_mode != "subtract_dispatched":
+            raise config_error(
+                f"{path}.ttv2_buffer_residual_mode",
+                "to equal 'subtract_dispatched'",
+                residual_mode,
+            )
+    elif method == IBM_OM_DEPLOYED_RECOVERY_TTV2_AIHWKIT_METHOD:
+        forbidden = {
+            name: raw[name]
+            for name in legacy_ttv2_names
+            if name in raw
+        }
+        if forbidden:
+            raise config_error(
+                path,
+                "to omit ttv2_gamma0 and ttv2_buffer_residual_mode for "
+                "method='ttv2_aihwkit_1p1_minibatch_equation'",
+                forbidden,
+            )
+        missing = sorted(name for name in aihwkit_ttv2_names if name not in raw)
+        if missing:
+            raise config_error(
+                path,
+                "to contain every required AIHWKit-1.1 TTv2 field "
+                f"{sorted(aihwkit_ttv2_names)!r}",
+                dict(raw),
+            )
+
+        expected_parameter_keys = set(expected_source_layouts)
+
+        def positive_parameter_mapping(name: str) -> dict[str, float]:
+            mapping = raw[name]
+            if not isinstance(mapping, Mapping) or set(mapping) != expected_parameter_keys:
+                raise config_error(
+                    f"{path}.{name}",
+                    "to map exactly the source layout keys "
+                    f"{sorted(expected_parameter_keys)!r} to positive finite numbers",
+                    mapping,
+                )
+            parsed = {
+                key: _number(mapping[key], f"{path}.{name}.{key}")
+                for key in sorted(expected_parameter_keys)
+            }
+            if any(value <= 0.0 for value in parsed.values()):
+                raise config_error(
+                    f"{path}.{name}",
+                    "to map exactly the source layout keys "
+                    f"{sorted(expected_parameter_keys)!r} to positive finite numbers",
+                    mapping,
+                )
+            return parsed
+
+        normalized_ttv2["ttv2_fast_lr_by_parameter"] = (
+            positive_parameter_mapping("ttv2_fast_lr_by_parameter")
+        )
+        normalized_ttv2["ttv2_fast_granularity_by_parameter"] = (
+            positive_parameter_mapping("ttv2_fast_granularity_by_parameter")
+        )
+        for name in (
+            "ttv2_transfer_lr",
+            "ttv2_buffer_granularity",
+            "ttv2_auto_granularity",
+        ):
+            parsed = _number(raw[name], f"{path}.{name}")
+            if parsed <= 0.0:
+                raise config_error(f"{path}.{name}", "to be positive", raw[name])
+            normalized_ttv2[name] = parsed
+
+        scale_transfer_lr = raw["ttv2_scale_transfer_lr"]
+        if not isinstance(scale_transfer_lr, bool):
+            raise config_error(
+                f"{path}.ttv2_scale_transfer_lr",
+                "to be a boolean",
+                scale_transfer_lr,
+            )
+        normalized_ttv2["ttv2_scale_transfer_lr"] = scale_transfer_lr
+
+        exact_aihwkit = {
+            "ttv2_units_in_mbatch": True,
+            "ttv2_auto_scale": False,
+            "ttv2_correct_gradient_magnitudes": True,
+            "ttv2_forget_buffer": True,
+            "ttv2_cap_scope": "per_parameter_proportional",
+            "ttv2_cursor_policy": "zero",
+        }
+        for name, expected in exact_aihwkit.items():
+            if raw[name] != expected or (
+                isinstance(expected, bool) and not isinstance(raw[name], bool)
+            ):
+                raise config_error(
+                    f"{path}.{name}",
+                    f"to equal {expected!r}",
+                    raw[name],
+                )
+            normalized_ttv2[name] = expected
+
+        desired_bl = _integer(
+            raw["ttv2_desired_bl"],
+            f"{path}.ttv2_desired_bl",
+            minimum=1,
+        )
+        if desired_bl != 1:
+            raise config_error(
+                f"{path}.ttv2_desired_bl",
+                "to equal 1",
+                desired_bl,
+            )
+        normalized_ttv2["ttv2_desired_bl"] = desired_bl
+
+        momentum = _number(raw["ttv2_momentum"], f"{path}.ttv2_momentum")
+        if momentum != 0.0:
+            raise config_error(
+                f"{path}.ttv2_momentum",
+                "to equal 0",
+                momentum,
+            )
+        normalized_ttv2["ttv2_momentum"] = momentum
+
+        in_chop_probability = _number(
+            raw["ttv2_in_chop_probability"],
+            f"{path}.ttv2_in_chop_probability",
+        )
+        if in_chop_probability != 0.0:
+            raise config_error(
+                f"{path}.ttv2_in_chop_probability",
+                "to equal 0",
+                in_chop_probability,
+            )
+        normalized_ttv2["ttv2_in_chop_probability"] = in_chop_probability
+    else:
+        legacy_provided = {
+            name: raw.get(name)
+            for name in (*common_ttv2_names, *legacy_ttv2_names)
+            if raw.get(name) is not None
+        }
+        aihwkit_provided = {
+            name: raw[name]
+            for name in aihwkit_ttv2_names
+            if name in raw
+        }
+        provided = {**legacy_provided, **aihwkit_provided}
+        if provided:
+            raise config_error(
+                path,
+                "to omit every TTv2 field outside a TTv2 method",
+                provided,
+            )
+
+    normalized = {
+            **dict(raw),
+            "slow_pulse_budget_per_cell": budget,
+            "pulse_step_ratio": pulse_step,
+            "update_seed": update_seed,
+            "terminal_epoch": terminal_epoch,
+            "source_forward_logit_gain": source_gain,
+            **digests,
+            "expected_source_selection_epoch": selection_epoch,
+            "expected_assignment_seed": assignment_seed,
+            "expected_endpoint_seed": endpoint_seed,
+            "source_dual_rail_layout_by_parameter": source_layouts,
+            "direct_probability_calibration_batches": calibration_batches,
+            "direct_probability_scale": probability_scale,
+            "fast_assignment_seed": fast_assignment_seed,
+            "fast_endpoint_seed": fast_endpoint_seed,
+            "fast_reset_read_samples": fast_read_samples,
+            "fast_reset_guard_standard_errors": fast_guard,
+            **normalized_ttv2,
+        }
+    if "direct_gradient_magnitude_percentile" in raw:
+        normalized["direct_gradient_magnitude_percentile"] = gradient_percentile
+    if "direct_probability_scale_source_report_sha256" in raw:
+        normalized[
+            "direct_probability_scale_source_report_sha256"
+        ] = scale_source_digest
+    return freeze_json(
+        normalized,
+        path=path,
+    )
+
+
 def _parse_train(value: Any) -> StudentTrainSettings:
     path = "config.modes.train"
     raw = _object(value, path)
@@ -863,6 +1557,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "weight_modifier",
             "selection_weight_modifier",
             "selection_evaluation",
+            "selection_metric",
             "selection_noise_repeats",
         },
     )
@@ -890,19 +1585,25 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         "measured_cohort_a_one_pulse_down",
         "measured_cohort_b",
         "program_verify",
+        IBM_OM_DEPLOYED_RECOVERY_BACKEND,
     }:
         raise config_error(
             f"{path}.update_backend.type",
             "to be 'ideal', 'measured_cohort_a', "
             "'measured_cohort_a_sign_sgd', "
             "'measured_cohort_a_one_pulse_down', 'measured_cohort_b', "
-            "or 'program_verify'",
+            "'program_verify', or 'ibm_om_deployed_recovery'",
             backend["type"],
         )
     if backend["type"] == "ideal":
         parameters = _empty_object(backend["parameters"], f"{path}.update_backend.parameters")
     elif backend["type"] == "program_verify":
         parameters = _parse_program_verify(
+            backend["parameters"],
+            f"{path}.update_backend.parameters",
+        )
+    elif backend["type"] == IBM_OM_DEPLOYED_RECOVERY_BACKEND:
+        parameters = _parse_ibm_om_deployed_recovery(
             backend["parameters"],
             f"{path}.update_backend.parameters",
         )
@@ -943,11 +1644,49 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "to be 'clean' or 'modifier'",
             selection_evaluation,
         )
+    selection_metric = raw.get("selection_metric", "kl_teacher_student")
+    if selection_metric not in {"kl_teacher_student", "student_accuracy"}:
+        raise config_error(
+            f"{path}.selection_metric",
+            "to be 'kl_teacher_student' or 'student_accuracy'",
+            selection_metric,
+        )
     selection_noise_repeats = _integer(
         raw.get("selection_noise_repeats", 1),
         f"{path}.selection_noise_repeats",
         minimum=1,
     )
+    if backend["type"] == IBM_OM_DEPLOYED_RECOVERY_BACKEND:
+        parsed_epochs = _integer(
+            raw["num_epochs"], f"{path}.num_epochs", minimum=0
+        )
+        if parsed_rates != (
+            0.004411914893617021,
+            0.000011974808510638298,
+        ):
+            raise config_error(
+                f"{path}.learning_rates",
+                "to equal the frozen RESET-relative QAT learning rates",
+                rates,
+            )
+        if (
+            parsed_epochs != 10
+            or parameters["terminal_epoch"] != parsed_epochs
+            or raw["max_batches"] is not None
+            or raw["max_validation_batches"] is not None
+            or relative != 0.0
+            or weight_modifier.type != "none"
+            or selection_weight_modifier.type != "none"
+            or selection_evaluation != "clean"
+            or selection_metric != "student_accuracy"
+            or selection_noise_repeats != 1
+        ):
+            raise config_error(
+                path,
+                "to use the full ten-epoch fixed-terminal deployed-recovery "
+                "cohort with no weight modifier or validation selection",
+                dict(raw),
+            )
     if selection_evaluation == "modifier":
         selected_modifier = (
             selection_weight_modifier
@@ -979,16 +1718,25 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "to be 'none' unless selection_evaluation is 'modifier'",
             selection_weight_modifier.type,
         )
-    if weight_modifier.type == "ibm_reram_om_program_verify" and (
-        weight_modifier.parameters["execution"] != "compact_endpoint"
-        or weight_modifier.parameters["noisy_evaluation"]
-    ):
-        raise config_error(
-            f"{path}.weight_modifier",
-            "to use compact_endpoint with noisy_evaluation=false for "
-            "off-chip HWA minibatches",
-            dict(weight_modifier.parameters),
+    if weight_modifier.type == "ibm_reram_om_program_verify":
+        training_parameters = weight_modifier.parameters
+        expected_training_execution = (
+            "mapped_target"
+            if training_parameters["target_mapping"]
+            == "raw_active_p90_quad"
+            else "compact_endpoint"
         )
+        if (
+            training_parameters["execution"]
+            != expected_training_execution
+            or training_parameters["noisy_evaluation"]
+        ):
+            raise config_error(
+                f"{path}.weight_modifier",
+                f"to use {expected_training_execution} with "
+                "noisy_evaluation=false for off-chip minibatches",
+                dict(training_parameters),
+            )
     if selection_weight_modifier.type == "ibm_reram_om_program_verify":
         selection_parameters = selection_weight_modifier.parameters
         selection_is_array_specific = (
@@ -1032,6 +1780,26 @@ def _parse_train(value: Any) -> StudentTrainSettings:
             "dual_rail_layout_by_parameter",
             "common_window_margin_fraction",
         )
+        if (
+            weight_modifier.parameters["target_mapping"]
+            == "shared_reset_relative_quad"
+        ):
+            matched_fields += (
+                "reset_relative_mode",
+                "reset_relative_contrast_step",
+                "reset_read_samples",
+                "reset_guard_standard_errors",
+                "forward_logit_gain",
+            )
+        elif (
+            weight_modifier.parameters["target_mapping"]
+            == "raw_active_p90_quad"
+        ):
+            matched_fields += (
+                "raw_active_mode",
+                "raw_active_unsupported_quad_policy",
+                "forward_logit_gain",
+            )
         mismatches = {
             name: {
                 "training": weight_modifier.parameters[name],
@@ -1058,6 +1826,7 @@ def _parse_train(value: Any) -> StudentTrainSettings:
         max_validation_batches=_optional_batches(raw["max_validation_batches"], f"{path}.max_validation_batches"),
         minimum_relative_kl_improvement=relative,
         selection_evaluation=selection_evaluation,
+        selection_metric=selection_metric,
         selection_noise_repeats=selection_noise_repeats,
         weight_modifier=weight_modifier,
         selection_weight_modifier=selection_weight_modifier,
@@ -1188,14 +1957,30 @@ def parse_student_config(payload: Mapping[str, Any]) -> StudentConfig:
             continue
         target_mapping = modifier.parameters["target_mapping"]
         if (
-            target_mapping == "dual_rail_quad_common_window"
+            target_mapping
+            in {
+                "dual_rail_quad_common_window",
+                "shared_reset_relative_quad",
+                "raw_active_p90_quad",
+            }
             and model.encoding != "single"
         ):
             raise config_error(
                 f"{modifier_path}.parameters.target_mapping",
-                "to select model.encoding='single' for "
-                "dual_rail_quad_common_window",
+                f"to select model.encoding='single' for {target_mapping}",
                 target_mapping,
+            )
+        if target_mapping == "raw_active_p90_quad" and (
+            model.conductance_min != 0.0 or model.conductance_max != 1.0
+        ):
+            raise config_error(
+                f"{modifier_path}.parameters.target_mapping",
+                "to use model conductance bounds [0, 1] so the frozen "
+                "array-wide g coordinate is not rescaled a second time",
+                {
+                    "conductance_min": model.conductance_min,
+                    "conductance_max": model.conductance_max,
+                },
             )
         if (
             target_mapping == "differential_pair_common_window"
@@ -1411,6 +2196,9 @@ __all__ = [
     "MEASURED_BACKENDS",
     "MEASURED_COHORT_A_BACKENDS",
     "MEASURED_COHORT_B_BACKENDS",
+    "IBM_OM_DEPLOYED_RECOVERY_BACKEND",
+    "IBM_OM_DEPLOYED_RECOVERY_METHODS",
+    "IBM_OM_DEPLOYED_RECOVERY_TTV2_AIHWKIT_METHOD",
     "SCHEMA_VERSION",
     "StudentConfig",
     "StudentTrainSpec",

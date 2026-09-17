@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "study_id": "ibm-om-raw-active-common-cell-9-canary-20260826-v1",
+  "title": "Raw-active common-cell nine-level P&V canary",
+  "hypothesis": "The public raw-active cell characterization path can sample the exact assignment-84001 population, exclude the AIHWKit reference, condition cells at the RESET boundary, and execute all nine common targets without a non-finite endpoint or incomplete artifact.",
+  "motivation": "This is an operational gate for the new array-wide common-baseline and common-increment cell-level P&V experiment. It is not evidence about nine-state yield, QAT accuracy, or on-chip training.",
+  "evidence_class": "model_based_aihwkit_preset_operational_canary",
+  "arms": [
+    {
+      "arm_id": "development-smoke",
+      "description": "Eight development identities, one repeat, and all nine targets through the raw-active one-pulse plant.",
+      "experiment_id": "ibm_om_raw_active_cell_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/raw_active_common_cell_9/smoke.json"]
+    }
+  ],
+  "completion_criteria": [
+    "Use assignment 84001, the repaired 158,800-cell binding layout, the frozen inward-rounded nine-target codebook, and the one-pulse cap-128 controller.",
+    "Persist the complete population, selection, codebook/support audit, streamed trajectories and verify events, integrity report, analysis, report, and plot.",
+    "Record reference_consumed=false and retain exact support, apparent acceptance, and persistent endpoint facts separately.",
+    "Complete all 72 declared smoke trajectories with no non-finite endpoint. No scientific success threshold is attached."
+  ],
+  "analysis_plan": [
+    "Verify the exact assignment-84001 population fingerprint and 90-percent all-nine support audit.",
+    "Verify target, seed, conditioning, controller, event, and terminal trajectory coverage.",
+    "Use the result only as authorization to launch the predeclared production characterization."
+  ]
+}
+

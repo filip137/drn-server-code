@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "study_id": "ibm-om-raw-active-common-cell-9-program-verify-20260826-v1",
+  "title": "IBM OM raw-active p90 common-cell nine-level P&V",
+  "hypothesis": "The nine array-wide physical-cell targets derived from the development p90 interval will retain at least 89 percent all-nine hidden support on held-out assignment 85001, and at least 90 percent of accepted exact-support held-out validation trajectories will have persistent endpoints nearest to the requested cell code.",
+  "motivation": "The earlier raw-active QAT study used a variable quad-local baseline and therefore did not test one common physical baseline and increment. This study first characterizes nine common single-a_i cell states, without choosing a logical-weight mapper or running QAT. Because the canonical acceptance windows overlap, apparent acceptance alone is not evidence of state distinguishability.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "development-assignment",
+      "description": "Frozen p90 codebook on repaired development assignment 84001 using 1,024 identities, four repeats, and nine targets.",
+      "experiment_id": "ibm_om_raw_active_cell_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/raw_active_common_cell_9/development.json"]
+    },
+    {
+      "arm_id": "heldout-assignment",
+      "description": "The unchanged development codebook on untouched repaired assignment 85001 with matched identity sampling and pulse budgets.",
+      "experiment_id": "ibm_om_raw_active_cell_program_verify.v1",
+      "mode": "characterize",
+      "configs": ["../examples/reram_program_verify/raw_active_common_cell_9/heldout.json"]
+    }
+  ],
+  "completion_criteria": [
+    "Both configs produce exactly one valid completed native run through python -m ebl characterize.",
+    "Development population fingerprint is 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac and held-out population fingerprint is 2721e735ba6722df27a879a5373de2d1da02481cb5eec05b592f967d27e74310.",
+    "The executable codebook uses B=0.6001664102077484, Delta_g=0.012380622327327728, k=0 through 8, and exactly 142,920 of 158,800 development cells support all nine targets.",
+    "Every arm executes 1,024 selected physical identities times four repeats times nine targets, for exactly 36,864 streamed trajectories, with per-trajectory conditioning and programming seeds.",
+    "Every trajectory starts from the same cloned lower-bound-conditioned state, uses the one-pulse controller, tau=0.00791586015294392, and a 128-pulse target budget.",
+    "The target mapper, plant, controller, and analysis never consume the AIHWKit reference state. No cell-wise rescaling, quad-local baseline, QAT, or on-chip update occurs.",
+    "Exact support, verify-window intersection, apparent acceptance, persistent-within-tolerance, nearest-code correctness, half-spacing correctness, ambiguity, pulse counts, reversals, saturation, and exhaustion remain distinct reported facts."
+  ],
+  "analysis_plan": [
+    "Use held-out validation persistent nearest-code correctness among accepted exact-support trajectories as the primary nine-state diagnostic and compare it with the predeclared 90-percent threshold.",
+    "Check that held-out all-nine population support is at least 89 percent without adapting the codebook.",
+    "Report every target separately, including exact support, apparent acceptance, persistent tolerance, nearest-code correctness, ambiguity, pulse counts, RESET-after-overshoot reversals, saturation, and exhaustion.",
+    "Report the fraction of validation identity/repeats for which all nine targets are accepted and nearest-code correct; do not infer this joint result from marginal target rates.",
+    "Compare development and held-out assignments descriptively. Do not interpret this P&V-only study as QAT performance or evidence that on-chip training is required."
+  ]
+}

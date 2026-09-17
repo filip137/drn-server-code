@@ -1,57 +1,42 @@
-# Finished LoRA/HWA Simulations and Research Progress
+# Experimental Manifest
 
-Last updated: 2026-08-24
+Last updated: 2026-08-26
 
-## Program goal
+## How to use this index
 
-Determine when physical low-rank adaptation reliably recovers
-hardware-induced DRN degradation, and quantify its accuracy, robustness, and
-conductance overhead.
+This file contains one entry per concluded scientific study, not one entry per
+seed, subprocess, retry, shard, or native run. The visible part of each entry
+gives the outcome, a short interpretation, and links to the study's local
+artifacts. Expand **Full study record and provenance** for the complete
+hypothesis, evidence, limitations, and next steps.
 
-## How this ledger is used
+Workflow-managed raw output belongs under `results/<study-id>/`. Everything
+below `results/` except its README is ignored by Git, so those links resolve
+only in a workspace where the local artifacts have been retained or restored.
+Pre-workflow studies remain at their original locations and are labelled
+**legacy location**; they are not moved or duplicated merely to normalize the
+index.
 
-This is the repository-maintained, human-edited index of concluded LoRA and
-hardware-aware studies. It records one entry per scientific study rather than
-one entry per seed, subprocess, or native run directory.
+New entries are written through `python -m ebl study finalize` after human
+scientific review. Negative and inconclusive outcomes are first-class results.
+See the [experiment workflow](experiment_workflow.md) for the lifecycle and
+[current state](current_state.md) for the broad research synthesis.
 
-Outcomes and milestone states are descriptive research summaries. They do not
-approve future runs, enforce a workflow, or change the native `python -m ebl`
-run contract.
+## Concluded studies
 
-Lifecycle status lives in the current-simulation ledger, each finished entry
-has a scientific outcome, and the milestone table summarizes broader program
-evidence. These are separate descriptive views, not one state machine.
+<!-- BEGIN EBL STUDY SUMMARY hard-sigmoid-lora-smoke -->
+### [hard-sigmoid-lora-smoke](../labs/cases/passive_layerwise_lora_physical_test/)
 
-New raw outputs belong under `results/<study-id>/`. The studies indexed below
-predate that convention and remain under their original ignored
-`labs/cases/` roots. Those local raw directories are not moved or duplicated.
-Inline paths labeled as local ignored detail exist only in a workspace that
-still has those ignored raw roots.
+**Hard-sigmoid physical LoRA smoke test**
 
-New workflow-managed studies begin with a tracked plan under `studies/`. Once
-the exact declared coverage is complete, a human writes the outcome, final
-interpretation, limitations, and next steps in the study review. Running
-`python -m ebl study finalize` adds an idempotent marked entry to this ledger.
-Every such entry retains the **initial hypothesis** as well as the **final
-interpretation**; negative and inconclusive outcomes are first-class results.
-The operational procedure is in
-[`experiment_workflow.md`](experiment_workflow.md).
+- **Finished:** 2026-07-28
+- **Outcome:** positive
+- **Interpretation:** The experiment provides positive smoke-test evidence that the physical branch can recover part of a small deployment gap.
+- **Details:** [legacy location](../labs/cases/passive_layerwise_lora_physical_test/)
+<!-- END EBL STUDY SUMMARY hard-sigmoid-lora-smoke -->
 
-## Progress toward the program goal
-
-The states `supported`, `partial`, and `open` are a compact view of the
-evidence available today, not pass/fail gates.
-
-| ID | Milestone | State | Evidence | Remaining gap |
-| --- | --- | --- | --- | --- |
-| `M1` | Verify the physical LoRA mechanics, frozen-base behavior, and independent conductance bounds. | supported | [`hard-sigmoid-lora-smoke`](#hard-sigmoid-lora-smoke) and [`mnist-hwa-lora-rank-study`](#mnist-hwa-lora-rank-study) | Repeat the controls once factor-device nonidealities are introduced. |
-| `M2` | Demonstrate positive recovery on the digits benchmark. | supported | Positive evidence in [`hard-sigmoid-lora-smoke`](#hard-sigmoid-lora-smoke), with the limited-headroom boundary in [`perfect-diode-hwa-lora-digits`](#perfect-diode-hwa-lora-digits) | Replicate across independently trained base models and a separate final test split. |
-| `M3` | Demonstrate recovery at full-MNIST scale. | partial | [`mnist-hwa-lora-rank-study`](#mnist-hwa-lora-rank-study) | Current evidence uses one base-training seed despite replication over device seeds. |
-| `M4` | Characterize device-seed robustness and adaptation-overhead behavior. | partial | Ten rank-4 device pairs and a matched five-pair rank sweep in [`mnist-hwa-lora-rank-study`](#mnist-hwa-lora-rank-study), plus the rewrite-versus-added-array control in [`mnist-hwa-reram-full-finetune`](#mnist-hwa-reram-full-finetune) | Repeat the adaptation comparison across independent base models and add physical write costs. |
-| `M5` | Replicate with multiple base-training seeds and separate validation and final-test data. | open | Tracked as paused in the [current-simulation ledger](current_simulations.md) | Resume and analyze the matched multi-base comparison when base-seed generalization returns to active priority. |
-| `M6` | Characterize base-device degradation mechanisms, then extend them to realistic factor-device effects aligned with a positive-only correction path. | partial | Base-device evidence comes from [`measured-device-screen`](#measured-device-screen) and [`cmo-range-mismatch-lora`](#cmo-range-mismatch-lora); repeated endpoint noise is exercised in [`mnist-ibm-pcm-cmo-noisy-recovery`](#mnist-ibm-pcm-cmo-noisy-recovery); [`mnist-cmo-literal-floor-noisy-recovery`](#mnist-cmo-literal-floor-noisy-recovery) establishes the hard-clipping failure; [`mnist-cmo-floor-mitigation`](#mnist-cmo-floor-mitigation) separates that failure from passive floor loading; [`mnist-wan-cmo-teacher-initialized-seed17-10ep`](#mnist-wan-cmo-teacher-initialized-seed17-10ep) compares retained-floor endpoints from a common teacher initialization; and [`mnist-relu-to-bounded-fp32-map-20260824-v1`](#mnist-relu-to-bounded-fp32-map-20260824-v1) establishes the bounded-FP32 logical initialization control. | Replicate across device/base seeds, add the no-HWA BPTT control, validate selector and active-cancellation circuits, and add a physical incremental-pulse model. |
-
-## Finished simulations
+<details>
+<summary>Full study record and provenance</summary>
 
 ### hard-sigmoid-lora-smoke
 
@@ -76,6 +61,22 @@ evidence available today, not pass/fail gates.
 - **Local ignored detail:**
   `labs/cases/passive_layerwise_lora_physical_test/README.md`
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY perfect-diode-hwa-lora-digits -->
+### [perfect-diode-hwa-lora-digits](../labs/cases/perfect_diode_hwa_lora_comparison/)
+
+**Perfect-diode FP32, HWA, ReRAM, and LoRA comparison**
+
+- **Finished:** 2026-07-28
+- **Outcome:** mixed
+- **Interpretation:** LoRA produced a small selected-checkpoint improvement, but the chosen HWA perturbation did not improve deployment over the ordinary base and left little resolved recovery headroom.
+- **Details:** [legacy location](../labs/cases/perfect_diode_hwa_lora_comparison/)
+<!-- END EBL STUDY SUMMARY perfect-diode-hwa-lora-digits -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### perfect-diode-hwa-lora-digits
 
 **Perfect-diode FP32, HWA, ReRAM, and LoRA comparison**
@@ -99,6 +100,22 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `labs/cases/perfect_diode_hwa_lora_comparison/`
 - **Local ignored detail:**
   `labs/cases/perfect_diode_hwa_lora_comparison/README.md`
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY measured-device-screen -->
+### [measured-device-screen](../labs/cases/perfect_diode_hwa_lora_comparison/device_screen/)
+
+**Measured-device deployment severity screen**
+
+- **Finished:** 2026-07-28
+- **Outcome:** mixed
+- **Interpretation:** PCM and HERMES did not materially enlarge the gap under this calibration. CMO produced a more severe but differently composed perturbation.
+- **Details:** [legacy location](../labs/cases/perfect_diode_hwa_lora_comparison/device_screen/)
+<!-- END EBL STUDY SUMMARY measured-device-screen -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### measured-device-screen
 
@@ -129,6 +146,22 @@ evidence available today, not pass/fail gates.
   and
   `labs/cases/perfect_diode_hwa_lora_comparison/device_screen/hwa_results.json`
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY cmo-range-mismatch-lora -->
+### [cmo-range-mismatch-lora](../labs/cases/perfect_diode_hwa_lora_comparison/device_screen/cmo_hwa_deployed/)
+
+**CMO/HfOx range-mismatch and LoRA probe**
+
+- **Finished:** 2026-07-28
+- **Outcome:** negative
+- **Interpretation:** The current branch can add conductance but cannot subtract the excess caused by the CMO floor. The result diagnoses a correction-direction mismatch rather than a general failure of low-rank recovery.
+- **Details:** [legacy location 1](../labs/cases/perfect_diode_hwa_lora_comparison/device_screen/cmo_hwa_deployed/) · [legacy location 2](../labs/cases/perfect_diode_hwa_lora_comparison/device_screen/cmo_lora_run/)
+<!-- END EBL STUDY SUMMARY cmo-range-mismatch-lora -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### cmo-range-mismatch-lora
 
 **CMO/HfOx range-mismatch and LoRA probe**
@@ -157,6 +190,22 @@ evidence available today, not pass/fail gates.
   `labs/cases/perfect_diode_hwa_lora_comparison/device_screen/cmo_lora_run/`
 - **Local ignored detail:**
   `labs/cases/perfect_diode_hwa_lora_comparison/README.md`
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-hwa-lora-rank-study -->
+### [mnist-hwa-lora-rank-study](../labs/cases/mnist_perfect_diode_hwa_lora_comparison/)
+
+**Full-MNIST BPTT, HWA, ReRAM, and physical-LoRA rank study**
+
+- **Finished:** 2026-07-29
+- **Outcome:** positive
+- **Interpretation:** This is the strongest positive evidence in the current program, but device-seed replication does not replace independent base-training replication.
+- **Details:** [legacy location](../labs/cases/mnist_perfect_diode_hwa_lora_comparison/)
+<!-- END EBL STUDY SUMMARY mnist-hwa-lora-rank-study -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### mnist-hwa-lora-rank-study
 
@@ -198,6 +247,22 @@ evidence available today, not pass/fail gates.
   `labs/cases/mnist_perfect_diode_hwa_lora_comparison/README.md`
 - **Tracked detail:** [experiment setup](mnist_hwa_lora_experiment_setup.md)
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-hwa-reram-full-finetune -->
+### [mnist-hwa-reram-full-finetune](../results/mnist-hwa-reram-full-finetune/)
+
+**Full-model post-HWA/ReRAM fine-tuning control**
+
+- **Finished:** 2026-07-29
+- **Outcome:** positive control
+- **Interpretation:** The remaining post-LoRA accuracy gap is not an optimization ceiling of the deployed DRN. Direct access to all base parameters can recover and exceed clean-HWA accuracy, but it solves a different engineering problem: large-scale reprogramming instead of a small frozen-base adapter.
+- **Details:** [local artifacts](../results/mnist-hwa-reram-full-finetune/)
+<!-- END EBL STUDY SUMMARY mnist-hwa-reram-full-finetune -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-hwa-reram-full-finetune
 
 **Full-model post-HWA/ReRAM fine-tuning control**
@@ -237,6 +302,22 @@ evidence available today, not pass/fail gates.
   `results/mnist-hwa-reram-full-finetune/README.md` and
   `results/mnist-hwa-reram-full-finetune/analysis/summary.json`
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-ibm-pcm-cmo-noisy-recovery -->
+### [mnist-ibm-pcm-cmo-noisy-recovery](../results/mnist-ibm-pcm-cmo-noisy-recovery/)
+
+**IBM PCM/CMO endpoint deployment and noisy BPTT recovery**
+
+- **Finished:** 2026-07-29
+- **Outcome:** mixed, stability-positive
+- **Interpretation:** The study validates stable repeated endpoint writes on both full and factor arrays, but the initial device gap was effectively zero. The small changes cannot establish recovery efficacy or a full-versus-LoRA winner.
+- **Details:** [local artifacts](../results/mnist-ibm-pcm-cmo-noisy-recovery/)
+<!-- END EBL STUDY SUMMARY mnist-ibm-pcm-cmo-noisy-recovery -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-ibm-pcm-cmo-noisy-recovery
 
 **IBM PCM/CMO endpoint deployment and noisy BPTT recovery**
@@ -272,6 +353,22 @@ evidence available today, not pass/fail gates.
   `results/mnist-ibm-pcm-cmo-noisy-recovery/README.md` and
   `results/mnist-ibm-pcm-cmo-noisy-recovery/analysis/summary.json`
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-wan-cmo-head-to-head-seed17-10ep -->
+### [mnist-wan-cmo-head-to-head-seed17-10ep](../results/mnist_wan_cmo_head_to_head_seed17_10ep/)
+
+**Historical independently trained retained-floor CMO versus Wan-2022 control**
+
+- **Finished:** 2026-08-20
+- **Outcome:** CMO deployment-positive; Wan recovery-positive
+- **Interpretation:** BPTT changed deployed HWA accuracy by `-0.63 pp` on CMO and `+18.45 pp` on Wan. The direct-write programming RMSE relative to the ideal affine target was `0.00963` CMO versus `0.03145` Wan DRN units; stochastic endpoint distortion, not finite-floor ratio, dominates the one-seed gap. This is retained as an endpoint-noise control but superseded as the primary initialization protocol because its DRN was trained independently rather than mapped from the frozen ReLU teacher.
+- **Details:** [local artifacts](../results/mnist_wan_cmo_head_to_head_seed17_10ep/)
+<!-- END EBL STUDY SUMMARY mnist-wan-cmo-head-to-head-seed17-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-wan-cmo-head-to-head-seed17-10ep
 
 **Historical independently trained retained-floor CMO versus Wan-2022 control**
@@ -304,6 +401,22 @@ evidence available today, not pass/fail gates.
   `results/mnist_wan_cmo_head_to_head_seed17_10ep/`
 - **Tracked detail:**
   [study document](mnist_wan_cmo_head_to_head.md)
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-wan-cmo-teacher-initialized-seed17-10ep -->
+### [mnist-wan-cmo-teacher-initialized-seed17-10ep](../results/mnist_wan_cmo_teacher_initialized_seed17_f60d4406/)
+
+**Teacher-initialized retained-floor CMO versus Wan-2022 comparison**
+
+- **Finished:** 2026-08-20
+- **Outcome:** HWA modestly positive; noisy BPTT strongly positive; CMO ahead
+- **Interpretation:** HWA modestly positive; noisy BPTT strongly positive; CMO ahead
+- **Details:** [local artifacts](../results/mnist_wan_cmo_teacher_initialized_seed17_f60d4406/)
+<!-- END EBL STUDY SUMMARY mnist-wan-cmo-teacher-initialized-seed17-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### mnist-wan-cmo-teacher-initialized-seed17-10ep
 
@@ -350,6 +463,22 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [study document](mnist_wan_cmo_teacher_initialized.md)
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-cmo-literal-floor-noisy-recovery -->
+### [mnist-cmo-literal-floor-noisy-recovery](../results/mnist-cmo-literal-floor-noisy-recovery/)
+
+**CMO/HfOx literal-floor deployment and noisy recovery**
+
+- **Finished:** 2026-07-29
+- **Outcome:** mixed; full-recovery positive, LoRA negative
+- **Interpretation:** The earlier normalized-offset mapping both removed the floor from the effective equations and avoided literal many-to-one clipping. Under literal absolute scaling, full base access provides substantial but incomplete recovery. A positive-only LoRA branch cannot subtract the dense excess conductance and has no controllable factor state while its targets remain below `9 µS`.
+- **Details:** [local artifacts](../results/mnist-cmo-literal-floor-noisy-recovery/)
+<!-- END EBL STUDY SUMMARY mnist-cmo-literal-floor-noisy-recovery -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-cmo-literal-floor-noisy-recovery
 
 **CMO/HfOx literal-floor deployment and noisy recovery**
@@ -391,6 +520,22 @@ evidence available today, not pass/fail gates.
 - **Local ignored detail:**
   `results/mnist-cmo-literal-floor-noisy-recovery/README.md` and
   `results/mnist-cmo-literal-floor-noisy-recovery/analysis/summary.json`
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-cmo-floor-mitigation -->
+### [mnist-cmo-floor-mitigation](../results/mnist-cmo-floor-mitigation/)
+
+**CMO/HfOx floor mechanism and mitigation ablations**
+
+- **Finished:** 2026-07-30
+- **Outcome:** mechanism resolved; affine mitigation positive
+- **Interpretation:** Hard clipping of `98.13%` of W1 and `88.10%` of W2, rather than passive floor loading alone, caused most of the literal accuracy collapse. Ordinary MVM reference subtraction is not exact for a DRN because the floor also changes the coordinate-update denominator.
+- **Details:** [local artifacts](../results/mnist-cmo-floor-mitigation/)
+<!-- END EBL STUDY SUMMARY mnist-cmo-floor-mitigation -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### mnist-cmo-floor-mitigation
 
@@ -452,6 +597,22 @@ evidence available today, not pass/fail gates.
   `results/mnist-cmo-floor-mitigation/analysis/affine-floor-mechanism-v3/summary.json`,
   and
   `results/mnist-cmo-floor-mitigation/affine_floor_probe_v2/20260730T095125.044508Z-ee47b30f-7664fae3/result.json`
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-relu-drn-reset-factorial -->
+### [mnist-relu-drn-reset-factorial](../results/factorial_parallel_collected_20260817_v3/)
+
+**Controlled RESET bias, loss, and amplifier-indexing factorial**
+
+- **Finished:** 2026-08-17
+- **Outcome:** historical result optimistic; attribution resolved, mechanisms open
+- **Interpretation:** The original approximately `95.97%` result was too optimistic for the intended DRN: its matching legacy-index/MSE cells reach `95.70-95.72%`, while the corrected logical circuit reaches `93.90-93.94%`. The corrected logical KL result (`85.49-86.28%`) agrees with the newer run, so that result is representative of this KL objective rather than an indexing-induced underestimate.
+- **Details:** [local artifacts](../results/factorial_parallel_collected_20260817_v3/) · location pattern `results/mnist-relu-drn-reset-factorial-*-20260817-v3/`
+<!-- END EBL STUDY SUMMARY mnist-relu-drn-reset-factorial -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### mnist-relu-drn-reset-factorial
 
@@ -543,6 +704,22 @@ evidence available today, not pass/fail gates.
   `results/factorial_parallel_analysis_20260817_v3/factorial_arms.csv`, and
   `results/factorial_parallel_analysis_20260817_v3/factorial_accuracy.png`
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-differential-reram-reset-10ep -->
+### [mnist-differential-reram-reset-10ep](../results/mnist-differential-reram-reset-10ep-20260817-v1/)
+
+**Literal-RESET differential ReRAM MNIST screen**
+
+- **Finished:** 2026-08-17
+- **Outcome:** completed; stable learning demonstrated, comparative benefit still open
+- **Interpretation:** Literal dual-RESET differential training is numerically viable under this protocol. This run does not establish an architecture uplift because it lacks a matched ten-epoch one-device arm, and it does not isolate common-floor cancellation because independently assigned devices do not share an exactly matched RESET baseline. The selector also chose the low/low boundary cell of its declared non-expanding grid.
+- **Details:** [local artifacts](../results/mnist-differential-reram-reset-10ep-20260817-v1/)
+<!-- END EBL STUDY SUMMARY mnist-differential-reram-reset-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-differential-reram-reset-10ep
 
 **Literal-RESET differential ReRAM MNIST screen**
@@ -586,6 +763,22 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [differential RESET report](mnist_relu_drn_reset_differential_10ep.md)
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-differential-reram-initialized-finetune-10ep -->
+### [mnist-differential-reram-initialized-finetune-10ep](../results/mnist-differential-reram-initialized-finetune-10ep-20260817-v1/)
+
+**Teacher-initialized differential ReRAM MNIST fine-tuning**
+
+- **Finished:** 2026-08-17
+- **Outcome:** completed; ten epochs retained strong accuracy while the longer budget improved KL and teacher agreement
+- **Interpretation:** completed; ten epochs retained strong accuracy while the longer budget improved KL and teacher agreement
+- **Details:** [local artifacts](../results/mnist-differential-reram-initialized-finetune-10ep-20260817-v1/)
+<!-- END EBL STUDY SUMMARY mnist-differential-reram-initialized-finetune-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-differential-reram-initialized-finetune-10ep
 
 **Teacher-initialized differential ReRAM MNIST fine-tuning**
@@ -620,6 +813,22 @@ evidence available today, not pass/fail gates.
   `results/mnist-differential-reram-initialized-finetune-10ep-20260817-v1/`
 - **Tracked detail:**
   [initialized differential report](mnist_relu_drn_initialized_differential_10ep.md)
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-single-reram-initialized-finetune-10ep -->
+### [mnist-single-reram-initialized-finetune-10ep](../results/mnist-single-reram-initialized-finetune-10ep-20260817-v1/)
+
+**Teacher-initialized single-conductance ReRAM MNIST control**
+
+- **Finished:** 2026-08-17
+- **Outcome:** completed; ReLU programming and ten KL epochs did not rescue the measured one-conductance scheme
+- **Interpretation:** completed; ReLU programming and ten KL epochs did not rescue the measured one-conductance scheme
+- **Details:** [local artifacts](../results/mnist-single-reram-initialized-finetune-10ep-20260817-v1/)
+<!-- END EBL STUDY SUMMARY mnist-single-reram-initialized-finetune-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### mnist-single-reram-initialized-finetune-10ep
 
@@ -657,6 +866,22 @@ evidence available today, not pass/fail gates.
   `results/mnist-single-reram-initialized-finetune-10ep-20260817-v1/`
 - **Tracked detail:**
   [initialized single-conductance report](mnist_relu_drn_initialized_single_10ep.md)
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-dual-rail-four-vs-eight-common-window-10ep -->
+### [mnist-dual-rail-four-vs-eight-common-window-10ep](../results/mnist-dual-rail-four-vs-eight-common-window-10ep-20260819-v1/)
+
+**Four-device clamped-input collapse versus eight-device differential realization**
+
+- **Finished:** 2026-08-19
+- **Outcome:** completed; the four-device arm passed the preregistered post-adaptation accuracy-retention screen, while the eight-device arm retained better initialization and teacher-logit fidelity
+- **Interpretation:** Four measured conductances per teacher weight retain essentially all classification benefit after adaptation while halving the conductance count relative to the eight-device realization. This is an exploratory single-seed result, not a universal equivalence claim.
+- **Details:** [local artifacts](../results/mnist-dual-rail-four-vs-eight-common-window-10ep-20260819-v1/)
+<!-- END EBL STUDY SUMMARY mnist-dual-rail-four-vs-eight-common-window-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 ### mnist-dual-rail-four-vs-eight-common-window-10ep
 
@@ -726,6 +951,22 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [four-versus-eight report](dual_rail_input_four_vs_eight_devices.md)
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-four-device-reram-cohort-b-quad-common-window-10ep -->
+### [mnist-four-device-reram-cohort-b-quad-common-window-10ep](../results/mnist-four-device-reram-cohort-b-quad-common-window-10ep-20260819-v1/)
+
+**Four-device common-window deployment and adaptation on held-out cohort B**
+
+- **Finished:** 2026-08-19
+- **Outcome:** completed; immediate cross-cohort transfer failed, but ten matched off-chip epochs recovered `99.76%` of the lost classification accuracy while retaining four conductances per teacher weight
+- **Interpretation:** Differential initialization cancels a nominal common baseline but does not preserve symmetry, signed scale, or circuit denominators after independent measured-state projection. The four-device scheme is expressive after adaptation; the eight-device scheme remains better for immediate transfer and final logit fidelity in this single-seed comparison.
+- **Details:** [local artifacts](../results/mnist-four-device-reram-cohort-b-quad-common-window-10ep-20260819-v1/)
+<!-- END EBL STUDY SUMMARY mnist-four-device-reram-cohort-b-quad-common-window-10ep -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 ### mnist-four-device-reram-cohort-b-quad-common-window-10ep
 
 **Four-device common-window deployment and adaptation on held-out cohort B**
@@ -778,6 +1019,23 @@ evidence available today, not pass/fail gates.
 - **Tracked detail:**
   [four-device cohort-B report](mnist_four_device_cohort_b_adaptation.md)
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-four-device-cohort-b-transfer-5seed-20260819-v1 -->
+### [mnist-four-device-cohort-b-transfer-5seed-20260819-v1](../results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/)
+
+**Four-device cohort-A to cohort-B transfer across five assignments**
+
+- **Finished:** 2026-08-19
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Interpretation:** The predeclared five-assignment series supports the hypothesis. Because these aggregate window statistics are similar to the earlier cohort-A four-device result, the observed collapse is more consistent with sensitivity to device-level reassignment and nearest-state reprojection than with a simple cohort-wide loss of reachable range; that mechanism remains an inference rather than a causal isolation.
+- **Details:** [local artifacts](../results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/) · [human report](../results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/analysis/report.md) · [machine summary](../results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY mnist-four-device-cohort-b-transfer-5seed-20260819-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 <!-- BEGIN EBL STUDY mnist-four-device-cohort-b-transfer-5seed-20260819-v1 -->
 ### mnist-four-device-cohort-b-transfer-5seed-20260819-v1
 
@@ -803,6 +1061,23 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/`
 - **Workflow summary:** `results/mnist-four-device-cohort-b-transfer-5seed-20260819-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-four-device-cohort-b-transfer-5seed-20260819-v1 -->
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-four-device-cohort-a-sign-sgd-20260819-v1 -->
+### [mnist-four-device-cohort-a-sign-sgd-20260819-v1](../results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/)
+
+**Four-device cohort-A fine-tuning with sign-only SGD**
+
+- **Finished:** 2026-08-19
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Interpretation:** The predeclared hypothesis is supported. Neither sign arm clipped its shadow or reached conductance bounds.
+- **Details:** [local artifacts](../results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/) · [human report](../results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/analysis/report.md) · [machine summary](../results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY mnist-four-device-cohort-a-sign-sgd-20260819-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 <!-- BEGIN EBL STUDY mnist-four-device-cohort-a-sign-sgd-20260819-v1 -->
 ### mnist-four-device-cohort-a-sign-sgd-20260819-v1
@@ -830,6 +1105,23 @@ evidence available today, not pass/fail gates.
 - **Workflow summary:** `results/mnist-four-device-cohort-a-sign-sgd-20260819-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-four-device-cohort-a-sign-sgd-20260819-v1 -->
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-four-device-cohort-a-one-pulse-down-20260819-v1 -->
+### [mnist-four-device-cohort-a-one-pulse-down-20260819-v1](../results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/)
+
+**Four-device cohort-A fine-tuning with one-pulse conductance decreases**
+
+- **Finished:** 2026-08-19
+- **Evidence class:** `exploratory`
+- **Outcome:** refuted
+- **Interpretation:** The predeclared hypothesis is refuted. The earlier raw-trace ordinary-SGD and signSGD accuracies are not matched controls because isotonic fitting also changed the initialization substrate: the present initialization was 38.32% validation accuracy versus 61.48% in those raw-trace studies.
+- **Details:** [local artifacts](../results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/) · [human report](../results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/analysis/report.md) · [machine summary](../results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY mnist-four-device-cohort-a-one-pulse-down-20260819-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 <!-- BEGIN EBL STUDY mnist-four-device-cohort-a-one-pulse-down-20260819-v1 -->
 ### mnist-four-device-cohort-a-one-pulse-down-20260819-v1
 
@@ -855,6 +1147,23 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/`
 - **Workflow summary:** `results/mnist-four-device-cohort-a-one-pulse-down-20260819-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-four-device-cohort-a-one-pulse-down-20260819-v1 -->
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
+### [mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1](../results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/)
+
+**Four-device cohort-A one-pulse-down gradient-threshold sweep**
+
+- **Finished:** 2026-08-20
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Interpretation:** The predeclared hypothesis is supported. The threshold therefore repairs the unconditional update rule, but its useful operating point depends strongly on whether early stopping is allowed.
+- **Details:** [local artifacts](../results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/) · [human report](../results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/analysis/report.md) · [machine summary](../results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 <!-- BEGIN EBL STUDY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
 ### mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1
@@ -882,6 +1191,23 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/`
 - **Workflow summary:** `results/mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-four-device-cohort-a-gradient-threshold-sweep-20260819-v1 -->
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY ibm-reram-program-verify-noise-20260821-v2 -->
+### [ibm-reram-program-verify-noise-20260821-v2](../results/ibm-reram-program-verify-noise-20260821-v2/)
+
+**Short IBM ReRAM pulse-count program-and-verify endpoint model**
+
+- **Finished:** 2026-08-21
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** mixed
+- **Interpretation:** The predeclared hypothesis has a mixed outcome. No HWA, Tiki-Taka, LoRA, or network-accuracy conclusion follows from this characterization.
+- **Details:** [local artifacts](../results/ibm-reram-program-verify-noise-20260821-v2/) · [human report](../results/ibm-reram-program-verify-noise-20260821-v2/analysis/report.md) · [machine summary](../results/ibm-reram-program-verify-noise-20260821-v2/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY ibm-reram-program-verify-noise-20260821-v2 -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 <!-- BEGIN EBL STUDY ibm-reram-program-verify-noise-20260821-v2 -->
 ### ibm-reram-program-verify-noise-20260821-v2
@@ -911,6 +1237,23 @@ evidence available today, not pass/fail gates.
 - **Workflow summary:** `results/ibm-reram-program-verify-noise-20260821-v2/analysis/summary.json`
 <!-- END EBL STUDY ibm-reram-program-verify-noise-20260821-v2 -->
 
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-relu-to-bounded-fp32-map-20260824-v1 -->
+### [mnist-relu-to-bounded-fp32-map-20260824-v1](../results/mnist-relu-to-bounded-fp32-map-20260824-v1/)
+
+**Direct ReLU compression into the bounded FP32 DRN**
+
+- **Finished:** 2026-08-24
+- **Evidence class:** `exploratory`
+- **Outcome:** supported
+- **Interpretation:** The evidence supports the predeclared hypothesis. It does not establish measured-device deployability.
+- **Details:** [local artifacts](../results/mnist-relu-to-bounded-fp32-map-20260824-v1/) · [human report](../results/mnist-relu-to-bounded-fp32-map-20260824-v1/analysis/report.md) · [machine summary](../results/mnist-relu-to-bounded-fp32-map-20260824-v1/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY mnist-relu-to-bounded-fp32-map-20260824-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
 <!-- BEGIN EBL STUDY mnist-relu-to-bounded-fp32-map-20260824-v1 -->
 ### mnist-relu-to-bounded-fp32-map-20260824-v1
 
@@ -935,6 +1278,23 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-relu-to-bounded-fp32-map-20260824-v1/`
 - **Workflow summary:** `results/mnist-relu-to-bounded-fp32-map-20260824-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-relu-to-bounded-fp32-map-20260824-v1 -->
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2 -->
+### [mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2](../results/mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2/)
+
+**MNIST DRN array-specific IBM OM common-window HWA pilot — corrected retry**
+
+- **Finished:** 2026-08-24
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** supported
+- **Interpretation:** The evidence narrowly supports the predeclared hypothesis on this one fixed counterfactually repaired IBM OM array: array-specific compact-endpoint HWA reduced selected pulse-resolved apparent-forward validation KL from 0.0547058969 for the matched clean control to 0.0542751399, an absolute reduction of 0.0004307570 (0.7874 percent relative). The result supports the narrow HWA-versus-clean KL hypothesis, but it neither establishes satisfactory deployability nor demonstrates that on-chip recovery is required.
+- **Details:** [local artifacts](../results/mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2/) · [human report](../results/mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2/analysis/report.md) · [machine summary](../results/mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2/analysis/summary.json)
+<!-- END EBL STUDY SUMMARY mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2 -->
+
+<details>
+<summary>Full study record and provenance</summary>
 
 <!-- BEGIN EBL STUDY mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2 -->
 ### mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2
@@ -966,6 +1326,100 @@ evidence available today, not pass/fail gates.
 - **Raw artifacts:** `results/mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2/`
 - **Workflow summary:** `results/mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-common-window-hwa-program-verify-pilot-20260824-v2 -->
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1 -->
+### [mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1](../results/mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1/)
+
+**MNIST four-device IBM OM shared RESET-relative quantized HWA**
+
+- **Finished:** 2026-08-25
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** mixed
+- **Interpretation:** Shared RESET-relative deployment transferred strongly: nine-level QAT reached 91.00% mean apparent accuracy. Its +0.71-point paired advantage over continuous HWA did not meet the predeclared +2-point gate and its 95% interval crossed zero, so a QAT-specific benefit remains unresolved.
+- **Details:** [human report](../results/mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1/analysis/report.md) · [machine summary](../results/mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1/analysis/summary.json) · [local study folder](../results/mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1/)
+<!-- END EBL STUDY SUMMARY mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1 -->
+### mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1
+
+**MNIST four-device IBM OM shared RESET-relative quantized HWA**
+
+- **Finished:** 2026-08-25
+- **Evidence class:** `model_based_aihwkit_preset`
+- **Outcome:** mixed
+- **Initial hypothesis:** On an untouched repaired IBM OM array, nine-level quantization-aware HWA using one global RESET-relative contrast codebook will achieve higher apparent-forward test accuracy than a matched continuous shared-target HWA control because the minimum nonzero logical contrast is larger than the four-cell program-and-verify acceptance-error envelope.
+- **Completion criteria:**
+  - Before any native run, verify the exact source checkpoint SHA-256 0865b16dbf504a902f42914c719ec1685e80189957b97a77d101efd85efbc4fb, frozen ReLU-teacher SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, device-model SHA-256 3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3, derived full-span checkpoint SHA-256 e9a603833a607aa6fd9060781a4ba9353e0bcf9a04265ef5afb118146b435acb, derivation-receipt SHA-256 5ff1d3a4e55e14f3220adf63f522f66ad460487bd8f5117185507916ae5ccd8d, and every prepared config hash. Every train command receives the same derived checkpoint through --weights, the same teacher through --teacher-weights, and the same device model through --device-model.
+  - The full-span checkpoint must prove zero optimizer updates, exact source fractions 0.25 and 0.125, exact target fractions 1.0 and 1.0, no material clipping, the canonical two single-encoding tensor keys, and fixed gain 4.46683592150963. Replay must preserve the source signed logical matrices within FP32 tolerance before quantization.
+  - Development roles must use counterfactual-repaired assignment seed 84001 with population fingerprint 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac. Compact training uses endpoint seed 84002 and pulse-resolved selection uses endpoint seed 84003. Training and selection must share the exact population, binding order, halves/paired layouts, RESET commissioning parameters, mapping mode, contrast step, and endpoint policy.
+  - The authoritative commissioning path must apply and account for exactly eight RESET/read observations per cell, compute one guarded mean plus three-standard-error estimate per cell, take one shared maximum baseline over each canonical four-cell quad, and persist the observations, standard errors, baselines, tensor digests, layouts, pulse cost, and population fingerprint. Its target-construction artifact must contain no per-cell minimum or maximum; hidden bounds may appear only in the post-mapping physical-support audit and pulse plant.
+  - The nine-level mapper must reconstruct one signed logical u per quad, use half-away-from-zero n=clamp(round(4u),-4,4), use delta=0.095849, and emit only signed contrasts n*delta and cell offsets from the fixed set {0, delta/2, delta, 3delta/2, 2delta}. The continuous control must use 4u*delta on the identical range. Neither path may clip a target to a hidden cell bound or the public [0,1] coordinate.
+  - Before development training, the RESET-relative mapping preflight must cover exactly 158,800 cells and 39,700 quads, have finite targets inside [0,1], place at least 95 percent of quads fully inside hidden physical support, and record every below-bound, above-bound, corrupt-origin, and fallback cell. One exact cap-128 baseline programming canary must have at least 99 percent acceptance, at most one percent budget exhaustion, and no non-finite endpoint.
+  - The zero-update arm must execute no optimizer update. Each other training arm must complete exactly ten epochs. Every checkpoint, including the clean-BPTT arm, must be selected by the highest mean apparent-forward student accuracy across exactly three fixed development-array program-and-verify repeats; strict improvement retains the earliest exact tie. Selection may not use KL or clean logical accuracy.
+  - Quantized QAT and continuous HWA must use a compact programmed apparent endpoint in every minibatch forward, restore the clean continuous FP32 master before applying each ideal off-chip optimizer update, and never accumulate physical persistent state between minibatches. Their programming reports must distinguish compact covered cells from exact non-corrupt out-of-support fallback cells and preserve the apparent-forward/persistent-update-state endpoint policy.
+  - Assignment seed 85001 must not be sampled, commissioned, preflighted, or used for checkpoint selection until all four development checkpoints and their hashes are frozen. Each selected checkpoint must then receive exactly five fresh pulse-resolved deployments on that one untouched assignment with predeclared endpoint seeds 85101 through 85105. The codebook, RESET-read count, guard, output gain, learning rates, and checkpoint epoch must not be adapted to held-out outcomes.
+  - Every held-out deployment must cover all 10,000 test examples, use apparent programmed weights for inference, retain both current apparent and hidden persistent arrays plus population, commissioning, accepted/failure masks, pulse costs, RNG continuation, and exact selected-weight hash, and pass the same finite/support/programming gates. A structural support-gate failure is retained as a failed deployment result rather than repaired by inspecting per-cell ranges or substituting another assignment.
+  - The study is complete only with one immutable valid development run for each of the four pipelines and all twenty declared held-out deployment runs under artifact-hash verification. Failed or partial attempts remain preserved. No Tiki-Taka, LoRA, soft SET/RESET update, cell reassignment after metrics, or additional endpoint seed is eligible evidence for this study.
+- **Coverage:** 24 declared run(s) completed; 2 failed attempt(s) retained.
+- **Final interpretation:** The shared RESET-relative mapping transferred substantially better than the earlier cell-specific deployment: the nine-level QAT arm reached 91.00% mean apparent-forward test accuracy on assignment 85001. However, its paired mean advantage over the matched continuous shared-target HWA arm was only 0.71 percentage points, the exact paired-bootstrap 95% interval was -2.01 to 3.35 points, and the predeclared 2-point improvement gate was not met. The evidence therefore supports the usefulness of RESET-relative deployment and strict contrast separation, but it does not establish a quantization-aware-training advantage over continuous HWA. The large analysis-only difference between apparent-forward and persistent-state accuracy motivates a separate matched on-chip recovery study; it must not be interpreted as retention loss or ordinary reread degradation because those effects were not modeled.
+- **Main limitations:** The study used MNIST, one perfect-diode DRN topology, one development assignment (84001), one held-out repaired-OM assignment (85001), and five endpoint-programming seeds on that held-out assignment. It used the AIHWKit-derived counterfactual-repaired OM simulator rather than independently measured hardware, selected checkpoints on the development validation split, and evaluated a fixed nine-level codebook and one continuous comparator. The persistent endpoint is a simulator-side diagnostic state from which later pulses evolve; retention, relaxation, temporal drift, and independent reread noise were out of scope. Two failed quantized-QAT attempts were retained and are not part of the valid replacement run's terminal estimate.
+- **Next steps:**
+  - Run one predeclared development seed of matched deployed-state recovery from the exact RESET-relative QAT state, comparing gradient-free rail refresh, direct single SET/RESET updates, ideal-fast Tiki-Taka, and physical-fast Tiki-Taka at fixed slow-write caps.
+  - If the pilot is viable, add two development endpoint repeats, freeze the smallest cap meeting the apparent-preservation and persistent-state recovery gates, and only then apply the frozen protocol to all five saved assignment-85001 deployments.
+- **Raw artifacts:** `results/mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1 -->
+
+</details>
+
+<!-- BEGIN EBL STUDY SUMMARY mnist-bounded-drn-uniform-initialization-20260826-v1 -->
+### [mnist-bounded-drn-uniform-initialization-20260826-v1](../results/mnist-bounded-drn-uniform-initialization-20260826-v1/)
+
+**Bounded DRN training from a full-range uniform initialization**
+
+- **Finished:** 2026-08-26
+- **Evidence class:** `exploratory`
+- **Outcome:** refuted
+- **Interpretation:** The fixed ten-epoch hypothesis was refuted: full-range uniform initialization reached 83.74% validation and 84.43% test accuracy with the inherited [0.008,0.005] learning rates. Same-cohort replay indicates those rates are severely scale-mismatched, especially for W1, so this is not an accuracy ceiling for uniform initialization.
+- **Details:** [human report](../results/mnist-bounded-drn-uniform-initialization-20260826-v1/analysis/report.md) · [machine summary](../results/mnist-bounded-drn-uniform-initialization-20260826-v1/analysis/summary.json) · [local study folder](../results/mnist-bounded-drn-uniform-initialization-20260826-v1/)
+<!-- END EBL STUDY SUMMARY mnist-bounded-drn-uniform-initialization-20260826-v1 -->
+
+<details>
+<summary>Full study record and provenance</summary>
+
+<!-- BEGIN EBL STUDY mnist-bounded-drn-uniform-initialization-20260826-v1 -->
+### mnist-bounded-drn-uniform-initialization-20260826-v1
+
+**Bounded DRN training from a full-range uniform initialization**
+
+- **Finished:** 2026-08-26
+- **Evidence class:** `exploratory`
+- **Outcome:** refuted
+- **Initial hypothesis:** Changing only the bounded DRN initialization to independent uniform draws over the complete permitted conductance interval [0.1020408197973068, 1.0] will still produce at least 90% selected validation accuracy after ten epochs of otherwise unchanged clean FP32 BPTT training.
+- **Completion criteria:**
+  - The uniform config differs from examples/small_drn/mnist_bounded_memristor_teacher_10ep.json only in model.weight_init_mode, which is bounded_range_uniform.
+  - With runtime seed 17, initialize every dense conductance independently and reproducibly from U[0.1020408197973068, 1.0], with no clipping-created point mass at either bound.
+  - Train exactly one seed for ten epochs and 34,380 minibatches on the same 55,000-example training split, using batch size 16, bias-free [1568,100,20] topology, perfect-diode nonlinearity, four solver iterations, direct FP32 BPTT/SGD, and layer learning rates [0.008,0.005].
+  - After each optimizer step, hard-clamp every conductance to [0.1020408197973068,1.0], matching the earlier bounded reference protocol.
+  - Select the checkpoint only by the lowest clean mean cost on the fixed 5,000-example validation split; report both the selected epoch and the epoch-10 terminal metrics.
+  - Only after training is complete, evaluate the selected checkpoint once on the untouched complete 10,000-example MNIST test split.
+  - The mechanism hypothesis passes if selected validation accuracy is at least 90%. Regardless of outcome, retain the run as the uniform-initialization benchmark and do not tune the initialization interval, learning rates, seed, or epoch count from its trajectory.
+- **Coverage:** 2 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis that full-range U[0.1020408197973068,1.0] initialization would reach at least 90% validation accuracy under the inherited ten-epoch schedule is refuted. The run reached 83.74% selected/terminal validation accuracy and 84.43% on the untouched test set, versus 93.58% validation and 94.29% test for the matched floor-shifted-Kaiming reference. The user's scientific interpretation is that the inherited learning rates were much too small for this initialization. A read-only replay on the same 32 validation minibatches supports that diagnosis: relative to initial differential contrast, the W1 and W2 proposed update scales were approximately 56 and 3.5 times smaller than in the successful Kaiming run. W1 contrast RMS was nearly unchanged after ten epochs. Therefore the result measures an under-tuned fixed schedule and must not be presented as the attainable accuracy of full-range uniform initialization.
+- **Main limitations:** This is one seed, one full-range uniform distribution, one ideal continuous-FP32 bounded DRN, one ten-epoch horizon, and learning rates inherited from a different initialization. It does not test selected learning rates, device programming, quantization, pulse noise, or physical from-scratch training. The gradient-scale diagnosis is a post-hoc read-only replay over 512 validation examples and motivates, but does not itself select, a new schedule.
+- **Next steps:**
+  - Predeclare a one-seed layerwise learning-rate screen for the identical full-range uniform initialization, using short safety canaries followed by complete ten-epoch candidates and validation-only schedule selection.
+  - Evaluate the frozen validation-selected schedule once on the untouched 10,000-example test split before using it as the clean from-scratch reference for physical pulse training.
+- **Raw artifacts:** `results/mnist-bounded-drn-uniform-initialization-20260826-v1/`
+- **Workflow summary:** `results/mnist-bounded-drn-uniform-initialization-20260826-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-bounded-drn-uniform-initialization-20260826-v1 -->
+
+</details>
 
 ## Shared validity notes
 

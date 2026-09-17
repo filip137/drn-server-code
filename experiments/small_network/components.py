@@ -32,8 +32,10 @@ from model.resistive.digital_low_rank import DigitalLowRankReadout
 from model.resistive.device_config import parse_device_programming_config
 from model.variable.parameter import Bias
 from training.add_normal import AddNormalConfig, build_add_normal_modifier
+from training.adam import AdamOptimizer
 from training.direct_readout import DirectReadoutGradient
 from training.engine import EvaluationComponents, ExperimentComponents
+from training.ibm_om_fp32_bounds import IbmOmFp32BoundsOptimizer
 from training.measured_trace import (
     MeasuredCohortAOptimizer,
     MeasuredCohortBOptimizer,
@@ -676,6 +678,7 @@ def build_train_runtime(
     }
     program_verify_config = None
     measured_parameters = None
+    om_bounds_parameters = None
     if spec.settings.update_backend.type == "program_verify":
         program_verify_config = parse_device_programming_config(
             spec.settings.update_backend.parameters["device"],
@@ -694,6 +697,16 @@ def build_train_runtime(
             )
         measured_parameters = spec.settings.update_backend.parameters
         parsed_pipeline = None
+    elif spec.settings.update_backend.type == "direct_adam":
+        parsed_pipeline = None
+    elif spec.settings.update_backend.type == "ibm_om_fp32_bounds":
+        if device_data_path is None:
+            raise ValueError(
+                "Expected --device-data for update backend "
+                "'ibm_om_fp32_bounds'. Provided value: None."
+            )
+        om_bounds_parameters = spec.settings.update_backend.parameters
+        parsed_pipeline = None
     else:
         parsed_pipeline = parse_update_pipeline(update_pipeline)
     if (
@@ -707,14 +720,44 @@ def build_train_runtime(
             "or the ideal-tensor Tiki-Taka backend. Provided value: "
             f"aihwkit_preset={parsed_pipeline.aihwkit_preset!r}."
         )
-    optimizer = build_optimizer(
-        energy,
-        cost_fn,
-        learning_rates,
-        update_pipeline=parsed_pipeline,
-        momentum=0.0,
-        weight_decay=0.0,
-    )
+    if spec.settings.update_backend.type == "direct_adam":
+        adam = spec.settings.update_backend.parameters
+        optimizer = AdamOptimizer(
+            energy,
+            cost_fn,
+            learning_rates,
+            betas=(float(adam["beta1"]), float(adam["beta2"])),
+            eps=float(adam["epsilon"]),
+            weight_decay=float(adam["weight_decay"]),
+            amsgrad=bool(adam["amsgrad"]),
+        )
+    elif om_bounds_parameters is not None and (
+        om_bounds_parameters["optimizer"]["type"] == "adam"
+    ):
+        adam = om_bounds_parameters["optimizer"]["parameters"]
+        optimizer = AdamOptimizer(
+            energy,
+            cost_fn,
+            learning_rates,
+            betas=(float(adam["beta1"]), float(adam["beta2"])),
+            eps=float(adam["epsilon"]),
+            weight_decay=float(adam["weight_decay"]),
+            amsgrad=bool(adam["amsgrad"]),
+        )
+    else:
+        sgd_parameters = (
+            om_bounds_parameters["optimizer"]["parameters"]
+            if om_bounds_parameters is not None
+            else {}
+        )
+        optimizer = build_optimizer(
+            energy,
+            cost_fn,
+            learning_rates,
+            update_pipeline=parsed_pipeline,
+            momentum=float(sgd_parameters.get("momentum", 0.0)),
+            weight_decay=float(sgd_parameters.get("weight_decay", 0.0)),
+        )
     if program_verify_config is not None:
         optimizer = ProgramVerifyOptimizer(
             optimizer,
@@ -731,6 +774,13 @@ def build_train_runtime(
             optimizer,
             stack.bundle.catalog,
             measured_parameters,
+            device_data_path,
+        )
+    elif om_bounds_parameters is not None:
+        optimizer = IbmOmFp32BoundsOptimizer(
+            optimizer,
+            stack.bundle.catalog,
+            om_bounds_parameters,
             device_data_path,
         )
     resume_capability = (

@@ -13,16 +13,26 @@ from model.resistive.builders import ParameterBinding
 from model.variable.parameter import DenseWeight
 from training.ibm_reram_hwa import (
     IBM_RERAM_ENDPOINT_APPLICATION_POLICY,
+    IBM_OM_RAW_ACTIVE_A_MIN,
+    IBM_OM_RAW_ACTIVE_D90,
+    IBM_OM_RAW_ACTIVE_SCALE,
+    IBM_OM_RAW_ACTIVE_TOLERANCE,
     IbmReramArrayPopulation,
     IbmReramHwaConfig,
     IbmReramHwaParameterModifier,
+    _RawActiveArrayPlant,
+    commission_ibm_reram_reset_relative_baselines,
     load_om_array_population,
     map_ibm_reram_array_targets,
     sample_om_array_population,
     save_om_array_population,
     validate_ibm_reram_target_mapping_preflight,
 )
-from training.ibm_reram_program_verify import PopulationStepEstimator
+from training.ibm_reram_program_verify import (
+    ControllerSettings,
+    PopulationStepEstimator,
+    run_program_verify,
+)
 
 
 def _binding(shape: tuple[int, int] = (2, 2)) -> ParameterBinding:
@@ -238,6 +248,11 @@ def _config(
     target_mapping: str = "literal_global",
     dual_rail_layout_by_parameter: dict[str, str] | None = None,
     common_window_margin_fraction: float = 0.0,
+    reset_relative_mode: str | None = None,
+    reset_relative_contrast_step: float | None = None,
+    reset_read_samples: int | None = None,
+    reset_guard_standard_errors: float | None = None,
+    forward_logit_gain: float | None = None,
 ) -> IbmReramHwaConfig:
     return IbmReramHwaConfig(
         execution=execution,
@@ -248,6 +263,11 @@ def _config(
         target_mapping=target_mapping,
         dual_rail_layout_by_parameter=dual_rail_layout_by_parameter,
         common_window_margin_fraction=common_window_margin_fraction,
+        reset_relative_mode=reset_relative_mode,
+        reset_relative_contrast_step=reset_relative_contrast_step,
+        reset_read_samples=reset_read_samples,
+        reset_guard_standard_errors=reset_guard_standard_errors,
+        forward_logit_gain=forward_logit_gain,
     )
 
 
@@ -462,6 +482,373 @@ def test_quad_preflight_separates_empty_window_failures_and_caps_them() -> None:
     outside_nonempty["mapped_target_below_lower_bound_nonempty_quad"] = 1
     with pytest.raises(ValueError, match="zero mapped targets"):
         validate_ibm_reram_target_mapping_preflight(outside_nonempty)
+
+
+def test_shared_reset_relative_commissioning_uses_observed_quad_baseline() -> None:
+    binding = _binding((2, 2))
+    lower = torch.tensor([[0.10, 0.20], [0.30, 0.40]])
+    upper = torch.full((2, 2), 0.90)
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    commissioning = commission_ibm_reram_reset_relative_baselines(
+        population,
+        dual_rail_layout_by_parameter={binding.key: "halves"},
+        read_samples=8,
+        guard_standard_errors=3.0,
+    )
+
+    torch.testing.assert_close(
+        commissioning.reset_mean,
+        lower.reshape(-1),
+    )
+    torch.testing.assert_close(
+        commissioning.reset_standard_error,
+        torch.zeros(4),
+    )
+    torch.testing.assert_close(
+        commissioning.baseline,
+        torch.full((4,), 0.40),
+    )
+    assert set(commissioning.bundle()["observed"]) == {
+        "reset_mean",
+        "reset_standard_error",
+        "baseline",
+    }
+    assert "min_bound" not in commissioning.bundle()["observed"]
+    assert "max_bound" not in commissioning.bundle()["observed"]
+    assert commissioning.report["total_reset_pulses"] == 32
+    assert commissioning.report["controller_observations_only"] is True
+    assert (
+        commissioning.report[
+            "hidden_device_bounds_consumed_by_target_mapper"
+        ]
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    ("mode", "positive_input", "expected_code"),
+    [
+        ("continuous", 0.125, 0.5),
+        ("quantized_9_level", 0.125, 1.0),
+        ("quantized_9_level", -0.125, -1.0),
+    ],
+)
+def test_shared_reset_relative_mapper_uses_one_global_offset_codebook(
+    mode: str,
+    positive_input: float,
+    expected_code: float,
+) -> None:
+    binding = _binding((2, 2))
+    lower = torch.full((2, 2), 0.20)
+    upper = torch.full((2, 2), 0.90)
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    commissioning = commission_ibm_reram_reset_relative_baselines(
+        population,
+        dual_rail_layout_by_parameter={binding.key: "halves"},
+        read_samples=8,
+        guard_standard_errors=3.0,
+    )
+    magnitude = abs(positive_input)
+    if positive_input >= 0.0:
+        source = torch.tensor([magnitude, 0.0, 0.0, magnitude])
+    else:
+        source = torch.tensor([0.0, magnitude, magnitude, 0.0])
+    step = 0.095849
+
+    mapped, report = map_ibm_reram_array_targets(
+        source,
+        population,
+        target_mapping="shared_reset_relative_quad",
+        dual_rail_layout_by_parameter={binding.key: "halves"},
+        common_window_margin_fraction=0.0,
+        reset_commissioning=commissioning,
+        reset_relative_mode=mode,
+        reset_relative_contrast_step=step,
+    )
+
+    offset = abs(expected_code) * step / 2.0
+    expected = (
+        torch.tensor([0.20 + offset, 0.20, 0.20, 0.20 + offset])
+        if expected_code >= 0.0
+        else torch.tensor([0.20, 0.20 + offset, 0.20 + offset, 0.20])
+    )
+    torch.testing.assert_close(mapped, expected)
+    assert report["logical_code"]["minimum"] == pytest.approx(expected_code)
+    assert report["logical_code"]["maximum"] == pytest.approx(expected_code)
+    assert report["reset_relative_signed_levels"] == (
+        9 if mode == "quantized_9_level" else None
+    )
+    assert report["hidden_support_is_audit_only"] is True
+    assert report["fully_supported_quad_fraction"] == 1.0
+    validate_ibm_reram_target_mapping_preflight(report)
+
+
+def test_shared_reset_relative_targets_do_not_consume_hidden_max_bounds() -> None:
+    binding = _binding((2, 2))
+    lower = torch.full((2, 2), 0.20)
+    first = _population_from_x_bounds(
+        binding,
+        lower,
+        torch.full((2, 2), 0.90),
+        corruption_policy="counterfactual_repaired",
+    )
+    commissioning = commission_ibm_reram_reset_relative_baselines(
+        first,
+        dual_rail_layout_by_parameter={binding.key: "halves"},
+        read_samples=8,
+        guard_standard_errors=3.0,
+    )
+    second = IbmReramArrayPopulation(
+        **{
+            **first.__dict__,
+            "max_bound": torch.full((4,), -0.40),
+        }
+    )
+    source = torch.tensor([1.0, 0.0, 0.0, 1.0])
+    common = {
+        "target_mapping": "shared_reset_relative_quad",
+        "dual_rail_layout_by_parameter": {binding.key: "halves"},
+        "common_window_margin_fraction": 0.0,
+        "reset_commissioning": commissioning,
+        "reset_relative_mode": "quantized_9_level",
+        "reset_relative_contrast_step": 0.095849,
+    }
+    first_target, first_report = map_ibm_reram_array_targets(
+        source, first, **common
+    )
+    second_target, second_report = map_ibm_reram_array_targets(
+        source, second, **common
+    )
+
+    torch.testing.assert_close(first_target, second_target)
+    assert first_report["mapped_target_support"] != second_report[
+        "mapped_target_support"
+    ]
+    assert second_report["hidden_support_is_audit_only"] is True
+
+
+def test_shared_reset_relative_config_is_strict() -> None:
+    config = _config(
+        execution="compact_endpoint",
+        corruption_policy="counterfactual_repaired",
+        noisy_evaluation=False,
+        target_mapping="shared_reset_relative_quad",
+        dual_rail_layout_by_parameter={"base.dense_weight.0": "halves"},
+        reset_relative_mode="quantized_9_level",
+        reset_relative_contrast_step=0.095849,
+        reset_read_samples=8,
+        reset_guard_standard_errors=3.0,
+        forward_logit_gain=20.0,
+    )
+    assert config.reset_read_samples == 8
+    assert config.forward_logit_gain == 20.0
+    with pytest.raises(ValueError, match="RESET-relative commissioning fields"):
+        _config(
+            execution="compact_endpoint",
+            corruption_policy="counterfactual_repaired",
+            noisy_evaluation=False,
+            reset_relative_mode="quantized_9_level",
+        )
+
+
+def _raw_active_population(
+    *,
+    lower_g: torch.Tensor,
+    upper_g: torch.Tensor,
+    reference: torch.Tensor | None = None,
+) -> IbmReramArrayPopulation:
+    shape = tuple(lower_g.shape)
+    size = lower_g.numel()
+    reference = (
+        torch.zeros(size, dtype=torch.float32)
+        if reference is None
+        else reference.reshape(-1).to(torch.float32)
+    )
+    return IbmReramArrayPopulation(
+        assignment_seed=84001,
+        corruption_policy="counterfactual_repaired",
+        binding_keys=("base.dense_weight.0",),
+        binding_shapes=(shape,),
+        binding_sampling_seeds=(11,),
+        donor_sampling_seeds=(12,),
+        nominal_dw_min=0.0949,
+        dw_min_std=0.0,
+        write_noise_std=0.0,
+        max_bound=(
+            IBM_OM_RAW_ACTIVE_A_MIN
+            + IBM_OM_RAW_ACTIVE_SCALE * upper_g.reshape(-1)
+        ).to(torch.float32),
+        min_bound=(
+            IBM_OM_RAW_ACTIVE_A_MIN
+            + IBM_OM_RAW_ACTIVE_SCALE * lower_g.reshape(-1)
+        ).to(torch.float32),
+        dwmin_up=torch.full((size,), 0.25, dtype=torch.float32),
+        dwmin_down=torch.full((size,), 0.25, dtype=torch.float32),
+        reference=reference,
+        corrupt=torch.zeros(size, dtype=torch.bool),
+        published_corrupt=torch.zeros(size, dtype=torch.bool),
+        fingerprint="raw-active-fixture",
+        aihwkit_version="1.1.0",
+    )
+
+
+def test_raw_active_p90_mapper_uses_one_quad_baseline_and_global_differential() -> None:
+    # Paired layout: columns (0,1) form quad 0 and (2,3) form quad 1.
+    # Quad 0 has capacity > D90; quad 1 is deliberately narrower.
+    lower = torch.tensor(
+        [[0.20, 0.21, 0.50, 0.51], [0.22, 0.23, 0.52, 0.53]]
+    )
+    upper = torch.tensor(
+        [[0.45, 0.44, 0.60, 0.61], [0.43, 0.46, 0.62, 0.61]]
+    )
+    population = _raw_active_population(lower_g=lower, upper_g=upper)
+    # u0=+0.5 and u1=-0.5 under the canonical (++,+-,-+,--) order.
+    source = torch.tensor(
+        [[0.5, 0.0, 0.0, 0.5], [0.0, 0.5, 0.5, 0.0]]
+    )
+    common = {
+        "target_mapping": "raw_active_p90_quad",
+        "dual_rail_layout_by_parameter": {
+            "base.dense_weight.0": "paired"
+        },
+        "common_window_margin_fraction": 0.0,
+        "raw_active_mode": "quantized_7_level",
+        "raw_active_unsupported_quad_policy": "structural_failure",
+    }
+    mapped, report = map_ibm_reram_array_targets(
+        source.reshape(-1), population, **common
+    )
+    mapped = mapped.reshape(2, 4)
+
+    first = torch.stack(
+        (mapped[0, 0], mapped[0, 1], mapped[1, 0], mapped[1, 1])
+    )
+    baseline = first.mean()
+    differential = 0.5 * (first[0] - first[1] - first[2] + first[3])
+    assert baseline.item() == pytest.approx((0.23 + 0.43) / 2.0)
+    assert differential.item() == pytest.approx(
+        2.0 * IBM_OM_RAW_ACTIVE_D90 / 3.0
+    )
+    torch.testing.assert_close(first[[0, 3]], torch.full((2,), baseline + differential / 2))
+    torch.testing.assert_close(first[[1, 2]], torch.full((2,), baseline - differential / 2))
+    assert report["quad_count"] == 2
+    assert report["p90_eligible_quad_count"] == 1
+    assert report["structural_failure_quad_count"] == 1
+    assert report["baseline_shared_within_every_quad"] is True
+    assert report["differential_scale_shared_across_eligible_quads"] is True
+    validate_ibm_reram_target_mapping_preflight(report)
+
+    # The reference is provenance only: changing it cannot alter targets or
+    # any mapping statistic under the raw-active protocol.
+    changed_reference = _raw_active_population(
+        lower_g=lower,
+        upper_g=upper,
+        reference=torch.linspace(-0.8, 0.4, lower.numel()),
+    )
+    remapped, changed_report = map_ibm_reram_array_targets(
+        source.reshape(-1), changed_reference, **common
+    )
+    torch.testing.assert_close(remapped, mapped.reshape(-1))
+    assert changed_report == report
+
+
+def test_raw_active_config_separates_mapping_only_training_from_one_pulse_deployment() -> None:
+    common = {
+        "assignment_seed": 84001,
+        "endpoint_seed": 84002,
+        "corruption_policy": "counterfactual_repaired",
+        "target_mapping": "raw_active_p90_quad",
+        "dual_rail_layout_by_parameter": {
+            "base.dense_weight.0": "halves"
+        },
+        "common_window_margin_fraction": 0.0,
+        "raw_active_mode": "quantized_7_level",
+        "raw_active_unsupported_quad_policy": "structural_failure",
+        "controller": "one_pulse",
+        "endpoint_policy": "preserve",
+    }
+    training = IbmReramHwaConfig(
+        execution="mapped_target",
+        noisy_evaluation=False,
+        **common,
+    )
+    deployment = IbmReramHwaConfig(
+        execution="pulse_resolved",
+        noisy_evaluation=True,
+        **common,
+    )
+    assert training.execution == "mapped_target"
+    assert deployment.controller == "one_pulse"
+    with pytest.raises(ValueError, match="historical q-coordinate"):
+        IbmReramHwaConfig(
+            execution="compact_endpoint",
+            noisy_evaluation=False,
+            **common,
+        )
+    with pytest.raises(ValueError, match="one_pulse"):
+        IbmReramHwaConfig(
+            execution="pulse_resolved",
+            noisy_evaluation=True,
+            **{**common, "controller": "adaptive"},
+        )
+
+
+def test_raw_active_conditioning_and_one_pulse_programming_ignore_reference() -> None:
+    lower = torch.full((2, 2), 0.40)
+    upper = torch.full((2, 2), 0.75)
+    first_population = _raw_active_population(
+        lower_g=lower,
+        upper_g=upper,
+    )
+    second_population = _raw_active_population(
+        lower_g=lower,
+        upper_g=upper,
+        reference=torch.tensor([0.4, -0.6, 0.2, -0.3]),
+    )
+    targets = torch.tensor([0.62, 0.54, 0.54, 0.62])
+
+    def execute(population: IbmReramArrayPopulation):
+        conditioning_generator = torch.Generator().manual_seed(1001)
+        plant = _RawActiveArrayPlant(
+            population,
+            generator=conditioning_generator,
+            device=torch.device("cpu"),
+        )
+        conditioning = plant.condition_lower_boundary()
+        plant.generator = torch.Generator().manual_seed(1002)
+        result = run_program_verify(
+            plant.controller_port(),
+            targets=targets,
+            tolerance=IBM_OM_RAW_ACTIVE_TOLERANCE,
+            maximum_pulses=128,
+            settings=ControllerSettings(kind="one_pulse"),
+        )
+        return conditioning, result, plant
+
+    first_conditioning, first_result, first_plant = execute(first_population)
+    second_conditioning, second_result, second_plant = execute(second_population)
+    assert bool(torch.all(first_conditioning["success"]))
+    assert bool(torch.all(first_result.accepted))
+    torch.testing.assert_close(
+        first_conditioning["persistent_a"],
+        second_conditioning["persistent_a"],
+    )
+    torch.testing.assert_close(first_plant.persistent_a, second_plant.persistent_a)
+    torch.testing.assert_close(
+        first_result.apparent_endpoint,
+        second_result.apparent_endpoint,
+    )
+    assert torch.equal(first_result.total_pulses, second_result.total_pulses)
 
 
 def test_differential_pair_config_requires_null_layout_and_allows_margin() -> None:
@@ -746,6 +1133,220 @@ def test_compact_modifier_restores_clean_master_and_rng_exactly(
     wrong_policy["endpoint_application_policy"] = "persistent_forward"
     with pytest.raises(ValueError, match="endpoint application policy"):
         modifier.load_state_dict(wrong_policy)
+
+
+def test_reset_relative_quantized_modifier_commissions_maps_and_restores(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binding = _binding()
+    binding.state.copy_(torch.tensor([[1.0, 0.1], [0.1, 1.0]]))
+    population = _population(
+        binding,
+        corruption_policy="counterfactual_repaired",
+    )
+    monkeypatch.setattr(
+        "training.ibm_reram_hwa.sample_om_array_population",
+        lambda *args, **kwargs: population,
+    )
+    modifier = IbmReramHwaParameterModifier(
+        (binding,),
+        _config(
+            execution="compact_endpoint",
+            corruption_policy="counterfactual_repaired",
+            noisy_evaluation=False,
+            target_mapping="shared_reset_relative_quad",
+            dual_rail_layout_by_parameter={binding.key: "halves"},
+            reset_relative_mode="quantized_9_level",
+            reset_relative_contrast_step=0.095849,
+            reset_read_samples=8,
+            reset_guard_standard_errors=3.0,
+            forward_logit_gain=562.341325190349,
+        ),
+        device_model_path=_device_model(tmp_path / "device.json"),
+        conductance_min=0.1,
+        conductance_max=1.0,
+    )
+    clean = binding.state.clone()
+    commissioning = modifier.reset_commissioning_bundle
+    assert commissioning is not None
+    assert commissioning["read_samples"] == 8
+    assert set(commissioning["observed"]) == {
+        "reset_mean",
+        "reset_standard_error",
+        "baseline",
+    }
+
+    mapped, mapping_report = modifier.preflight_target_mapping()
+    torch.testing.assert_close(
+        mapped,
+        torch.tensor([2.0 * 0.095849, 0.0, 0.0, 2.0 * 0.095849]),
+    )
+    assert mapping_report["logical_code_histogram"]["4"] == 1
+    with modifier.training_context():
+        assert not torch.equal(binding.state, clean)
+    assert torch.equal(binding.state, clean)
+    report = modifier.programming_report
+    assert report is not None
+    assert report["target_mapping"] == "shared_reset_relative_quad"
+    assert report["target_mapping_report"] == mapping_report
+    deployment = modifier.last_deployment_bundle
+    assert deployment is not None
+    assert deployment["reset_commissioning"] is not None
+
+
+def test_raw_active_modifier_programs_each_cell_after_boundary_conditioning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parameter = DenseWeight(
+        (2,),
+        (2,),
+        1.0,
+        "cpu",
+        clamp=True,
+        clamp_min=0.0,
+        clamp_max=1.0,
+    )
+    binding = ParameterBinding("base.dense_weight.0", parameter)
+    binding.state.copy_(torch.tensor([[0.5, 0.0], [0.0, 0.5]]))
+    population = _raw_active_population(
+        lower_g=torch.full((2, 2), 0.40),
+        upper_g=torch.full((2, 2), 0.75),
+        reference=torch.tensor([0.4, -0.6, 0.2, -0.3]),
+    )
+    monkeypatch.setattr(
+        "training.ibm_reram_hwa.sample_om_array_population",
+        lambda *args, **kwargs: population,
+    )
+    config = IbmReramHwaConfig(
+        execution="pulse_resolved",
+        assignment_seed=84001,
+        endpoint_seed=84003,
+        corruption_policy="counterfactual_repaired",
+        noisy_evaluation=True,
+        endpoint_policy="preserve",
+        controller="one_pulse",
+        target_mapping="raw_active_p90_quad",
+        dual_rail_layout_by_parameter={binding.key: "halves"},
+        raw_active_mode="quantized_7_level",
+        raw_active_unsupported_quad_policy="structural_failure",
+    )
+    modifier = IbmReramHwaParameterModifier(
+        (binding,),
+        config,
+        device_model_path=_device_model(tmp_path / "device.json"),
+        conductance_min=0.0,
+        conductance_max=1.0,
+    )
+    clean = binding.state.clone()
+    mapped, mapping_report = modifier.preflight_target_mapping()
+    expected_d = 2.0 * IBM_OM_RAW_ACTIVE_D90 / 3.0
+    expected_b = (0.40 + 0.75) / 2.0
+    torch.testing.assert_close(
+        mapped,
+        torch.tensor(
+            [
+                expected_b + expected_d / 2.0,
+                expected_b - expected_d / 2.0,
+                expected_b - expected_d / 2.0,
+                expected_b + expected_d / 2.0,
+            ]
+        ),
+    )
+    assert mapping_report["p90_eligible_quad_count"] == 1
+
+    with modifier.evaluation_context():
+        programmed = binding.state.clone()
+        assert not torch.equal(programmed, clean)
+    assert torch.equal(binding.state, clean)
+    report = modifier.programming_report
+    deployment = modifier.last_deployment_bundle
+    assert report is not None
+    assert deployment is not None
+    assert report["controller"] == "one_pulse"
+    assert report["corrupt"] == 0
+    assert report["published_corrupt"] == 0
+    assert report["conditioning_success"] == 4
+    assert report["programming_eligible"] == 4
+    assert report["programming_eligible_accepted"] == 4
+    assert report["endpoint_clipped"] == 0
+    assert report["reference_consumed_by_plant_or_controller"] is False
+    assert bool(torch.all(deployment["exact_target_in_support"]))
+    assert bool(torch.all(deployment["conditioning"]["success"]))
+    assert torch.equal(
+        deployment["apparent_endpoint"],
+        deployment["raw_apparent_endpoint"],
+    )
+
+
+def test_reset_relative_compact_execution_exactly_falls_back_outside_support(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binding = _binding((2, 40))
+    binding.state.fill_(0.1)
+    binding.state[0, 0] = 1.0
+    binding.state[1, 20] = 1.0
+    lower = torch.full((2, 40), 0.20)
+    upper = torch.full((2, 40), 0.90)
+    upper[0, 0] = 0.30
+    upper[1, 20] = 0.30
+    population = _population_from_x_bounds(
+        binding,
+        lower,
+        upper,
+        corruption_policy="counterfactual_repaired",
+    )
+    monkeypatch.setattr(
+        "training.ibm_reram_hwa.sample_om_array_population",
+        lambda *args, **kwargs: population,
+    )
+    modifier = IbmReramHwaParameterModifier(
+        (binding,),
+        _config(
+            execution="compact_endpoint",
+            corruption_policy="counterfactual_repaired",
+            noisy_evaluation=False,
+            target_mapping="shared_reset_relative_quad",
+            dual_rail_layout_by_parameter={binding.key: "halves"},
+            reset_relative_mode="quantized_9_level",
+            reset_relative_contrast_step=0.095849,
+            reset_read_samples=8,
+            reset_guard_standard_errors=3.0,
+        ),
+        device_model_path=_device_model(tmp_path / "device.json"),
+        conductance_min=0.1,
+        conductance_max=1.0,
+    )
+
+    _mapped, mapping = modifier.preflight_target_mapping()
+    assert mapping["fully_supported_quad_count"] == 19
+    assert mapping["fully_supported_quad_fraction"] == 0.95
+    assert mapping["mapped_target_support"] == {
+        "below_lower_bound": 0,
+        "above_upper_bound": 2,
+        "inside_bounds": 78,
+    }
+    with modifier.training_context():
+        pass
+
+    report = modifier.programming_report
+    assert report is not None
+    assert report["compact_endpoint_devices"] == 78
+    assert report["pulse_resolved_fallback_devices"] == 2
+    fallback = report["pulse_resolved_fallback"]
+    assert fallback["policy"] == (
+        "pulse_resolved_noncorrupt_out_of_bound_shared_reset_relative_only"
+    )
+    assert fallback["selection_indices"] == [0, 60]
+    assert fallback["target_above_upper_bound"] == 2
+    deployment = modifier.last_deployment_bundle
+    assert deployment is not None
+    assert int(deployment["compact_endpoint_mask"].sum().item()) == 78
+    assert int(
+        deployment["pulse_resolved_fallback_mask"].sum().item()
+    ) == 2
 
 
 def test_compact_forward_applies_apparent_and_retains_persistent_endpoint(

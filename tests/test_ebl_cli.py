@@ -193,6 +193,7 @@ def test_describe_lists_and_details_stable_experiment() -> None:
     assert payload["commands"]["train"]["optional_input_options"] == [
         "--device-data",
         "--teacher-weights",
+        "--deployment",
     ]
     assert payload["commands"]["validate"]["optional_input_options"] == [
         "--teacher-weights"

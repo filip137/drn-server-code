@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-raw-active-p90-learning-rate-screen-20260826-v1",
+  "title": "Raw-active p90 mapped-HWA and seven-level QAT learning-rate screen",
+  "hypothesis": "At least one predeclared multiplier in {0.25,1,4} around each matched RESET-relative layerwise schedule will improve apparent programmed validation accuracy after three partial epochs over the corresponding zero-update raw-active mapper without numerical failure.",
+  "motivation": "The raw-active protocol changes the model coordinate, array baseline, differential budget, forward gains, and mapped operating point, so the RESET-relative learning rates are used only as screen centers. A read-only replay on the same 1,024-example validation cohort measured the clean, continuous-mapped, and seven-level-mapped gradient distributions without an optimizer step. This prerequisite screen freezes one rate pair per HWA mode before the full ten-epoch matched study. It does not access the test split or held-out assignment.",
+  "evidence_class": "model_based_aihwkit_preset_hwa_prerequisite",
+  "arms": [
+    {
+      "arm_id": "continuous-x0p25",
+      "description": "Continuous mapped-target HWA at 0.25 times the inherited RESET-relative continuous schedule.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/lr_screen_continuous_x0p25.json"]
+    },
+    {
+      "arm_id": "continuous-x1",
+      "description": "Continuous mapped-target HWA at the inherited RESET-relative continuous schedule.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/lr_screen_continuous_x1.json"]
+    },
+    {
+      "arm_id": "continuous-x4",
+      "description": "Continuous mapped-target HWA at four times the inherited RESET-relative continuous schedule.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/lr_screen_continuous_x4.json"]
+    },
+    {
+      "arm_id": "quantized-x0p25",
+      "description": "Seven-level mapped-target QAT at 0.25 times the inherited RESET-relative QAT schedule.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/lr_screen_quantized_x0p25.json"]
+    },
+    {
+      "arm_id": "quantized-x1",
+      "description": "Seven-level mapped-target QAT at the inherited RESET-relative QAT schedule.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/lr_screen_quantized_x1.json"]
+    },
+    {
+      "arm_id": "quantized-x4",
+      "description": "Seven-level mapped-target QAT at four times the inherited RESET-relative QAT schedule.",
+      "experiment_id": "mnist_relu_drn_kd.v1", "mode": "train",
+      "configs": ["../examples/mnist_relu_drn/ibm_om_raw_active_p90_qat/lr_screen_quantized_x4.json"]
+    }
+  ],
+  "completion_criteria": [
+    "Before launch, verify zero-update raw-active checkpoint SHA-256 97785347e39bfaf14026dc06bf8b28a7e0e30711543e7a566baf915022c860d5, teacher SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, device-model SHA-256 3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3, development population fingerprint 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac, and gradient-replay SHA-256 a13885ace607269a05cb21ad7fbafec203012c3fcd6102efcfb68d92f32db32f.",
+    "All six arms use runtime/data seed 42, CPU float32, batch size 16, the identical zero-update checkpoint, assignment seed 84001, mapping-only training endpoint seed 84002, pulse-resolved selection endpoint seed 84003, the same layouts and structural-failure policy, and exactly one apparent selection repeat.",
+    "Every arm completes exactly three epochs of exactly 1,024 training minibatches per epoch and evaluates exactly 128 validation minibatches at initialization and each epoch. No test example, held-out assignment, extra multiplier, or adaptive rate change is allowed.",
+    "Continuous candidates are [0.0004382978723404256,1.1894468085106384e-6], [0.0017531914893617025,4.757787234042554e-6], and [0.00701276595744681,1.9031148936170215e-5]. Seven-level candidates are [0.0011029787234042552,2.9937021276595744e-6], [0.004411914893617021,1.1974808510638298e-5], and [0.017647659574468084,4.789923404255319e-5].",
+    "Mapped training uses the exact raw-active mapper on eligible quads and the transformed RESET bound on declared structural failures; it does not pretend to simulate pulse noise. Selection uses boundary-conditioned independent-device one-pulse P&V with the 128-pulse target budget and preserves unclipped apparent endpoints.",
+    "Freeze one rate pair per mode by highest selected apparent programmed validation accuracy. Break an exact accuracy tie by lower apparent KL, then smaller multiplier. Record the selected checkpoint/run hashes before creating the full-study configs.",
+    "Preserve every failed or partial attempt. Operational recovery may fix code defects and rerun a config, but may not change rates, epochs, cohorts, gains, mapping, or selection rules."
+  ],
+  "analysis_plan": [
+    "For each mode, tabulate each multiplier's selected epoch, selected apparent validation accuracy, apparent KL and teacher agreement, terminal metrics, clean logical validation metrics, mapping counts, and bound occupancy.",
+    "Report learning-rate-scaled proposed update RMS at initialization using the frozen read-only replay, explicitly separating raw gradients from scaled updates and noting that clean and mapped states have different operating points.",
+    "Select continuous and seven-level winners independently using only the declared apparent validation rule. This screen does not compare the two modes scientifically and does not establish a need for on-chip training.",
+    "Carry only the frozen winner rates into the ten-epoch study; do not tune on physical held-out deployment outcomes."
+  ]
+}

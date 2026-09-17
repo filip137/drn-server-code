@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "experiment_id": "ibm_om_raw_active_cell_program_verify.v1",
+  "runtime": {
+    "device": "cpu",
+    "dtype": "float32",
+    "required_aihwkit_version": "1.1.0",
+    "assignment_seed": 84001,
+    "selection_seed": 86201,
+    "conditioning_seed": 86202,
+    "pulse_seed": 86203,
+    "repeat_seed": 86204,
+    "partition_seed": 86205,
+    "analysis_seed": 86206
+  },
+  "device": {
+    "preset": "reram_array_om",
+    "corruption_policy": "counterfactual_repaired",
+    "bindings": [
+      {"key": "base.dense_weight.0", "shape": [1568, 100]},
+      {"key": "base.dense_weight.1", "shape": [100, 20]}
+    ]
+  },
+  "modes": {
+    "characterize": {
+      "profile": "smoke",
+      "sampled_devices": 8,
+      "repeats_per_device": 1,
+      "codebook": {
+        "minimum": 0.5506439208984375,
+        "maximum": 0.6496888995170593,
+        "levels": 9
+      },
+      "tolerance": 0.00791586015294392,
+      "controller": "one_pulse",
+      "start_protocol": "lower_to_target",
+      "maximum_program_pulses": 128,
+      "partitions": {"calibration": 0.2, "fit": 0.6, "validation": 0.2},
+      "conditioning": {
+        "quiet_steps": 4,
+        "persistent_change_threshold_raw_a": 0.000002,
+        "maximum_pulses": 4096
+      }
+    }
+  }
+}
+

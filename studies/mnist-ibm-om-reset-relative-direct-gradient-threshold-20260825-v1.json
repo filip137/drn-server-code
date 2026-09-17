@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-reset-relative-direct-gradient-threshold-20260825-v1",
+  "title": "One-seed RESET-relative deployed-array direct-gradient threshold sweep",
+  "hypothesis": "Suppressing small individual-conductance updates with fixed layer-specific p90, p95, or p99 absolute raw-gradient gates will improve terminal apparent-forward validation accuracy over the matched unthresholded direct-pulse control at at least one of the 0.1, 1, or 4 slow-pulse caps, while requesting fewer slow-array writes and producing fewer logical sign flips.",
+  "motivation": "The completed unthresholded recovery pilot found only a transient +0.22-point apparent improvement at the 0.1 budget and terminal degradation at every direct-pulse budget. Its direct rule assigned nonzero probability to every nonzero gradient, so many weak updates consumed endurance and moved programmed four-cell contrasts. This is a remedial development study, not advancement to extra seeds or a formal array. It adapts the earlier measured-ReRAM threshold idea to a bidirectional deployed array by gating absolute raw gradients and retaining gradient sign for SET versus RESET.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "p90-budget-0p1",
+      "description": "Fixed per-layer p90 absolute raw-gradient gate with the frozen unthresholded 0.1-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p90_budget_0p1.json"
+      ]
+    },
+    {
+      "arm_id": "p90-budget-1",
+      "description": "Fixed per-layer p90 absolute raw-gradient gate with the frozen unthresholded 1-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p90_budget_1.json"
+      ]
+    },
+    {
+      "arm_id": "p90-budget-4",
+      "description": "Fixed per-layer p90 absolute raw-gradient gate with the frozen unthresholded 4-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p90_budget_4.json"
+      ]
+    },
+    {
+      "arm_id": "p95-budget-0p1",
+      "description": "Fixed per-layer p95 absolute raw-gradient gate with the frozen unthresholded 0.1-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p95_budget_0p1.json"
+      ]
+    },
+    {
+      "arm_id": "p95-budget-1",
+      "description": "Fixed per-layer p95 absolute raw-gradient gate with the frozen unthresholded 1-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p95_budget_1.json"
+      ]
+    },
+    {
+      "arm_id": "p95-budget-4",
+      "description": "Fixed per-layer p95 absolute raw-gradient gate with the frozen unthresholded 4-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p95_budget_4.json"
+      ]
+    },
+    {
+      "arm_id": "p99-budget-0p1",
+      "description": "Fixed per-layer p99 absolute raw-gradient gate with the frozen unthresholded 0.1-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p99_budget_0p1.json"
+      ]
+    },
+    {
+      "arm_id": "p99-budget-1",
+      "description": "Fixed per-layer p99 absolute raw-gradient gate with the frozen unthresholded 1-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p99_budget_1.json"
+      ]
+    },
+    {
+      "arm_id": "p99-budget-4",
+      "description": "Fixed per-layer p99 absolute raw-gradient gate with the frozen unthresholded 4-pulse-per-cell probability scale.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_direct_gradient_threshold/p99_budget_4.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "All nine arms must reuse byte-for-byte source deployment SHA-256 0b99f4dd73841a891993708bdace0ab508864e2e60e56620c165e3df99f006cd, source QAT checkpoint SHA-256 537681598b887d4d63c6429c7f7bee3a7082041215c09d6cb3c25947452f311a, teacher SHA-256 9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52, and IBM OM model SHA-256 3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3.",
+    "Run exactly one seed for every p90, p95, and p99 by 0.1, 1, and 4 budget cell. Every arm runs all ten epochs and 34,380 minibatches, retains epoch 10 as primary, and reports the best intermediate epoch only descriptively.",
+    "Before any write, replay exactly 64 source-state training minibatches without consuming the training permutation or global RNG. For each stable parameter, compute a linear-interpolated quantile over strictly nonzero absolute raw gradients and freeze a strict absolute-gradient-greater-than threshold.",
+    "All nine arms must have identical per-parameter calibration sample digests. Thresholds must be byte-identical across budgets at a given percentile and monotone p90 <= p95 <= p99 in each parameter.",
+    "Do not redistribute suppressed updates. Freeze the exact probability scales 0.005644706616388747, 0.05644706616388745, and 0.2257882646555498 from unthresholded control reports f3ded58c814858f3bb1a6c8da282521e04ee8f3fdaebf9cba8ffacb1cc02a1c2, e9944e8ce1494e95369bc632be02a8ca60588be20d22ba59471d836290b2dbc1, and b36e5d09f648ad47b12c12c629587cd826587fc5460d3dac4f8aea55c3cc23b1. On the ungated calibration vectors, each frozen scale must reproduce its prior expected full-run cap before the gate is applied.",
+    "A retained eligible positive desired update requests one stochastic SET pulse and a retained eligible negative desired update requests one stochastic RESET pulse. Equality, sub-threshold magnitude, zero gradient, failed Bernoulli selection, or an exhausted whole-run cap holds the cell.",
+    "Every checkpoint and final recovery bundle must retain the numeric thresholds, percentile, calibration digest, probability-scale provenance, gate counters, pulse ledgers, two endpoint states, and exact resume RNG state. Each run must index a standalone direct-gradient calibration artifact.",
+    "The study is ready for review only after all nine runs pass full artifact-hash verification. Do not add seeds, choose a percentile or budget, release a held-out array, or update the experimental manifest from this one-seed development result."
+  ],
+  "analysis_plan": [
+    "First prove exact initialization identity at 92.74 percent apparent-forward validation accuracy and 45.84 percent persistent-state diagnostic accuracy for all threshold arms and the three controls.",
+    "For each percentile-budget cell report terminal and best descriptive apparent accuracy, persistent diagnostic accuracy, KL, requested and state-changing pulses, SET/RESET split, unique cells, saturation, clipping, code crossings, logical sign flips, and calibrated gain.",
+    "Compare each arm only with the exact unthresholded direct-pulse control at the same cap from mnist-ibm-om-reset-relative-on-chip-recovery-pilot-20260825-v1. Report accuracy change, pulses saved, unique-cell change, and sign-flip change.",
+    "Report calibration thresholds and cumulative eligible/suppressed fractions separately for base.dense_weight.0 and base.dense_weight.1. Distinguish a fixed threshold's calibration percentile from its later dynamic eligibility fraction.",
+    "Treat terminal epoch 10 as primary. A transient improvement with terminal degradation is an early-stopping diagnostic, not a successful fixed ten-epoch protocol.",
+    "This one stochastic seed can diagnose whether thresholding is viable and how it changes cost, but cannot establish a method ranking or justify formal held-out deployment."
+  ]
+}

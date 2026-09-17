@@ -786,7 +786,12 @@ def test_removed_algorithm_and_backend_names_are_rejected() -> None:
 
     payload = _config()
     payload["modes"]["train"]["update_backend"]["type"] = "direct_reram"
-    with pytest.raises(ConfigError, match="'direct', 'tiki_taka'"):
+    with pytest.raises(
+        ConfigError,
+        match=(
+            "'direct', 'direct_adam', 'ibm_om_fp32_bounds', 'tiki_taka'"
+        ),
+    ):
         parse_small_drn_config(payload)
 
 

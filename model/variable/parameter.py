@@ -185,6 +185,12 @@ class DenseWeight(Parameter):
             torch.nn.init.uniform_(self._state, -scale, +scale)
             self._state.clamp_(min=0.0)
             self._state.add_(float(self.min_cond))
+        elif mode == 'om_cell_bounds_uniform':
+            # External IBM OM population data are loaded only after the model
+            # catalog has assigned stable parameter keys.  Use a deterministic
+            # inert placeholder here; the strict ibm_om_fp32_bounds backend
+            # replaces every cell before its first forward pass.
+            torch.nn.init.constant_(self._state, 0.0)
         elif mode == 'Kendall':
             lower = 1e-7
             upper = 0.08 / np.sqrt(size_pre + size_post)

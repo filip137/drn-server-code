@@ -66,6 +66,7 @@ class TrainRequest:
     device_data: Optional[Path] = None
     device_model: Optional[Path] = None
     teacher_weights: Optional[Path] = None
+    deployment: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--teacher-weights",
         type=Path,
         help="explicit named ReLU teacher checkpoint for distillation",
+    )
+    train.add_argument(
+        "--deployment",
+        type=Path,
+        help=(
+            "explicit two-state IBM OM deployment required by deployed-state "
+            "recovery backends"
+        ),
     )
 
     linspace = commands.add_parser(
@@ -396,7 +405,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     study_finalize = study_commands.add_parser(
         "finalize",
-        help="record a reviewed final interpretation in the finished ledger",
+        help="record a reviewed closeout in the experimental manifest",
     )
     study_finalize.add_argument(
         "--study-dir",
@@ -408,13 +417,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--review",
         type=Path,
         required=True,
-        help="strict JSON review with outcome and final interpretation",
+        help=(
+            "strict JSON review with outcome, concise manifest interpretation, "
+            "and full interpretation"
+        ),
     )
     study_finalize.add_argument(
         "--manifest",
         type=Path,
         default=Path("docs/experimental_manifest.md"),
-        help="finished-study Markdown ledger",
+        help="concluded-study Markdown index",
     )
     study_finalize.add_argument(
         "--verify-artifacts",
@@ -574,6 +586,7 @@ def _protocol_payload(
                             else []
                         ),
                         "--teacher-weights",
+                        "--deployment",
                     ]
                 ),
             },
@@ -814,15 +827,25 @@ def _default_validate_handler(request: ValidateRequest) -> Optional[int]:
 def _default_characterize_handler(
     request: CharacterizeRequest,
 ) -> Optional[int]:
-    if request.definition.experiment_id != "ibm_reram_program_verify.v1":
+    if request.definition.experiment_id == "ibm_reram_program_verify.v1":
+        from experiments.reram_program_verify.runtime import run_characterize
+
+        return run_characterize(request)
+    if (
+        request.definition.experiment_id
+        == "ibm_om_raw_active_cell_program_verify.v1"
+    ):
+        from experiments.reram_program_verify.raw_active_cell_runtime import (
+            run_raw_active_cell_characterize,
+        )
+
+        return run_raw_active_cell_characterize(request)
+    else:
         raise ConfigError(
-            "Expected characterize runtime dispatch only for "
-            "'ibm_reram_program_verify.v1'. Provided value: "
+            "Expected characterize runtime dispatch for a registered "
+            "device-characterization experiment. Provided value: "
             f"{request.definition.experiment_id!r}."
         )
-    from experiments.reram_program_verify.runtime import run_characterize
-
-    return run_characterize(request)
 
 
 def _default_checkpoint_import_legacy_handler(
@@ -914,6 +937,7 @@ def _dispatch(
             device_data=args.device_data,
             device_model=args.device_model,
             teacher_weights=args.teacher_weights,
+            deployment=args.deployment,
         )
         return _handler_result(
             _require_handler(handlers.train, "train"),

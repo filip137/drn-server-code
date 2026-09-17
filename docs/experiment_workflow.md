@@ -19,9 +19,11 @@ metadata-first study summary
       ↓
 human scientific review
       ↓
-final entry in experimental_manifest.md
+full closeout in analysis/report.md
       ↓
-human synthesis in current_state.md
+concise entry in experimental_manifest.md
+      ↓
+human synthesis in current_state.md when the broad picture changes
 ```
 
 The workflow has no scheduler, database, experiment catalog, or hidden config
@@ -113,6 +115,12 @@ analysis/summary.json
 analysis/report.md
 ```
 
+`summary.json` is the machine-readable coverage and terminal-metric record.
+`report.md` is its human-readable companion: before review it shows the
+hypothesis, coverage, native-run evidence, and validation problems. After
+finalization it also contains the reviewed outcome, interpretation,
+limitations, and next steps.
+
 Use `--verify-artifacts` for a one-time collection or archival audit. That
 option hashes every artifact and is intentionally slower.
 
@@ -125,7 +133,10 @@ reported but do not hide a valid replacement.
 
 Copy [`studies/review.template.json`](../studies/review.template.json) into the
 study's `analysis/` directory and write the scientific conclusion yourself.
-It must state the outcome, final interpretation, limitations, and next steps.
+Review schema version 2 must state the outcome, a one-paragraph concise
+`manifest_interpretation`, the full final interpretation, limitations, and
+next steps. The short text is an explicit human scientific judgment; the
+workflow never truncates or invents it automatically.
 
 ```bash
 python -m ebl study finalize \
@@ -134,22 +145,32 @@ python -m ebl study finalize \
   --manifest docs/experimental_manifest.md
 ```
 
-Finalization reruns the coverage checks, writes `analysis/final.json`, and
-adds an idempotent per-study block to `experimental_manifest.md`. The entry
-contains both the initial hypothesis and the final interpretation, so the
-reasoning remains visible even when the result was negative or inconclusive.
-Changing a finalized study or review hash fails closed; use a new study ID for
-a materially different contract.
+Finalization reruns the coverage checks, writes `analysis/final.json`, updates
+`analysis/report.md` to the reviewed closeout, and adds an idempotent per-study
+presentation to `experimental_manifest.md`. The visible presentation links to
+the local study folder and report and contains the short interpretation. The
+complete hypothesis, criteria, interpretation, limitations, and next steps
+remain in a collapsed record, so negative and inconclusive reasoning is not
+lost. Changing a finalized study or review hash fails closed; use a new study
+ID for a materially different contract.
+
+Existing schema-version-1 reviews and final records remain readable and
+idempotent. They may be retained as historical records, but a new finalization
+must use review schema version 2. Re-running `study summarize` on an existing
+finalized version-1 study regenerates the full report without modifying its
+historical `review.json` or `final.json`.
 
 ## 6. Maintain the repository picture
 
-`experimental_manifest.md` is the evidence ledger: exact study conclusions,
-limitations, and artifact locations belong there.
+`experimental_manifest.md` is the concluded-study index: one short
+human-authored interpretation and links to the study folder and full report
+belong in its visible entry. The collapsed record retains the exact conclusion
+and provenance.
 
 [`current_state.md`](current_state.md) is the human-readable synthesis. After
-a reviewed study changes the direction of the repository, update its **Big
-picture**, **Current evidence**, and **Next steps** sections. Do not turn it
-into a run log or copy every metric into it. Operational activity remains in
+a reviewed study changes the direction of the repository, update its broad
+picture, current synthesis, and next decisions. Do not turn it into a run log
+or copy every metric into it. Operational activity remains in
 [`current_simulations.md`](current_simulations.md).
 
 ## Study states

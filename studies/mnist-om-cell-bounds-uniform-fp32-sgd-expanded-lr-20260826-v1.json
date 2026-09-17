@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-om-cell-bounds-uniform-fp32-sgd-expanded-lr-20260826-v1",
+  "title": "Expanded ten-epoch SGD learning-rate search inside heterogeneous IBM OM cell bounds",
+  "hypothesis": "The original SGD search stopped at a monotonically improving boundary. Extending zero-momentum layerwise SGD geometrically to W1 in {0.512,1.024,2.048,4.096} and W2 in {0.02,0.04,0.08} will produce at least 96.0% selected validation accuracy within ten epochs from the fixed per-cell OM-bounds uniform initialization, reducing the prior 1.94-percentage-point Adam-versus-SGD validation gap by at least 1.18 percentage points.",
+  "motivation": "In the completed optimizer-reference study, validation accuracy and mean cost improved monotonically across every tested W1 rate through 0.512 and every tested W2 rate through 0.02. The selected SGD arm reached 94.82% validation and 95.33% test accuracy, whereas Adam reached 96.76% validation and 96.94% test accuracy. Because the original SGD optimum lay on both search boundaries, that difference cannot yet be attributed cleanly to optimizer choice. This successor retains the exact array-specific FP32 oracle, initialization, seed, data order, architecture, and ten-epoch budget while extending only the two fixed SGD rates.",
+  "evidence_class": "exploratory",
+  "arms": [
+    {
+      "arm_id": "sgd-w1-0p512-w2-0p02",
+      "description": "Fresh anchor rerun with the previous boundary schedule [0.512,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p512_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p512-w2-0p04",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [0.512,0.04].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_0p512_w2_0p04.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p512-w2-0p08",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [0.512,0.08].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_0p512_w2_0p08.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-1p024-w2-0p02",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [1.024,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_1p024_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-1p024-w2-0p04",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [1.024,0.04].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_1p024_w2_0p04.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-1p024-w2-0p08",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [1.024,0.08].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_1p024_w2_0p08.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-2p048-w2-0p02",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [2.048,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_2p048_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-2p048-w2-0p04",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [2.048,0.04].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_2p048_w2_0p04.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-2p048-w2-0p08",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [2.048,0.08].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_2p048_w2_0p08.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-4p096-w2-0p02",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [4.096,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_4p096_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-4p096-w2-0p04",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [4.096,0.04].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_4p096_w2_0p04.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-4p096-w2-0p08",
+      "description": "Ten-epoch zero-momentum SGD with layer rates [4.096,0.08].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_cell_bounds_sgd_expanded_lr_20260826/sgd_w1_4p096_w2_0p08.json"
+      ]
+    },
+    {
+      "arm_id": "validation-selected-test",
+      "description": "One full MNIST test evaluation of the checkpoint selected from the twelve completed SGD arms by the frozen validation-only rule.",
+      "experiment_id": "small_drn.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/selected_test.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Every train arm uses the exact repaired IBM OM assignment seed 84001 population with SHA-256 7e0bcfb76a0a613f0ba319786a39fdb540cce0a74f15d9fb007426a46ad49d2f and fingerprint 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac.",
+    "Every arm uses seed 17 and the same deterministic independent per-cell U[L_i,U_i] initialization, where L_i=clamp((min_bound_i-reference_i+1)/2,0,1) and U_i=clamp((max_bound_i-reference_i+1)/2,0,1). The aggregate initial-weight SHA-256 must match d8b66130f9eaad501ce78dfece8dc62acb245837517ea7c59efd18a96495f26e.",
+    "Every optimizer step is ordinary zero-momentum, zero-weight-decay digital SGD followed by exact per-cell projection to [L_i,U_i]. No pulse model, read noise, endpoint noise, quantizer, physical state evolution, or program-and-verify operation is used.",
+    "All twelve training arms use the identical bias-free [1568,100,20] perfect-diode DRN, input gain 100, voltage/current amplification 4/0.25, four forward and backward solver iterations, paired squared-error BPTT, seed-17 MNIST split/order, batch size 16, ten epochs, and exactly 34,380 optimizer minibatches.",
+    "The twelve candidates are the Cartesian product W1 in {0.512,1.024,2.048,4.096} and W2 in {0.02,0.04,0.08}. No learning-rate schedule, momentum, weight decay, warmup, or early termination is used.",
+    "Within each arm retain the earliest checkpoint with the lowest validation mean paired-squared-error cost. After all twelve development arms complete, freeze the single winner by lowest selected validation cost, breaking exact ties by higher validation accuracy and then lexicographically smaller learning-rate tuple.",
+    "Before test access, write a selection receipt containing every development run ID, selected and terminal validation metrics, config hash, initial-weight hash, and selected checkpoint hash. Evaluate only the frozen winner once on all 10,000 untouched MNIST test examples.",
+    "The fresh [0.512,0.02] anchor must reproduce the earlier arm's initial hash and selected validation metrics under the current source. The prior Adam [0.001,0.001] result is an immutable descriptive comparator: 96.76% selected validation, validation cost 0.04886919779479504, and 96.94% test accuracy.",
+    "Do not add rates, extend the ten-epoch horizon, use test results for selection, or reinterpret this hidden-bounds FP32 oracle as physical or transferable OM training after observing trajectories."
+  ],
+  "analysis_plan": [
+    "Verify exact config isolation, pinned population identity, byte-identical initialization and data order, complete epoch/minibatch/example coverage, finite optimizer state, exact SGD hyperparameters, all selected weights within their own [L_i,U_i], and checkpoint hashes.",
+    "Tabulate every arm's selected epoch, selected and terminal validation accuracy/cost, projection pressure, exact rail occupancy, and final per-layer conductance and logical-contrast statistics as a two-dimensional learning-rate response surface.",
+    "Compare the fresh anchor to its earlier deterministic run and report whether the new winner is interior or remains on either grid boundary.",
+    "Report the new winner's validation and full-test differences from the original SGD winner (94.82% validation,95.33% test) and the frozen Adam winner (96.76% validation,96.94% test). Separate learning-rate under-tuning from the remaining optimizer-specific gap.",
+    "Use the better ten-epoch clean result only as an array-specific hidden-bounds FP32 ceiling for a separately declared physical pulse-training study."
+  ]
+}

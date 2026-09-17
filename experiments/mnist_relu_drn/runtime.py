@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Iterable, TYPE_CHECKING
+from typing import Any, Iterable, Mapping, TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F
@@ -23,6 +24,7 @@ from experiments.mnist_relu_drn.components import (
     select_mapping_and_gain,
 )
 from experiments.mnist_relu_drn.config import (
+    IBM_OM_DEPLOYED_RECOVERY_BACKEND,
     MEASURED_BACKENDS,
     MEASURED_COHORT_A_BACKENDS,
     MEASURED_COHORT_B_BACKENDS,
@@ -63,6 +65,8 @@ _IBM_ARRAY_SPECIFIC_TARGET_MAPPINGS = frozenset(
     {
         "dual_rail_quad_common_window",
         "differential_pair_common_window",
+        "shared_reset_relative_quad",
+        "raw_active_p90_quad",
     }
 )
 
@@ -99,7 +103,7 @@ def _build_one_weight_modifier(
             if population_artifact_dir is not None
             else None
         )
-        return build_ibm_reram_hwa_modifier(
+        modifier = build_ibm_reram_hwa_modifier(
             stack.bundle.catalog.trainable,
             IbmReramHwaConfig(**dict(settings.parameters)),
             device_model_path=device_model_path,
@@ -108,6 +112,33 @@ def _build_one_weight_modifier(
             population_path=population_path,
             population_receipt_path=receipt_path,
         )
+        commissioning = modifier.reset_commissioning_bundle
+        commissioning_report = modifier.reset_commissioning_report
+        if commissioning is not None:
+            if population_artifact_dir is None or population_role is None:
+                return modifier
+            commissioning_path = (
+                population_artifact_dir
+                / f"ibm_om_reset_commissioning.{population_role}.pt"
+            )
+            commissioning_receipt_path = (
+                population_artifact_dir
+                / f"ibm_om_reset_commissioning.{population_role}.receipt.json"
+            )
+            atomic_torch_save(commissioning, commissioning_path)
+            if commissioning_report is None:  # pragma: no cover - defensive
+                raise RuntimeError(
+                    "Expected RESET commissioning receipt with its bundle."
+                )
+            atomic_write_json(
+                commissioning_receipt_path,
+                commissioning_report,
+            )
+            modifier.register_reset_commissioning_artifacts(
+                commissioning_path,
+                commissioning_receipt_path,
+            )
+        return modifier
     if settings.type != "add_normal":  # pragma: no cover - schema rejects it
         raise ValueError(
             "Expected a registered MNIST KD weight modifier. Provided value: "
@@ -160,6 +191,32 @@ def _evaluation_modifier(modifier):
 
 def _training_modifier(modifier):
     return modifier.training if isinstance(modifier, SplitParameterModifier) else modifier
+
+
+@contextmanager
+def _modifier_forward_gain(
+    stack: StudentStack,
+    modifier,
+    *,
+    evaluation: bool,
+):
+    candidate = (
+        _evaluation_modifier(modifier)
+        if evaluation
+        else _training_modifier(modifier)
+    )
+    gain = (
+        candidate.config.forward_logit_gain
+        if isinstance(candidate, IbmReramHwaParameterModifier)
+        else None
+    )
+    original = float(stack.cost.gain)
+    try:
+        if gain is not None:
+            stack.cost.gain = float(gain)
+        yield
+    finally:
+        stack.cost.gain = original
 
 
 def _ibm_population_fingerprints(modifier) -> dict[str, str | None]:
@@ -245,6 +302,20 @@ def _ibm_population_artifact_records(
                 ),
             )
         )
+        commissioning_paths = candidate.reset_commissioning_artifact_paths
+        if commissioning_paths is not None:
+            records.extend(
+                (
+                    store.artifact_record(
+                        commissioning_paths[0],
+                        kind="ibm_om_reset_commissioning",
+                    ),
+                    store.artifact_record(
+                        commissioning_paths[1],
+                        kind="ibm_om_reset_commissioning_receipt",
+                    ),
+                )
+            )
     return tuple(records)
 
 
@@ -410,6 +481,7 @@ def _model_checkpoint_metadata(
         "fixed_logit_gain": stack.cost.gain,
         "temperature": spec.settings.temperature,
         "selection_evaluation": spec.settings.selection_evaluation,
+        "selection_metric": spec.settings.selection_metric,
         "selection_noise_repeats": spec.settings.selection_noise_repeats,
         "conductance_bounds_s": [
             spec.model.conductance_min,
@@ -757,6 +829,16 @@ def _validate_resume_backend_metadata(
                 ),
             }
         )
+    if spec.settings.selection_metric != "kl_teacher_student":
+        expected.update(
+            {
+                "selection_evaluation": spec.settings.selection_evaluation,
+                "selection_metric": spec.settings.selection_metric,
+                "selection_noise_repeats": (
+                    spec.settings.selection_noise_repeats
+                ),
+            }
+        )
     if (
         spec.mapping.range_placement != "lower"
         or spec.mapping.scale_fraction_pairs is not None
@@ -817,6 +899,23 @@ def _validate_train_request(request: Any, spec: StudentTrainSpec) -> None:
             "Expected at most one of --weights or --resume. Provided value: both."
         )
     backend = spec.settings.update_backend.type
+    deployed_recovery = backend == IBM_OM_DEPLOYED_RECOVERY_BACKEND
+    requested_deployment = getattr(request, "deployment", None)
+    if deployed_recovery:
+        if sum(selected) != 1:
+            raise ValueError(
+                "Expected deployed recovery to receive exactly one of "
+                "--weights or --resume."
+            )
+        if requested_deployment is None:
+            raise ValueError(
+                "Expected deployed recovery to receive an exact --deployment."
+            )
+    elif requested_deployment is not None:
+        raise ValueError(
+            "Expected --deployment only for ibm_om_deployed_recovery. "
+            f"Provided value: {requested_deployment!r}."
+        )
     measured = backend in MEASURED_BACKENDS
     if measured != (request.device_data is not None):
         expected = "an explicit --device-data" if measured else "no --device-data"
@@ -828,7 +927,7 @@ def _validate_train_request(request: Any, spec: StudentTrainSpec) -> None:
         spec.settings.weight_modifier,
         spec.settings.selection_weight_modifier,
     )
-    uses_ibm_device_model = any(
+    uses_ibm_device_model = deployed_recovery or any(
         modifier.type == "ibm_reram_om_program_verify"
         for modifier in modifiers
     )
@@ -1084,8 +1183,14 @@ def _evaluate(
         "teacher_score_squared": 0.0,
     }
     examples = 0
+    applied_gain: float | None = None
     active_modifier = modifier_or_default(modifier)
-    with active_modifier.evaluation_context(), torch.no_grad():
+    with (
+        active_modifier.evaluation_context(),
+        _modifier_forward_gain(stack, modifier, evaluation=True),
+        torch.no_grad(),
+    ):
+        applied_gain = float(stack.cost.gain)
         for inputs, labels in limited(loader, maximum_batches):
             if sample_limit is not None:
                 remaining = sample_limit - examples
@@ -1133,7 +1238,7 @@ def _evaluate(
         "raw_score_rms": (totals["raw_score_squared"] / score_values) ** 0.5,
         "calibrated_score_rms": (totals["calibrated_score_squared"] / score_values) ** 0.5,
         "teacher_logit_rms": (totals["teacher_score_squared"] / score_values) ** 0.5,
-        "fixed_logit_gain": stack.cost.gain,
+        "fixed_logit_gain": applied_gain,
     }
 
 
@@ -1201,6 +1306,12 @@ def _selection_evaluate(
         "repeat_kl_teacher_student": [
             report["kl_teacher_student"] for report in reports
         ],
+        "repeat_student_accuracy": [
+            report["student_accuracy"] for report in reports
+        ],
+        "repeat_teacher_agreement": [
+            report["teacher_agreement"] for report in reports
+        ],
     }
     if programming_reports:
         result["repeat_device_programming"] = programming_reports
@@ -1233,7 +1344,10 @@ def _train_epoch(
         with torch.no_grad():
             teacher_logits = teacher.logits(inputs)
         stack.optimizer.zero_grad(set_to_none=True)
-        with active_modifier.training_context():
+        with (
+            active_modifier.training_context(),
+            _modifier_forward_gain(stack, modifier, evaluation=False),
+        ):
             stack.network.set_input(inputs, reset=True)
             stack.minimizer.compute_equilibrium()
             stack.cost.set_teacher(teacher_logits, labels)
@@ -1306,11 +1420,13 @@ def _selected_payload(
         {
             "teacher_path": str(teacher_path.expanduser().resolve()),
             "selection_metric": (
-                "validation_modifier_mean.kl_teacher_student"
+                "validation_modifier_mean."
+                f"{spec.settings.selection_metric}"
                 if spec.settings.selection_evaluation == "modifier"
-                else "validation_clean.kl_teacher_student"
+                else "validation_clean."
+                f"{spec.settings.selection_metric}"
             ),
-            "selection_value": validation["kl_teacher_student"],
+            "selection_value": validation[spec.settings.selection_metric],
             "selection_epoch": epoch,
             "selection_student_accuracy": validation["student_accuracy"],
             "selection_teacher_agreement": validation["teacher_agreement"],
@@ -1320,6 +1436,21 @@ def _selected_payload(
         stack.bundle.catalog,
         metadata=metadata,
     )
+
+
+def _selection_improved(
+    candidate: Mapping[str, Any],
+    incumbent: Mapping[str, Any],
+    *,
+    metric: str,
+) -> bool:
+    candidate_value = float(candidate[metric])
+    incumbent_value = float(incumbent[metric])
+    if metric == "kl_teacher_student":
+        return candidate_value < incumbent_value
+    if metric == "student_accuracy":
+        return candidate_value > incumbent_value
+    raise ValueError(f"Unsupported selection metric: {metric!r}.")
 
 
 def _adaptation_summary(
@@ -1364,6 +1495,12 @@ def run_train(request: "TrainRequest") -> int:
             f"Provided value: {type(spec).__name__}."
         )
     _validate_train_request(request, spec)
+    if spec.settings.update_backend.type == IBM_OM_DEPLOYED_RECOVERY_BACKEND:
+        from experiments.mnist_relu_drn.ibm_om_deployed_recovery import (
+            run_recovery_train,
+        )
+
+        return run_recovery_train(request)
     input_artifacts = [_input("teacher_weights", request.teacher_weights)]
     for role in ("weights", "resume", "device_data", "device_model"):
         value = getattr(request, role)
@@ -1974,9 +2111,10 @@ def run_train(request: "TrainRequest") -> int:
                 modifier=modifier,
                 clean=last_clean_validation,
             )
-            improved = (
-                last_validation["kl_teacher_student"]
-                < selected_validation["kl_teacher_student"]
+            improved = _selection_improved(
+                last_validation,
+                selected_validation,
+                metric=spec.settings.selection_metric,
             )
             if improved:
                 selected_epoch = epoch
@@ -2042,6 +2180,10 @@ def run_train(request: "TrainRequest") -> int:
                     ),
                     "selected": improved,
                     "selected_epoch": selected_epoch,
+                    "selection_metric": spec.settings.selection_metric,
+                    "selected_value": selected_validation[
+                        spec.settings.selection_metric
+                    ],
                     "selected_kl": selected_validation["kl_teacher_student"],
                     "conductances": conductance_statistics(
                         stack.bundle.catalog,
@@ -2109,6 +2251,24 @@ def run_train(request: "TrainRequest") -> int:
         relative_improvement = (
             initial["kl_teacher_student"] - selected_validation["kl_teacher_student"]
         ) / initial["kl_teacher_student"] if initial["kl_teacher_student"] > 0.0 else 0.0
+        if spec.settings.selection_metric == "student_accuracy":
+            selection_improvement = (
+                float(selected_validation["student_accuracy"])
+                - float(initial["student_accuracy"])
+            )
+            selection_gate = {
+                "metric": "student_accuracy",
+                "direction": "maximize",
+                "minimum_absolute_improvement": 0.0,
+                "observed_absolute_improvement": selection_improvement,
+                "passed": selection_improvement >= 0.0,
+            }
+        else:
+            selection_gate = {
+                "minimum_relative_kl_improvement": spec.settings.minimum_relative_kl_improvement,
+                "passed": relative_improvement
+                >= spec.settings.minimum_relative_kl_improvement,
+            }
         final_programming = (
             stack.optimizer.programming_report
             if isinstance(
@@ -2177,15 +2337,13 @@ def run_train(request: "TrainRequest") -> int:
                 "selection_evaluation": (
                     spec.settings.selection_evaluation
                 ),
+                "selection_metric": spec.settings.selection_metric,
                 "selection_noise_repeats": (
                     spec.settings.selection_noise_repeats
                 ),
                 "selected": {"epoch": selected_epoch, **selected_validation},
                 "relative_kl_recovery_from_initialization": relative_improvement,
-                "acceptance_gate": {
-                    "minimum_relative_kl_improvement": spec.settings.minimum_relative_kl_improvement,
-                    "passed": relative_improvement >= spec.settings.minimum_relative_kl_improvement,
-                },
+                "acceptance_gate": selection_gate,
                 "initial_conductances": initial_conductances,
                 "final_conductances": conductance_statistics(
                     stack.bundle.catalog,

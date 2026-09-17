@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-reset-relative-ttv2-repair-20260825-v1",
+  "title": "One-seed ideal-fast TTv2 transfer-algorithm repair",
+  "hypothesis": "A canonical-axis, dual-rail-atomic TTv2 transfer with a persistent fast array and digital residual buffer will avoid the catastrophic degradation of the earlier TT-inspired direct-transfer arm at the same 0.1-slow-pulse-per-cell safety cap while dispatching nonzero gradient-directed slow pulses.",
+  "motivation": "Post-hoc audit showed that the earlier arm was not TTv2. It scanned stored output columns rather than logical input columns, split differential rails, cleared the fast slice after every read, and converted each read directly into a stochastic slow pulse without TTv2's digital H buffer. The first ideal-fast event coherently wrote 880 cells of one unpaired output rail and reduced apparent validation accuracy from 92.74% to 50.88%. This diagnostic study changes only the transfer algorithm; it does not yet claim a physical fast-array implementation or compare c-TTv2 with AGAD.",
+  "evidence_class": "model_based_aihwkit_preset",
+  "arms": [
+    {
+      "arm_id": "ttv2-ideal-budget-0p1",
+      "description": "Ideal symmetric-soft-bounds fast array, persistent A, lossless FP32 H buffer, canonical dual-rail input-pair scans, and physical OM slow pulses capped at 0.1 request per slow conductance.",
+      "experiment_id": "mnist_relu_drn_kd.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_relu_drn/ibm_om_reset_relative_ttv2_repair/ttv2_ideal_budget_0p1.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Reuse byte-for-byte the frozen RESET-relative QAT checkpoint SHA-256 537681598b887d4d63c6429c7f7bee3a7082041215c09d6cb3c25947452f311a and source deployment SHA-256 0b99f4dd73841a891993708bdace0ab508864e2e60e56620c165e3df99f006cd on repaired assignment 84501 and endpoint seed 84601. The initial apparent validation accuracy must replay as 92.74% on all 5,000 validation examples.",
+    "Run exactly one seed, update seed 85901, for ten epochs and 34,380 minibatches with the frozen QAT learning rates. Retain epoch 10 without validation selection and do not tune gamma0 or any transfer parameter after observing the trajectory.",
+    "The ideal fast tensor A must use a symmetric soft-bounds update in normalized endpoint units, remain persistent after reads, and be bounded to [-1,1]. Forward inference uses only the physical slow array (gamma=0).",
+    "Every minibatch must scan one cyclic logical input coordinate per layer as a complete input-rail row pair: rows (r,r+784) across all 100 columns for W1 and (r,r+50) across all 20 columns for W2. No stored output column may be treated as a TTv2 logical input column, and no four-cell quad may be split by the read schedule.",
+    "For layer l use lambda_H = n_l/(gamma0*delta_W) with transfer period one minibatch, n_l equal to 784 or 50 dual-rail scan groups, gamma0=10000, and delta_W=0.04745. Accumulate lambda_H times the selected A slice into an FP32 H buffer.",
+    "A buffer entry with absolute value at least one may request at most one slow SET/RESET pulse on that read. Subtract exactly one signed pulse unit only after an actual dispatch; preserve fractional overshoot and every crossing deferred by the cap. The whole-run slow request cap is exactly 15,880 and is a fail-closed safety cap rather than the transfer clock.",
+    "The run must preserve exact resume state for slow apparent/persistent endpoints and RNG, A, H, cyclic cursors, pulse ledgers, threshold-crossing and deferred counts, data permutation, gain, and metric history. The terminal artifact must retain A and H tensors plus their summaries.",
+    "The mechanism hypothesis passes only if at least one slow pulse is dispatched and terminal apparent accuracy is at least 90.00%, which is more than 79.94 percentage points above the historical TT-inspired ideal-fast 0.1-budget terminal result of 10.06%. If no pulse is dispatched, the study diagnoses an under-driven transfer scale; if the cap is exhausted, report all retained H debt rather than silently discarding it.",
+    "Do not generalize this one-seed ideal-fast diagnostic to physical TTv2 or on-chip superiority. A physical follow-up requires a separately declared c-TTv2 or AGAD arm with bidirectional incremental fast writes and an explicit reference-offset strategy."
+  ],
+  "analysis_plan": [
+    "Verify source hashes, exact initial metrics, terminal status, resume capability, and the complete 10-epoch trajectory before interpreting accuracy.",
+    "Report terminal and best apparent/persistent validation accuracy, KL, gain, requested and state-changing pulses by layer, unique cells, sign flips, code crossings, saturation, clipping, scan counts, threshold crossings, cap deferrals, A occupancy, H residual magnitude, and whether the safety cap was reached.",
+    "Compare descriptively against the immutable historical 0.1-budget results from the earlier pilot: TT-inspired ideal-fast terminal 10.06%, TT-inspired physical-fast terminal 38.86%, ungated direct-pulse terminal 89.36%, and identical source 92.74%. These are audit comparators, not new arms or independent seeds.",
+    "Attribute avoidance of the first-event collapse to the combined algorithm repair; this single arm does not separately estimate the causal effects of axis correction, rail grouping, persistent A, and H buffering.",
+    "After artifact verification, request scientific review before adding physical c-TTv2/AGAD, other gamma0 values, budgets, or seeds, and before updating the experimental manifest."
+  ]
+}

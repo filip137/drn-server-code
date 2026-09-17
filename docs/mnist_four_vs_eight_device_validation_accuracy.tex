@@ -6,6 +6,8 @@
 \usepackage{graphicx}
 \usepackage{tabularx}
 
+\graphicspath{{./}{docs/}}
+
 \title{MNIST Validation Accuracy for Four- and Eight-Device ReRAM Synapses}
 \author{}
 \date{}
@@ -168,5 +170,49 @@ projection or digital-shadow accumulation was used. These are exploratory
 single-seed results. Thresholds were calibrated and checkpoints selected on
 the validation split; the reported test split was held out until the selected
 checkpoints were evaluated.
+
+\section*{Common absolute-state interval across IBM OM cells}
+
+For a required device fraction $p$, the interval below is the widest single
+absolute-conductance interval $[L_p,H_p]$ contained in the reachable interval
+of at least $p$ of the 158,800 repaired development cells.  Here $\delta$ is
+tied to the AIHWKit OM preset's nominal minimum step, rather than inferred
+from an endpoint-error distribution:
+\[
+  \Delta g_{\mathrm{min,nom}} = \frac{0.0949}{5.9942948818}
+    = 0.01583172,
+  \qquad
+  \delta = \frac{1}{2}\Delta g_{\mathrm{min,nom}} = 0.00791586.
+\]
+Consequently, $4\delta=0.03166344$ is a nominal step-scale reference.  It is
+not a lower bound on the state-dependent pulse displacement of every cell and
+is not a measured persistent-programming error.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.78\textwidth]
+    {ibm_om_common_intervals_p50_p90_p99.png}
+  \caption{Widest jointly covered absolute-state interval at p50, p90, and
+  p99 device coverage, generated with Matplotlib.  The horizontal reference
+  uses $\delta=\tfrac{1}{2}\Delta g_{\mathrm{min,nom}}$, where
+  $\Delta g_{\mathrm{min,nom}}$ is the preset's nominal minimum step expressed
+  in the shared $g$ coordinate.  Because realized pulse responses are
+  cell-, state-, and direction-dependent, $4\delta$ is a nominal comparison
+  scale rather than a measured error bound or guaranteed pulse spacing.}
+  \label{fig:ibm-om-common-interval-coverage}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.96\textwidth]
+    {ibm_om_cell_bound_variation.png}
+  \caption{Cell-to-cell variation in the full-RESET state $g_{\min}$,
+  full-SET state $g_{\max}$, and achievable span $g_{\max}-g_{\min}$ for the
+  158,800-cell repaired development assignment.  Dashed lines mark medians;
+  light bands and annotations mark the central p5--p95 interval.  These are
+  sampled persistent bound distributions from assignment seed 84001, not
+  apparent verify-state or endpoint-error distributions.}
+  \label{fig:ibm-om-cell-bound-variation}
+\end{figure}
 
 \end{document}

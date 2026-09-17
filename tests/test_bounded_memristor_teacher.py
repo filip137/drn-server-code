@@ -21,6 +21,26 @@ CONFIG = (
     / "small_drn"
     / "mnist_bounded_memristor_teacher_10ep.json"
 )
+UNIFORM_CONFIG = (
+    ROOT
+    / "examples"
+    / "small_drn"
+    / "mnist_bounded_memristor_teacher_uniform_10ep.json"
+)
+UNIFORM_LR_SCREEN_DIR = (
+    ROOT
+    / "examples"
+    / "small_drn"
+    / "mnist_bounded_uniform_lr_screen_20260826"
+)
+UNIFORM_LR_SCREEN = {
+    "w1_0p128_w2_0p01.json": (0.128, 0.01),
+    "w1_0p128_w2_0p02.json": (0.128, 0.02),
+    "w1_0p256_w2_0p01.json": (0.256, 0.01),
+    "w1_0p256_w2_0p02.json": (0.256, 0.02),
+    "w1_0p512_w2_0p01.json": (0.512, 0.01),
+    "w1_0p512_w2_0p02.json": (0.512, 0.02),
+}
 CMO_FLOOR_RATIO = 9.0 / 88.199997
 
 
@@ -89,6 +109,82 @@ def test_floor_shifted_initialization_is_bounded_and_rebuild_stable() -> None:
             state.eq(spec.common.model.weight_min).float().mean()
         )
         assert 0.45 < floor_fraction < 0.55
+
+
+def test_uniform_teacher_changes_only_the_initialization_protocol() -> None:
+    reference = json.loads(CONFIG.read_text())
+    uniform = json.loads(UNIFORM_CONFIG.read_text())
+
+    assert reference["model"].pop("weight_init_mode") == (
+        "floor_shifted_kaiming_uniform"
+    )
+    assert uniform["model"].pop("weight_init_mode") == (
+        "bounded_range_uniform"
+    )
+    assert uniform == reference
+
+
+def test_bounded_range_uniform_initialization_is_reproducible() -> None:
+    spec = resolve_experiment_config(UNIFORM_CONFIG, RunMode.TRAIN)[1]
+    common = _cpu_common(spec)
+
+    seed_runtime(common.runtime.seed)
+    first = build_model_stack(common)
+    seed_runtime(common.runtime.seed)
+    second = build_model_stack(common)
+
+    midpoint = 0.5 * (CMO_FLOOR_RATIO + 1.0)
+    for first_binding, second_binding in zip(
+        first.bundle.catalog.trainable,
+        second.bundle.catalog.trainable,
+        strict=True,
+    ):
+        state = first_binding.state
+        assert torch.equal(state, second_binding.state)
+        assert float(state.min()) > CMO_FLOOR_RATIO
+        assert float(state.max()) < 1.0
+        assert abs(float(state.mean()) - midpoint) < 0.01
+        assert not bool(state.eq(CMO_FLOOR_RATIO).any())
+        assert not bool(state.eq(1.0).any())
+
+
+@pytest.mark.parametrize(
+    ("filename", "learning_rates"),
+    tuple(UNIFORM_LR_SCREEN.items()),
+)
+def test_uniform_learning_rate_screen_changes_only_learning_rates(
+    filename: str,
+    learning_rates: tuple[float, float],
+) -> None:
+    reference = json.loads(UNIFORM_CONFIG.read_text())
+    candidate_path = UNIFORM_LR_SCREEN_DIR / filename
+    candidate = json.loads(candidate_path.read_text())
+
+    assert tuple(candidate["modes"]["train"]["learning_rates"]) == (
+        learning_rates
+    )
+    candidate["modes"]["train"]["learning_rates"] = reference[
+        "modes"
+    ]["train"]["learning_rates"]
+    assert candidate == reference
+
+    spec = resolve_experiment_config(candidate_path, RunMode.TRAIN)[1]
+    assert spec.settings.learning_rates == pytest.approx(learning_rates)
+    assert spec.common.model.weight_init_mode == "bounded_range_uniform"
+
+
+def test_uniform_learning_rate_screen_has_one_validate_only_config() -> None:
+    test_config = UNIFORM_LR_SCREEN_DIR / "selected_test.json"
+    payload = json.loads(test_config.read_text())
+
+    assert tuple(payload["modes"]) == ("validate",)
+    validate = resolve_experiment_config(test_config, RunMode.VALIDATE)[1]
+    assert validate.common.model.weight_init_mode == "bounded_range_uniform"
+    assert validate.settings.split == "test"
+    assert validate.settings.sample_limit is None
+
+    with pytest.raises(ConfigError, match="train"):
+        resolve_experiment_config(test_config, RunMode.TRAIN)
 
 
 def test_teacher_checkpoint_metadata_records_model_local_semantics() -> None:

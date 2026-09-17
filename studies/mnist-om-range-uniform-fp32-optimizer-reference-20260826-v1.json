@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-om-cell-bounds-uniform-fp32-optimizer-reference-20260826-v1",
+  "title": "Ten-epoch FP32 SGD and Adam references inside heterogeneous IBM OM cell bounds",
+  "hypothesis": "For a bias-free four-cell perfect-diode DRN initialized independently and uniformly inside each seed-84001 IBM OM cell's effective controller interval, array-specific bounds-only FP32 Adam will reach at least 97% selected validation accuracy within ten epochs and outperform the validation-selected bounds-only FP32 SGD schedule.",
+  "motivation": "The nominal IBM OM controller coordinate is [0,1], but device-to-device variation means individual cells use shifted and often compressed subintervals. For the frozen repaired seed-84001 assignment, the effective per-cell span after intersection with [0,1] has mean about 0.824, median about 0.868, 5th percentile about 0.492, and minimum about 0.024. This array-specific oracle reference isolates optimization under the actual sampled bounds while deliberately omitting pulses, endpoint noise, quantization, and program-and-verify.",
+  "evidence_class": "exploratory",
+  "arms": [
+    {
+      "arm_id": "sgd-w1-0p128-w2-0p01",
+      "description": "Ten-epoch digital SGD with layer learning rates [0.128,0.01].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p128_w2_0p01.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p128-w2-0p02",
+      "description": "Ten-epoch digital SGD with layer learning rates [0.128,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p128_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p256-w2-0p01",
+      "description": "Ten-epoch digital SGD with layer learning rates [0.256,0.01].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p256_w2_0p01.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p256-w2-0p02",
+      "description": "Ten-epoch digital SGD with layer learning rates [0.256,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p256_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p512-w2-0p01",
+      "description": "Ten-epoch digital SGD with layer learning rates [0.512,0.01].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p512_w2_0p01.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-w1-0p512-w2-0p02",
+      "description": "Ten-epoch digital SGD with layer learning rates [0.512,0.02].",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/sgd_w1_0p512_w2_0p02.json"
+      ]
+    },
+    {
+      "arm_id": "adam-lr-1e4",
+      "description": "Ten-epoch ordinary digital Adam with shared layer learning rate 0.0001.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/adam_lr_1e4.json"
+      ]
+    },
+    {
+      "arm_id": "adam-lr-3e4",
+      "description": "Ten-epoch ordinary digital Adam with shared layer learning rate 0.0003.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/adam_lr_3e4.json"
+      ]
+    },
+    {
+      "arm_id": "adam-lr-1e3",
+      "description": "Ten-epoch ordinary digital Adam with shared layer learning rate 0.001.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/adam_lr_1e3.json"
+      ]
+    },
+    {
+      "arm_id": "adam-lr-3e3",
+      "description": "Ten-epoch ordinary digital Adam with shared layer learning rate 0.003.",
+      "experiment_id": "small_drn.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/adam_lr_3e3.json"
+      ]
+    },
+    {
+      "arm_id": "sgd-validation-selected-test",
+      "description": "Full MNIST test evaluation of the validation-selected SGD checkpoint.",
+      "experiment_id": "small_drn.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/selected_test.json"
+      ]
+    },
+    {
+      "arm_id": "adam-validation-selected-test",
+      "description": "Full MNIST test evaluation of the validation-selected Adam checkpoint.",
+      "experiment_id": "small_drn.v1",
+      "mode": "validate",
+      "configs": [
+        "../examples/small_drn/mnist_om_range_uniform_optimizer_reference_20260826/selected_test.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Every train arm uses the exact repaired IBM OM assignment seed 84001 from the pickle-free population artifact with SHA-256 7e0bcfb76a0a613f0ba319786a39fdb540cce0a74f15d9fb007426a46ad49d2f and fingerprint 4887ad89abdd16193448c54a0cbe97be915cb4b9bc04cf1151c5e2a96ee5a3ac. The stable binding layout is base.dense_weight.0 [1568,100] followed by base.dense_weight.1 [100,20].",
+    "For every physical cell i derive L_i=clamp((min_bound_i-reference_i+1)/2,0,1) and U_i=clamp((max_bound_i-reference_i+1)/2,0,1). Every arm uses seed 17 and the same deterministic independent U[L_i,U_i] initialization for all 158,800 nonnegative FP32 cell weights; signed logical weights arise only from the canonical four-cell halves/paired differential topology.",
+    "Every digital optimizer step is followed by exact elementwise projection to [L_i,U_i]. Hidden sampled bounds are intentionally used because this is an array-specific oracle reference. No pulse model, RESET baseline, read noise, endpoint noise, quantizer, physical state evolution, or program-and-verify operation is used.",
+    "All arms use the identical bias-free [1568,100,20] perfect-diode DRN, input gain 100, voltage/current amplification 4/0.25, four forward and backward solver iterations, paired squared-error BPTT, seed-17 MNIST split/order, batch size 16, ten epochs, and exactly 34,380 optimizer minibatches.",
+    "The six SGD candidates are the Cartesian product W1 in {0.128,0.256,0.512} and W2 in {0.01,0.02}, with zero momentum and zero weight decay. The four Adam candidates use shared layer rates {0.0001,0.0003,0.001,0.003}, beta=(0.9,0.999), epsilon=1e-8, zero weight decay, and AMSGrad disabled.",
+    "Within each arm, retain the earliest checkpoint with the lowest validation mean paired-squared-error cost. After every development arm completes, independently freeze one SGD winner and one Adam winner by lowest selected validation cost, breaking exact ties by higher validation accuracy and then lexicographically smaller learning-rate tuple.",
+    "Write a selection receipt containing every development run ID, selected metrics, input config hash, and selected checkpoint hash before either test evaluation. Then evaluate each frozen optimizer winner exactly once on all 10,000 untouched MNIST test examples.",
+    "Do not add rates, extend the ten-epoch horizon, use the test set for selection, or reinterpret the clean reference as physical OM training after observing trajectories."
+  ],
+  "analysis_plan": [
+    "Verify exact config isolation, the pinned population SHA-256/fingerprint/assignment/layout, byte-identical initial tensors and data order, complete epoch/minibatch/example coverage, finite FP32 optimizer state, exact optimizer hyperparameters, every selected weight inside its own [L_i,U_i], checkpoint hashes, and full validation/test counts.",
+    "For every arm report selected epoch, selected and terminal validation accuracy/cost, initial validation accuracy, effective lower/upper/span distributions, per-layer cell-weight and four-cell logical-contrast statistics, per-cell relative positions, and lower/upper projection occupancy and event counts.",
+    "Freeze and test the SGD and Adam winners independently. Report absolute and percentage-point optimizer differences on validation and test.",
+    "Compare descriptively with the invalid-for-this-question global U[0,1] premise, the prior CMO-floor U[0.1020408198,1] inherited-SGD result (83.74% validation,84.43% test), its incomplete scale-informed SGD diagnostic, and the canonical floor-shifted-Kaiming bounded reference (93.58% validation,94.29% test).",
+    "Keep the historical 97.47% perfect-diode result contextual only because it used a different range, gain, bias, EP optimizer, scheduler, and 100-epoch horizon.",
+    "Use the better ten-epoch clean result as an array-specific bounds-only FP32 ceiling for a separately declared physical OM initialization and pulse-update study; do not call it transferable because it uses hidden seed-84001 cell bounds."
+  ]
+}

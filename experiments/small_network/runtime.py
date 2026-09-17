@@ -86,6 +86,7 @@ from training.probes import (
     SolverIterationCountsProbe,
 )
 from training.program_verify import ProgramVerifyOptimizer
+from training.ibm_om_fp32_bounds import IbmOmFp32BoundsOptimizer
 from training.measured_trace import (
     MeasuredCohortAOptimizer,
     MeasuredCohortBOptimizer,
@@ -692,7 +693,11 @@ def _execute_training(
         in {"digital_low_rank", "passive_layerwise_low_rank"}
         or isinstance(
             runtime.optimizer,
-            (ProgramVerifyOptimizer, MeasuredTraceOptimizer),
+            (
+                ProgramVerifyOptimizer,
+                MeasuredTraceOptimizer,
+                IbmOmFp32BoundsOptimizer,
+            ),
         )
     ) and request.resume is None:
         layer_snapshot = runtime.runtime_state.state_dict()
@@ -717,6 +722,14 @@ def _execute_training(
                     None
                     if device_programming is None
                     else dict(device_programming)
+                ),
+                "om_fp32_bounds": (
+                    runtime.optimizer.bounds_report
+                    if isinstance(
+                        runtime.optimizer,
+                        IbmOmFp32BoundsOptimizer,
+                    )
+                    else None
                 ),
                 "validation": dict(initial_validation),
             }
@@ -898,6 +911,11 @@ def _execute_training(
             metadata=_resume_metadata(spec, runtime),
         )
 
+    om_bounds_report = (
+        runtime.optimizer.bounds_report
+        if isinstance(runtime.optimizer, IbmOmFp32BoundsOptimizer)
+        else None
+    )
     metrics = {
         "completed_epochs": completed_epoch,
         "global_step": global_step,
@@ -934,6 +952,7 @@ def _execute_training(
             )
             else None
         ),
+        "om_fp32_bounds": om_bounds_report,
         "initial_validation": (
             None if initial_validation is None else dict(initial_validation)
         ),
@@ -943,9 +962,17 @@ def _execute_training(
             else dict(pre_deployment_validation)
         ),
     }
+    extra_artifacts: tuple[ArtifactRecord, ...] = ()
+    if om_bounds_report is not None:
+        bounds_path = store.run_dir / "artifacts" / "om_fp32_bounds.json"
+        atomic_write_json(bounds_path, om_bounds_report)
+        extra_artifacts = (
+            store.artifact_record(bounds_path, kind="om_fp32_bounds"),
+        )
     artifacts = (
         store.artifact_record(weights_path, kind="weights"),
         store.artifact_record(resume_path, kind="resume"),
+        *extra_artifacts,
     )
     return metrics, artifacts, last_epoch_report
 
@@ -1690,17 +1717,26 @@ def _validate_training_initialization(
         "measured_cohort_b",
         "measured_cohort_b_lora",
     }
+    om_bounds = measured_backend == "ibm_om_fp32_bounds"
+    device_data_backend = measured or om_bounds
     device_data = getattr(request, "device_data", None)
-    if measured and device_data is None:
+    if device_data_backend and device_data is None:
         raise ValueError(
             "Expected --device-data when modes.train.update_backend.type is "
             f"{measured_backend!r}. Provided value: None."
         )
-    if not measured and device_data is not None:
+    if not device_data_backend and device_data is not None:
         raise ValueError(
             "Expected --device-data only when modes.train.update_backend.type "
-            "is a measured-cohort backend. Provided value: "
+            "is a measured-cohort or IBM OM FP32-bounds backend. Provided "
+            "value: "
             f"{str(device_data)!r}."
+        )
+    if om_bounds and request.resume is None and sources:
+        raise ValueError(
+            "Expected ibm_om_fp32_bounds to initialize every new run from "
+            "its frozen per-cell uniform distribution, or to use --resume. "
+            f"Provided value: {sources!r}."
         )
     if measured_backend == "measured_cohort_a" and (
         request.weights is not None or request.base_weights is not None

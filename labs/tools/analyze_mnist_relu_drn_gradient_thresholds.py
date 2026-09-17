@@ -182,6 +182,7 @@ def main() -> None:
     teacher, _teacher_metadata = _load_teacher(
         teacher_path,
         device=torch.device(spec.runtime.device),
+        spec=spec,
     )
     stack = build_student_stack(spec, enable_measured=False)
     checkpoint_sha_before = sha256_file(weights_path)

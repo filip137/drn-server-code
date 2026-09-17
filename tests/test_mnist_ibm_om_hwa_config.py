@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
 import io
 import json
@@ -7,12 +8,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from ebl.cli import CommandHandlers, TrainRequest, ValidateRequest, main
 from experiments.definitions import resolve_experiment_config
 from experiments.mnist_relu_drn.components import build_student_stack
 from experiments.mnist_relu_drn.runtime import (
+    _evaluate,
     _ibm_target_mapping_preflights,
+    _modifier_forward_gain,
+    _selection_improved,
     _selected_payload,
     _validate_array_specific_modifier_population_parity,
 )
@@ -30,11 +35,96 @@ _COMMON_WINDOW_CONFIG_ROOT = (
     / "mnist_relu_drn"
     / "ibm_om_common_window_hwa_pilot"
 )
+_RESET_RELATIVE_CONFIG_ROOT = (
+    _ROOT
+    / "examples"
+    / "mnist_relu_drn"
+    / "ibm_om_reset_relative_quantized_hwa"
+)
+_RAW_ACTIVE_CONFIG_ROOT = (
+    _ROOT
+    / "examples"
+    / "mnist_relu_drn"
+    / "ibm_om_raw_active_p90_qat"
+)
 _STUDY = (
     _ROOT
     / "studies"
     / "mnist-ibm-om-hwa-program-verify-pilot-20260822-v1.json"
 )
+_RESET_RELATIVE_STUDY = (
+    _ROOT
+    / "studies"
+    / "mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1.json"
+)
+
+
+def test_raw_active_production_configs_freeze_matched_protocol() -> None:
+    expected = {
+        "zero_update_quantized.json": (
+            "none",
+            (0.0, 0.0),
+            "quantized_7_level",
+            223.87211385683378,
+        ),
+        "clean_bptt_quantized_deploy.json": (
+            "none",
+            (0.1388429752066116, 0.00037685950413223146),
+            "quantized_7_level",
+            223.87211385683378,
+        ),
+        "continuous_hwa.json": (
+            "ibm_reram_om_program_verify",
+            (0.00701276595744681, 0.000019031148936170215),
+            "continuous",
+            251.18864315095797,
+        ),
+        "quantized_qat.json": (
+            "ibm_reram_om_program_verify",
+            (0.017647659574468084, 0.00004789923404255319),
+            "quantized_7_level",
+            223.87211385683378,
+        ),
+    }
+    for name, (training_type, rates, mode, gain) in expected.items():
+        _definition, spec = resolve_experiment_config(
+            _RAW_ACTIVE_CONFIG_ROOT / name,
+            RunMode.TRAIN,
+        )
+        assert spec.model.conductance_min == 0.0
+        assert spec.model.conductance_max == 1.0
+        assert spec.settings.learning_rates == rates
+        assert spec.settings.weight_modifier.type == training_type
+        selection = spec.settings.selection_weight_modifier.parameters
+        assert selection["target_mapping"] == "raw_active_p90_quad"
+        assert selection["raw_active_mode"] == mode
+        assert selection["forward_logit_gain"] == gain
+        assert selection["execution"] == "pulse_resolved"
+        assert selection["controller"] == "one_pulse"
+        assert selection["endpoint_policy"] == "preserve"
+        assert spec.settings.selection_noise_repeats == 3
+        if training_type == "ibm_reram_om_program_verify":
+            training = spec.settings.weight_modifier.parameters
+            assert training["execution"] == "mapped_target"
+            assert training["raw_active_mode"] == mode
+            assert training["forward_logit_gain"] == gain
+
+    for mode, gain in (
+        ("continuous", 251.18864315095797),
+        ("quantized_7_level", 223.87211385683378),
+    ):
+        label = "continuous" if mode == "continuous" else "quantized"
+        for endpoint_seed in range(85101, 85106):
+            _definition, spec = resolve_experiment_config(
+                _RAW_ACTIVE_CONFIG_ROOT
+                / f"heldout_{label}_seed_{endpoint_seed}.json",
+                RunMode.VALIDATE,
+            )
+            parameters = spec.settings.weight_modifier.parameters
+            assert parameters["assignment_seed"] == 85001
+            assert parameters["endpoint_seed"] == endpoint_seed
+            assert parameters["raw_active_mode"] == mode
+            assert parameters["forward_logit_gain"] == gain
 
 
 def test_four_training_arms_share_common_physical_selection() -> None:
@@ -148,6 +238,50 @@ def _set_differential_pair_mapping(
             "target_mapping": "differential_pair_common_window",
             "dual_rail_layout_by_parameter": None,
             "common_window_margin_fraction": margin,
+        }
+    )
+
+
+def _set_shared_reset_relative_mapping(
+    parameters: dict,
+    *,
+    mode: str = "quantized_9_level",
+) -> None:
+    parameters.update(
+        {
+            "target_mapping": "shared_reset_relative_quad",
+            "dual_rail_layout_by_parameter": {
+                "base.dense_weight.0": "halves",
+                "base.dense_weight.1": "paired",
+            },
+            "common_window_margin_fraction": 0.0,
+            "reset_relative_mode": mode,
+            "reset_relative_contrast_step": 0.095849,
+            "reset_read_samples": 8,
+            "reset_guard_standard_errors": 3.0,
+            "forward_logit_gain": 20.0,
+        }
+    )
+
+
+def _set_raw_active_p90_mapping(
+    parameters: dict,
+    *,
+    mode: str = "quantized_7_level",
+) -> None:
+    parameters.update(
+        {
+            "target_mapping": "raw_active_p90_quad",
+            "dual_rail_layout_by_parameter": {
+                "base.dense_weight.0": "halves",
+                "base.dense_weight.1": "paired",
+            },
+            "common_window_margin_fraction": 0.0,
+            "raw_active_mode": mode,
+            "raw_active_unsupported_quad_policy": "structural_failure",
+            "controller": "one_pulse",
+            "endpoint_policy": "preserve",
+            "forward_logit_gain": 20.0,
         }
     )
 
@@ -302,6 +436,293 @@ def test_quad_mapping_rejects_differential_model_encoding(
         resolve_experiment_config(path, RunMode.TRAIN)
 
 
+def test_shared_reset_relative_config_selects_accuracy_and_matches_commissioning(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(
+        (_COMMON_WINDOW_CONFIG_ROOT / "exact_bounds_hwa.json").read_text()
+    )
+    training = payload["modes"]["train"]["weight_modifier"]["parameters"]
+    selection = payload["modes"]["train"]["selection_weight_modifier"][
+        "parameters"
+    ]
+    _set_shared_reset_relative_mapping(training)
+    _set_shared_reset_relative_mapping(selection)
+    payload["modes"]["train"]["selection_metric"] = "student_accuracy"
+    payload["modes"]["train"]["selection_noise_repeats"] = 3
+    path = tmp_path / "shared-reset.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    _definition, spec = resolve_experiment_config(path, RunMode.TRAIN)
+    assert spec.model.encoding == "single"
+    assert spec.settings.selection_metric == "student_accuracy"
+    assert spec.settings.selection_noise_repeats == 3
+    assert training["reset_read_samples"] == 8
+    assert (
+        spec.settings.weight_modifier.parameters["reset_relative_mode"]
+        == "quantized_9_level"
+    )
+
+    for role in ("weight_modifier", "selection_weight_modifier"):
+        payload["modes"]["train"][role]["parameters"].pop(
+            "forward_logit_gain"
+        )
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    _definition, spec_without_gain = resolve_experiment_config(
+        path,
+        RunMode.TRAIN,
+    )
+    assert (
+        spec_without_gain.settings.weight_modifier.parameters[
+            "forward_logit_gain"
+        ]
+        is None
+    )
+
+    payload["modes"]["train"]["selection_weight_modifier"]["parameters"][
+        "reset_read_samples"
+    ] = 16
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ConfigError, match="fixed array"):
+        resolve_experiment_config(path, RunMode.TRAIN)
+
+
+def test_raw_active_p90_config_uses_direct_g_mapping_and_one_pulse_selection(
+    tmp_path: Path,
+) -> None:
+    payload = json.loads((_CONFIG_ROOT / "om_repaired.json").read_text())
+    payload["model"]["conductance_min"] = 0.0
+    payload["model"]["conductance_max"] = 1.0
+    training = payload["modes"]["train"]["weight_modifier"]["parameters"]
+    selection = payload["modes"]["train"]["selection_weight_modifier"][
+        "parameters"
+    ]
+    _set_raw_active_p90_mapping(training)
+    _set_raw_active_p90_mapping(selection)
+    training.update(
+        {
+            "execution": "mapped_target",
+            "assignment_seed": 84001,
+            "endpoint_seed": 84002,
+            "corruption_policy": "counterfactual_repaired",
+            "noisy_evaluation": False,
+        }
+    )
+    selection.update(
+        {
+            "execution": "pulse_resolved",
+            "assignment_seed": 84001,
+            "endpoint_seed": 84003,
+            "corruption_policy": "counterfactual_repaired",
+            "noisy_evaluation": True,
+        }
+    )
+    payload["modes"]["train"]["selection_evaluation"] = "modifier"
+    payload["modes"]["train"]["selection_noise_repeats"] = 1
+    path = tmp_path / "raw-active.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    _definition, spec = resolve_experiment_config(path, RunMode.TRAIN)
+    assert spec.model.conductance_min == 0.0
+    assert spec.model.conductance_max == 1.0
+    assert spec.settings.weight_modifier.parameters["execution"] == "mapped_target"
+    assert spec.settings.selection_weight_modifier.parameters["controller"] == "one_pulse"
+    assert spec.settings.selection_weight_modifier.parameters["endpoint_policy"] == "preserve"
+
+    payload["model"]["conductance_min"] = 0.1
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ConfigError, match="not rescaled a second time"):
+        resolve_experiment_config(path, RunMode.TRAIN)
+
+    payload["model"]["conductance_min"] = 0.0
+    payload["modes"]["train"]["weight_modifier"]["parameters"][
+        "execution"
+    ] = "compact_endpoint"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ConfigError, match="historical q-coordinate"):
+        resolve_experiment_config(path, RunMode.TRAIN)
+
+
+def test_frozen_reset_relative_training_configs_define_four_matched_pipelines() -> None:
+    expected = {
+        "zero_update_quantized.json": (0, "none", None, 562.341325190349),
+        "clean_bptt_quantized_deploy.json": (
+            10,
+            "none",
+            None,
+            562.341325190349,
+        ),
+        "continuous_hwa.json": (
+            10,
+            "ibm_reram_om_program_verify",
+            "continuous",
+            707.945784384138,
+        ),
+        "quantized_qat.json": (
+            10,
+            "ibm_reram_om_program_verify",
+            "quantized_9_level",
+            562.341325190349,
+        ),
+    }
+    for name, (epochs, training_type, training_mode, selection_gain) in expected.items():
+        _definition, spec = resolve_experiment_config(
+            _RESET_RELATIVE_CONFIG_ROOT / name,
+            RunMode.TRAIN,
+        )
+        assert spec.settings.num_epochs == epochs
+        assert spec.settings.weight_modifier.type == training_type
+        assert spec.settings.selection_metric == "student_accuracy"
+        assert spec.settings.selection_noise_repeats == 3
+        selection = spec.settings.selection_weight_modifier.parameters
+        assert selection["assignment_seed"] == 84001
+        assert selection["endpoint_seed"] == 84003
+        assert selection["target_mapping"] == "shared_reset_relative_quad"
+        assert selection["reset_read_samples"] == 8
+        assert selection["reset_guard_standard_errors"] == 3.0
+        assert selection["reset_relative_contrast_step"] == 0.095849
+        assert selection["forward_logit_gain"] == selection_gain
+        if training_type == "ibm_reram_om_program_verify":
+            training = spec.settings.weight_modifier.parameters
+            assert training["assignment_seed"] == 84001
+            assert training["endpoint_seed"] == 84002
+            assert training["reset_relative_mode"] == training_mode
+
+
+def test_frozen_reset_relative_heldout_configs_use_one_untouched_assignment() -> None:
+    paths = sorted(_RESET_RELATIVE_CONFIG_ROOT.glob("heldout_*.json"))
+    assert len(paths) == 10
+    observed: dict[str, set[int]] = {"continuous": set(), "quantized_9_level": set()}
+    for path in paths:
+        _definition, spec = resolve_experiment_config(path, RunMode.VALIDATE)
+        parameters = spec.settings.weight_modifier.parameters
+        assert parameters["execution"] == "pulse_resolved"
+        assert parameters["assignment_seed"] == 85001
+        assert parameters["target_mapping"] == "shared_reset_relative_quad"
+        assert parameters["reset_read_samples"] == 8
+        assert parameters["reset_guard_standard_errors"] == 3.0
+        observed[parameters["reset_relative_mode"]].add(
+            parameters["endpoint_seed"]
+        )
+    assert observed == {
+        "continuous": set(range(85101, 85106)),
+        "quantized_9_level": set(range(85101, 85106)),
+    }
+
+
+def test_reset_relative_study_declares_development_and_heldout_coverage() -> None:
+    study = load_study_plan(_RESET_RELATIVE_STUDY)
+    assert study["study_id"] == (
+        "mnist-ibm-om-shared-reset-relative-quantized-hwa-20260824-v1"
+    )
+    assert [arm["mode"] for arm in study["arms"]] == [
+        "train",
+        "train",
+        "train",
+        "train",
+        "validate",
+        "validate",
+        "validate",
+        "validate",
+    ]
+    assert [len(arm["configs"]) for arm in study["arms"]] == [
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+    ]
+
+
+def test_accuracy_selection_is_strict_and_keeps_earliest_tie() -> None:
+    incumbent = {"student_accuracy": 0.75, "kl_teacher_student": 0.2}
+    assert not _selection_improved(
+        {"student_accuracy": 0.75},
+        incumbent,
+        metric="student_accuracy",
+    )
+    assert _selection_improved(
+        {"student_accuracy": 0.751},
+        incumbent,
+        metric="student_accuracy",
+    )
+    assert _selection_improved(
+        {"kl_teacher_student": 0.19},
+        incumbent,
+        metric="kl_teacher_student",
+    )
+
+
+def test_modifier_evaluation_reports_applied_forward_gain_and_restores_master() -> None:
+    class Cost:
+        def __init__(self) -> None:
+            self.gain = 4.5
+
+        def set_teacher(self, teacher_logits, labels) -> None:
+            del teacher_logits, labels
+
+        def student_logits(self) -> torch.Tensor:
+            raw = torch.zeros((2, 10), dtype=torch.float32)
+            raw[0, 0] = 1.0
+            raw[1, 1] = 1.0
+            return raw * self.gain
+
+    modifier = IbmReramHwaParameterModifier.__new__(
+        IbmReramHwaParameterModifier
+    )
+    modifier._config = SimpleNamespace(forward_logit_gain=562.0)
+    modifier.evaluation_context = lambda: nullcontext()
+    stack = SimpleNamespace(
+        device=torch.device("cpu"),
+        cost=Cost(),
+        network=SimpleNamespace(set_input=lambda *args, **kwargs: None),
+        minimizer=SimpleNamespace(compute_equilibrium=lambda: None),
+    )
+    teacher = SimpleNamespace(
+        logits=lambda inputs: torch.zeros((inputs.shape[0], 10))
+    )
+    report = _evaluate(
+        stack,
+        teacher,
+        [(torch.zeros((2, 784)), torch.tensor([0, 1]))],
+        modifier=modifier,
+    )
+    assert report["fixed_logit_gain"] == 562.0
+    assert stack.cost.gain == 4.5
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "match"),
+    [
+        ("common_window_margin_fraction", 0.1, "equal 0.0"),
+        ("reset_relative_mode", "round", "continuous"),
+        ("reset_relative_contrast_step", 0.0, r"\(0, 0.5\]"),
+        ("reset_read_samples", 1, ">= 2"),
+        ("reset_guard_standard_errors", -1.0, ">= 0.0"),
+    ],
+)
+def test_shared_reset_relative_config_rejects_invalid_contract(
+    field: str,
+    replacement,
+    match: str,
+    tmp_path: Path,
+) -> None:
+    payload = json.loads(
+        (_COMMON_WINDOW_CONFIG_ROOT / "exact_bounds_hwa.json").read_text()
+    )
+    for role in ("weight_modifier", "selection_weight_modifier"):
+        parameters = payload["modes"]["train"][role]["parameters"]
+        _set_shared_reset_relative_mapping(parameters)
+        parameters[field] = replacement
+    path = tmp_path / f"invalid-{field}.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ConfigError, match=match):
+        resolve_experiment_config(path, RunMode.TRAIN)
+
+
 @pytest.mark.parametrize(
     ("field", "replacement"),
     [
@@ -431,6 +852,18 @@ def test_runtime_literal_mapping_remains_outside_array_specific_preflights() -> 
     )
     _validate_array_specific_modifier_population_parity(literal)
     assert _ibm_target_mapping_preflights(literal) == {}
+
+
+def test_runtime_applies_and_restores_declared_device_forward_gain() -> None:
+    modifier = IbmReramHwaParameterModifier.__new__(
+        IbmReramHwaParameterModifier
+    )
+    modifier._config = SimpleNamespace(forward_logit_gain=562.0)
+    stack = SimpleNamespace(cost=SimpleNamespace(gain=4.5))
+
+    with _modifier_forward_gain(stack, modifier, evaluation=True):
+        assert stack.cost.gain == 562.0
+    assert stack.cost.gain == 4.5
 
 
 @pytest.mark.parametrize("config_name", ["clean.json", "exact_bounds_hwa.json"])

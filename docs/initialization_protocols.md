@@ -78,6 +78,30 @@ A later on-chip recovery arm must load the saved persistent deployment bundle.
 It must not remap the logical checkpoint, redraw the physical assignment, or
 start from the apparent endpoint as though it were the persistent state.
 
+### IBM OM shared RESET-relative targets
+
+For deployment without a full per-cell range sweep, use the shared
+RESET-relative protocol in
+[`ibm_om_reset_relative_quantization.md`](ibm_om_reset_relative_quantization.md).
+It permits one array-specific quantity: a guarded common baseline obtained
+from repeated RESET/read observations of the four cells belonging to a
+logical synapse. It forbids using sampled per-cell minimum or maximum bounds
+to construct targets.
+
+Every quad then uses the same global contrast codebook relative to that
+observed baseline. Quantization must happen before compact endpoint sampling
+or exact program-and-verify, and the FP32 master must remain the optimizer
+state. A new array is recommissioned from RESET; it must not inherit baselines
+or hidden bounds from the development array. Hidden device support may be
+used only for a post-mapping audit and exact physical execution.
+
+This protocol and `dual_rail_quad_common_window` answer different questions.
+The latter is an array-specific upper bound that assumes each assigned cell's
+full characterized range. The former tests transfer of one shared codebook
+with only RESET/read access. Studies must name which assumption they use and
+must not compare their deployment accuracies as though the initialization
+information were identical.
+
 ### Four-device and eight-device dual-rail initialization
 
 When comparing the four-device `single` encoding with the eight-device
@@ -212,9 +236,22 @@ Start every recovery arm from one explicit named deployed checkpoint; do not
 remap independently per arm. Evaluate and record that common starting state
 before applying an update.
 
+For an IBM OM pulse-continuation arm, the named weights alone are not a
+complete initialization. Load the exact saved raw apparent, clipped apparent,
+persistent, population, RESET-commissioning, and post-programming generator
+states from one hash-pinned deployment sidecar. The apparent state initializes
+the forward tensors; the persistent state and generator continuation
+initialize subsequent physical pulses. Do not infer persistent state from the
+apparent tensor or reprogram the array at the recovery boundary.
+
 For Tiki-Taka, initialize the slow array from the declared DRN conductances and
 the fast accumulation array at zero, following
 [`tiki_taka_gradient_accumulation.md`](tiki_taka_gradient_accumulation.md#initializing-tiki-taka-from-direct-fp32-conductances).
+When continuing an already deployed IBM OM array, "initialize the slow array"
+means restoring that exact two-state deployment, not copying the logical QAT
+checkpoint again. The matched direct-pulse and Tiki-Taka protocol is specified
+in
+[`ibm_om_reset_relative_on_chip_recovery.md`](ibm_om_reset_relative_on_chip_recovery.md).
 
 For LoRA, keep the named deployed base fixed and initialize the adapter so its
 initial network contribution is exactly zero, following
