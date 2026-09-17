@@ -9,12 +9,14 @@ estimators, and optimizers.  Persistence and run lifecycle policy live in
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
 import random
 from typing import Any, Iterable, Mapping
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, Subset
 
 from experiments.small_network.config import CommonSettings, TrainSpec
 from labs.custom_minimizer import (
@@ -22,7 +24,7 @@ from labs.custom_minimizer import (
     CustomQuadraticMinimizer,
     MinimizerSettings,
 )
-from labs.datasets import DigitsDataset, MoonsDataset, YinYangDataset
+from labs.datasets import DigitsDataset, MnistDataset, MoonsDataset, YinYangDataset
 from model.function.cost import SquaredError, SquaredErrorPairedOutputs
 from model.function.network import Network
 from model.resistive.builders import ModelBundle, build_deep_resistive_energy
@@ -37,8 +39,22 @@ from training.sgd import AugmentedFunction, Backprop, EquilibriumProp
 from training.tiki_taka import build_optimizer, parse_update_pipeline
 
 
-_CLASS_COUNTS = {"moons": 2, "yinyang": 3, "digits": 10}
+_CLASS_COUNTS = {"moons": 2, "yinyang": 3, "digits": 10, "mnist": 10}
 _DTYPES = {"float32": torch.float32, "float64": torch.float64}
+
+
+class _FlattenedImageDataset(Dataset):
+    """Flatten torchvision images while preserving labels and optional indices."""
+
+    def __init__(self, dataset: Dataset) -> None:
+        self.dataset = dataset
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, index: int):
+        sample = self.dataset[index]
+        return (sample[0].reshape(-1), *sample[1:])
 
 
 class TypedNetwork:
@@ -346,20 +362,70 @@ def build_data(common: CommonSettings) -> DataBundle:
             num_samples=common.data.num_points,
             seed=0 if data_seed is None else data_seed,
         )
+    elif common.data.dataset == "mnist":
+        mnist_root = Path(
+            os.environ.get(
+                "EBL_MNIST_ROOT",
+                str(Path.home() / "datasets" / "mnist"),
+            )
+        ).expanduser()
+        dataset = MnistDataset(
+            name="mnist",
+            batch_size=common.data.batch_size,
+            device=torch.device("cpu"),
+            root=str(mnist_root),
+            train=True,
+            download=False,
+            normalize=True,
+            normalize_mean=0.1307,
+            normalize_std=0.3,
+        )
     else:  # pragma: no cover - rejected by the pure schema
         raise ValueError(
-            "Expected config.data.dataset to be 'moons', 'yinyang', or "
-            f"'digits'. Provided value: {common.data.dataset!r}."
+            "Expected config.data.dataset to be 'moons', 'yinyang', "
+            f"'digits', or 'mnist'. Provided value: {common.data.dataset!r}."
         )
 
-    legacy_train, held_out = dataset.build()
+    try:
+        legacy_train, held_out = dataset.build()
+    except RuntimeError as exc:
+        if common.data.dataset != "mnist":
+            raise
+        raise RuntimeError(
+            "Expected an existing torchvision MNIST dataset root containing "
+            f"MNIST/raw or MNIST/processed. Provided root: {mnist_root}"
+        ) from exc
+
+    train_dataset = legacy_train.dataset
+    if common.data.dataset == "mnist":
+        train_dataset = _FlattenedImageDataset(train_dataset)
+        held_out = DataLoader(
+            _FlattenedImageDataset(held_out.dataset),
+            batch_size=common.data.batch_size,
+            shuffle=False,
+        )
+        if common.data.num_points is not None:
+            if common.data.num_points > len(train_dataset):
+                raise ValueError(
+                    "Expected config.data.num_points to be no larger than the "
+                    "60000-sample MNIST training split. "
+                    f"Provided value: {common.data.num_points}."
+                )
+            subset_generator = torch.Generator()
+            subset_generator.manual_seed(0 if data_seed is None else data_seed)
+            indices = torch.randperm(
+                len(train_dataset),
+                generator=subset_generator,
+            )[: common.data.num_points].tolist()
+            train_dataset = Subset(train_dataset, indices)
+
     generator = torch.Generator()
     if data_seed is None:
         generator.seed()
     else:
         generator.manual_seed(data_seed)
     train_loader = DataLoader(
-        legacy_train.dataset,
+        train_dataset,
         batch_size=common.data.batch_size,
         shuffle=common.data.shuffle,
         generator=generator,
@@ -653,6 +719,8 @@ def _validate_dataset_shape(
         valid_input = logical_input_dim == 2
     elif dataset == "digits":
         valid_input = logical_input_dim == 64
+    elif dataset == "mnist":
+        valid_input = logical_input_dim == 784
     else:
         valid_input = False
     if not valid_input:
@@ -661,7 +729,11 @@ def _validate_dataset_shape(
             + (
                 "be 2 or an even expanded moons width >= 2"
                 if dataset == "moons"
-                else ("be 2" if dataset == "yinyang" else "be 64")
+                else (
+                    "be 2"
+                    if dataset == "yinyang"
+                    else ("be 64" if dataset == "digits" else "be 784")
+                )
             )
             + f". Provided value: {logical_input_dim!r}."
         )

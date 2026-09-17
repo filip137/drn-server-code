@@ -524,7 +524,7 @@ def _parse_data(value: Any) -> DataSettings:
         dataset=_string(
             parsed["dataset"],
             f"{path}.dataset",
-            choices=("moons", "yinyang", "digits"),
+            choices=("moons", "yinyang", "digits", "mnist"),
         ),
         batch_size=_integer(
             parsed["batch_size"],
@@ -1174,7 +1174,7 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             model.dims[0],
         )
     logical_input = model.dims[0] // 2
-    expected_inputs = {"yinyang": 2, "digits": 64}
+    expected_inputs = {"yinyang": 2, "digits": 64, "mnist": 784}
     if data.dataset in expected_inputs and logical_input != expected_inputs[
         data.dataset
     ]:
@@ -1184,7 +1184,12 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             f"dataset {data.dataset!r}",
             model.dims[0],
         )
-    class_count = {"moons": 2, "yinyang": 3, "digits": 10}[data.dataset]
+    class_count = {
+        "moons": 2,
+        "yinyang": 3,
+        "digits": 10,
+        "mnist": 10,
+    }[data.dataset]
     if model.dims[-1] not in (class_count, 2 * class_count):
         raise config_error(
             "config.model.dims[-1]",
@@ -1218,6 +1223,12 @@ def parse_small_drn_config(payload: Mapping[str, Any]) -> SmallDrnConfig:
             "config.modes",
             "to define at least one of 'train', 'linspace', or 'validate'",
             dict(modes),
+        )
+    if data.dataset == "mnist" and "linspace" in modes:
+        raise config_error(
+            "config.modes",
+            "to contain only 'train' and/or 'validate' for dataset 'mnist'",
+            sorted(modes),
         )
     layer_count = len(model.dims) - 1
     return SmallDrnConfig(
