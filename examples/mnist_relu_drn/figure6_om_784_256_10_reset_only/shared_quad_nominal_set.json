@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_figure6_om_784_256_10_reset_only_shared_quad.v1",
+  "evidence_tier": "exploratory_noncanonical",
+  "question": "Does the high Figure-6/OM deployment accuracy survive when target construction and P&V know exact per-cell RESET states but not true per-cell SET endpoints?",
+  "frozen_inputs": {
+    "base_protocol_config": {
+      "path": "examples/mnist_relu_drn/figure6_om_784_256_10_postpv_fault/full.json",
+      "sha256": "c07b3a7f0d11f2fb66f0f8373e9e48f26f7faa12a908a1f4198a984bf7f7d66e"
+    },
+    "teacher_checkpoint": {
+      "path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/teacher/20260904T194226.940352Z-891e921f-918138cb/checkpoints/weights.pt",
+      "sha256": "a22be1ee0c3f4392dde455a5d87903e88e089d3f281c29a9cbe0aa3f378ba1d4"
+    },
+    "oracle_endpoint_summary": {
+      "path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/summarize/main/20260904T231843.990719Z-9c8ca7b4-f482ce6c/scientific_summary.json",
+      "sha256": "6ecbbb845c14652bf9692799bbc29fe3b1634b14509c0a3ab0731e2f34d3d89e"
+    },
+    "oracle_hwa_rate_receipt": {
+      "path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/hwa-screen/selection/20260904T195914.715079Z-8dcefdc4-e2bacfc7/artifacts/rate_receipt.json",
+      "sha256": "7773ec0ab1b173eab940aeba2a61b6b39edad4ba9c0bebbe738a08a824a2f941"
+    },
+    "heldout_om_populations": [
+      {
+        "array_index": 1,
+        "published_path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_1_published.npz",
+        "published_sha256": "e38d70a8fb0cd14bc4257f4ae9b53ac31555d20433eec14c5f2c33732a7db4bf",
+        "repaired_path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_1_counterfactual_repaired.npz",
+        "repaired_sha256": "87fb58171b17f03ebfb717dc08f7e520b97419cf7a7219675ccfad20737e3384"
+      },
+      {
+        "array_index": 2,
+        "published_path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_2_published.npz",
+        "published_sha256": "b95fd321075295c5c3648227a1024254596b8674a4f8eb7239661c2757d1ce77",
+        "repaired_path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_2_counterfactual_repaired.npz",
+        "repaired_sha256": "44b792a6d08c739106ef2828ac72ae262a2c2ec53de65a911160056363df530f"
+      },
+      {
+        "array_index": 3,
+        "published_path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_3_published.npz",
+        "published_sha256": "4db51c92570229ec42fbe750987990c0dd9fd8a9c7e3b7a1fd3d7a301556a618",
+        "repaired_path": "simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault/stages/prepare/main/20260904T194428.130505Z-43537a55-6ae9c384/artifacts/om_heldout_array_3_counterfactual_repaired.npz",
+        "repaired_sha256": "5fd0faa01e541555d53536c03afd438d5ee6734f2cd9a9f7a351857771c977ab"
+      }
+    ]
+  },
+  "mapping": {
+    "known_per_cell": "exact_fixed_Figure6_RESET_endpoint",
+    "hidden_plant_only": "true_fixed_Figure6_SET_endpoint",
+    "baseline": "maximum_known_RESET_shared_by_all_four_cells_in_each_logical_quad",
+    "nominal_set": 2.0,
+    "nominal_set_source": "predeclared_Figure6_SET_marginal_mean_not_heldout_fit",
+    "active_target": "B_quad+abs(master)*scale_fraction*(nominal_SET-B_quad)",
+    "sign_placement": "positive_raises_Gpp_and_Gmm_negative_raises_Gpm_and_Gmp",
+    "scale_fractions": [1.0, 1.0],
+    "unreachable_policy": "do_not_resize_or_clip_request_hidden_SET_limits_realized_plant",
+    "requested_equalities": ["Gpp=Gmm", "Gpm=Gmp"],
+    "true_set_consumed_by_target_mapper": false
+  },
+  "hwa": {
+    "endpoint_train_seeds": [101001, 101002, 101003, 101004, 101005, 101006, 101007, 101008],
+    "rotations_per_population": 8,
+    "development_endpoint_seeds": [102001, 102002, 102003],
+    "epochs": 10,
+    "batch_size": 16,
+    "learning_rates": [0.0014706382978723403, 0.00011974808510638298],
+    "learning_rate_source": "frozen_oracle_endpoint_ladder_selection",
+    "optimizer": "digital_adam",
+    "gradient_lift": "nominal_span_STE_without_true_SET_or_saturation_mask",
+    "forward": "requested_absolute_G_limited_by_hidden_true_SET_then_held",
+    "persistent_device_updated": false,
+    "selection": "macro_apparent_development_accuracy_then_KL_then_earlier_epoch"
+  },
+  "program_verify": {
+    "initial_state": "true_RESET",
+    "target_coordinate": "absolute_conductance_G",
+    "verify_coordinate": "literal_held_apparent_absolute_conductance_G",
+    "true_set_used_to_normalize_verify": false,
+    "tolerance_conductance": 0.0450775,
+    "tolerance_source": "original_progress_tolerance_0.023725_times_nominal_window_1.9",
+    "maximum_pulses_per_cell": 128,
+    "controller": "one_pulse_apparent_feedback",
+    "initial_reset_verify": "noisy",
+    "exact_healthy_RESET_targets_preaccepted": true
+  },
+  "replication": {
+    "endpoint_seeds": [104001, 104002, 104003],
+    "om_assignment_seeds": [104101, 104102, 104103],
+    "arrays": 3,
+    "writes_per_array": 3,
+    "program_verify_seed_base": 105000,
+    "fault_observation_seed_base": 106000,
+    "suffix_formula": "100*array_index+write_index"
+  },
+  "arms": [
+    "direct_ideal_plant_limited",
+    "hwa_ideal_plant_limited",
+    "direct_pv",
+    "direct_pv_reset_stuck",
+    "hwa_pv",
+    "hwa_pv_reset_stuck"
+  ],
+  "evaluation": {
+    "primary": "current_held_apparent_state",
+    "persistent": "secondary_diagnostic_only",
+    "fixed_logit_gain": 3.1622776601683795,
+    "test": "selected_HWA_checkpoint_and_frozen_direct_master_only",
+    "aggregation": "average_writes_within_array_then_mean_and_full_range_across_arrays"
+  },
+  "limitations": [
+    "exact_RESET_endpoint_is_an_oracle_measurement_without_commissioning_error",
+    "nominal_SET_mean_is_known_but_per_cell_SET_is_hidden",
+    "HWA_uses_model_based_hidden_SET_saturation_in_the_forward_plant",
+    "HWA_does_not_include_stochastic_program_verify_writes",
+    "model_based_Figure6_endpoint_plus_IBM_OM_pulse_hybrid",
+    "not_measured_array_evidence"
+  ]
+}

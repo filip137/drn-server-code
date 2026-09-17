@@ -35,3 +35,7 @@ array, then reports the mean and full range across the three array means. The
 HWA and scratch Adam families select separate learning rates, so their final
 comparison is explicitly best-tuned per initialization rather than a
 same-learning-rate causal contrast.
+
+The completed exploratory accuracy/KL analysis and the exact qualification of
+the open-loop pulse-mediated Adam writer are in
+[`figure6_om_784_256_10_postpv_fault_results.md`](../../../docs/figure6_om_784_256_10_postpv_fault_results.md).
