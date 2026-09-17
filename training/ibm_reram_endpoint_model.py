@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
+import math
 from typing import Any, Mapping, Sequence
 
 import torch
@@ -36,6 +38,162 @@ class IbmReramEndpointSample:
     acceptance_window_reachable: torch.Tensor
     target_was_clamped: torch.Tensor
     endpoint_was_clipped: torch.Tensor
+
+
+@dataclass(frozen=True)
+class IbmReramAcceptedEndpointSample:
+    """One accepted, non-corrupt apparent-endpoint draw for HWA.
+
+    This deliberately contains no persistent state, failure outcome, or defect
+    mask.  Those are deployment outcomes.  The HWA caller receives only a
+    fresh target-conditioned programming-error realization.
+    """
+
+    target_x: torch.Tensor
+    residual_x: torch.Tensor
+    apparent_x: torch.Tensor
+
+
+@dataclass(frozen=True)
+class IbmReramAcceptedEndpointModel:
+    """Compiled accepted-endpoint residual model for inference HWA.
+
+    The source v2 endpoint artifact stores one histogram at each normalized
+    target.  Compiling those rows once avoids reparsing a multi-megabyte JSON
+    artifact for every minibatch while retaining the exact interpolation and
+    inverse-histogram sampling rule used by :func:`sample_ibm_reram_endpoints`.
+    """
+
+    condition_key: str
+    target_grid: torch.Tensor
+    bin_edges: torch.Tensor
+    bin_probabilities: torch.Tensor
+    fingerprint: str
+
+    def __post_init__(self) -> None:
+        grid = self.target_grid
+        edges = self.bin_edges
+        probabilities = self.bin_probabilities
+        tolerance = (
+            64.0 * torch.finfo(grid.dtype).eps
+            if grid.dtype in {torch.float32, torch.float64}
+            else 0.0
+        )
+        if (
+            not self.condition_key
+            or grid.ndim != 1
+            or grid.numel() < 1
+            or edges.ndim != 2
+            or probabilities.ndim != 2
+            or edges.shape[0] != grid.numel()
+            or probabilities.shape[0] != grid.numel()
+            or edges.shape[1] != probabilities.shape[1] + 1
+            or grid.dtype not in {torch.float32, torch.float64}
+            or edges.dtype != grid.dtype
+            or probabilities.dtype != grid.dtype
+            or not bool(torch.all(torch.isfinite(grid)))
+            or not bool(torch.all(torch.isfinite(edges)))
+            or not bool(torch.all(torch.isfinite(probabilities)))
+            or bool(torch.any(grid[1:] <= grid[:-1]))
+            or bool(torch.any(edges[:, 1:] < edges[:, :-1]))
+            or bool(torch.any(probabilities <= 0.0))
+            or not bool(
+                torch.allclose(
+                    probabilities.sum(dim=1),
+                    torch.ones_like(grid),
+                    atol=tolerance,
+                    rtol=tolerance,
+                )
+            )
+            or len(self.fingerprint) != 64
+        ):
+            raise ValueError(
+                "Expected a finite, normalized accepted-endpoint histogram model."
+            )
+
+    def to(
+        self,
+        device: torch.device | str,
+        *,
+        dtype: torch.dtype = torch.float32,
+    ) -> "IbmReramAcceptedEndpointModel":
+        if dtype not in {torch.float32, torch.float64}:
+            raise ValueError("Expected a float32 or float64 HWA endpoint model.")
+        target = torch.device(device)
+        return IbmReramAcceptedEndpointModel(
+            condition_key=self.condition_key,
+            target_grid=self.target_grid.to(device=target, dtype=dtype),
+            bin_edges=self.bin_edges.to(device=target, dtype=dtype),
+            bin_probabilities=self.bin_probabilities.to(
+                device=target, dtype=dtype
+            ),
+            fingerprint=self.fingerprint,
+        )
+
+    def sample(
+        self,
+        target_x: torch.Tensor,
+        *,
+        generator: torch.Generator,
+    ) -> IbmReramAcceptedEndpointSample:
+        """Draw one target-conditioned accepted apparent endpoint per value."""
+
+        if (
+            not isinstance(target_x, torch.Tensor)
+            or target_x.dtype != self.target_grid.dtype
+            or target_x.device != self.target_grid.device
+            or not bool(torch.all(torch.isfinite(target_x)))
+        ):
+            raise ValueError(
+                "Expected finite targets matching the compiled model device and dtype."
+            )
+        requested_shape = target_x.shape
+        work = target_x.reshape(-1)
+        lower_limit = float(self.target_grid[0].item())
+        upper_limit = float(self.target_grid[-1].item())
+        if bool(torch.any((work < lower_limit) | (work > upper_limit))):
+            raise ValueError(
+                "Expected HWA targets inside the characterized global x range "
+                f"[{lower_limit}, {upper_limit}]."
+            )
+        lower_index, upper_index, fraction = _target_brackets(
+            work, self.target_grid
+        )
+        lower_probabilities = self.bin_probabilities[lower_index]
+        upper_probabilities = self.bin_probabilities[upper_index]
+        mixed_probabilities = lower_probabilities + fraction.unsqueeze(1) * (
+            upper_probabilities - lower_probabilities
+        )
+        mixed_probabilities = mixed_probabilities / mixed_probabilities.sum(
+            dim=1, keepdim=True
+        )
+        cumulative = torch.cumsum(mixed_probabilities, dim=1)
+        category_draw = _uniform_like(work, generator=generator)
+        bin_index = torch.sum(
+            category_draw.unsqueeze(1) > cumulative, dim=1
+        ).clamp(max=mixed_probabilities.shape[1] - 1)
+
+        lower_edges = self.bin_edges[lower_index]
+        upper_edges = self.bin_edges[upper_index]
+        mixed_edges = lower_edges + fraction.unsqueeze(1) * (
+            upper_edges - lower_edges
+        )
+        selected_lower = mixed_edges.gather(
+            1, bin_index.unsqueeze(1)
+        ).squeeze(1)
+        selected_upper = mixed_edges.gather(
+            1, (bin_index + 1).unsqueeze(1)
+        ).squeeze(1)
+        within_draw = _uniform_like(work, generator=generator)
+        residual = selected_lower + within_draw * (
+            selected_upper - selected_lower
+        )
+        apparent = work + residual
+        return IbmReramAcceptedEndpointSample(
+            target_x=target_x.detach().clone(),
+            residual_x=residual.reshape(requested_shape),
+            apparent_x=apparent.reshape(requested_shape),
+        )
 
 
 def _uniform_like(
@@ -128,6 +286,96 @@ def _records(
             f"{empty_fit_targets!r}."
         )
     return condition, records
+
+
+def build_ibm_reram_accepted_endpoint_model(
+    artifact: Mapping[str, Any],
+    *,
+    condition_key: str,
+    allow_inadequate: bool = False,
+) -> IbmReramAcceptedEndpointModel:
+    """Compile the accepted non-corrupt residual rows of a v2 fit.
+
+    This is the device-agnostic programming-error component suitable for an
+    IBM-style inference-HWA forward.  Corrupt identities, support-class
+    failures, and hidden persistent endpoints intentionally remain outside
+    this model and must be evaluated by a separate deployment arm.
+    """
+
+    _condition, records = _records(
+        artifact,
+        condition_key,
+        allow_inadequate=allow_inadequate,
+    )
+    target_grid = torch.tensor(
+        [float(record["target"]) for record in records],
+        dtype=torch.float64,
+    )
+    edge_rows = []
+    probability_rows = []
+    for record in records:
+        residual = record.get("accepted_noncorrupt_residual")
+        if not isinstance(residual, Mapping):
+            raise ValueError(
+                "Expected every endpoint target bin to contain an accepted "
+                "non-corrupt residual model."
+            )
+        edge_rows.append(residual.get("bin_edges"))
+        probability_rows.append(residual.get("bin_probabilities"))
+    try:
+        bin_edges = torch.as_tensor(edge_rows, dtype=torch.float64)
+        bin_probabilities = torch.as_tensor(
+            probability_rows, dtype=torch.float64
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "Expected rectangular numeric accepted-endpoint histogram rows."
+        ) from error
+    if (
+        bin_edges.ndim != 2
+        or bin_probabilities.ndim != 2
+        or bin_edges.shape[0] != target_grid.numel()
+        or bin_edges.shape[1] != bin_probabilities.shape[1] + 1
+        or not bool(torch.all(torch.isfinite(bin_probabilities)))
+        or bool(torch.any(bin_probabilities <= 0.0))
+    ):
+        raise ValueError(
+            "Expected compatible positive accepted-endpoint histogram rows."
+        )
+    if (
+        not math.isclose(float(target_grid[0]), 0.0, rel_tol=0.0, abs_tol=1e-9)
+        or not math.isclose(
+            float(target_grid[-1]), 1.0, rel_tol=0.0, abs_tol=1e-9
+        )
+    ):
+        raise ValueError(
+            "Expected accepted-endpoint target bins to cover the complete "
+            "global normalized x interval [0, 1]."
+        )
+    bin_probabilities = bin_probabilities / bin_probabilities.sum(
+        dim=1, keepdim=True
+    )
+    digest = sha256()
+    digest.update(_SCHEMA.encode("utf-8"))
+    digest.update(str(_SCHEMA_VERSION).encode("utf-8"))
+    digest.update(condition_key.encode("utf-8"))
+    for name, value in (
+        ("target_grid", target_grid),
+        ("bin_edges", bin_edges),
+        ("bin_probabilities", bin_probabilities),
+    ):
+        contiguous = value.contiguous()
+        digest.update(name.encode("utf-8"))
+        digest.update(str(contiguous.dtype).encode("utf-8"))
+        digest.update(repr(tuple(contiguous.shape)).encode("utf-8"))
+        digest.update(contiguous.numpy().tobytes())
+    return IbmReramAcceptedEndpointModel(
+        condition_key=condition_key,
+        target_grid=target_grid,
+        bin_edges=bin_edges,
+        bin_probabilities=bin_probabilities,
+        fingerprint=digest.hexdigest(),
+    )
 
 
 def _target_brackets(
@@ -781,4 +1029,10 @@ def sample_ibm_reram_endpoints(
     )
 
 
-__all__ = ["IbmReramEndpointSample", "sample_ibm_reram_endpoints"]
+__all__ = [
+    "IbmReramAcceptedEndpointModel",
+    "IbmReramAcceptedEndpointSample",
+    "IbmReramEndpointSample",
+    "build_ibm_reram_accepted_endpoint_model",
+    "sample_ibm_reram_endpoints",
+]

@@ -45,6 +45,10 @@ from training.ibm_om_tiki_taka import (
     IbmOmTikiTakaV1,
     build_tiki_taka_fast_zero_target,
 )
+from training.ibm_reram_endpoint_model import (
+    IbmReramAcceptedEndpointModel,
+    build_ibm_reram_accepted_endpoint_model,
+)
 from training.ibm_reram_hwa import (
     IbmReramArrayPopulation,
     sample_om_array_population_external,
@@ -73,6 +77,12 @@ if TYPE_CHECKING:
 
 
 _ROOT = Path(__file__).resolve().parents[2]
+_CPU_THREAD_ENVIRONMENT_VARIABLES = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
 _POST_DEPLOYMENT_FAULT_POLICIES = frozenset(
     {
         "star_local_pulse_sgd",
@@ -82,6 +92,38 @@ _POST_DEPLOYMENT_FAULT_POLICIES = frozenset(
         "supervised_ce_tiki_taka_v1",
     }
 )
+
+
+def _cpu_thread_contract(spec: CrossbarTrainSpec) -> dict[str, Any]:
+    required = spec.runtime.required_cpu_threads
+    environment = {
+        name: os.environ.get(name) for name in _CPU_THREAD_ENVIRONMENT_VARIABLES
+    }
+    report = {
+        "required_cpu_threads": required,
+        "environment": environment,
+        "torch_intraop_threads": torch.get_num_threads(),
+        "torch_interop_threads": torch.get_num_interop_threads(),
+    }
+    if required is None:
+        return report
+
+    expected = str(required)
+    mismatches = {
+        name: value for name, value in environment.items() if value != expected
+    }
+    if mismatches:
+        raise RuntimeError(
+            "Expected the declared CPU thread contract "
+            f"{expected} for {_CPU_THREAD_ENVIRONMENT_VARIABLES!r}; "
+            f"observed mismatches {mismatches!r}."
+        )
+    if report["torch_intraop_threads"] != required:
+        raise RuntimeError(
+            "Expected torch intra-op threads to match runtime.required_cpu_threads "
+            f"{required}, got {report['torch_intraop_threads']}."
+        )
+    return report
 
 
 def _post_deployment_fault_settings(spec: CrossbarTrainSpec) -> Any | None:
@@ -113,6 +155,103 @@ def _resolve_repo_path(value: str) -> Path:
     if not candidate.is_absolute():
         candidate = _ROOT / candidate
     return candidate.resolve()
+
+
+def _load_offchip_programming_error_model(
+    spec: CrossbarTrainSpec,
+) -> tuple[Path | None, IbmReramAcceptedEndpointModel | None]:
+    """Load and validate the declared population HWA artifact before a run."""
+
+    settings = spec.offchip.programming_error
+    if spec.offchip.policy != "population_programming_error_hwa":
+        if settings is not None:  # pragma: no cover - parser invariant
+            raise RuntimeError(
+                "Expected no programming-error artifact outside population HWA."
+            )
+        return None, None
+    if settings is None:  # pragma: no cover - parser invariant
+        raise RuntimeError(
+            "Expected population programming-error HWA settings after parsing."
+        )
+    path = _resolve_repo_path(settings.artifact_path)
+    if not path.is_file():
+        raise FileNotFoundError(
+            "Expected the population HWA endpoint-model artifact to exist. "
+            f"Provided value: {str(path)!r}."
+        )
+    if sha256_file(path) != settings.artifact_sha256:
+        raise ValueError(
+            "Expected the population HWA endpoint-model SHA-256 to match."
+        )
+    try:
+        artifact = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            "Expected a readable JSON population HWA endpoint-model artifact."
+        ) from error
+    if not isinstance(artifact, Mapping):
+        raise ValueError(
+            "Expected the population HWA endpoint-model artifact to be an object."
+        )
+    programming = artifact.get("programming")
+    endpoint_models = artifact.get("endpoint_models")
+    healthy_endpoint = (
+        endpoint_models.get("continuous")
+        if isinstance(endpoint_models, Mapping)
+        else None
+    )
+    expected_programming = {
+        "controller": settings.controller,
+        "condition_key": settings.condition_key,
+        "start_protocol": settings.start_protocol,
+        "maximum_program_pulses": settings.maximum_programming_pulses,
+    }
+    try:
+        modeled_tolerance = float(programming["tolerance_step_ratio"]) * float(
+            programming["nominal_step_fraction"]
+        )
+    except (KeyError, TypeError, ValueError):
+        modeled_tolerance = float("nan")
+    if (
+        artifact.get("schema") != "ebl.ibm_reram.om_hwa_device_model"
+        or artifact.get("schema_version") != 1
+        or artifact.get("preset") != "reram_array_om"
+        or artifact.get("evidence_class") != "model_based_aihwkit_preset"
+        or artifact.get("coordinate") != "x=(w+1)/2"
+        or not isinstance(programming, Mapping)
+        or any(
+            programming.get(key) != value
+            for key, value in expected_programming.items()
+        )
+        or not math.isclose(
+            modeled_tolerance,
+            settings.verify_tolerance_x,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+        or not isinstance(healthy_endpoint, Mapping)
+    ):
+        raise ValueError(
+            "Expected the pinned OM cap-128 HWA bundle and its declared "
+            "healthy adaptive programming contract."
+        )
+    healthy_metadata = healthy_endpoint.get("metadata")
+    if (
+        not isinstance(healthy_metadata, Mapping)
+        or healthy_metadata.get("preset") != "reram_array_om"
+        or healthy_metadata.get("execution_profile")
+        != "hwa_production_cap128"
+        or healthy_metadata.get("enable_published_corruption") is not False
+    ):
+        raise ValueError(
+            "Expected the population HWA bundle's continuous endpoint model "
+            "to be the healthy OM cap-128 characterization."
+        )
+    model = build_ibm_reram_accepted_endpoint_model(
+        healthy_endpoint,
+        condition_key=settings.condition_key,
+    )
+    return path, model
 
 
 def _load_drn_reference(spec: CrossbarTrainSpec) -> tuple[Path, dict[str, Any]]:
@@ -1047,7 +1186,7 @@ def _offchip_realized_state(
     codebook_rows: torch.Tensor,
     validate_codebook: bool,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
-    if policy == "none":
+    if policy in {"none", "population_programming_error_hwa"}:
         return master, None
     if policy in {
         "support_clamped_no_update",
@@ -1162,6 +1301,9 @@ def _map_transfer_source_state(
                 "support_clamped_no_update": "target_support_clamp",
                 "continuous_hwa": "target_support_clamp",
                 "stochastic_apparent_hwa": "target_support_clamp",
+                "population_programming_error_hwa": (
+                    "identity_global_master_q_no_fixed_array_support"
+                ),
                 "deterministic_qat": "target_deterministic_codebook_projection",
             }[offchip_policy]
         source_role = "logical_offchip_fixed_final_master_q"
@@ -1204,6 +1346,7 @@ def _offchip_adapt(
     train_loader: Iterable,
     device: torch.device,
     test_loader: Iterable | None = None,
+    programming_error_model: IbmReramAcceptedEndpointModel | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any], Mapping[str, Any]]:
     """Run fixed-final deterministic/stochastic HWA or codebook QAT.
 
@@ -1216,7 +1359,10 @@ def _offchip_adapt(
     1.1.0 ``SoftBoundsReferenceDevice`` additive apparent-write-noise equation
     once per minibatch.  This is equation/distribution parity with an explicit
     PyTorch RNG, not native AIHWKit RNG-stream parity and not a P&V-conditioned
-    endpoint sampler.
+    endpoint sampler.  ``population_programming_error_hwa`` instead keeps one
+    global ``q`` range and draws accepted, non-corrupt, target-conditioned P&V
+    residuals from a characterized population on every minibatch.  It never
+    exposes a fixed array identity, bound tuple, or defect mask to training.
     """
 
     slices = layer_cell_slices(layout)
@@ -1290,6 +1436,9 @@ def _offchip_adapt(
             "optimizer_state_dict": None,
             "forward_noise_generator_initial_state": None,
             "forward_noise_generator_final_state": None,
+            "programming_error_model_fingerprint": None,
+            "programming_error_generator_initial_state": None,
+            "programming_error_generator_final_state": None,
         }
         return deployment, {
             "policy": policy,
@@ -1319,8 +1468,10 @@ def _offchip_adapt(
             "deployment_target": spec.offchip.deployment_target,
             "stochastic_programming_during_training": False,
             "stochastic_apparent_forward_noise_during_training": False,
+            "stochastic_programming_error_model_during_training": False,
             "persistent_state_updates_during_training": False,
             "forward_noise": None,
+            "programming_error": None,
         }, state
 
     effective_rates = tuple(
@@ -1360,6 +1511,34 @@ def _offchip_adapt(
             * population.nominal_dw_min
             * noise_settings.relative_scale
         )
+    programming_settings = spec.offchip.programming_error
+    programming_generator: torch.Generator | None = None
+    programming_resolved_seed: int | None = None
+    programming_initial_state: torch.Tensor | None = None
+    compiled_programming_model: IbmReramAcceptedEndpointModel | None = None
+    if spec.offchip.policy == "population_programming_error_hwa":
+        if programming_settings is None or programming_error_model is None:
+            raise RuntimeError(
+                "Expected population HWA settings and a compiled endpoint model."
+            )
+        compiled_programming_model = programming_error_model.to(
+            device,
+            dtype=torch.float32,
+        )
+        programming_resolved_seed = derive_seed(
+            programming_settings.seed,
+            compiled_programming_model.fingerprint,
+            "offchip_population_programming_error_hwa",
+        )
+        programming_generator = torch.Generator(device=device)
+        programming_generator.manual_seed(programming_resolved_seed)
+        programming_initial_state = (
+            programming_generator.get_state().detach().cpu().clone()
+        )
+    elif programming_error_model is not None:
+        raise RuntimeError(
+            "Expected no compiled programming-error model outside population HWA."
+        )
     epoch_reports: list[dict[str, Any]] = []
     optimizer_steps = 0
     final_validation = initial_validation
@@ -1383,6 +1562,34 @@ def _offchip_adapt(
             if noise_generator is None
             else noise_generator.get_state().detach().cpu().clone()
         )
+        programming_value_count = 0
+        programming_residual_sum = 0.0
+        programming_residual_square_sum = 0.0
+        programming_residual_minimum = math.inf
+        programming_residual_maximum = -math.inf
+        programming_apparent_outside_bounds = 0
+        programming_sequence_digest = sha256()
+        programming_generator_before = (
+            None
+            if programming_generator is None
+            else programming_generator.get_state().detach().cpu().clone()
+        )
+        programming_strength: float | None = None
+        if programming_generator is not None:
+            if programming_settings is None:  # pragma: no cover - invariant
+                raise RuntimeError("Expected population HWA settings.")
+            ramp_fraction = min(
+                float(epoch) / float(programming_settings.ramp_epochs),
+                1.0,
+            )
+            programming_strength = (
+                programming_settings.initial_strength
+                + ramp_fraction
+                * (
+                    programming_settings.final_strength
+                    - programming_settings.initial_strength
+                )
+            )
         for batch_index, (inputs, labels) in enumerate(
             limited(train_loader, spec.offchip.maximum_batches)
         ):
@@ -1427,6 +1634,42 @@ def _offchip_adapt(
                 noise_maximum = max(noise_maximum, float(noise.max().item()))
                 noise_sequence_digest.update(
                     bytes.fromhex(tensor_sha256(noise.detach()))
+                )
+            if programming_generator is not None:
+                if (
+                    compiled_programming_model is None
+                    or programming_strength is None
+                ):  # pragma: no cover - invariant
+                    raise RuntimeError("Expected a compiled population HWA model.")
+                target_x = (realized.detach() + 1.0) * 0.5
+                endpoint_sample = compiled_programming_model.sample(
+                    target_x,
+                    generator=programming_generator,
+                )
+                residual_q = endpoint_sample.residual_x * 2.0
+                applied_error_q = residual_q * programming_strength
+                forward_state = realized + applied_error_q
+                residual64 = residual_q.detach().to(torch.float64)
+                programming_value_count += int(residual_q.numel())
+                programming_residual_sum += float(residual64.sum().item())
+                programming_residual_square_sum += float(
+                    torch.square(residual64).sum().item()
+                )
+                programming_residual_minimum = min(
+                    programming_residual_minimum,
+                    float(residual_q.min().item()),
+                )
+                programming_residual_maximum = max(
+                    programming_residual_maximum,
+                    float(residual_q.max().item()),
+                )
+                programming_apparent_outside_bounds += int(
+                    ((forward_state < -1.0) | (forward_state > 1.0))
+                    .sum()
+                    .item()
+                )
+                programming_sequence_digest.update(
+                    bytes.fromhex(tensor_sha256(residual_q.detach()))
                 )
             straight_through = master + (forward_state - master).detach()
             student_logits = standard_crossbar_logits(
@@ -1502,6 +1745,7 @@ def _offchip_adapt(
             "validation": final_validation,
             "test": final_test,
             "forward_noise": None,
+            "programming_error": None,
         }
         if noise_generator is not None:
             if noise_value_count <= 0 or noise_scale_q is None:
@@ -1526,6 +1770,53 @@ def _offchip_adapt(
                 ),
                 "generator_state_after_sha256": tensor_sha256(generator_after),
             }
+        if programming_generator is not None:
+            if programming_value_count <= 0 or programming_strength is None:
+                raise RuntimeError(
+                    "Expected population HWA to draw programming errors."
+                )
+            observed_mean = (
+                programming_residual_sum / programming_value_count
+            )
+            observed_variance = max(
+                0.0,
+                programming_residual_square_sum / programming_value_count
+                - observed_mean**2,
+            )
+            programming_generator_after = (
+                programming_generator.get_state().detach().cpu().clone()
+            )
+            epoch_report["programming_error"] = {
+                "full_array_draws": batches,
+                "scalar_values": programming_value_count,
+                "strength": programming_strength,
+                "unscaled_observed_mean_q": observed_mean,
+                "unscaled_observed_std_q": math.sqrt(observed_variance),
+                "unscaled_observed_minimum_q": (
+                    programming_residual_minimum
+                ),
+                "unscaled_observed_maximum_q": (
+                    programming_residual_maximum
+                ),
+                "applied_observed_mean_q": (
+                    programming_strength * observed_mean
+                ),
+                "applied_observed_std_q": (
+                    programming_strength * math.sqrt(observed_variance)
+                ),
+                "applied_apparent_values_outside_global_q_bounds": (
+                    programming_apparent_outside_bounds
+                ),
+                "unscaled_residual_tensor_sequence_sha256": (
+                    programming_sequence_digest.hexdigest()
+                ),
+                "generator_state_before_sha256": tensor_sha256(
+                    programming_generator_before
+                ),
+                "generator_state_after_sha256": tensor_sha256(
+                    programming_generator_after
+                ),
+            }
         epoch_reports.append(epoch_report)
 
     final_master_cpu = torch.cat(parameters).detach().cpu().clone()
@@ -1544,7 +1835,9 @@ def _offchip_adapt(
     )
     state = {
         "schema": "ebl.ibm_om_crossbar_offchip_state",
-        "schema_version": 2,
+        "schema_version": (
+            3 if compiled_programming_model is not None else 2
+        ),
         "policy": spec.offchip.policy,
         "initial_master_q": initial_master,
         "fixed_final_master_q": final_master_cpu,
@@ -1556,6 +1849,17 @@ def _offchip_adapt(
             None
             if noise_generator is None
             else noise_generator.get_state().detach().cpu().clone()
+        ),
+        "programming_error_model_fingerprint": (
+            None
+            if compiled_programming_model is None
+            else compiled_programming_model.fingerprint
+        ),
+        "programming_error_generator_initial_state": programming_initial_state,
+        "programming_error_generator_final_state": (
+            None
+            if programming_generator is None
+            else programming_generator.get_state().detach().cpu().clone()
         ),
     }
     return final_deployment_cpu, {
@@ -1589,6 +1893,9 @@ def _offchip_adapt(
         "stochastic_apparent_forward_noise_during_training": (
             noise_generator is not None
         ),
+        "stochastic_programming_error_model_during_training": (
+            programming_generator is not None
+        ),
         "persistent_state_updates_during_training": False,
         "forward_noise": (
             None
@@ -1608,6 +1915,38 @@ def _offchip_adapt(
                 ),
                 "generator_final_state_sha256": tensor_sha256(
                     noise_generator.get_state().detach().cpu()
+                ),
+            }
+        ),
+        "programming_error": (
+            None
+            if programming_settings is None
+            else {
+                **to_plain_data(programming_settings),
+                "configured_seed": programming_settings.seed,
+                "resolved_seed": programming_resolved_seed,
+                "compiled_model_fingerprint": (
+                    compiled_programming_model.fingerprint
+                ),
+                "global_master_q_bounds": [-1.0, 1.0],
+                "target_conversion": "x_equals_q_plus_one_over_two",
+                "apparent_conversion": (
+                    "q_apparent_equals_q_master_plus_strength_times_"
+                    "two_times_sampled_residual_x"
+                ),
+                "accepted_noncorrupt_residuals_only": True,
+                "fixed_array_identity_during_training": False,
+                "fixed_per_cell_bounds_during_training": False,
+                "corrupt_device_mask_during_training": False,
+                "persistent_endpoint_state_during_training": False,
+                "physical_programming_during_training": False,
+                "same_sample_for_forward_and_backward": True,
+                "native_rng_stream_parity": False,
+                "generator_initial_state_sha256": tensor_sha256(
+                    programming_initial_state
+                ),
+                "generator_final_state_sha256": tensor_sha256(
+                    programming_generator.get_state().detach().cpu()
                 ),
             }
         ),
@@ -3974,11 +4313,21 @@ def run_train(request: "TrainRequest") -> int:
     if not sampler.is_file() or not os.access(sampler, os.X_OK):
         raise RuntimeError("Expected EBL_AIHWKIT_PYTHON to identify an executable file.")
 
-    inputs = (
+    programming_error_path, programming_error_model = (
+        _load_offchip_programming_error_model(spec)
+    )
+    inputs = [
         _input("teacher_weights", teacher_path),
         _input("aihwkit_python", sampler),
         _input("drn_reference", reference_path),
-    )
+    ]
+    if programming_error_path is not None:
+        inputs.append(
+            _input(
+                "offchip_programming_error_model",
+                programming_error_path,
+            )
+        )
     store = RunStore.create(
         output_root=request.output_dir,
         experiment_id=spec.experiment_id,
@@ -3989,6 +4338,7 @@ def run_train(request: "TrainRequest") -> int:
         resume_capability="unsupported",
     )
     try:
+        runtime_thread_contract = _cpu_thread_contract(spec)
         torch.manual_seed(spec.runtime.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(spec.runtime.seed)
@@ -4204,6 +4554,7 @@ def run_train(request: "TrainRequest") -> int:
             train_loader=offchip_loaders.train,
             device=device,
             test_loader=diagnostic_loaders.test,
+            programming_error_model=programming_error_model,
         )
         offchip_state_path = artifact_root / "offchip_state.pt"
         atomic_torch_save(offchip_state, offchip_state_path)
@@ -5297,6 +5648,11 @@ def run_train(request: "TrainRequest") -> int:
             "schema": "ebl.analysis.mnist_ibm_om_crossbar_relu",
             "schema_version": 1,
             "evidence_tier": "exploratory_noncanonical",
+            "runtime": {
+                "device": spec.runtime.device,
+                "dtype": spec.runtime.dtype,
+                "cpu_thread_contract": runtime_thread_contract,
+            },
             "architecture": {
                 "logical_dims": list(spec.model.dims),
                 "logical_weights": sum(tile.cells for tile in layout),
@@ -5543,6 +5899,7 @@ def run_train(request: "TrainRequest") -> int:
                             in {
                                 "continuous_hwa",
                                 "stochastic_apparent_hwa",
+                                "population_programming_error_hwa",
                                 "deterministic_qat",
                             }
                             else [
@@ -5565,6 +5922,16 @@ def run_train(request: "TrainRequest") -> int:
                         "stochastic_HWA_noise_is_unconditional_per_minibatch_and_not_program_verify_acceptance_conditioned",
                     ]
                     if spec.offchip.policy == "stochastic_apparent_hwa"
+                    else []
+                ),
+                *(
+                    [
+                        "population_HWA_uses_a_fitted_AIHWKit_OM_program_verify_endpoint_population_not_the_IBM_PCM_hardware_noise_model",
+                        "population_HWA_resamples_only_accepted_noncorrupt_apparent_endpoint_residuals_and_defers_failures_and_corrupt_devices_to_deployment",
+                        "population_HWA_uses_global_q_bounds_and_no_fixed_array_identity_or_per_cell_bound_tuple",
+                    ]
+                    if spec.offchip.policy
+                    == "population_programming_error_hwa"
                     else []
                 ),
                 *(

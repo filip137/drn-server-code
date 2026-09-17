@@ -7,10 +7,14 @@ from pathlib import Path
 import pytest
 import torch
 
+from experiments.artifacts import sha256_file
 from experiments.mnist_analog_relu.config import parse_crossbar_config
 from experiments.mnist_analog_relu import runtime
 from experiments.mnist_relu.model import BiasFreeReluTeacher
 from training.ibm_om_standard_crossbar import build_crossbar_layout
+from training.ibm_reram_endpoint_model import (
+    build_ibm_reram_accepted_endpoint_model,
+)
 from training.ibm_reram_hwa import IbmReramArrayPopulation
 
 
@@ -22,11 +26,24 @@ CONFIG = (
     / "ibm_om_onchip_importance"
     / "hwa_noise_diagnostic_repaired_stochastic_hwa.json"
 )
+POPULATION_CONFIG = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_onchip_importance"
+    / "hwa_long_population_programming_error_hwa.json"
+)
 
 
-def _population(size: int, layout) -> IbmReramArrayPopulation:
+def _population(
+    size: int,
+    layout,
+    *,
+    assignment_seed: int = 87004,
+    support: float = 0.25,
+) -> IbmReramArrayPopulation:
     return IbmReramArrayPopulation(
-        assignment_seed=87004,
+        assignment_seed=assignment_seed,
         corruption_policy="counterfactual_repaired",
         binding_keys=tuple(tile.key for tile in layout),
         binding_shapes=tuple(tile.shape for tile in layout),
@@ -35,16 +52,74 @@ def _population(size: int, layout) -> IbmReramArrayPopulation:
         nominal_dw_min=0.0949,
         dw_min_std=0.009,
         write_noise_std=1.4113,
-        max_bound=torch.full((size,), 0.25),
-        min_bound=torch.full((size,), -0.25),
+        max_bound=torch.full((size,), support),
+        min_bound=torch.full((size,), -support),
         dwmin_up=torch.full((size,), 0.0949),
         dwmin_down=torch.full((size,), 0.0949),
         reference=torch.zeros(size),
         corrupt=torch.zeros(size, dtype=torch.bool),
         published_corrupt=torch.zeros(size, dtype=torch.bool),
-        fingerprint="hwa-noise-runtime-fixture",
+        fingerprint=(
+            f"hwa-noise-runtime-fixture-{assignment_seed}-{support}"
+        ),
         aihwkit_version="1.1.0",
     )
+
+
+def _accepted_endpoint_artifact() -> dict[str, object]:
+    records = []
+    for target, probabilities in (
+        (0.0, [0.8, 0.2]),
+        (1.0, [0.2, 0.8]),
+    ):
+        records.append(
+            {
+                "target": target,
+                "accepted_noncorrupt_residual": {
+                    "fit_count": 100,
+                    "bin_edges": [-0.02, 0.0, 0.02],
+                    "bin_probabilities": probabilities,
+                },
+            }
+        )
+    return {
+        "schema": "ebl.ibm_reram.bounded_piecewise_uniform_endpoint_model",
+        "schema_version": 2,
+        "metadata": {
+            "preset": "reram_array_om",
+            "execution_profile": "hwa_production_cap128",
+            "enable_published_corruption": False,
+        },
+        "conditions": {
+            "adaptive__lower_to_target__tau_step_0.5": {
+                "fit_status": "fit",
+                "reachability_fit_status": "fit",
+                "adequate": True,
+                "validation": {"per_target": records},
+            }
+        },
+    }
+
+
+def _device_model_bundle() -> dict[str, object]:
+    return {
+        "schema": "ebl.ibm_reram.om_hwa_device_model",
+        "schema_version": 1,
+        "preset": "reram_array_om",
+        "evidence_class": "model_based_aihwkit_preset",
+        "coordinate": "x=(w+1)/2",
+        "programming": {
+            "controller": "adaptive",
+            "condition_key": "adaptive__lower_to_target__tau_step_0.5",
+            "start_protocol": "lower_to_target",
+            "maximum_program_pulses": 128,
+            "tolerance_step_ratio": 0.5,
+            "nominal_step_fraction": 0.04745,
+        },
+        "endpoint_models": {
+            "continuous": _accepted_endpoint_artifact(),
+        },
+    }
 
 
 def test_aihwkit_om_apparent_write_noise_is_replayable_and_unclamped() -> None:
@@ -196,3 +271,154 @@ def test_stochastic_hwa_replays_noise_and_deploys_persistent_support_state() -> 
             "noise_tensor_sequence_sha256"
         ]
     )
+
+
+def test_population_programming_error_model_loader_checks_bundle_and_digest(
+    tmp_path: Path,
+) -> None:
+    artifact_path = tmp_path / "om_hwa_bundle.json"
+    artifact_path.write_text(
+        json.dumps(_device_model_bundle(), sort_keys=True),
+        encoding="utf-8",
+    )
+    spec = parse_crossbar_config(
+        json.loads(POPULATION_CONFIG.read_text(encoding="utf-8"))
+    )
+    settings = replace(
+        spec.offchip.programming_error,
+        artifact_path=str(artifact_path),
+        artifact_sha256=sha256_file(artifact_path),
+    )
+    spec = replace(
+        spec,
+        offchip=replace(spec.offchip, programming_error=settings),
+    )
+
+    resolved_path, model = runtime._load_offchip_programming_error_model(spec)
+
+    assert resolved_path == artifact_path.resolve()
+    assert model is not None
+    assert model.condition_key == "adaptive__lower_to_target__tau_step_0.5"
+    assert len(model.fingerprint) == 64
+
+    bad_settings = replace(settings, artifact_sha256="0" * 64)
+    with pytest.raises(ValueError, match="SHA-256"):
+        runtime._load_offchip_programming_error_model(
+            replace(
+                spec,
+                offchip=replace(
+                    spec.offchip,
+                    programming_error=bad_settings,
+                ),
+            )
+        )
+
+
+def test_population_hwa_is_replayable_and_independent_of_fixed_array_bounds() -> None:
+    payload = json.loads(POPULATION_CONFIG.read_text(encoding="utf-8"))
+    spec = parse_crossbar_config(payload)
+    spec = replace(
+        spec,
+        offchip=replace(spec.offchip, maximum_batches=1),
+        evaluation=replace(
+            spec.evaluation,
+            sample_limit=2,
+            maximum_validation_batches=1,
+        ),
+    )
+    model = build_ibm_reram_accepted_endpoint_model(
+        _accepted_endpoint_artifact(),
+        condition_key="adaptive__lower_to_target__tau_step_0.5",
+    )
+    layout = build_crossbar_layout((784, 50, 10), maximum_input_size=512)
+    size = sum(tile.cells for tile in layout)
+    narrow_population = _population(
+        size,
+        layout,
+        assignment_seed=87004,
+        support=0.25,
+    )
+    wide_population = _population(
+        size,
+        layout,
+        assignment_seed=99991,
+        support=0.9,
+    )
+    source = torch.linspace(-0.5, 0.5, size, dtype=torch.float32)
+    codebook_values = torch.stack((-torch.ones(size), torch.ones(size)))
+    torch.manual_seed(19)
+    teacher = BiasFreeReluTeacher(device=torch.device("cpu"))
+    inputs = torch.rand(2, 784, generator=torch.Generator().manual_seed(20))
+    labels = torch.tensor([1, 2], dtype=torch.int64)
+    loader = [(inputs, labels)]
+
+    def run(population: IbmReramArrayPopulation):
+        return runtime._offchip_adapt(
+            source_requested=source,
+            population=population,
+            codebook_values=codebook_values,
+            spec=spec,
+            layout=layout,
+            digital_scales=(1.0, 1.0),
+            teacher=teacher,
+            validation_loader=loader,
+            train_loader=loader,
+            device=torch.device("cpu"),
+            test_loader=loader,
+            programming_error_model=model,
+        )
+
+    narrow_requested, narrow_report, narrow_state = run(narrow_population)
+    wide_requested, wide_report, wide_state = run(wide_population)
+
+    assert narrow_state["schema_version"] == 3
+    assert torch.equal(narrow_state["initial_master_q"], source)
+    assert torch.equal(narrow_state["fixed_final_master_q"], wide_state["fixed_final_master_q"])
+    assert torch.equal(narrow_requested, narrow_state["fixed_final_master_q"])
+    assert torch.equal(narrow_requested, wide_requested)
+    assert runtime._state_tree_equal(
+        narrow_state["optimizer_state_dict"],
+        wide_state["optimizer_state_dict"],
+    )
+    assert torch.equal(
+        narrow_state["programming_error_generator_final_state"],
+        wide_state["programming_error_generator_final_state"],
+    )
+    assert not torch.equal(
+        source,
+        torch.maximum(
+            torch.minimum(source, narrow_population.logical_max),
+            narrow_population.logical_min,
+        ),
+    )
+    assert narrow_report["initial_realized_sha256"] == wide_report[
+        "initial_realized_sha256"
+    ]
+    assert narrow_report["stochastic_programming_during_training"] is False
+    assert (
+        narrow_report["stochastic_programming_error_model_during_training"]
+        is True
+    )
+    assert narrow_report["stochastic_apparent_forward_noise_during_training"] is False
+    programming = narrow_report["programming_error"]
+    assert programming["fixed_array_identity_during_training"] is False
+    assert programming["fixed_per_cell_bounds_during_training"] is False
+    assert programming["corrupt_device_mask_during_training"] is False
+    assert programming["accepted_noncorrupt_residuals_only"] is True
+    assert [
+        epoch["programming_error"]["strength"]
+        for epoch in narrow_report["epochs"]
+    ] == pytest.approx([index / 10.0 for index in range(1, 11)])
+    for narrow_epoch, wide_epoch in zip(
+        narrow_report["epochs"],
+        wide_report["epochs"],
+        strict=True,
+    ):
+        narrow_error = narrow_epoch["programming_error"]
+        wide_error = wide_epoch["programming_error"]
+        assert narrow_error["full_array_draws"] == 1
+        assert narrow_error["scalar_values"] == size
+        assert (
+            narrow_error["unscaled_residual_tensor_sequence_sha256"]
+            == wide_error["unscaled_residual_tensor_sequence_sha256"]
+        )

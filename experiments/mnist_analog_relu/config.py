@@ -23,6 +23,7 @@ class RuntimeSettings:
     device: str
     dtype: str
     required_aihwkit_version: str
+    required_cpu_threads: int | None
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,29 @@ class OffchipForwardNoiseSettings:
 
 
 @dataclass(frozen=True)
+class OffchipProgrammingErrorSettings:
+    model: str
+    artifact_path: str
+    artifact_sha256: str
+    condition_key: str
+    controller: str
+    start_protocol: str
+    maximum_programming_pulses: int
+    verify_tolerance_x: float
+    target_coordinate: str
+    training_population: str
+    endpoint_state: str
+    resampling: str
+    samples_per_minibatch: int
+    strength_schedule: str
+    initial_strength: float
+    final_strength: float
+    ramp_epochs: int
+    seed: int
+    gradient_estimator: str
+
+
+@dataclass(frozen=True)
 class OffchipSettings:
     policy: str
     training_protocol: str
@@ -99,6 +123,7 @@ class OffchipSettings:
     deployment_target: str
     epoch_evaluation: str
     forward_noise: OffchipForwardNoiseSettings | None
+    programming_error: OffchipProgrammingErrorSettings | None
 
 
 @dataclass(frozen=True)
@@ -350,7 +375,12 @@ def _optional_positive_integer(value: Any, path: str) -> int | None:
 def _parse_runtime(value: Any) -> RuntimeSettings:
     path = "config.runtime"
     raw = _object(value, path)
-    _keys(raw, path, {"seed", "data_seed", "device", "dtype", "required_aihwkit_version"})
+    _keys(
+        raw,
+        path,
+        {"seed", "data_seed", "device", "dtype", "required_aihwkit_version"},
+        {"required_cpu_threads"},
+    )
     if raw["device"] not in {"cpu", "cuda"}:
         raise config_error(f"{path}.device", "to be 'cpu' or 'cuda'", raw["device"])
     if raw["dtype"] != "float32":
@@ -361,12 +391,28 @@ def _parse_runtime(value: Any) -> RuntimeSettings:
         )
     if raw["seed"] != 42 or raw["data_seed"] != 42:
         raise config_error(path, "to use matched runtime and data seeds 42", dict(raw))
+    required_cpu_threads = (
+        None
+        if raw.get("required_cpu_threads") is None
+        else _integer(
+            raw["required_cpu_threads"],
+            f"{path}.required_cpu_threads",
+            minimum=1,
+        )
+    )
+    if required_cpu_threads is not None and raw["device"] != "cpu":
+        raise config_error(
+            f"{path}.required_cpu_threads",
+            "to be omitted unless runtime.device='cpu'",
+            required_cpu_threads,
+        )
     return RuntimeSettings(
         seed=_integer(raw["seed"], f"{path}.seed"),
         data_seed=_integer(raw["data_seed"], f"{path}.data_seed"),
         device=raw["device"],
         dtype="float32",
         required_aihwkit_version="1.1.0",
+        required_cpu_threads=required_cpu_threads,
     )
 
 
@@ -576,6 +622,130 @@ def _parse_offchip_forward_noise(
     )
 
 
+def _parse_offchip_programming_error(
+    value: Any,
+    path: str,
+) -> OffchipProgrammingErrorSettings:
+    raw = _object(value, path)
+    _keys(
+        raw,
+        path,
+        {
+            "model",
+            "artifact_path",
+            "artifact_sha256",
+            "condition_key",
+            "controller",
+            "start_protocol",
+            "maximum_programming_pulses",
+            "verify_tolerance_x",
+            "target_coordinate",
+            "training_population",
+            "endpoint_state",
+            "resampling",
+            "samples_per_minibatch",
+            "strength_schedule",
+            "initial_strength",
+            "final_strength",
+            "ramp_epochs",
+            "seed",
+            "gradient_estimator",
+        },
+    )
+    expected = {
+        "model": (
+            "ibm_reram_om_pv128_healthy_accepted_endpoint_residual_v1"
+        ),
+        "condition_key": "adaptive__lower_to_target__tau_step_0.5",
+        "controller": "adaptive",
+        "start_protocol": "lower_to_target",
+        "maximum_programming_pulses": 128,
+        "target_coordinate": "global_x_equals_q_plus_one_over_two",
+        "training_population": (
+            "healthy_noncorrupt_accepted_endpoints_no_fixed_array"
+        ),
+        "endpoint_state": "apparent_q",
+        "resampling": "independent_full_array_draw_per_minibatch",
+        "samples_per_minibatch": 1,
+        "strength_schedule": "linear_epoch_ramp",
+        "gradient_estimator": "identity_straight_through",
+    }
+    for key, expected_value in expected.items():
+        if raw[key] != expected_value:
+            raise config_error(
+                f"{path}.{key}",
+                f"to equal {expected_value!r}",
+                raw[key],
+            )
+    verify_tolerance_x = _number(
+        raw["verify_tolerance_x"],
+        f"{path}.verify_tolerance_x",
+        minimum=0.0,
+    )
+    if not math.isclose(
+        float(verify_tolerance_x),
+        0.023725,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise config_error(
+            f"{path}.verify_tolerance_x",
+            "to equal the frozen half-nominal-step tolerance 0.023725",
+            raw["verify_tolerance_x"],
+        )
+    initial_strength = _number(
+        raw["initial_strength"], f"{path}.initial_strength", minimum=0.0
+    )
+    final_strength = _number(
+        raw["final_strength"], f"{path}.final_strength", minimum=0.0
+    )
+    ramp_epochs = _integer(
+        raw["ramp_epochs"], f"{path}.ramp_epochs", minimum=1
+    )
+    if (
+        not math.isclose(
+            float(initial_strength), 0.0, rel_tol=0.0, abs_tol=1e-12
+        )
+        or not math.isclose(
+            float(final_strength), 1.0, rel_tol=0.0, abs_tol=1e-12
+        )
+        or ramp_epochs != 10
+    ):
+        raise config_error(
+            path,
+            (
+                "to use the frozen ten-epoch linear programming-error "
+                "strength ramp from 0.0 to 1.0"
+            ),
+            dict(raw),
+        )
+    return OffchipProgrammingErrorSettings(
+        model=expected["model"],
+        artifact_path=_text(raw["artifact_path"], f"{path}.artifact_path"),
+        artifact_sha256=_digest(
+            raw["artifact_sha256"], f"{path}.artifact_sha256"
+        ),
+        condition_key=expected["condition_key"],
+        controller=expected["controller"],
+        start_protocol=expected["start_protocol"],
+        maximum_programming_pulses=expected[
+            "maximum_programming_pulses"
+        ],
+        verify_tolerance_x=float(verify_tolerance_x),
+        target_coordinate=expected["target_coordinate"],
+        training_population=expected["training_population"],
+        endpoint_state=expected["endpoint_state"],
+        resampling=expected["resampling"],
+        samples_per_minibatch=1,
+        strength_schedule=expected["strength_schedule"],
+        initial_strength=0.0,
+        final_strength=1.0,
+        ramp_epochs=10,
+        seed=_integer(raw["seed"], f"{path}.seed", minimum=1),
+        gradient_estimator=expected["gradient_estimator"],
+    )
+
+
 def _parse_offchip(value: Any) -> OffchipSettings:
     path = "config.offchip"
     raw = _object(value, path)
@@ -595,6 +765,7 @@ def _parse_offchip(value: Any) -> OffchipSettings:
         },
         {
             "forward_noise",
+            "programming_error",
             "training_protocol",
             "deployment_target",
             "epoch_evaluation",
@@ -605,6 +776,7 @@ def _parse_offchip(value: Any) -> OffchipSettings:
         "support_clamped_no_update",
         "continuous_hwa",
         "stochastic_apparent_hwa",
+        "population_programming_error_hwa",
         "deterministic_qat",
     }
     if raw["policy"] not in supported_policies:
@@ -645,6 +817,13 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             raw["forward_noise"], f"{path}.forward_noise"
         )
     )
+    programming_error = (
+        None
+        if raw.get("programming_error") is None
+        else _parse_offchip_programming_error(
+            raw["programming_error"], f"{path}.programming_error"
+        )
+    )
     default_training_protocol = (
         "no_update"
         if policy in {"none", "support_clamped_no_update"}
@@ -678,7 +857,11 @@ def _parse_offchip(value: Any) -> OffchipSettings:
                 training_protocol,
             )
     elif training_protocol == "legacy_five_epoch_fixed_final":
-        if epochs != 5 or rates != (1e-4, 1e-4):
+        if (
+            policy == "population_programming_error_hwa"
+            or epochs != 5
+            or rates != (1e-4, 1e-4)
+        ):
             raise config_error(
                 path,
                 (
@@ -689,15 +872,21 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             )
     elif training_protocol == "full_mnist_ten_epoch_fixed_final":
         if (
-            policy not in {"continuous_hwa", "stochastic_apparent_hwa"}
+            policy
+            not in {
+                "continuous_hwa",
+                "stochastic_apparent_hwa",
+                "population_programming_error_hwa",
+            }
             or epochs != 10
             or rates != (1e-4, 1e-4)
         ):
             raise config_error(
                 path,
                 (
-                    "to use continuous or stochastic HWA for ten full-MNIST "
-                    "fixed-final epochs at logical learning rates [1e-4, 1e-4]"
+                    "to use continuous, stochastic-apparent, or population-"
+                    "programming-error HWA for ten full-MNIST fixed-final "
+                    "epochs at logical learning rates [1e-4, 1e-4]"
                 ),
                 dict(raw),
             )
@@ -720,6 +909,28 @@ def _parse_offchip(value: Any) -> OffchipSettings:
             "to be null or absent outside stochastic_apparent_hwa",
             raw["forward_noise"],
         )
+    if policy == "population_programming_error_hwa":
+        if programming_error is None:
+            raise config_error(
+                f"{path}.programming_error",
+                "to be present for population_programming_error_hwa",
+                raw.get("programming_error"),
+            )
+        if training_protocol != "full_mnist_ten_epoch_fixed_final":
+            raise config_error(
+                f"{path}.training_protocol",
+                (
+                    "to use the ten-epoch protocol for population "
+                    "programming-error HWA"
+                ),
+                training_protocol,
+            )
+    elif programming_error is not None:
+        raise config_error(
+            f"{path}.programming_error",
+            "to be null or absent outside population_programming_error_hwa",
+            raw["programming_error"],
+        )
     deployment_target = raw.get(
         "deployment_target", "policy_realized_state"
     )
@@ -738,13 +949,31 @@ def _parse_offchip(value: Any) -> OffchipSettings:
     if (
         deployment_target == "fixed_final_master_fault_blind_pv"
         and policy
-        not in {"none", "continuous_hwa", "stochastic_apparent_hwa"}
+        not in {
+            "none",
+            "continuous_hwa",
+            "stochastic_apparent_hwa",
+            "population_programming_error_hwa",
+        }
     ):
         raise config_error(
             f"{path}.deployment_target",
             (
                 "to use the exact-master P&V handoff only for no-HWA, "
-                "continuous-HWA, or stochastic-apparent-HWA policies"
+                "continuous-HWA, stochastic-apparent-HWA, or population-"
+                "programming-error-HWA policies"
+            ),
+            deployment_target,
+        )
+    if (
+        policy == "population_programming_error_hwa"
+        and deployment_target != "fixed_final_master_fault_blind_pv"
+    ):
+        raise config_error(
+            f"{path}.deployment_target",
+            (
+                "to equal 'fixed_final_master_fault_blind_pv' for population "
+                "programming-error HWA"
             ),
             deployment_target,
         )
@@ -781,6 +1010,7 @@ def _parse_offchip(value: Any) -> OffchipSettings:
         deployment_target=deployment_target,
         epoch_evaluation=epoch_evaluation,
         forward_noise=forward_noise,
+        programming_error=programming_error,
     )
 
 
@@ -1775,6 +2005,24 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     offchip = _parse_offchip(raw["offchip"])
     data = _parse_data(raw["data"])
     evaluation = _parse_evaluation(raw["evaluation"])
+    if offchip.programming_error is not None and (
+        offchip.programming_error.maximum_programming_pulses
+        != device.maximum_programming_pulses
+        or not math.isclose(
+            offchip.programming_error.verify_tolerance_x,
+            device.verify_tolerance_x,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+    ):
+        raise config_error(
+            "config.offchip.programming_error",
+            (
+                "to use the same cap and apparent-x tolerance as the exact "
+                "deployment controller"
+            ),
+            dict(raw["offchip"]["programming_error"]),
+        )
     if offchip.training_protocol == "full_mnist_ten_epoch_fixed_final":
         available = 60_000 - data.validation_points
         expected_batches = math.ceil(available / data.batch_size)
@@ -1990,6 +2238,7 @@ __all__ = [
     "CrossbarConfig",
     "CrossbarTrainSpec",
     "EXPERIMENT_ID",
+    "OffchipProgrammingErrorSettings",
     "OffchipSettings",
     "SCHEMA_VERSION",
     "StarRecoverySettings",

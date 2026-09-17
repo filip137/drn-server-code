@@ -62,17 +62,23 @@ The strongest current interpretation is:
   against repaired A reaches `90.750%` on published-defect B--D, versus
   `88.192%` when the source HWA model retains A's fixed defect map; teacher KL
   improves from `0.3767` to `0.2580`. The result supports removing fixed
-  corrupt identities from the HWA source model. This establishes retained
-  corruption as a real deployment problem in the fitted-preset simulation,
-  but it is not evidence that population-level IBM-style HWA fails: the
-  current implementation binds every logical coordinate to one fixed Array-A
-  identity throughout training, whereas IBM inference HWA is designed without
-  a specific chip or failure map. The next HWA control should use A as
-  characterization data, resample a joint healthy-device or P&V-endpoint
-  distribution during training, and keep B--D untouched for evaluation rather
-  than keep logical weights bound to A's exact cells. Randomized defect-mask
-  augmentation belongs in a separate arm. This does not yet establish that
-  on-chip recovery is necessary or capable of repairing stuck cells.
+  corrupt identities from the HWA source model. The artifact-verified,
+  CPU-pinned population-HWA successor removes all fixed Array-A support from
+  training: it clips only to global `q in [-1,1]`, redraws a healthy accepted
+  target-conditioned OM cap-128 endpoint residual for every weight and
+  minibatch, and ramps its strength over ten epochs. It reaches `96.025%`
+  pooled apparent accuracy on repaired B--D, `+0.775` points over the fixed-A
+  HWA control but short of the predeclared `+1.0`-point benefit threshold. On
+  byte-identically trained published-corrupt B--D, it reaches only `90.675%`:
+  a `-5.350`-point repaired-to-published penalty, with all three assignment
+  means lower and teacher KL increasing from `0.0688` to `0.3037`. The
+  corruption-materiality gate therefore passes even under the population
+  HWA model, while neither repaired nor published deployment passes the
+  population-versus-fixed HWA benefit gate. See
+  [`ibm_om_crossbar_population_hwa.md`](ibm_om_crossbar_population_hwa.md).
+  This remains fitted AIHWKit-preset rather than raw measured-hardware
+  evidence and does not establish that on-chip recovery is necessary or
+  capable of repairing stuck cells.
 - Ideal IBM OM baseline controls now isolate zero-state contrast as a major
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
@@ -372,7 +378,7 @@ and fine-tuning updates must remain separately measurable.
   mismatch next. These are exploratory AIHWKit-preset smokes with 16
   adaptation examples and 1,000 test examples; they exclude defect remapping,
   spares, fresh-read retention, and on-chip updates.
-- **Fixed-map versus population-model HWA:** In the ten-epoch crossed study,
+- **Fixed corrupt-map source control:** In the ten-epoch crossed study,
   repaired-A stochastic HWA reached `90.750%` pooled apparent accuracy and
   `0.2580` teacher KL on published-defect B--D. Published-defect-A HWA reached
   only `88.192%` and `0.3767` on those exact targets. All three assignment
@@ -384,6 +390,20 @@ and fine-tuning updates must remain separately measurable.
   A state was handed to target P&V. This supports a new empirical-population
   HWA arm that samples healthy device identities learned from A across
   minibatches or epochs; it is distinct from using one fixed virtual A.
+- **Global-bound population programming-error HWA:** The corrected v2 study
+  pins the CPU math environment and reproduces the historical fixed-A master
+  SHA exactly. Its population policy never consumes Array A's bounds,
+  references, assignment, or corrupt identities during training. On repaired
+  B--D it reaches `96.025%` pooled apparent accuracy and `0.068773` KL, versus
+  `95.250%` and `0.100316` for fixed-A HWA. The `+0.775`-point gain misses the
+  predeclared `+1.0` threshold. With the exact same population master and
+  paired endpoint streams, retaining a mean `13.610%` published corrupt-cell
+  fraction reduces B/C/D by `5.825/7.225/3.000` points and pooled accuracy by
+  `5.350` points, while KL rises to `0.303733`; the corruption-materiality gate
+  passes. Apparent acceptance remains high, but hidden-persistent accuracy
+  falls by `13.325` points, so noisy verify admission must not be confused
+  with persistent reachability. This is AIHWKit-OM-preset evidence and the
+  managed scientific interpretation remains pending human review.
 
 ### Cell-specific IBM OM QAT and held-out-array transfer
 
@@ -794,20 +814,13 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Build a versioned empirical, population-level HWA model from Array A's
-   characterized healthy cells rather than binding each logical weight to one
-   exact A cell. Preserve correlations by resampling complete device tuples
-   (bounds, reference, directional update parameters, and noise parameters),
-   or fit the target-conditioned P&V endpoint distribution that those tuples
-   generate; redraw the declared realization at each HWA sampling interval.
-   Compare fixed repaired-A HWA with this healthy population-resampled HWA and
-   with a separately named arm that resamples independent published defect
-   masks; deploy all frozen masters on untouched B--D populations. Keep a
-   P&V-conditioned endpoint model as an orthogonal control, because additive
-   write noise alone does not reproduce verified endpoints. Then cross the
-   best training model with no remapping,
-   defect-aware remapping, and spare-row or spare-column deployment, plus
-   fresh-read/retention checks. Only after a valid persistent deployment still
+1. Complete human scientific review of the artifact-verified
+   [`global-bound population programming-error HWA study`](../studies/mnist-ibm-om-crossbar-population-programming-error-hwa-20260902-v2.json)
+   and finalize its one managed manifest entry. The next intervention remains
+   a user decision. Predeclared candidates are full healthy-device tuple
+   resampling, independently resampled defect-mask augmentation, controller-
+   matched HWA, defect-aware remapping, spare rows or columns, and fresh-read
+   or retention checks. Only after a valid persistent deployment still
    underperforms should a byte-identical frozen-versus-on-chip-recovery fork be
    introduced; truly stuck cells cannot themselves be updated. The planned
    [`crossbar STAR-inspired local-state-only recovery smoke`](../studies/mnist-ibm-om-crossbar-star-local-recovery-smoke-20260831-v1.json)

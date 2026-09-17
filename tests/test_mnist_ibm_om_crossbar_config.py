@@ -19,7 +19,7 @@ from experiments.mnist_analog_relu.config import (
     parse_crossbar_config,
     resolve_crossbar_spec,
 )
-from experiments.mnist_analog_relu.runtime import _drn_comparison
+from experiments.mnist_analog_relu.runtime import _cpu_thread_contract, _drn_comparison
 from experiments.schema import ConfigError, RunMode
 from experiments.study_workflow import load_study_plan, prepare_study
 
@@ -63,11 +63,73 @@ LONG_HWA_CROSS_DEFECT_STUDY_PATH = (
     / "studies"
     / "mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1.json"
 )
+POPULATION_HWA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-population-programming-error-hwa-20260902-v1.json"
+)
+POPULATION_HWA_CPU1_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-population-programming-error-hwa-20260902-v2.json"
+)
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
 
 def _payload(name: str = "matched_winsorized_onchip_all.json") -> dict:
     return json.loads((CONFIG_DIRECTORY / name).read_text(encoding="utf-8"))
+
+
+def test_cpu_thread_contract_is_explicit_and_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload("hwa_long_repaired_stochastic_hwa.json")
+    unpinned = resolve_crossbar_spec(parse_crossbar_config(payload), RunMode.TRAIN)
+    assert unpinned.runtime.required_cpu_threads is None
+
+    payload["runtime"]["required_cpu_threads"] = 1
+    pinned = resolve_crossbar_spec(parse_crossbar_config(payload), RunMode.TRAIN)
+    assert pinned.runtime.required_cpu_threads == 1
+    for name in (
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        monkeypatch.setenv(name, "1")
+    monkeypatch.setattr(
+        "experiments.mnist_analog_relu.runtime.torch.get_num_threads",
+        lambda: 1,
+    )
+    monkeypatch.setattr(
+        "experiments.mnist_analog_relu.runtime.torch.get_num_interop_threads",
+        lambda: 7,
+    )
+
+    report = _cpu_thread_contract(pinned)
+    assert report == {
+        "required_cpu_threads": 1,
+        "environment": {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+        },
+        "torch_intraop_threads": 1,
+        "torch_interop_threads": 7,
+    }
+
+    monkeypatch.delenv("MKL_NUM_THREADS")
+    with pytest.raises(RuntimeError, match="CPU thread contract"):
+        _cpu_thread_contract(pinned)
+
+
+def test_cpu_thread_contract_rejects_cuda() -> None:
+    payload = _payload("native_frozen.json")
+    payload["runtime"]["required_cpu_threads"] = 1
+
+    with pytest.raises(ConfigError, match="omitted unless runtime.device='cpu'"):
+        parse_crossbar_config(payload)
 
 
 @pytest.mark.parametrize(
@@ -504,6 +566,178 @@ def test_long_hwa_cross_defect_study_declares_two_off_diagonal_arms() -> None:
             target.corruption_policy != "inherit_source"
             for target in spec.transfer.targets
         )
+
+
+@pytest.mark.parametrize(
+    ("name", "target_policy"),
+    [
+        ("hwa_long_population_programming_error_hwa.json", "inherit_source"),
+        (
+            "hwa_long_population_programming_error_hwa_to_published_targets.json",
+            "published",
+        ),
+    ],
+)
+def test_population_programming_error_hwa_contract(
+    name: str,
+    target_policy: str,
+) -> None:
+    spec = resolve_crossbar_spec(parse_crossbar_config(_payload(name)), RunMode.TRAIN)
+
+    assert spec.device.corruption_policy == "counterfactual_repaired"
+    assert spec.offchip.policy == "population_programming_error_hwa"
+    assert spec.offchip.training_protocol == "full_mnist_ten_epoch_fixed_final"
+    assert spec.offchip.epochs == 10
+    assert spec.offchip.maximum_batches == 3438
+    assert spec.offchip.deployment_target == "fixed_final_master_fault_blind_pv"
+    assert spec.offchip.forward_noise is None
+    programming = spec.offchip.programming_error
+    assert programming is not None
+    assert programming.model == (
+        "ibm_reram_om_pv128_healthy_accepted_endpoint_residual_v1"
+    )
+    assert programming.artifact_sha256 == (
+        "3030e04d6205dc90d0894ac453d2c1c522dffdc004f69b9c6ab7eaf7ef4b8ba3"
+    )
+    assert programming.condition_key == (
+        "adaptive__lower_to_target__tau_step_0.5"
+    )
+    assert programming.controller == "adaptive"
+    assert programming.start_protocol == "lower_to_target"
+    assert programming.maximum_programming_pulses == 128
+    assert programming.verify_tolerance_x == pytest.approx(0.023725)
+    assert programming.initial_strength == 0.0
+    assert programming.final_strength == 1.0
+    assert programming.ramp_epochs == 10
+    assert programming.seed == 88042
+    assert all(
+        target.corruption_policy == target_policy
+        for target in spec.transfer.targets
+    )
+
+
+def test_population_hwa_configs_change_only_target_corruption_policy() -> None:
+    repaired = _payload("hwa_long_population_programming_error_hwa.json")
+    published = _payload(
+        "hwa_long_population_programming_error_hwa_to_published_targets.json"
+    )
+
+    assert {
+        target.get("corruption_policy", "inherit_source")
+        for target in repaired["transfer"]["targets"]
+    } == {"inherit_source"}
+    assert {
+        target.pop("corruption_policy")
+        for target in published["transfer"]["targets"]
+    } == {"published"}
+    assert published == repaired
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda value: value["offchip"].pop("programming_error"),
+            "present for population_programming_error_hwa",
+        ),
+        (
+            lambda value: value["offchip"]["programming_error"].__setitem__(
+                "training_population", "fixed_array_a"
+            ),
+            "healthy_noncorrupt_accepted_endpoints_no_fixed_array",
+        ),
+        (
+            lambda value: value["offchip"]["programming_error"].__setitem__(
+                "ramp_epochs", 5
+            ),
+            "ten-epoch linear programming-error strength ramp",
+        ),
+        (
+            lambda value: value["offchip"].__setitem__(
+                "deployment_target", "policy_realized_state"
+            ),
+            "fixed_final_master_fault_blind_pv",
+        ),
+    ],
+)
+def test_population_hwa_rejects_contract_drift(mutation, message: str) -> None:
+    payload = _payload("hwa_long_population_programming_error_hwa.json")
+    mutation(payload)
+
+    with pytest.raises(ConfigError, match=message):
+        parse_crossbar_config(payload)
+
+
+def test_population_hwa_study_declares_fixed_and_population_cross() -> None:
+    plan = load_study_plan(POPULATION_HWA_STUDY_PATH)
+
+    assert [arm["arm_id"] for arm in plan["arms"]] == [
+        "fixed-repaired-a-stochastic-hwa-to-repaired-bd",
+        "population-programming-error-hwa-to-repaired-bd",
+        "fixed-repaired-a-stochastic-hwa-to-published-bd",
+        "population-programming-error-hwa-to-published-bd",
+    ]
+    population_specs = []
+    for arm in plan["arms"]:
+        _, spec = resolve_experiment_config(
+            arm["configs"][0]["resolved_path"], RunMode.TRAIN
+        )
+        assert isinstance(spec, CrossbarTrainSpec)
+        if spec.offchip.policy == "population_programming_error_hwa":
+            population_specs.append(spec)
+    assert len(population_specs) == 2
+    assert all(
+        spec.offchip.programming_error is not None
+        for spec in population_specs
+    )
+
+
+@pytest.mark.parametrize(
+    ("base_name", "cpu1_name"),
+    [
+        (
+            "hwa_long_repaired_stochastic_hwa.json",
+            "hwa_long_repaired_stochastic_hwa_cpu1.json",
+        ),
+        (
+            "hwa_long_repaired_stochastic_hwa_to_published_targets.json",
+            "hwa_long_repaired_stochastic_hwa_to_published_targets_cpu1.json",
+        ),
+        (
+            "hwa_long_population_programming_error_hwa.json",
+            "hwa_long_population_programming_error_hwa_cpu1.json",
+        ),
+        (
+            "hwa_long_population_programming_error_hwa_to_published_targets.json",
+            "hwa_long_population_programming_error_hwa_to_published_targets_cpu1.json",
+        ),
+    ],
+)
+def test_cpu1_configs_add_only_the_thread_contract(
+    base_name: str,
+    cpu1_name: str,
+) -> None:
+    base = _payload(base_name)
+    cpu1 = _payload(cpu1_name)
+
+    assert cpu1["runtime"].pop("required_cpu_threads") == 1
+    assert cpu1 == base
+
+
+def test_population_hwa_v2_study_requires_cpu1_for_every_arm() -> None:
+    plan = load_study_plan(POPULATION_HWA_CPU1_STUDY_PATH)
+
+    assert len(plan["arms"]) == 4
+    for arm in plan["arms"]:
+        config = arm["configs"][0]
+        assert str(config["resolved_path"]).endswith("_cpu1.json")
+        _, spec = resolve_experiment_config(config["resolved_path"], RunMode.TRAIN)
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.runtime.required_cpu_threads == 1
+    assert any(
+        "OMP_NUM_THREADS=1" in criterion
+        for criterion in plan["completion_criteria"]
+    )
 
 
 def test_star_recovery_contract_is_local_moment_free_and_chronological() -> None:

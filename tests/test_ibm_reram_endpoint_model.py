@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-from training.ibm_reram_endpoint_model import sample_ibm_reram_endpoints
+from training.ibm_reram_endpoint_model import (
+    build_ibm_reram_accepted_endpoint_model,
+    sample_ibm_reram_endpoints,
+)
 
 
 CONDITION_KEY = "one_pulse__lower_to_target__tau_step_0.5"
@@ -154,6 +157,63 @@ def test_success_sampler_interpolates_target_histograms_inside_verify_window() -
     # At the midpoint the two endpoint histograms are mixed equally.
     below_midpoint = (sample.raw_endpoint < 0.5).to(torch.float32).mean()
     assert 0.47 < float(below_midpoint) < 0.53
+
+
+def test_compiled_accepted_endpoint_model_replays_global_hwa_draws() -> None:
+    model = build_ibm_reram_accepted_endpoint_model(
+        _artifact(corrupt_fraction=1.0),
+        condition_key=CONDITION_KEY,
+    ).to("cpu", dtype=torch.float32)
+    targets = torch.full((8_000,), 0.5, dtype=torch.float32)
+
+    first = model.sample(
+        targets,
+        generator=torch.Generator(device="cpu").manual_seed(141),
+    )
+    second = model.sample(
+        targets,
+        generator=torch.Generator(device="cpu").manual_seed(141),
+    )
+
+    assert len(model.fingerprint) == 64
+    assert torch.equal(first.residual_x, second.residual_x)
+    assert torch.equal(first.apparent_x, second.apparent_x)
+    assert torch.equal(first.apparent_x, first.target_x + first.residual_x)
+    below_midpoint = (first.apparent_x < 0.5).to(torch.float32).mean()
+    assert 0.47 < float(below_midpoint) < 0.53
+
+
+def test_compiled_accepted_endpoint_model_is_healthy_only_and_fail_closed() -> None:
+    artifact = _artifact(
+        corrupt_fraction=1.0,
+        noncorrupt_success_probability=0.0,
+        failed_endpoint=0.9,
+    )
+    model = build_ibm_reram_accepted_endpoint_model(
+        artifact,
+        condition_key=CONDITION_KEY,
+    ).to("cpu", dtype=torch.float32)
+
+    # The HWA model intentionally compiles only accepted non-corrupt residual
+    # rows; deployment corruption and failure branches cannot leak into it.
+    sample = model.sample(
+        torch.tensor([0.0, 1.0], dtype=torch.float32),
+        generator=torch.Generator(device="cpu").manual_seed(142),
+    )
+    assert bool(torch.all(torch.abs(sample.residual_x) <= 0.1))
+
+    with pytest.raises(ValueError, match="characterized global x range"):
+        model.sample(
+            torch.tensor([-0.01, 1.01], dtype=torch.float32),
+            generator=torch.Generator(device="cpu").manual_seed(143),
+        )
+
+    artifact["conditions"][CONDITION_KEY]["adequate"] = False
+    with pytest.raises(ValueError, match="held-out adequacy"):
+        build_ibm_reram_accepted_endpoint_model(
+            artifact,
+            condition_key=CONDITION_KEY,
+        )
 
 
 def test_out_of_support_targets_fail_closed_or_are_explicitly_clamped() -> None:
