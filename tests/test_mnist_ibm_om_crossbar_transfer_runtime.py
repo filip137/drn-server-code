@@ -355,6 +355,17 @@ def test_published_defects_are_explicit_in_mapping_and_programming_reports() -> 
         random_stream_fingerprint=population.fingerprint,
     )
     assert plant.persistent[0].item() == pytest.approx(0.005)
+    assert programming["trajectory_rng_backend"] == (
+        "per_trajectory_stateless_counter_box_muller_v1"
+    )
+    assert "cpu_cuda_cross_backend_values_are_not_claimed_bit_exact" in (
+        programming["trajectory_rng_reproducibility_scope"]
+    )
+    assert "62_bit_lane_pair_key_collision_space" in (
+        programming["trajectory_rng_statistical_contract"]
+    )
+    assert len(programming["trajectory_seeds_sha256"]) == 64
+    assert len(programming["trajectory_draw_indices_sha256"]) == 64
     assert programming["defects"]["final_corrupt_cells"] == 1
     assert programming["defects"]["published_corrupt_cells"] == 1
     assert programming["plant_pulses"]["pulses_to_final_corrupt_cells"] == 3
@@ -854,3 +865,110 @@ def test_supervised_ce_recovery_uses_labels_without_teacher_or_fault_mask(
     assert epochs[0]["examples"] == 2
     assert epochs[0]["train_cross_entropy"] == pytest.approx(expected_loss.item())
     assert optimizer["repair_cohort"]["labels_sha256"]
+
+
+def test_from_scratch_supervised_adam_does_not_require_an_offchip_cohort(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cohort_fields = {
+        "examples": 16,
+        "ordered_sample_ids_sha256": "repair-samples",
+        "model_inputs_sha256": "repair-inputs",
+        "labels_sha256": "repair-labels",
+        "ordered_example_identity_sequence_sha256": "repair-sequence",
+        "unique_example_identities": 16,
+    }
+
+    class FakePlant:
+        def __init__(self) -> None:
+            self.apparent = torch.tensor([0.0])
+            self.persistent = torch.tensor([0.0])
+            self.population = SimpleNamespace(fingerprint="slow-population")
+
+        def state_dict(self) -> dict:
+            return {
+                "apparent": self.apparent.clone(),
+                "persistent": self.persistent.clone(),
+            }
+
+        def apply_stuck_at_fault_transition(self, **_kwargs) -> dict:
+            return {"applied": True}
+
+        def restricted_recovery_update_port(self) -> object:
+            return object()
+
+    evaluation = {
+        "apparent_forward": {"student_accuracy": 0.1},
+        "persistent_diagnostic": {"student_accuracy": 0.1},
+    }
+    monkeypatch.setattr(
+        runtime,
+        "_evaluate_plant_states",
+        lambda **_kwargs: evaluation,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_run_supervised_ce_pulse_recovery",
+        lambda **_kwargs: (
+            [{"epoch": 1, "examples": 16}],
+            {
+                "repair_cohort": dict(cohort_fields),
+                "commanded_pulses": 0,
+                "commanded_cells": 0,
+                "nominal_dw_min": 0.1,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_posthoc_recovery_pulse_effects",
+        lambda **_kwargs: {"commanded_pulses": 0},
+    )
+    spec = SimpleNamespace(
+        offchip=SimpleNamespace(policy="none"),
+        data=SimpleNamespace(num_points=16),
+        recovery=SimpleNamespace(
+            policy="supervised_ce_pulse_adam",
+            supervised_bp=SimpleNamespace(repair_examples=16),
+            layer_scope="all",
+            learning_rates_q=(6e-5, 6e-5),
+            beta_1=0.9,
+            beta_2=0.999,
+            epsilon=1e-8,
+            epochs=1,
+        ),
+        device=SimpleNamespace(assignment_seed=87004),
+        evaluation=SimpleNamespace(maximum_validation_batches=1, sample_limit=16),
+    )
+    predeployment = {
+        "available": False,
+        "reason": "no_predeployment_optimizer_updates",
+        **{name: None for name in cohort_fields},
+    }
+    predeployment["examples"] = 0
+    context = {
+        "faulted_checkpoint_path": tmp_path / "faulted.pt",
+        "fault_mask": torch.tensor([False]),
+        "stuck_persistent_q": torch.tensor([0.0]),
+        "fault_report": {},
+        "fault_source_population_fingerprint": "fault-source",
+        "predeployment_training_cohort": predeployment,
+    }
+
+    report, _ = runtime._recover(
+        plant=FakePlant(),
+        spec=spec,
+        endpoint_seed=89402,
+        layout=(),
+        digital_scales=(1.0, 1.0),
+        teacher=SimpleNamespace(),
+        validation_loader=[],
+        train_loader=[],
+        device=torch.device("cpu"),
+        post_fault_context=context,
+    )
+
+    assert report["optimizer"]["repair_cohort"][
+        "same_as_predeployment_first_epoch_update_stream"
+    ] is False

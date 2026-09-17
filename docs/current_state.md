@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 ## Purpose
 
@@ -73,6 +73,19 @@ The strongest current interpretation is:
   than keep logical weights bound to A's exact cells. Randomized defect-mask
   augmentation belongs in a separate arm. This does not yet establish that
   on-chip recovery is necessary or capable of repairing stuck cells.
+- Corrupt-device Adam training from scratch is now a serious comparator for
+  the standard crossbar. Starting from random AIHWKit/PyTorch weights and
+  training for ten CUDA epochs after the matched published-defect transition,
+  raising the pulse-Adam rate from `6e-5` to `1e-3` increased fixed-final
+  apparent accuracy from `73.4%` to `84.4%` and reduced teacher KL from
+  `0.904706` to `0.452050`. Raising it again to `3e-3` reduced accuracy to
+  `81.2%` and worsened KL to `0.531603`. The higher-rate turnover coincided
+  with much stronger pressure from the fixed 64-pulse training cap, but does
+  not by itself prove a cap mechanism. The next comparison must put HWA plus
+  P&V plus fine-tuning, pretrained no-HWA plus P&V plus fine-tuning, and
+  random-start training on the same corrupt identities and update contract;
+  the cap and the point during training when it binds must be measured as
+  explicit interventions.
 - Ideal IBM OM baseline controls now isolate zero-state contrast as a major
   initialization mechanism.  A globally reference-balanced four-device
   assignment increased held-out continuous ideal accuracy from `84.49%` to
@@ -384,6 +397,27 @@ and fine-tuning updates must remain separately measurable.
   A state was handed to target P&V. This supports a new empirical-population
   HWA arm that samples healthy device identities learned from A across
   minibatches or epochs; it is distinct from using one fixed virtual A.
+
+- **Adam from scratch on published-defect OM devices:** A matched learning-rate
+  ablation initialized the bias-free `784-50-10` crossbar randomly, programmed
+  that state by P&V, applied the same 5,366-cell published-defect transition,
+  and then trained for ten complete CUDA epochs. Every gradient and metric
+  forward used held apparent `q`; pulses mutated persistent `q` and refreshed
+  touched apparent states. At `lr=1e-3`, fixed-final apparent test accuracy
+  was `84.4%` with teacher KL `0.452050`, compared with `73.4%` and `0.904706`
+  at `6e-5`; the persistent diagnostic was `85.4%` with KL `0.407911`. The
+  matched `3e-3` successor was worse at `81.2%` apparent accuracy and KL
+  `0.531603`, refuting continued learning-rate improvement. At `1e-3`, 6,841
+  of 39,700 cells (`17.2%`) reached the 64-pulse cap and 46,918 candidate
+  pulses were blocked; at `3e-3`, 15,864 cells (`40.0%`) capped and 1,801,247
+  pulses were blocked. Applied pulses at `3e-3` fell from 426,294 in epoch 1
+  to 1,236 in epoch 10. This makes cap saturation a leading explanation, not
+  a demonstrated cause. The studies use one initialization, assignment,
+  endpoint, and 1,000-example test cohort, and faults are introduced after
+  initial P&V, so the result is an exploratory baseline rather than an array-
+  population estimate. Existing HWA--P&V--fine-tuning and scratch results do
+  not yet answer which path is better because their best learning rates and
+  endpoint coverage are unmatched.
 
 ### Cell-specific IBM OM QAT and held-out-array transfer
 
@@ -794,7 +828,21 @@ Exact measurements, limitations, and raw artifact locations are in the
 
 ## Next steps
 
-1. Build a versioned empirical, population-level HWA model from Array A's
+1. Resolve the corrupt-crossbar training comparison in two predeclared stages.
+   First cross the cumulative training cap (`64`, `128`, and uncapped) with at
+   least `lr=1e-3` and `lr=3e-3` on identical random starts, populations,
+   defect transitions, data streams, and endpoints. Record by epoch and layer
+   the newly and cumulatively capped cells, blocked candidate pulses, applied
+   pulses, apparent accuracy, and teacher KL to determine how important the
+   cap is and when it begins to constrain learning. Then use the best cap-
+   qualified Adam setting for a matched three-path comparison: HWA plus P&V
+   plus same-array fine-tuning, pretrained no-HWA plus P&V plus same-array
+   fine-tuning, and random initialization plus P&V plus training from scratch.
+   Hold minibatch order, ten-epoch on-chip budget, cap, assignment and endpoint
+   seeds, defect mask, apparent-state forwards, persistent-state updates, and
+   fixed-final evaluation identical, and report the additional off-chip HWA
+   budget separately.
+2. Build a versioned empirical, population-level HWA model from Array A's
    characterized healthy cells rather than binding each logical weight to one
    exact A cell. Preserve correlations by resampling complete device tuples
    (bounds, reference, directional update parameters, and noise parameters),
@@ -819,7 +867,7 @@ Exact measurements, limitations, and raw artifact locations are in the
    rail DRN arm using centered EP driven only by the local repair cost is the
    stronger subsequent target; paper-faithful task-plus-repair EP remains a
    separate comparator.
-2. Advance the supported fixed-binding local-compensation result through the
+3. Advance the supported fixed-binding local-compensation result through the
    discrete deployment gates before launching on-chip recovery.  Keep the same
    identities and baseline objective while testing standard levels,
    deterministic pulse reachability, persistent code distinguishability, and
@@ -831,7 +879,7 @@ Exact measurements, limitations, and raw artifact locations are in the
    [`ibm_om_reference_anchored_studies.md`](ibm_om_reference_anchored_studies.md)
    and
    [`ibm_om_deployment_scheme_investigation.md`](ibm_om_deployment_scheme_investigation.md).
-3. Only after one deployment scheme passes its transfer gate, define and
+4. Only after one deployment scheme passes its transfer gate, define and
    predeclare a deployed-array QAT recovery study. Start every arm from the
    same preserved apparent/persistent deployment, keep a frozen no-update
    control, and define an oracle STE-QAT recovery arm only as an upper bound.
@@ -841,35 +889,35 @@ Exact measurements, limitations, and raw artifact locations are in the
    gradients become available SET/RESET pulses and which bounds or verify
    measurements the controller may use. Do not regenerate a fresh deployment
    between recovery arms.
-4. Run the declared 128-pulse IBM ReRAM successor and compare it with the
+5. Run the declared 128-pulse IBM ReRAM successor and compare it with the
    immutable 512-pulse endpoint model. Select the deployment cap explicitly,
    then integrate that empirical endpoint kernel with its separate
    target-conditioned failure, corruption, saturation, and cost models.
    Preserve each sampled programmed endpoint as the common starting state for
    a predeclared HWA-only versus on-chip-recovery comparison; do not redraw
    endpoints between arms.
-5. Start a separate Tiki-Taka pulsed-device study using measured incremental
+6. Start a separate Tiki-Taka pulsed-device study using measured incremental
    potentiation/depression data. Do not reuse the current program-and-verify
    HWA models as pulse-update models unless their source papers provide the
    required per-pulse trajectories. Measure write count, update noise, energy,
    and endurance alongside accuracy.
-6. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
+7. Repeat the teacher-initialized CMO/Wan comparison over multiple endpoint
    seeds and add a direct ideal-map-to-device-to-BPTT arm. This separates
    whether HWA is necessary for recovery from whether it merely improves the
    first write. Then compare the generic 3% modifier with device-matched HWA,
    without tuning either choice on the final test set.
-7. Compare three targeted post-HWA interventions on the same deployment:
+8. Compare three targeted post-HWA interventions on the same deployment:
    rank-4 LoRA, W2-plus-bias fine-tuning, and full-model fine-tuning. This
    tests whether the full rewrite is actually needed.
-8. Train a perfect-diode DRN from initialization through the affine CMO
+9. Train a perfect-diode DRN from initialization through the affine CMO
    mapping and endpoint noise. Track voltage/noise margin and conductance
    loading as well as accuracy.
-9. Test the current passive LoRA branch on conductance-loss errors such as
+10. Test the current passive LoRA branch on conductance-loss errors such as
    drift or stuck-low devices, where an added conductance path can compensate
    the failure direction.
-10. Design a differential physical LoRA branch and compare it with the
+11. Design a differential physical LoRA branch and compare it with the
    positive-only branch on identical signed perturbations.
-11. Compare active denominator calibration, full rank-one KCL cancellation,
+12. Compare active denominator calibration, full rank-one KCL cancellation,
    and a validation-trained selector mask under matched mismatch and read
    noise. Ordinary numerator-only crossbar subtraction is not an exact DRN
    control.

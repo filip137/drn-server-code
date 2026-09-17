@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-crossbar-native-nomap-recovery-10ep-20260904-v1",
+  "title": "Ten-epoch supervised recovery of the native-bound direct-q IBM-OM crossbar",
+  "hypothesis": "With all initialization, device, defect, data, seed, learning-rate, pulse, and selection settings held fixed, extending recovery from one to ten complete 55,000-example epochs will distinguish whether direct BL31 pulse-SGD, hybrid pulse-Adam, or Tiki-Taka best restores apparent teacher fidelity after the matched published-defect transition. Apparent test accuracy and teacher-to-crossbar KL at the fixed epoch-10 endpoint are co-primary descriptive outcomes; persistent-state metrics remain diagnostics.",
+  "motivation": "The paper-facing comparison was initially assembled from predecessor configs whose recovery budget was only one epoch. The requested budget is ten epochs. This successor preserves every predecessor field except recovery.epochs changes from 1 to 10, yielding 550,000 labeled example presentations per endpoint and no checkpoint selection. The source remains AIHWKit-default unscaled signed q with native sampled bounds and no mapping to [0,2].",
+  "evidence_class": "model_based_aihwkit_preset_native_bounds_direct_q_ten_epoch_recovery",
+  "arms": [
+    {
+      "arm_id": "recovery-direct-bl31-sgd-10ep",
+      "description": "Ten fixed-final epochs of direct stochastic-compressed BL31 pulse-SGD on the damaged slow OM array.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_native_nomap_recovery_10ep/supervised_ce_stochastic_pulse_sgd_ten_epoch_native_nomap.json"
+      ]
+    },
+    {
+      "arm_id": "recovery-pulse-adam-10ep",
+      "description": "Ten fixed-final epochs of pulse-Adam with digital moments and physical open-loop slow-array pulses.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_native_nomap_recovery_10ep/supervised_ce_pulse_adam_ten_epoch_native_nomap.json"
+      ]
+    },
+    {
+      "arm_id": "recovery-tiki-taka-repaired-fast-10ep",
+      "description": "Ten fixed-final epochs of Tiki-Taka v1 with a counterfactually repaired auxiliary fast OM array.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_native_nomap_recovery_10ep/supervised_ce_tiki_taka_v1_repaired_fast_ten_epoch_native_nomap.json"
+      ]
+    },
+    {
+      "arm_id": "recovery-tiki-taka-published-fast-10ep",
+      "description": "Ten fixed-final epochs of Tiki-Taka v1 with the published corruption model retained in the auxiliary fast OM array.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_native_nomap_recovery_10ep/supervised_ce_tiki_taka_v1_published_fast_ten_epoch_native_nomap.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "All four declared configs complete exactly once under the native ebl training runner, with no undeclared completed config and artifact verification passing.",
+    "Each ten-epoch config differs from its named one-epoch predecessor only in recovery.epochs, which changes from 1 to 10. Every other initialization, mapping, device, defect, data, learning-rate, pulse, fast-array, evaluation, and seed field remains byte-semantically identical.",
+    "Every endpoint starts from the same stage-4 programmed healthy P0 state and the same post-deployment published-companion fault replay as its paired one-epoch predecessor. Source-requested, population, P0 apparent/persistent, fault-mask, and post-fault state hashes must match across the four methods where the protocol requires them to match.",
+    "Every recovery endpoint records ten epochs, 3,438 minibatches and exactly 55,000 examples per epoch, for 34,380 optimizer steps and 550,000 example presentations. The reported checkpoint is fixed epoch 10 with no validation-based selection.",
+    "Headline conclusions use post-write apparent-state test accuracy and teacher-to-crossbar KL on the same first 1,000 official MNIST test examples. Teacher agreement is reported, and hidden persistent-state accuracy and KL remain explicitly diagnostic.",
+    "The direct SGD and Tiki-Taka learners retain no digital weight shadow or optimizer moments; pulse-Adam is labeled hybrid because its moments are digital. Neither the teacher nor the fault mask is available during supervised recovery.",
+    "The result remains model-based evidence from AIHWKit 1.1.0 ReRamArrayOMPresetDevice and is not presented as a fabricated-array measurement or an absolute-conductance, retention, endurance, line-resistance, or fresh-read result."
+  ],
+  "analysis_plan": [
+    "First verify the ten-epoch configs against their one-epoch predecessors after normalizing only recovery.epochs, then audit source, population, P0, fault, cohort, seed, and state hashes across methods.",
+    "For each method, average the four paired endpoint streams and report healthy P0, post-fault pre-recovery, and fixed epoch-10 apparent test accuracy, teacher agreement, and teacher KL. Report accuracy change in percentage points and absolute KL change from the common post-fault state.",
+    "Rank SGD, hybrid pulse-Adam, and Tiki-Taka by both apparent accuracy and KL. Keep the repaired-fast and published-defect-fast Tiki-Taka variants separate and do not interpret a stochastic ordering as evidence that defects are beneficial.",
+    "Report endpoint ranges or population standard deviations beside means because four programming streams on one assignment are not four independent arrays.",
+    "Compare the fixed epoch-10 outcome descriptively with the retained one-epoch predecessor, including pulse counts, saturation/cap diagnostics, train cross-entropy by epoch, and apparent-minus-persistent gaps. Do not select an earlier epoch after viewing validation or test metrics.",
+    "Update the paper table only after exact coverage and artifact verification succeed; remove the one-epoch numbers rather than combining budgets."
+  ]
+}

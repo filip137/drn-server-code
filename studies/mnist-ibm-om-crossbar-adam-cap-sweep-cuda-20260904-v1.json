@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-crossbar-adam-cap-sweep-cuda-20260904-v1",
+  "title": "Lifetime pulse-cap sweep for corrupt 784-50-10 IBM-OM crossbar Adam training",
+  "hypothesis": "The cumulative 64-pulse-per-cell quota is a material limiter of ten-epoch from-scratch learning, especially at Adam learning rate 3e-3 where the completed baseline blocked 1,801,247 candidate pulses. Raising the quota to 128 or removing it should improve fixed epoch-10 apparent-state accuracy and lower teacher-to-student KL at one or both matched learning rates; the higher-rate arm should benefit most if its late collapse is cap-driven.",
+  "motivation": "The finalized cap-64 lr=1e-3 and lr=3e-3 baselines reached 84.4%/0.452050 and 81.2%/0.531603 apparent test accuracy/KL, respectively. Their cap diagnostics differ sharply: 6,841 versus 15,864 cells reached the lifetime quota, and 46,918 versus 1,801,247 candidate pulses were blocked. This sweep isolates the cumulative quota while reusing those artifact-verified baselines and preserving initialization, OM identities, programming stream, post-deployment published defects, data order, ten epochs, and apparent-forward/persistent-update semantics.",
+  "evidence_class": "exploratory_model_based_aihwkit_om_pulse_cap_ablation_cuda",
+  "arms": [
+    {
+      "arm_id": "lr1e3-cap128",
+      "description": "Adam lr=1e-3 with a 128-pulse cumulative quota per cell.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_adam_cap_sweep_cuda/supervised_ce_pulse_adam_lr1e3_cap128_10ep.json"
+      ]
+    },
+    {
+      "arm_id": "lr1e3-uncapped",
+      "description": "Adam lr=1e-3 with no cumulative per-cell pulse quota.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_adam_cap_sweep_cuda/supervised_ce_pulse_adam_lr1e3_uncapped_10ep.json"
+      ]
+    },
+    {
+      "arm_id": "lr3e3-cap128",
+      "description": "Adam lr=3e-3 with a 128-pulse cumulative quota per cell.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_adam_cap_sweep_cuda/supervised_ce_pulse_adam_lr3e3_cap128_10ep.json"
+      ]
+    },
+    {
+      "arm_id": "lr3e3-uncapped",
+      "description": "Adam lr=3e-3 with no cumulative per-cell pulse quota.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_adam_cap_sweep_cuda/supervised_ce_pulse_adam_lr3e3_uncapped_10ep.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "All four declared configs complete exactly once through the native ebl runner on CUDA and pass artifact verification.",
+    "At each learning rate, the new resolved scientific configs differ from the corresponding finalized cap-64 source config only in recovery.pulse_cap_per_cell, set to 128 or null.",
+    "Every run consumes ten ordered epochs of 55,000 ground-truth-labelled examples: 3,438 minibatches per epoch, 34,380 optimizer steps, and no checkpoint selection.",
+    "Every gradient and metric-producing device forward uses held apparent q, every pulse updates hidden persistent q, and touched apparent states are refreshed after writes.",
+    "Headline metrics are fixed epoch-10 apparent-state accuracy and teacher-to-crossbar KL on the same first 1,000 official MNIST test examples as the finalized cap-64 baselines. Persistent-state accuracy/KL are secondary diagnostics.",
+    "Each epoch records cumulative optimizer pulses, maximum pulses per cell, cells at cap, and blocked pulses. Null means no lifetime quota and must produce zero cells-at-cap and zero blocked-at-cap by construction.",
+    "This remains a one-assignment, one-programming-stream exploratory fitted-preset result; it is not promoted to paper evidence, an array-level uncertainty estimate, or a fabricated-device claim."
+  ],
+  "analysis_plan": [
+    "Verify CUDA execution and exact matching of logical-weight hash, sampled-population fingerprint, healthy P0 hashes, published fault mask, faulted pretraining hashes, data cohorts, optimizer steps, and all non-cap resolved settings against each corresponding finalized cap-64 baseline.",
+    "At each learning rate compare caps 64, 128, and none using fixed epoch-10 apparent accuracy as the primary endpoint and apparent teacher KL as the preferred distributional endpoint; report teacher agreement and cross-entropy beside them.",
+    "Report persistent-state accuracy/KL separately, never as the headline, on the identical test examples.",
+    "Report total/per-layer pulses, commanded cells, maximum pulses per cell, probability clipping, cells at cap, and blocked pulses. Use per-epoch cumulative telemetry to identify when cap-128 first binds; null is the exact no-lifetime-quota control.",
+    "Call the 64-pulse quota materially limiting only if a higher-cap matched arm improves apparent accuracy by at least 1 percentage point or lowers apparent KL by at least 0.05 without losing more than 1 percentage point of accuracy. Otherwise report the numerical sensitivity without claiming a material cap effect.",
+    "Treat any benefit at lr=3e-3 that does not close the gap to lr=1e-3 as evidence that learning-rate dynamics, not only the cap, limit the higher-rate run."
+  ]
+}

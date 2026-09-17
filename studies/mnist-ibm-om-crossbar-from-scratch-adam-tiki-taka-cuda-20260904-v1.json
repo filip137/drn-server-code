@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-crossbar-from-scratch-adam-tiki-taka-cuda-20260904-v1",
+  "title": "Exploratory CUDA training from scratch on matched IBM-OM crossbars",
+  "hypothesis": "Starting from the same AIHWKit-default random logical weights and the same programmed, subsequently faulted IBM-OM slow-array state, ten supervised MNIST epochs will reveal whether hybrid pulse-Adam or Tiki-Taka can learn the task directly in the crossbar. Fixed epoch-10 apparent-state accuracy and teacher-to-student KL are co-primary descriptive outcomes; persistent-state metrics are diagnostics.",
+  "motivation": "The preceding recovery study began from a pretrained teacher deployment and was too slow to complete all endpoints. This one-endpoint exploratory control removes teacher initialization and all off-chip adaptation while retaining the same OM source/fast-device models, assignment seeds, published 13.48% corruption transition, native sampled bounds, direct q coordinate, data order, and ten-epoch budget. The frozen teacher is loaded only to compute agreement and KL, never to initialize or update the student.",
+  "evidence_class": "exploratory_model_based_aihwkit_om_from_scratch_cuda",
+  "arms": [
+    {
+      "arm_id": "from-scratch-pulse-adam-10ep",
+      "description": "Hybrid pulse-Adam from matched random P&V initialization, using ground-truth cross-entropy and digital Adam moments.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_from_scratch_cuda/supervised_ce_pulse_adam_10ep.json"
+      ]
+    },
+    {
+      "arm_id": "from-scratch-tiki-taka-published-fast-10ep",
+      "description": "Tiki-Taka v1 from the same slow-array state, with an independent OM fast array carrying the published corruption model.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_from_scratch_cuda/supervised_ce_tiki_taka_published_fast_10ep.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "Both declared configs complete exactly once through the native ebl runner on CUDA and pass artifact verification.",
+    "Both arms use seed 42 and byte-identical AIHWKit-AnalogLinear-default Kaiming-uniform logical weights, direct q with no mapping or [0,2] clipping, native sampled bounds, slow assignment 87004, endpoint 89402, and the same post-P&V published-companion defect overlay.",
+    "The random initializer reproduces torch.nn.Linear.reset_parameters: Kaiming uniform with a=sqrt(5) in [out,in] layout followed by transpose to the comparator's [in,out] layout. The teacher checkpoint is evaluation-only.",
+    "Each arm consumes ten ordered epochs of 55,000 ground-truth-labelled examples: 3,438 minibatches per epoch, 34,380 optimizer steps, and no checkpoint selection.",
+    "The slow-array published fault source enables corrupt_devices_prob=0.1348 and corrupt_devices_range=0.01 after matched healthy P&V. Tiki-Taka's independent fast OM array uses the same published corruption model and is commissioned toward literal q=0 without a fault mask.",
+    "Headline metrics are apparent-state accuracy and teacher-to-crossbar KL on the same first 1,000 official MNIST test examples at fixed epoch 10. Teacher agreement and hidden persistent-state accuracy/KL are reported separately.",
+    "This remains a one-assignment, one-programming-stream exploratory fitted-preset result; it is not promoted to paper evidence, an array-level uncertainty estimate, or a fabricated-device claim."
+  ],
+  "analysis_plan": [
+    "Verify source logical-weight hashes, source population fingerprint, healthy P0 state hashes, published fault mask, and faulted pretraining state hashes match exactly across the two arms.",
+    "Report epoch-by-epoch apparent accuracy, teacher agreement, teacher KL, cross-entropy, and the corresponding persistent diagnostics for each optimizer.",
+    "Compare fixed epoch-10 apparent accuracy and KL without selecting an earlier epoch. Label Adam hybrid because its moment state is digital; Tiki-Taka has no digital weight shadow or Adam moments and uses an additional physical fast array.",
+    "If either method is promising, expand that exact frozen recipe to the remaining three endpoint streams in a new study rather than treating this one stream as a population conclusion."
+  ]
+}

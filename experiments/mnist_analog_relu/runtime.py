@@ -23,13 +23,16 @@ from model.resistive.builders import ParameterBinding
 from model.variable.parameter import DenseWeight
 from training.checkpoint import atomic_torch_save, load_named_weights
 from training.ibm_om_standard_crossbar import (
+    CROSSBAR_TRAJECTORY_SEED_DERIVATION,
     CrossbarTileSpec,
     IbmOmEffectiveCrossbarPlant,
     PulseAdam,
     PulseSGD,
+    aihwkit_analog_linear_default_logical_weights,
     apply_population_bound_policy,
     build_crossbar_layout,
     build_deterministic_effective_codebook,
+    crossbar_trajectory_seeds,
     layer_cell_slices,
     local_star_crossbar_step,
     map_logical_weights,
@@ -777,18 +780,20 @@ def _program_endpoint(
     stream_role: str,
     random_stream_fingerprint: str,
 ) -> tuple[IbmOmEffectiveCrossbarPlant, dict[str, Any]]:
-    generator = torch.Generator(device=device.type)
-    generator.manual_seed(
-        derive_seed(
-            endpoint_seed,
-            assignment_seed,
-            random_stream_fingerprint,
-            stream_role,
+    if assignment_seed != population.assignment_seed:
+        raise ValueError(
+            "Expected the programming assignment seed to match the sampled population."
         )
+    trajectory_seeds = crossbar_trajectory_seeds(
+        population,
+        endpoint_seed=endpoint_seed,
+        stream_role=stream_role,
+        random_stream_population_fingerprint=random_stream_fingerprint,
     )
     plant = IbmOmEffectiveCrossbarPlant(
         population,
-        generator=generator,
+        trajectory_seeds=trajectory_seeds,
+        trajectory_seed_derivation=CROSSBAR_TRAJECTORY_SEED_DERIVATION,
         device=device,
     )
     result = run_program_verify(
@@ -830,8 +835,36 @@ def _program_endpoint(
         atol=1e-7,
         rtol=0.0,
     )
+    rng_state = plant.state_dict()
+    trajectory_seed_origin = {
+        "schema": "ebl.ibm_om_crossbar_trajectory_seed_origin",
+        "schema_version": 1,
+        "derivation": CROSSBAR_TRAJECTORY_SEED_DERIVATION,
+        "stream_role": stream_role.strip(),
+        "assignment_seed": assignment_seed,
+        "endpoint_seed": endpoint_seed,
+        "random_stream_population_fingerprint": random_stream_fingerprint,
+        "trajectory_seeds_sha256": tensor_sha256(
+            rng_state["trajectory_seeds"]
+        ),
+    }
     report = {
         "endpoint_seed": endpoint_seed,
+        "trajectory_seed_origin": trajectory_seed_origin,
+        "trajectory_rng_backend": rng_state["rng_backend"],
+        "trajectory_rng_reproducibility_scope": rng_state[
+            "rng_reproducibility_scope"
+        ],
+        "trajectory_rng_statistical_contract": rng_state[
+            "rng_statistical_contract"
+        ],
+        "trajectory_seed_derivation": rng_state["trajectory_seed_derivation"],
+        "trajectory_seeds_sha256": tensor_sha256(
+            rng_state["trajectory_seeds"]
+        ),
+        "trajectory_draw_indices_sha256": tensor_sha256(
+            rng_state["trajectory_draw_indices"]
+        ),
         "random_stream_population_fingerprint": random_stream_fingerprint,
         "persistent_sha256": tensor_sha256(persistent),
         "apparent_sha256": tensor_sha256(apparent),
@@ -1120,6 +1153,109 @@ def _sample_aihwkit_om_apparent_write_noise(
     return persistent_q + noise, noise
 
 
+def _evaluate_held_apparent_hwa_state(
+    *,
+    support_clamped_digital_master_q: torch.Tensor,
+    digital_scales: tuple[float, float],
+    layout: tuple[CrossbarTileSpec, ...],
+    teacher: BiasFreeReluTeacher,
+    loader: Iterable,
+    device: torch.device,
+    maximum_batches: int | None,
+    sample_limit: int | None,
+    nominal_dw_min: float,
+    write_noise_std: float,
+    relative_scale: float,
+    generator: torch.Generator,
+    evaluation_id: str,
+    resolved_seed: int,
+) -> dict[str, Any]:
+    """Evaluate one held apparent HWA draw and its digital-master diagnostic.
+
+    The sampled apparent ``q`` is drawn exactly once and then held for the
+    complete evaluation cohort.  The support-clamped digital master is useful
+    as a deterministic diagnostic, but it is not a persistent physical device
+    state and must never be reported under the persistent-state label.
+    """
+
+    if not isinstance(evaluation_id, str) or not evaluation_id.strip():
+        raise ValueError("Expected a non-empty held-apparent evaluation identity.")
+    if isinstance(resolved_seed, bool) or not isinstance(resolved_seed, int):
+        raise ValueError("Expected an integer held-apparent evaluation seed.")
+    base = support_clamped_digital_master_q.detach().to(
+        device=device,
+        dtype=torch.float32,
+    )
+    generator_before = generator.get_state().detach().cpu().clone()
+    held_apparent, noise = _sample_aihwkit_om_apparent_write_noise(
+        persistent_q=base,
+        nominal_dw_min=nominal_dw_min,
+        write_noise_std=write_noise_std,
+        relative_scale=relative_scale,
+        generator=generator,
+    )
+    generator_after = generator.get_state().detach().cpu().clone()
+    apparent_metrics = _evaluate(
+        effective_state=held_apparent,
+        digital_scales=digital_scales,
+        layout=layout,
+        teacher=teacher,
+        loader=loader,
+        device=device,
+        maximum_batches=maximum_batches,
+        sample_limit=sample_limit,
+    )
+    diagnostic_metrics = _evaluate(
+        effective_state=base,
+        digital_scales=digital_scales,
+        layout=layout,
+        teacher=teacher,
+        loader=loader,
+        device=device,
+        maximum_batches=maximum_batches,
+        sample_limit=sample_limit,
+    )
+    noise64 = noise.detach().to(torch.float64)
+    observed_mean = float(noise64.mean().item())
+    observed_variance = max(
+        0.0,
+        float(torch.mean(torch.square(noise64)).item()) - observed_mean**2,
+    )
+    return {
+        "network_forward_state": "held_apparent_q",
+        "primary_state": "held_apparent_q",
+        "diagnostic_state_role": (
+            "nonpersistent_support_clamped_digital_master_q"
+        ),
+        "persistent_device_state_present": False,
+        "apparent_forward": apparent_metrics,
+        "nonpersistent_support_clamped_digital_master_diagnostic": (
+            diagnostic_metrics
+        ),
+        "held_apparent_state_receipt": {
+            "schema": "ebl.ibm_om_crossbar_held_apparent_hwa_evaluation",
+            "schema_version": 1,
+            "evaluation_id": evaluation_id.strip(),
+            "resolved_seed": resolved_seed,
+            "resampling": (
+                "one_full_array_draw_held_across_complete_evaluation_cohort"
+            ),
+            "support_clamped_digital_master_q_sha256": tensor_sha256(base),
+            "held_apparent_q_sha256": tensor_sha256(held_apparent),
+            "write_noise_q_sha256": tensor_sha256(noise),
+            "generator_state_before_sha256": tensor_sha256(generator_before),
+            "generator_state_after_sha256": tensor_sha256(generator_after),
+            "configured_sigma_q": float(
+                nominal_dw_min * write_noise_std * relative_scale
+            ),
+            "observed_mean_q": observed_mean,
+            "observed_std_q": math.sqrt(observed_variance),
+            "observed_minimum_q": float(noise.min().item()),
+            "observed_maximum_q": float(noise.max().item()),
+        },
+    }
+
+
 def _map_transfer_source_state(
     *,
     source_state: str,
@@ -1241,15 +1377,79 @@ def _offchip_adapt(
         codebook_rows=codebook_rows,
         validate_codebook=True,
     )
-    initial_validation = _evaluate(
-        effective_state=initial_realized,
-        digital_scales=digital_scales,
-        layout=layout,
-        teacher=teacher,
-        loader=validation_loader,
-        device=device,
+    noise_settings = spec.offchip.forward_noise
+    evaluation_forward_policy = getattr(
+        spec.offchip,
+        "evaluation_forward_policy",
+        "legacy_policy_realized_state",
+    )
+    if evaluation_forward_policy not in {
+        "legacy_policy_realized_state",
+        "one_sampled_held_apparent_q_per_evaluation",
+    }:
+        raise ValueError("Expected a supported off-chip HWA evaluation-forward policy.")
+    held_apparent_evaluation = (
+        evaluation_forward_policy
+        == "one_sampled_held_apparent_q_per_evaluation"
+    )
+    if held_apparent_evaluation and (
+        spec.offchip.policy != "stochastic_apparent_hwa"
+        or noise_settings is None
+    ):
+        raise ValueError(
+            "Expected held apparent HWA evaluation only with stochastic apparent HWA."
+        )
+
+    def evaluate_offchip_state(
+        realized: torch.Tensor,
+        loader: Iterable,
+        *,
+        evaluation_id: str,
+        maximum_batches: int | None,
+    ) -> dict[str, Any]:
+        if not held_apparent_evaluation:
+            return _evaluate(
+                effective_state=realized,
+                digital_scales=digital_scales,
+                layout=layout,
+                teacher=teacher,
+                loader=loader,
+                device=device,
+                maximum_batches=maximum_batches,
+                sample_limit=spec.evaluation.sample_limit,
+            )
+        if noise_settings is None:  # pragma: no cover - guarded above
+            raise RuntimeError("Expected stochastic HWA evaluation-noise settings.")
+        resolved_seed = derive_seed(
+            noise_settings.seed,
+            population.assignment_seed,
+            "offchip_stochastic_apparent_hwa_held_evaluation",
+            evaluation_id,
+        )
+        evaluation_generator = torch.Generator(device=device)
+        evaluation_generator.manual_seed(resolved_seed)
+        return _evaluate_held_apparent_hwa_state(
+            support_clamped_digital_master_q=realized,
+            digital_scales=digital_scales,
+            layout=layout,
+            teacher=teacher,
+            loader=loader,
+            device=device,
+            maximum_batches=maximum_batches,
+            sample_limit=spec.evaluation.sample_limit,
+            nominal_dw_min=population.nominal_dw_min,
+            write_noise_std=population.write_noise_std,
+            relative_scale=noise_settings.relative_scale,
+            generator=evaluation_generator,
+            evaluation_id=evaluation_id,
+            resolved_seed=resolved_seed,
+        )
+
+    initial_validation = evaluate_offchip_state(
+        initial_realized,
+        validation_loader,
+        evaluation_id="initial.validation",
         maximum_batches=spec.evaluation.maximum_validation_batches,
-        sample_limit=spec.evaluation.sample_limit,
     )
     evaluate_epoch_test = spec.offchip.epoch_evaluation == "validation_and_test"
     if evaluate_epoch_test and test_loader is None:
@@ -1259,15 +1459,11 @@ def _offchip_adapt(
     initial_test = (
         None
         if not evaluate_epoch_test
-        else _evaluate(
-            effective_state=initial_realized,
-            digital_scales=digital_scales,
-            layout=layout,
-            teacher=teacher,
-            loader=test_loader,
-            device=device,
+        else evaluate_offchip_state(
+            initial_realized,
+            test_loader,
+            evaluation_id="initial.test",
             maximum_batches=None,
-            sample_limit=spec.evaluation.sample_limit,
         )
     )
     initial_master = master.detach().cpu().clone()
@@ -1321,6 +1517,16 @@ def _offchip_adapt(
             "stochastic_apparent_forward_noise_during_training": False,
             "persistent_state_updates_during_training": False,
             "forward_noise": None,
+            "first_epoch_training_cohort": {
+                "available": False,
+                "reason": "no_predeployment_optimizer_updates",
+                "examples": 0,
+                "ordered_sample_ids_sha256": None,
+                "model_inputs_sha256": None,
+                "labels_sha256": None,
+                "ordered_example_identity_sequence_sha256": None,
+                "unique_example_identities": 0,
+            },
         }, state
 
     effective_rates = tuple(
@@ -1339,7 +1545,6 @@ def _offchip_adapt(
         betas=(spec.offchip.beta_1, spec.offchip.beta_2),
         eps=spec.offchip.epsilon,
     )
-    noise_settings = spec.offchip.forward_noise
     noise_generator: torch.Generator | None = None
     noise_resolved_seed: int | None = None
     noise_initial_state: torch.Tensor | None = None
@@ -1465,28 +1670,20 @@ def _offchip_adapt(
             codebook_rows=codebook_rows,
             validate_codebook=False,
         )
-        final_validation = _evaluate(
-            effective_state=final_realized,
-            digital_scales=digital_scales,
-            layout=layout,
-            teacher=teacher,
-            loader=validation_loader,
-            device=device,
+        final_validation = evaluate_offchip_state(
+            final_realized,
+            validation_loader,
+            evaluation_id=f"epoch_{epoch:03d}.validation",
             maximum_batches=spec.evaluation.maximum_validation_batches,
-            sample_limit=spec.evaluation.sample_limit,
         )
         final_test = (
             None
             if not evaluate_epoch_test
-            else _evaluate(
-                effective_state=final_realized,
-                digital_scales=digital_scales,
-                layout=layout,
-                teacher=teacher,
-                loader=test_loader,
-                device=device,
+            else evaluate_offchip_state(
+                final_realized,
+                test_loader,
+                evaluation_id=f"epoch_{epoch:03d}.test",
                 maximum_batches=None,
-                sample_limit=spec.evaluation.sample_limit,
             )
         )
         epoch_report: dict[str, Any] = {
@@ -1590,6 +1787,28 @@ def _offchip_adapt(
             noise_generator is not None
         ),
         "persistent_state_updates_during_training": False,
+        **(
+            {
+                "evaluation_forward_policy": evaluation_forward_policy,
+                "primary_evaluation_state": "held_apparent_q",
+                "diagnostic_evaluation_state": (
+                    "nonpersistent_support_clamped_digital_master_q"
+                ),
+                "persistent_device_state_present_during_offchip_hwa": False,
+                "evaluation_noise_stream": {
+                    "derivation": (
+                        "derive_seed(configured_forward_noise_seed,assignment_seed,"
+                        "offchip_stochastic_apparent_hwa_held_evaluation,"
+                        "evaluation_id)"
+                    ),
+                    "one_independent_generator_per_evaluation": True,
+                    "test_evaluation_changes_training_noise_stream": False,
+                    "test_evaluation_changes_validation_noise_stream": False,
+                },
+            }
+            if held_apparent_evaluation
+            else {}
+        ),
         "forward_noise": (
             None
             if noise_settings is None
@@ -1952,6 +2171,7 @@ def _run_supervised_ce_pulse_recovery(
             split=f"post_fault_supervised_bp_epoch_{epoch}_update_stream",
         )
         epoch_cohorts.append(epoch_cohort)
+        optimizer_cumulative = optimizer.report()
         epoch_reports.append(
             {
                 "epoch": epoch,
@@ -1960,6 +2180,7 @@ def _run_supervised_ce_pulse_recovery(
                 "train_cross_entropy": loss_sum / examples,
                 "train_pre_update_accuracy": correct / examples,
                 "commanded_pulses": commanded,
+                "optimizer_cumulative": optimizer_cumulative,
                 "repair_cohort": epoch_cohort,
                 **update_port.state_hash_receipt(),
             }
@@ -3534,7 +3755,8 @@ def _recover(
             for name in comparison_fields
         )
         if (
-            spec.recovery.supervised_bp.repair_examples == spec.data.num_points
+            spec.offchip.policy != "none"
+            and spec.recovery.supervised_bp.repair_examples == spec.data.num_points
             and spec.recovery.epochs == 1
             and not same_predeployment_stream
         ):
@@ -3940,7 +4162,15 @@ def _drn_comparison(
 def _validate_request(request: Any) -> None:
     if request.teacher_weights is None:
         raise ValueError("Expected --teacher-weights for the crossbar comparator.")
-    for name in ("weights", "base_weights", "resume", "device_data", "device_model"):
+    for name in (
+        "weights",
+        "base_weights",
+        "resume",
+        "device_data",
+        "device_model",
+        "device_state",
+        "selection_receipt",
+    ):
         if getattr(request, name, None) is not None:
             raise ValueError(
                 "Expected the crossbar comparator to accept only --teacher-weights. "
@@ -4004,7 +4234,44 @@ def run_train(request: "TrainRequest") -> int:
             spec.model.dims,
             maximum_input_size=spec.model.maximum_input_size,
         )
-        logical_weights = tuple(value.detach().cpu().clone() for value in teacher.parameters())
+        if spec.source.initialization == "teacher_checkpoint":
+            logical_weights = tuple(
+                value.detach().cpu().clone() for value in teacher.parameters()
+            )
+            source_initialization = {
+                "policy": "teacher_checkpoint",
+                "seed": None,
+                "teacher_used_for_initial_weights": True,
+                "teacher_used_for_evaluation_only": False,
+                "equation": "exact_named_tensor_copy",
+            }
+        elif (
+            spec.source.initialization
+            == "aihwkit_analog_linear_default_kaiming_uniform"
+        ):
+            if spec.source.initialization_seed is None:
+                raise RuntimeError("Expected a from-scratch initialization seed.")
+            logical_weights = aihwkit_analog_linear_default_logical_weights(
+                spec.model.dims,
+                seed=spec.source.initialization_seed,
+            )
+            source_initialization = {
+                "policy": spec.source.initialization,
+                "seed": spec.source.initialization_seed,
+                "teacher_used_for_initial_weights": False,
+                "teacher_used_for_evaluation_only": True,
+                "equation": (
+                    "torch_Linear_reset_parameters_kaiming_uniform_"
+                    "a_sqrt5_native_out_in_then_transpose"
+                ),
+                "bias": False,
+                "rng": "dedicated_cpu_torch_generator",
+                "aihwkit_parity": (
+                    "AnalogLinear_1_1_0_delegates_reset_parameters_to_torch_Linear"
+                ),
+            }
+        else:  # pragma: no cover - strict parser invariant
+            raise RuntimeError("Expected a supported source initialization policy.")
         source_requested, digital_scales = map_logical_weights(
             logical_weights,
             layout,
@@ -4176,17 +4443,19 @@ def run_train(request: "TrainRequest") -> int:
                 maximum_batches=None,
                 sample_limit=spec.evaluation.sample_limit,
             )
-        exact_mapping_checks = [source_requested_validation]
-        if source_requested_test is not None:
-            exact_mapping_checks.append(source_requested_test)
-        if any(
-            row["student_prediction_sha256"] != row["teacher_prediction_sha256"]
-            for row in exact_mapping_checks
-        ):
-            raise RuntimeError(
-                "Expected the requested standard-crossbar mapping to preserve "
-                "the frozen teacher predictions before device constraints."
-            )
+        if spec.source.initialization == "teacher_checkpoint":
+            exact_mapping_checks = [source_requested_validation]
+            if source_requested_test is not None:
+                exact_mapping_checks.append(source_requested_test)
+            if any(
+                row["student_prediction_sha256"]
+                != row["teacher_prediction_sha256"]
+                for row in exact_mapping_checks
+            ):
+                raise RuntimeError(
+                    "Expected the requested standard-crossbar mapping to preserve "
+                    "the frozen teacher predictions before device constraints."
+                )
 
         offchip_loaders = build_mnist_loaders(
             spec.data,
@@ -5299,6 +5568,7 @@ def run_train(request: "TrainRequest") -> int:
             "evidence_tier": "exploratory_noncanonical",
             "architecture": {
                 "logical_dims": list(spec.model.dims),
+                "source_initialization": spec.source.initialization,
                 "logical_weights": sum(tile.cells for tile in layout),
                 "programmable_active_states": source_population.size,
                 "fixed_sampled_reference_values": source_population.size,
@@ -5395,10 +5665,24 @@ def run_train(request: "TrainRequest") -> int:
                 "passive_kcl_denominator": "not_applicable_standard_crossbar_MVM",
             },
             "source": {
+                "initialization": source_initialization,
                 "teacher_sha256": sha256_file(teacher_path),
                 "teacher_metadata": teacher_metadata,
                 "logical_weight_sha256": [tensor_sha256(value) for value in logical_weights],
+                "logical_weight_ranges": [
+                    {
+                        "minimum": float(value.min().item()),
+                        "maximum": float(value.max().item()),
+                    }
+                    for value in logical_weights
+                ],
                 "requested_q_sha256": tensor_sha256(source_requested),
+                "requested_q_range": {
+                    "minimum": float(source_requested.min().item()),
+                    "maximum": float(source_requested.max().item()),
+                },
+                "weight_scaling_omega": list(spec.mapping.weight_scaling_omega),
+                "scaling_policy": spec.mapping.scaling_policy,
                 "digital_scales": list(digital_scales),
             },
             "device": {
@@ -5584,9 +5868,18 @@ def run_train(request: "TrainRequest") -> int:
                 ),
                 *(
                     [
-                        f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam",
+                        (
+                            "no_predeployment_offchip_optimizer_updates"
+                            if spec.offchip.policy == "none"
+                            else f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam"
+                        ),
                         "post_fault_retraining_uses_ground_truth_cross_entropy_full_network_autograd_backprop_and_digital_Adam",
-                        "teacher_is_used_for_source_initialization_predeployment_HWA_and_diagnostics_but_not_post_fault_updates",
+                        (
+                            "teacher_is_an_evaluation_reference_only_and_is_absent_from_initialization_and_updates"
+                            if spec.source.initialization
+                            == "aihwkit_analog_linear_default_kaiming_uniform"
+                            else "teacher_is_used_for_source_initialization_predeployment_HWA_and_diagnostics_but_not_post_fault_updates"
+                        ),
                         "ordinary_BP_recovery_is_a_privileged_algorithmic_control_not_fully_on_chip",
                         "post_deployment_fault_transition_replays_explicitly_enabled_AIHWKit_published_OM_corrupt_cells_after_healthy_programming",
                         "corrupt_persistent_q_is_stuck_but_apparent_q_retains_AIHWKit_write_noise_resampling",
@@ -5610,7 +5903,11 @@ def run_train(request: "TrainRequest") -> int:
                 ),
                 *(
                     [
-                        f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam",
+                        (
+                            "no_predeployment_offchip_optimizer_updates"
+                            if spec.offchip.policy == "none"
+                            else f"predeployment_{spec.offchip.policy}_uses_off_array_teacher_KL_autograd_and_Adam"
+                        ),
                         "post_fault_manual_BP_uses_streamed_ground_truth_labels_but_no_teacher_autograd_Adam_shadow_weights_or_fault_mask",
                         "stochastic_compressed_shared_bit_lines_are_distribution_level_AIHWKit_1_1_parity_with_grouped_sign_application_not_native_Cpp_bit_order",
                         "post_deployment_fault_transition_replays_explicitly_enabled_AIHWKit_published_OM_corrupt_cells_after_healthy_programming",
@@ -5668,6 +5965,7 @@ def run_train(request: "TrainRequest") -> int:
         )
         compact_metrics = {
             "evidence_tier": summary["evidence_tier"],
+            "source_initialization": source_initialization,
             "assignment_seed": spec.device.assignment_seed,
             "endpoint_seeds": list(spec.device.endpoint_seeds),
             "offchip_policy": spec.offchip.policy,

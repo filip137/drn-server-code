@@ -46,6 +46,8 @@ class ModelSettings:
 class SourceSettings:
     expected_teacher_weights_path: str
     expected_teacher_weights_sha256: str
+    initialization: str
+    initialization_seed: int | None
 
 
 @dataclass(frozen=True)
@@ -419,10 +421,51 @@ def _parse_model(value: Any) -> ModelSettings:
 def _parse_source(value: Any) -> SourceSettings:
     path = "config.source"
     raw = _object(value, path)
-    _keys(raw, path, {"expected_teacher_weights_path", "expected_teacher_weights_sha256"})
+    _keys(
+        raw,
+        path,
+        {"expected_teacher_weights_path", "expected_teacher_weights_sha256"},
+        {"initialization", "initialization_seed"},
+    )
+    initialization = raw.get("initialization", "teacher_checkpoint")
+    if initialization not in {
+        "teacher_checkpoint",
+        "aihwkit_analog_linear_default_kaiming_uniform",
+    }:
+        raise config_error(
+            f"{path}.initialization",
+            (
+                "to be 'teacher_checkpoint' or "
+                "'aihwkit_analog_linear_default_kaiming_uniform'"
+            ),
+            initialization,
+        )
+    raw_seed = raw.get("initialization_seed")
+    if initialization == "teacher_checkpoint":
+        if raw_seed is not None:
+            raise config_error(
+                f"{path}.initialization_seed",
+                "to be null or absent for teacher-checkpoint initialization",
+                raw_seed,
+            )
+        initialization_seed = None
+    else:
+        initialization_seed = _integer(
+            raw_seed,
+            f"{path}.initialization_seed",
+            minimum=0,
+        )
+        if initialization_seed != 42:
+            raise config_error(
+                f"{path}.initialization_seed",
+                "to equal the matched from-scratch seed 42",
+                raw_seed,
+            )
     return SourceSettings(
         expected_teacher_weights_path=_text(raw["expected_teacher_weights_path"], f"{path}.expected_teacher_weights_path"),
         expected_teacher_weights_sha256=_digest(raw["expected_teacher_weights_sha256"], f"{path}.expected_teacher_weights_sha256"),
+        initialization=initialization,
+        initialization_seed=initialization_seed,
     )
 
 
@@ -508,18 +551,45 @@ def _parse_mapping(value: Any) -> MappingSettings:
     raw = _object(value, path)
     _keys(raw, path, {"weight_scaling_omega", "scaling_policy", "out_of_bounds_policy", "codebook_tie_rule"})
     expected = {
-        "scaling_policy": "one_shared_absmax_scale_per_logical_layer",
         "out_of_bounds_policy": "retain_request_and_report_endpoint_saturation",
         "codebook_tie_rule": "lowest_pulse_index",
     }
     for name, expected_value in expected.items():
         if raw[name] != expected_value:
             raise config_error(f"{path}.{name}", f"to equal {expected_value!r}", raw[name])
+    omega = _pair(
+        raw["weight_scaling_omega"],
+        f"{path}.weight_scaling_omega",
+        minimum=0.0,
+        maximum=1.0,
+    )
+    scaling_policy = raw["scaling_policy"]
+    if scaling_policy == "one_shared_absmax_scale_per_logical_layer":
+        if any(value <= 0.0 for value in omega):
+            raise config_error(
+                f"{path}.weight_scaling_omega",
+                "to contain two positive numbers for abs-max scaling",
+                raw["weight_scaling_omega"],
+            )
+    elif scaling_policy == "aihwkit_default_no_weight_scaling_direct_q":
+        if any(value != 0.0 for value in omega):
+            raise config_error(
+                f"{path}.weight_scaling_omega",
+                "to equal [0, 0] when AIHWKit weight scaling is disabled",
+                raw["weight_scaling_omega"],
+            )
+    else:
+        raise config_error(
+            f"{path}.scaling_policy",
+            (
+                "to equal 'one_shared_absmax_scale_per_logical_layer' or "
+                "'aihwkit_default_no_weight_scaling_direct_q'"
+            ),
+            scaling_policy,
+        )
     return MappingSettings(
-        weight_scaling_omega=_pair(
-            raw["weight_scaling_omega"], f"{path}.weight_scaling_omega", minimum=0.0, maximum=1.0, positive=True
-        ),
-        scaling_policy=expected["scaling_policy"],
+        weight_scaling_omega=omega,
+        scaling_policy=scaling_policy,
         out_of_bounds_policy=expected["out_of_bounds_policy"],
         codebook_tie_rule=expected["codebook_tie_rule"],
     )
@@ -1022,10 +1092,18 @@ def _parse_tiki_taka_v1(value: Any, path: str) -> TikiTakaV1RecoverySettings:
     fast_endpoint_seeds = _integer_tuple(
         raw["fast_endpoint_seeds"], f"{path}.fast_endpoint_seeds"
     )
-    if fast_endpoint_seeds != (98402, 98403, 98404, 98405):
+    frozen_fast_endpoint_seeds = (98402, 98403, 98404, 98405)
+    if fast_endpoint_seeds not in {
+        (frozen_fast_endpoint_seeds[0],),
+        frozen_fast_endpoint_seeds,
+    }:
         raise config_error(
             f"{path}.fast_endpoint_seeds",
-            "to equal the frozen independent fast-array seeds [98402, 98403, 98404, 98405]",
+            (
+                "to equal either the one-endpoint exploratory seed [98402] or "
+                "the frozen independent fast-array seeds "
+                "[98402, 98403, 98404, 98405]"
+            ),
             raw["fast_endpoint_seeds"],
         )
     return TikiTakaV1RecoverySettings(
@@ -1153,6 +1231,21 @@ def _parse_recovery(value: Any) -> RecoverySettings:
             positive=True,
         )
         pulse_cap = None
+    elif policy == "supervised_ce_pulse_adam":
+        rates = _pair(
+            raw["learning_rates_q"],
+            f"{path}.learning_rates_q",
+            minimum=0.0,
+        )
+        pulse_cap = (
+            None
+            if raw["pulse_cap_per_cell"] is None
+            else _integer(
+                raw["pulse_cap_per_cell"],
+                f"{path}.pulse_cap_per_cell",
+                minimum=1,
+            )
+        )
     else:
         rates = _pair(raw["learning_rates_q"], f"{path}.learning_rates_q", minimum=0.0)
         pulse_cap = _integer(
@@ -1335,14 +1428,13 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         if (
             epochs < 1
             or any(rate <= 0.0 for rate in rates)
-            or pulse_cap < 1
             or raw["layer_scope"] != "all"
         ):
             raise config_error(
                 path,
                 (
-                    "to use positive epochs/rates/cap and scope='all' for "
-                    "supervised cross-entropy retraining"
+                    "to use positive epochs/rates, a positive cap or null, and "
+                    "scope='all' for supervised cross-entropy retraining"
                 ),
                 dict(raw),
             )
@@ -1575,14 +1667,14 @@ def _parse_recovery(value: Any) -> RecoverySettings:
         "supervised_ce_tiki_taka_v1",
     }:
         if (
-            epochs != 1
+            epochs < 1
             or raw["objective"] != "cross_entropy"
             or raw["layer_scope"] != "all"
         ):
             raise config_error(
                 path,
                 (
-                    "to use exactly one epoch, objective='cross_entropy', "
+                    "to use one or more epochs, objective='cross_entropy', "
                     "and scope='all' for stochastic-pulse supervised recovery"
                 ),
                 dict(raw),
@@ -1768,6 +1860,7 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     if raw["experiment_id"] != EXPERIMENT_ID:
         raise config_error("config.experiment_id", f"to equal {EXPERIMENT_ID!r}", raw["experiment_id"])
     device = _parse_device(raw["device"])
+    source = _parse_source(raw["source"])
     transfer = _parse_transfer(
         raw["transfer"], endpoint_count=len(device.endpoint_seeds), source_assignment=device.assignment_seed
     )
@@ -1829,14 +1922,22 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
     } and (
         device.corruption_policy != "counterfactual_repaired"
         or transfer.enabled
-        or offchip.policy != "continuous_hwa"
+        or (
+            offchip.policy != "continuous_hwa"
+            and not (
+                source.initialization
+                == "aihwkit_analog_linear_default_kaiming_uniform"
+                and offchip.policy == "none"
+            )
+        )
     ):
         raise config_error(
             "config",
             (
                 "to start supervised post-fault retraining from a "
-                "counterfactually repaired healthy array after continuous HWA "
-                "and keep fresh-array transfer disabled"
+                "counterfactually repaired healthy array after continuous HWA, "
+                "or from the declared AIHWKit random initialization with no "
+                "off-chip updates, and keep fresh-array transfer disabled"
             ),
             dict(raw),
         )
@@ -1860,8 +1961,8 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
             raise config_error(
                 "config.recovery",
                 (
-                    "to consume exactly one complete 55,000-example "
-                    "stochastic-pulse repair epoch with maximum_batches="
+                    "to consume one complete 55,000-example stochastic-pulse "
+                    "repair cohort in every epoch with maximum_batches="
                     f"ceil(55000/{data.batch_size}) while preserving the "
                     "exact prior P0 source contract data.num_points=16 and "
                     "offchip.maximum_batches=1"
@@ -1956,7 +2057,7 @@ def parse_crossbar_config(payload: Mapping[str, Any]) -> CrossbarConfig:
         runtime=_parse_runtime(raw["runtime"]),
         data=data,
         model=_parse_model(raw["model"]),
-        source=_parse_source(raw["source"]),
+        source=source,
         device=device,
         mapping=_parse_mapping(raw["mapping"]),
         offchip=offchip,

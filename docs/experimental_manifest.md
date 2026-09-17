@@ -1,6 +1,6 @@
 # Finished LoRA/HWA Simulations and Research Progress
 
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 ## Program goal
 
@@ -1356,6 +1356,58 @@ P&V — no-clipping direct exploratory CUDA screen**
 - **Raw artifacts:** `results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/`
 - **Workflow summary:** `results/mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1/analysis/summary.json`
 <!-- END EBL STUDY mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1 -->
+### mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1
+
+**Higher-learning-rate Adam control for the 784-50-10 IBM-OM crossbar**
+
+- **Finished:** 2026-09-04
+- **Evidence class:** `exploratory_model_based_aihwkit_om_learning_rate_ablation_cuda`
+- **Outcome:** supported
+- **Initial hypothesis:** Raising only the hybrid pulse-Adam q-coordinate learning rate from 6e-5 to 1e-3 will improve the fixed epoch-10 apparent-state accuracy above 73.4% and reduce teacher-to-student KL below 0.904706 on the same first 1,000 MNIST test examples. Persistent-state metrics and pulse-cap effects are diagnostics.
+- **Completion criteria:**
+  - The declared config completes exactly once through the native ebl runner on CUDA and passes artifact verification.
+  - Relative to supervised_ce_pulse_adam_10ep.json, the resolved scientific configuration differs only in recovery.learning_rates_q, which changes from [6e-5, 6e-5] to [1e-3, 1e-3].
+  - The run consumes ten ordered epochs of 55,000 ground-truth-labelled examples: 3,438 minibatches per epoch, 34,380 optimizer steps, and no checkpoint selection.
+  - Every gradient and metric-producing device forward uses held apparent q, every pulse updates hidden persistent q, and touched apparent states are refreshed after writes.
+  - Headline metrics are fixed epoch-10 apparent-state accuracy and teacher-to-crossbar KL on the same first 1,000 official MNIST test examples used by the prior low-rate arm. Persistent-state accuracy/KL, probability clipping, cells at the 64-pulse cap, and blocked pulses are reported as diagnostics.
+  - This remains a one-assignment, one-programming-stream exploratory fitted-preset result; it is not promoted to paper evidence, an array-level uncertainty estimate, or a fabricated-device claim.
+- **Coverage:** 1 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is supported. On the same random initialization, OM population, published-defect transition, programming endpoint, data order, ten-epoch CUDA budget, and fixed-final evaluation, raising only the hybrid pulse-Adam learning rate from 6e-5 to 1e-3 increased apparent-state test accuracy from 73.4% to 84.4% and reduced teacher-to-crossbar KL from 0.904706 to 0.452050. Adam can therefore train this corrupted 784-50-10 OM crossbar from scratch to substantially higher apparent accuracy and teacher fidelity than the original low-rate run. This makes corrupt-device training from scratch an important baseline for HWA plus P&V plus same-array fine-tuning; it does not yet establish which complete training path is better.
+- **Main limitations:** This is an exploratory fitted AIHWKit 1.1.0 OM-preset simulation with one initialization seed, one assignment, one programming endpoint, and the first 1,000 MNIST test examples. The 5,366 published-defect cells are introduced by a matched post-P&V fault transition, rather than being present during the initial P&V operation. The teacher is used only for evaluation. Apparent q drives every forward and is the primary result; persistent q is a diagnostic. The unchanged 64-pulse training cap is already active at lr=1e-3: 6,841 of 39,700 cells reach it and 46,918 candidate pulses are blocked. No array-level uncertainty, fabricated-device behavior, retention, fresh-read noise, endurance, line resistance, or peripheral effects are measured.
+- **Next steps:**
+  - Run a matched three-path comparison on identical corrupt OM identities: HWA then P&V then Adam fine-tuning, pretrained no-HWA then P&V then Adam fine-tuning, and random initialization then P&V then Adam training from scratch. Use lr=1e-3, the same minibatch order, ten on-chip epochs, pulse cap, assignment and endpoint seeds, defect mask, apparent-state forwards, persistent-state updates, and fixed-final evaluation; report off-chip and on-chip budgets separately.
+  - At fixed lr=1e-3, compare cumulative training caps of 64, 128, and uncapped operation. Record after every epoch and by layer the applied pulses, newly and cumulatively capped cells, blocked candidate pulses, apparent accuracy, and teacher KL so both the cost and onset of cap saturation are measured.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1 -->
+
+<!-- BEGIN EBL STUDY mnist-ibm-om-crossbar-from-scratch-adam-lr3e3-cuda-20260904-v1 -->
+### mnist-ibm-om-crossbar-from-scratch-adam-lr3e3-cuda-20260904-v1
+
+**Adam lr=3e-3 control for the 784-50-10 IBM-OM crossbar**
+
+- **Finished:** 2026-09-04
+- **Evidence class:** `exploratory_model_based_aihwkit_om_learning_rate_ablation_cuda`
+- **Outcome:** refuted
+- **Initial hypothesis:** Raising only the hybrid pulse-Adam q-coordinate learning rate from 1e-3 to 3e-3 will improve fixed epoch-10 apparent-state accuracy above 84.4% and reduce teacher-to-student KL below 0.452050 on the same first 1,000 MNIST test examples. Persistent-state metrics and the interaction with the unchanged 64-pulse cap are diagnostics.
+- **Completion criteria:**
+  - The declared config completes exactly once through the native ebl runner on CUDA and passes artifact verification.
+  - Relative to the lr=1e-3 successor config, the resolved scientific configuration differs only in recovery.learning_rates_q, which changes from [1e-3, 1e-3] to [3e-3, 3e-3].
+  - The run consumes ten ordered epochs of 55,000 ground-truth-labelled examples: 3,438 minibatches per epoch, 34,380 optimizer steps, and no checkpoint selection.
+  - Every gradient and metric-producing device forward uses held apparent q, every pulse updates hidden persistent q, and touched apparent states are refreshed after writes.
+  - Headline metrics are fixed epoch-10 apparent-state accuracy and teacher-to-crossbar KL on the same first 1,000 official MNIST test examples used by the prior rate arms. Persistent-state accuracy/KL, probability clipping, cells at the 64-pulse cap, blocked pulses, and the epoch when saturation develops are reported as diagnostics.
+  - This remains a one-assignment, one-programming-stream exploratory fitted-preset result; it is not promoted to paper evidence, an array-level uncertainty estimate, or a fabricated-device claim.
+- **Coverage:** 1 declared run(s) completed; 0 failed attempt(s) retained.
+- **Final interpretation:** The predeclared hypothesis is refuted. With every configured condition held fixed except the hybrid pulse-Adam rate, lr=3e-3 reached 81.2% fixed-final apparent-state test accuracy and teacher-to-crossbar KL 0.531603, both worse than 84.4% and 0.452050 at lr=1e-3. Going above lr=1e-3 therefore did not continue the improvement under the unchanged 64-pulse cap. Cap pressure rose sharply: 15,864 of 39,700 cells reached the cap and 1,801,247 candidate pulses were blocked, while applied pulses fell from 426,294 in epoch 1 to 1,236 in epoch 10. These measurements make pulse-cap saturation a leading explanation for the turnover, but they do not prove that the cap caused it.
+- **Main limitations:** This is an exploratory fitted AIHWKit 1.1.0 OM-preset simulation with one initialization seed, one assignment, one programming endpoint, and the first 1,000 MNIST test examples. Published defects are applied as a matched post-P&V transition. The teacher is used only for evaluation, and the fixed-final epoch-10 result is not checkpoint-selected. Apparent q drives every forward; persistent q is a diagnostic. Rate and cap are not crossed experimentally, and the artifact records final cumulative capped-cell counts plus epoch-level applied pulses, not the epoch or minibatch at which each layer's cells newly hit the cap. The run provides no array-level uncertainty or fabricated-device, retention, fresh-read, endurance, interconnect, or peripheral validation.
+- **Next steps:**
+  - Cross learning rate with pulse cap, minimally testing caps 64, 128, and uncapped operation at lr=1e-3 and lr=3e-3 on identical populations and streams. Add epoch- and layer-resolved newly capped cells, cumulative capped cells, blocked candidate pulses, applied pulses, apparent accuracy, and teacher KL.
+  - Use the best cap-qualified Adam setting in the matched HWA plus P&V plus fine-tuning, pretrained no-HWA plus P&V plus fine-tuning, and corrupt-device training-from-scratch comparison.
+- **Raw artifacts:** `results/mnist-ibm-om-crossbar-from-scratch-adam-lr3e3-cuda-20260904-v1/`
+- **Workflow summary:** `results/mnist-ibm-om-crossbar-from-scratch-adam-lr3e3-cuda-20260904-v1/analysis/summary.json`
+<!-- END EBL STUDY mnist-ibm-om-crossbar-from-scratch-adam-lr3e3-cuda-20260904-v1 -->
 
 ## Shared validity notes
 

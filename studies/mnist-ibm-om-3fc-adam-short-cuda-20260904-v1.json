@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-3fc-adam-short-cuda-20260904-v1",
+  "title": "Short CUDA Adam feasibility check on the IBM two-hidden-layer MNIST topology",
+  "hypothesis": "A five-epoch hybrid pulse-Adam run on the published-defect IBM-OM model can approach the reported 97.35% TTv2 accuracy on the 784-256-128-10 sigmoid MNIST network; apparent-state accuracy and teacher KL are the co-primary descriptive metrics, while persistent-state metrics are diagnostics.",
+  "motivation": "The initial 784-50-10 from-scratch comparison reached 73.4% apparent test accuracy with pulse-Adam after ten epochs and 50.9% with Tiki-Taka. This exploratory successor changes to the two-hidden-layer IBM simulation topology, uses the paper-compatible raw [0,1] MNIST input and sigmoid nonlinearities, drops Tiki-Taka, and reduces the budget to five epochs. A matched digital Adam control separates optimizer/architecture capacity from the OM update path.",
+  "evidence_class": "exploratory_model_based_aihwkit_om_3fc_adam_cuda",
+  "arms": [
+    {
+      "arm_id": "published-om-pulse-adam-5ep",
+      "description": "Five epochs of label-supervised hybrid pulse-Adam on one published-defect OM assignment, plus a matched FP32 Adam control.",
+      "experiment_id": "mnist_ibm_om_3fc_adam.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_om_3fc_adam/short_5ep_published_cuda.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "The declared config completes exactly once through python -m ebl on CUDA and records the resolved CUDA device before and after training.",
+    "The student architecture is 784-256-128-10 with analog biases and digital sigmoid hidden nonlinearities; all 235,146 programmable q states use the native sampled OM bounds with no weight mapping and no [0,2] clipping.",
+    "The OM population retains corrupt_devices_prob=0.1348 and corrupt_devices_range=0.01, assignment seed 87004, endpoint seed 89402, and the AIHWKit 1.1.0 model-based OM fit.",
+    "Both the OM and digital arms start from byte-identical AIHWKit/PyTorch Linear Kaiming-uniform weights and biases, consume five identically ordered epochs of all 60,000 MNIST training examples in batches of 64, and use fixed epoch 5 without checkpoint selection.",
+    "Every training and evaluation forward in the device arm consumes the held apparent q state. Adam moments generate stochastic one-pulse commands that update the hidden persistent q state, after which touched apparent cells are refreshed.",
+    "The full official 10,000-example test set is evaluated after every epoch. Fixed epoch-5 apparent accuracy, teacher agreement, and teacher-to-student KL are primary; persistent accuracy and KL are labelled diagnostics.",
+    "Comparable accuracy is operationally defined as no more than two percentage points below IBM's reported 97.35% TTv2 result. KL has no IBM reference and is compared only against the matched digital Adam control.",
+    "This one-seed, one-assignment, five-epoch Adam run remains exploratory and is not promoted as a reproduction of IBM's median-of-five, 100-epoch, optimized-TTv2 result. It retains the same AIHWKit preset default reference_std=0.05 as the prior crossbar tests, whereas Fig. 13 of the paper states a 1% symmetry-point reference-write assumption."
+  ],
+  "analysis_plan": [
+    "Verify the matched digital arm reaches high accuracy; otherwise diagnose initialization, raw-input preprocessing, architecture, or Adam settings before attributing any gap to OM devices.",
+    "Report per-epoch apparent and persistent accuracy/KL, commanded pulses by layer, defect fraction, and saturation/programming diagnostics.",
+    "Compare fixed epoch-5 apparent accuracy with the 95.35% comparability gate, IBM's 97.35% TTv2 result, and the matched digital endpoint. Compare apparent KL with matched digital KL without inventing an IBM KL benchmark.",
+    "If the digital arm is healthy but the OM arm misses the gate, treat this as evidence about this short hybrid-Adam recipe only; do not infer that the IBM TTv2 simulation is irreproducible."
+  ]
+}

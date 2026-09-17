@@ -1,0 +1,92 @@
+{
+  "architecture": {
+    "active_states": 813056,
+    "forward": "perfect_diode_equilibrium_with_conductance_sum_loading",
+    "logical_dimensions": [784, 256, 10],
+    "logical_weights": 203264,
+    "physical_dimensions": [1568, 512, 20],
+    "topology": "four_cell_dual_rail"
+  },
+  "claim_scope": "model_based_Figure6_endpoint_plus_IBM_OM_pulse_hybrid",
+  "device_model": {
+    "apparent_state": "primary_held_post_write_state",
+    "evidence_class": "model_based_hybrid",
+    "fault_intervention": "post_program_verify_reset_stuck_using_paired_published_OM_mask",
+    "persistent_state": "secondary_diagnostic_only",
+    "transition_dynamics": "IBM_OM_pulse_law",
+    "weight_forward": "analyst_defined_Figure6_endpoint_conductance_not_native_q_equals_a_minus_r"
+  },
+  "evidence_tier": "exploratory_noncanonical",
+  "metrics": {
+    "direct_pv": {
+      "apparent_accuracy": 0.9751333333333334,
+      "apparent_kl_teacher_student": 0.03282097561007572,
+      "persistent_accuracy": 0.9730777777777778
+    },
+    "direct_pv_reset_stuck": {
+      "apparent_accuracy": 0.9627888888888888,
+      "apparent_kl_teacher_student": 0.0882373800156845,
+      "persistent_accuracy": 0.9593222222222222
+    },
+    "hwa_pv": {
+      "apparent_accuracy": 0.9771555555555556,
+      "apparent_kl_teacher_student": 0.030308471262196286,
+      "persistent_accuracy": 0.9761777777777777
+    },
+    "hwa_pv_adam": {
+      "apparent_accuracy": 0.977188888888889,
+      "apparent_kl_teacher_student": 0.027820467393312398,
+      "persistent_accuracy": 0.9739666666666666
+    },
+    "hwa_pv_reset_stuck": {
+      "apparent_accuracy": 0.9704555555555556,
+      "apparent_kl_teacher_student": 0.05870287342301259,
+      "persistent_accuracy": 0.9687999999999999
+    },
+    "hwa_pv_reset_stuck_adam": {
+      "apparent_accuracy": 0.9748222222222221,
+      "apparent_kl_teacher_student": 0.03730285320418576,
+      "persistent_accuracy": 0.9717333333333333
+    },
+    "scratch_pv_adam": {
+      "apparent_accuracy": 0.9553333333333333,
+      "apparent_kl_teacher_student": 0.1182574894671639,
+      "persistent_accuracy": 0.9543555555555555
+    },
+    "scratch_pv_reset_stuck_adam": {
+      "apparent_accuracy": 0.9559888888888889,
+      "apparent_kl_teacher_student": 0.11145081150647668,
+      "persistent_accuracy": 0.9548444444444444
+    }
+  },
+  "recovery_contract": {
+    "batch_size": 16,
+    "checkpoint_policy": "best_apparent_validation_accuracy_then_KL_then_earlier_epoch",
+    "digital_gradients_and_adam_moments": true,
+    "epochs_executed": 10,
+    "healthy_hwa_learning_rate": 0.0001,
+    "objective": "teacher_kl",
+    "pulse_cap_per_cell": 640,
+    "scratch_learning_rate": 0.0003,
+    "selected_hwa_epoch_for_all_18_runs": 1,
+    "training_examples_per_epoch": 55000
+  },
+  "replication": {
+    "aggregation": "average_three_writes_within_array_then_mean_and_full_range_across_three_array_means",
+    "arrays": 3,
+    "final_records": 72,
+    "raw_records_per_arm": 9,
+    "writes_per_array": 3
+  },
+  "schema": "ebl.reference.ibm_om_drn_figure6_endpoint_recovery",
+  "schema_version": 1,
+  "source": {
+    "campaign_directory_at_capture": "/home/filip/server_code/.codex/worktrees/ibm-om-cell-aware-quantized/simulation_results/exploratory_noncanonical_figure6_om_784_256_10_postpv_fault",
+    "raw_records_sha256": "ec987d388eaba120fd1f0faa6ff1bd9f9164e51dee0602ebc2017a342a12c605",
+    "scientific_summary_sha256": "6ecbbb845c14652bf9692799bbc29fe3b1634b14509c0a3ab0731e2f34d3d89e",
+    "source_commit": "2b283365063931e9fdd41fbd30d2672e0e600f04",
+    "teacher_checkpoint_sha256": "a22be1ee0c3f4392dde455a5d87903e88e089d3f281c29a9cbe0aa3f378ba1d4",
+    "teacher_selected_validation_accuracy": 0.9776,
+    "teacher_test_accuracy": 0.9792
+  }
+}

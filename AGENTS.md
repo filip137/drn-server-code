@@ -19,6 +19,30 @@ assignment.
 Keep unrelated repository maintenance and unrelated experiment families out
 of this worktree.
 
+## Mandatory DRN apparent-state forwards
+
+- Whenever a device model distinguishes a hidden persistent state from a
+  post-write apparent state, **every device-facing DRN forward pass must use
+  the current held apparent state**. This includes forwards used for off-chip
+  HWA, on-chip recovery, gradient computation, training metrics, validation,
+  checkpoint selection, and final evaluation. Never substitute the hidden
+  persistent state in any of those paths.
+- Pulses and physical updates mutate the persistent state. After each write,
+  refresh the apparent state of touched cells according to the declared device
+  and write-noise model; the next DRN forward uses that updated held apparent
+  state. Do not copy apparent values into persistent state, and do not redraw
+  write noise independently per example unless a separately declared
+  inference-read-noise intervention requires it.
+- A persistent-state DRN forward is permitted only as an explicitly named
+  diagnostic or ablation. It must not drive gradients, optimizer updates,
+  checkpoint selection, or headline conclusions. When both states exist,
+  report apparent-state accuracy as primary and persistent-state accuracy as a
+  clearly labelled secondary diagnostic on the same examples and settings.
+- For off-chip HWA without an evolving physical plant, use the sampled
+  noisy/apparent hardware view for the forward and update the digital master
+  or desired target. Do not describe that digital-master update as a
+  persistent-device update.
+
 ## Repository map
 
 - `ebl/`: public command-line entry point. Workflow-managed training,
@@ -80,10 +104,12 @@ of this worktree.
   bias-free layer structure as the teacher-targeted DRN. It consists of a
   standard analog MVM, a digital ReLU, and a second standard analog MVM. The DRN's
   doubled `1568-100-20` tensors are rail encoding, not extra learned neurons.
-- The crossbar initializes from the exact ReLU teacher tensors. The pinned DRN
-  comparison initializes from its separately recovered physical checkpoint;
-  they share the teacher task and dimensions, not an identical trained weight
-  tensor. Compare source-to-deployment loss as well as absolute accuracy.
+- Both comparison branches start from the same exact pretrained feed-forward
+  ReLU teacher checkpoint. The crossbar uses the teacher tensors directly;
+  the DRN uses the declared teacher-to-perfect-diode mapping from those same
+  tensors. A separately recovered DRN checkpoint is a named control, not the
+  primary matched starting point. Compare source-to-deployment loss as well as
+  absolute accuracy.
 - The standard crossbar uses the AIHWKit OM effective state `q=a-r` for
   transfer and has no passive-DRN conductance-sum voltage denominator. Keep
   this architectural distinction visible; do not present standard MVM
@@ -92,6 +118,11 @@ of this worktree.
   effective state. The hidden persistent state controls subsequent pulse
   updates and is a required robustness diagnostic, but it must not be
   substituted for the apparent forward state. Report both states explicitly.
+- Use the post-write apparent device state for the network's primary accuracy
+  evaluation, model selection, and scientific conclusions; do not substitute
+  accuracy computed from the hidden persistent state. At minimum, every result
+  must report both apparent-state accuracy and persistent-state accuracy,
+  clearly labelled and evaluated on the same examples and settings.
 - Match the frozen teacher, logical dimensions, data split, minibatch order,
   objective, assignment/endpoint seeds, recovery budget, and checkpoint
   selection wherever the two architectures permit it. When topology changes
@@ -143,6 +174,54 @@ of this worktree.
   initialization itself is the intervention.
 - Never discover or substitute the newest checkpoint. Record explicit input
   paths and content hashes.
+
+## Matched comparison ladder
+
+The primary crossbar-versus-DRN comparison is the following five-stage chain.
+Preserve a named checkpoint or deployment receipt at every boundary; do not
+skip, reorder, or collapse logical mapping, HWA, stochastic programming, and
+on-chip recovery into one result.
+
+1. **Pretrained FF ReLU source:** start both branches from one exact pretrained
+   feed-forward ReLU teacher checkpoint. Freeze and record its tensors, content
+   hash, architecture, data split, and preprocessing.
+2. **Architecture deployment:** map that same source into (a) the standard
+   analog-crossbar--digital-ReLU--analog-crossbar network and (b) the
+   perfect-diode DRN. This is logical/deterministic architecture mapping, not
+   stochastic array programming. Record all rail encodings, scaling, and
+   calibration, and evaluate the mapped checkpoints before further training.
+3. **Off-chip HWA:** train each mapped checkpoint with its declared
+   hardware-aware model. Match the examples, minibatch order, objective,
+   optimizer budget, and selection rule wherever the architectures permit it.
+   Save the frozen HWA master checkpoint; do not perform P&V or on-chip updates
+   in this stage.
+4. **Physical P&V deployment:** program each frozen HWA checkpoint onto its
+   assigned array with the declared program-and-verify controller. Preserve the
+   assignment, identity binding, targets, seeds, pulse history, and realized
+   apparent and persistent states. Report both accuracies on the same evaluation
+   cohort, using apparent-state accuracy as the primary deployed result.
+5. **On-chip retraining:** start recovery from the exact named stage-4 deployed
+   state, never from the HWA master, a newly sampled endpoint, or a different
+   array. Match the on-chip data order, objective, update budget, and stopping
+   rule, then report both apparent-state and persistent-state accuracy before,
+   during, and after recovery.
+
+To identify the contribution of HWA, also send the frozen stage-2 checkpoint
+through the same stage-4 P&V deployment as a matched `no_hwa` control. This is a
+predeclared branch from the ladder, not a replacement for the primary chain.
+
+## Training runtime
+
+- **Use CUDA for every training run in this worktree.** This includes smoke,
+  canary, development, recovery, HWA, on-chip, and production training runs.
+- Before launching training, verify that CUDA is available to the exact Python
+  interpreter and process environment that will run the job, and verify after
+  launch that the resolved runtime device is CUDA. Fail closed if either check
+  fails; never silently fall back to CPU.
+- A CPU training run is permitted only when the user explicitly requests that
+  specific CPU run. Preserve any accidentally launched CPU artifacts as failed
+  or interrupted attempts, and do not use them as scientific evidence for a
+  CUDA study.
 
 ## Experimental workflow
 

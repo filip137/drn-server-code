@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "study_id": "mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1",
+  "title": "Higher-learning-rate Adam control for the 784-50-10 IBM-OM crossbar",
+  "hypothesis": "Raising only the hybrid pulse-Adam q-coordinate learning rate from 6e-5 to 1e-3 will improve the fixed epoch-10 apparent-state accuracy above 73.4% and reduce teacher-to-student KL below 0.904706 on the same first 1,000 MNIST test examples. Persistent-state metrics and pulse-cap effects are diagnostics.",
+  "motivation": "The matched low-rate 784-50-10 run applied only 173,392 pulses and reached 73.4% apparent accuracy, whereas the wider 784-256-128-10 experiment used Adam at 1e-3 and learned much more effectively. This exploratory arm isolates learning rate while preserving the earlier 784-50-10 topology, initialization, data order, ten-epoch budget, OM assignment, program-and-verify endpoint, post-deployment published defects, and apparent-forward/persistent-update semantics.",
+  "evidence_class": "exploratory_model_based_aihwkit_om_learning_rate_ablation_cuda",
+  "arms": [
+    {
+      "arm_id": "from-scratch-pulse-adam-lr1e3-10ep",
+      "description": "Hybrid pulse-Adam from the matched random programmed and faulted state, with q-coordinate learning rate 1e-3 in both layers.",
+      "experiment_id": "mnist_ibm_om_crossbar_relu.v1",
+      "mode": "train",
+      "configs": [
+        "../examples/mnist_analog_relu/ibm_om_crossbar_from_scratch_adam_lr1e3_cuda/supervised_ce_pulse_adam_lr1e3_10ep.json"
+      ]
+    }
+  ],
+  "completion_criteria": [
+    "The declared config completes exactly once through the native ebl runner on CUDA and passes artifact verification.",
+    "Relative to supervised_ce_pulse_adam_10ep.json, the resolved scientific configuration differs only in recovery.learning_rates_q, which changes from [6e-5, 6e-5] to [1e-3, 1e-3].",
+    "The run consumes ten ordered epochs of 55,000 ground-truth-labelled examples: 3,438 minibatches per epoch, 34,380 optimizer steps, and no checkpoint selection.",
+    "Every gradient and metric-producing device forward uses held apparent q, every pulse updates hidden persistent q, and touched apparent states are refreshed after writes.",
+    "Headline metrics are fixed epoch-10 apparent-state accuracy and teacher-to-crossbar KL on the same first 1,000 official MNIST test examples used by the prior low-rate arm. Persistent-state accuracy/KL, probability clipping, cells at the 64-pulse cap, and blocked pulses are reported as diagnostics.",
+    "This remains a one-assignment, one-programming-stream exploratory fitted-preset result; it is not promoted to paper evidence, an array-level uncertainty estimate, or a fabricated-device claim."
+  ],
+  "analysis_plan": [
+    "Verify that the logical-weight hash, sampled-population fingerprint, healthy P0 state hashes, published fault mask, faulted pretraining state hashes, data cohort, and optimizer budget match the completed lr=6e-5 arm.",
+    "Report epoch-by-epoch apparent accuracy, teacher agreement, teacher KL, cross-entropy, and corresponding persistent diagnostics without selecting an earlier epoch.",
+    "Compare fixed epoch-10 apparent accuracy and KL directly with the lr=6e-5 result, and classify the directional hypothesis as supported only if accuracy is above 73.4% and KL is below 0.904706.",
+    "Report total and per-layer pulses, maximum pulses per cell, probability clipping, cells at cap, and blocked pulses so any interaction between the higher rate and the frozen cap remains visible."
+  ]
+}

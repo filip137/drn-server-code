@@ -35,6 +35,15 @@ _PULSE_TYPE = "stochastic_compressed"
 _GROUPED_ORDER = "all_positive_rounds_then_all_negative_rounds"
 
 
+def _canonical_device(device: torch.device | str) -> torch.device:
+    """Resolve an unindexed CUDA request to the device used by its tensors."""
+
+    value = torch.device(device)
+    if value.type == "cuda" and value.index is None:
+        return torch.device("cuda", torch.cuda.current_device())
+    return value
+
+
 def _layout_receipt(
     layout: Sequence[CrossbarTileSpec],
 ) -> tuple[tuple[str, int, int, int, int, int], ...]:
@@ -487,7 +496,7 @@ class _StochasticBitLineEngine:
         ):
             raise ValueError("Expected an explicit generator and unique bit-line roles.")
         self.generator = generator
-        self.device = torch.device(device)
+        self.device = _canonical_device(device)
         if torch.device(generator.device).type != self.device.type:
             raise ValueError("Expected the bit-line generator to match the update device.")
         self.desired_bl = desired_bl
@@ -774,7 +783,7 @@ class IbmOmDirectPulseSgd:
         self.learning_rates_q = _strict_positive_pair(
             "learning_rates_q", learning_rates_q
         )
-        self.device = torch.device(device)
+        self.device = _canonical_device(device)
         port_contract = port.hardware_contract()
         if (
             port_contract.get("layout") != self.layout_receipt
@@ -1067,7 +1076,7 @@ class IbmOmTikiTakaV1:
         self.learning_rates_q = _strict_positive_pair(
             "learning_rates_q", learning_rates_q
         )
-        self.device = torch.device(device)
+        self.device = _canonical_device(device)
         slow_contract = slow_port.hardware_contract()
         fast_contract = fast_port.hardware_contract()
         if (

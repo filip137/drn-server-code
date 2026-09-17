@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mnist_ibm_om_3fc_adam.v1",
+  "runtime": {
+    "seed": 42,
+    "data_seed": 42,
+    "device": "cuda",
+    "dtype": "float32",
+    "required_aihwkit_version": "1.1.0"
+  },
+  "data": {
+    "batch_size": 64,
+    "train_examples": 60000,
+    "test_examples": 10000,
+    "shuffle": true,
+    "preprocessing": "torchvision_to_tensor_raw_0_1"
+  },
+  "model": {
+    "dims": [784, 256, 128, 10],
+    "bias": true,
+    "hidden_activation": "sigmoid",
+    "maximum_input_size": 512,
+    "weight_mapping": "none_direct_q"
+  },
+  "source": {
+    "initialization": "aihwkit_analog_linear_default_kaiming_uniform_with_bias",
+    "initialization_seed": 42,
+    "initial_requested_range": [-1.0, 1.0]
+  },
+  "device": {
+    "preset": "ReRamArrayOMPresetDevice",
+    "evidence_class": "model_based_aihwkit_preset",
+    "assignment_seed": 87004,
+    "endpoint_seed": 89402,
+    "corruption_policy": "published",
+    "corrupt_devices_probability": 0.1348,
+    "corrupt_devices_range": 0.01,
+    "reference_std": 0.05,
+    "bound_policy": "native_sampled_bounds",
+    "reference_policy": "fixed_sampled_intrinsic_reference_q_equals_a_minus_r",
+    "maximum_initial_programming_pulses": 128,
+    "verify_tolerance_q": 0.04745
+  },
+  "optimizer": {
+    "policy": "hybrid_pulse_adam",
+    "epochs": 5,
+    "learning_rates_q": [0.001, 0.001, 0.001],
+    "betas": [0.9, 0.999],
+    "epsilon": 1e-08,
+    "objective": "cross_entropy",
+    "maximum_one_pulse_updates_per_cell": 4690,
+    "checkpoint_policy": "fixed_final_epoch_no_selection"
+  },
+  "evaluation": {
+    "teacher_weights_path": "data/mnist_relu_teacher_fixed_init_20260816.pt",
+    "teacher_weights_sha256": "9a961a77628e365b54fdf59304ec7fddf46f1f4834c4c03cecea9c204f837f52",
+    "teacher_preprocessing": "normalize_mean_0.1307_std_0.3",
+    "evaluate_each_epoch": true,
+    "apparent_state_is_primary": true,
+    "ibm_ttv2_reference_accuracy": 0.9735,
+    "ibm_fp32_reference_accuracy": 0.982
+  }
+}

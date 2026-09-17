@@ -32,7 +32,9 @@ from experiments.small_network.config import (
 from experiments.mnist_relu.config import (
     EXPERIMENT_ID as MNIST_RELU_EXPERIMENT_ID,
     SCHEMA_VERSION as MNIST_RELU_SCHEMA_VERSION,
+    V2_EXPERIMENT_ID as MNIST_RELU_V2_EXPERIMENT_ID,
     parse_teacher_config,
+    parse_teacher_v2_config,
     resolve_teacher_spec,
 )
 from experiments.mnist_analog_relu.config import (
@@ -40,6 +42,18 @@ from experiments.mnist_analog_relu.config import (
     SCHEMA_VERSION as MNIST_IBM_OM_CROSSBAR_RELU_SCHEMA_VERSION,
     parse_crossbar_config,
     resolve_crossbar_spec,
+)
+from experiments.mnist_analog_relu.staged_config import (
+    EXPERIMENT_ID as MNIST_IBM_OM_CROSSBAR_RELU_V2_EXPERIMENT_ID,
+    SCHEMA_VERSION as MNIST_IBM_OM_CROSSBAR_RELU_V2_SCHEMA_VERSION,
+    parse_staged_crossbar_config,
+    resolve_staged_crossbar_spec,
+)
+from experiments.mnist_om_3fc_adam.config import (
+    EXPERIMENT_ID as MNIST_IBM_OM_3FC_ADAM_EXPERIMENT_ID,
+    SCHEMA_VERSION as MNIST_IBM_OM_3FC_ADAM_SCHEMA_VERSION,
+    parse_three_fc_adam_config,
+    resolve_three_fc_adam_spec,
 )
 from experiments.mnist_relu_drn.config import (
     EXPERIMENT_ID as MNIST_RELU_DRN_EXPERIMENT_ID,
@@ -343,6 +357,35 @@ MNIST_RELU_V1 = ExperimentDefinition(
 )
 
 
+MNIST_RELU_V2 = ExperimentDefinition(
+    experiment_id=MNIST_RELU_V2_EXPERIMENT_ID,
+    schema_version=MNIST_RELU_SCHEMA_VERSION,
+    description=(
+        "Configurable bias-free 784-H-10 ReLU MNIST teacher training and "
+        "validation with a strict validation-accuracy acceptance gate."
+    ),
+    supported_modes=(RunMode.TRAIN, RunMode.VALIDATE),
+    parser=parse_teacher_v2_config,
+    resolver=resolve_teacher_spec,
+    combinations=(
+        ValidatedCombination(
+            ExtensionSelection(
+                "relu_teacher",
+                "none",
+                "adam",
+                "cross_entropy",
+            ),
+            "validated",
+            (
+                "Bias-free digital teacher selected by validation "
+                "cross-entropy and accepted only above the configured "
+                "validation-accuracy threshold."
+            ),
+        ),
+    ),
+)
+
+
 MNIST_IBM_OM_CROSSBAR_RELU_V1 = ExperimentDefinition(
     experiment_id=MNIST_IBM_OM_CROSSBAR_RELU_EXPERIMENT_ID,
     schema_version=MNIST_IBM_OM_CROSSBAR_RELU_SCHEMA_VERSION,
@@ -366,6 +409,49 @@ MNIST_IBM_OM_CROSSBAR_RELU_V1 = ExperimentDefinition(
                 "Model-based AIHWKit 1.1.0 OM control with apparent-forward "
                 "program-and-verify, hidden persistent update state, and "
                 "open-loop pulse recovery."
+            ),
+        ),
+    ),
+)
+
+
+MNIST_IBM_OM_CROSSBAR_RELU_V2 = ExperimentDefinition(
+    experiment_id=MNIST_IBM_OM_CROSSBAR_RELU_V2_EXPERIMENT_ID,
+    schema_version=MNIST_IBM_OM_CROSSBAR_RELU_V2_SCHEMA_VERSION,
+    description=(
+        "Staged 784-256-10 IBM-OM standard-crossbar experiment separating "
+        "off-chip HWA, P&V deployment, post-deployment corruption, and "
+        "same-array pulse-Adam recovery."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_staged_crossbar_config,
+    resolver=resolve_staged_crossbar_spec,
+    combinations=(),
+)
+
+
+MNIST_IBM_OM_3FC_ADAM_V1 = ExperimentDefinition(
+    experiment_id=MNIST_IBM_OM_3FC_ADAM_EXPERIMENT_ID,
+    schema_version=MNIST_IBM_OM_3FC_ADAM_SCHEMA_VERSION,
+    description=(
+        "Exploratory five-epoch CUDA Adam training of the IBM MNIST "
+        "784-256-128-10 sigmoid architecture on model-based OM devices."
+    ),
+    supported_modes=(RunMode.TRAIN,),
+    parser=parse_three_fc_adam_config,
+    resolver=resolve_three_fc_adam_spec,
+    combinations=(
+        ValidatedCombination(
+            ExtensionSelection(
+                "three_fc_sigmoid_crossbar",
+                "none",
+                "hybrid_pulse_adam",
+                "cross_entropy",
+            ),
+            "experimental",
+            (
+                "Held apparent q forwards with digital Adam moments issuing "
+                "open-loop pulses to the hidden persistent OM state."
             ),
         ),
     ),
@@ -1016,7 +1102,10 @@ EXPERIMENT_REGISTRY: Dict[str, ExperimentDefinition] = {
     IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1.experiment_id: IBM_OM_LOCAL_REFERENCE_COMPENSATION_V1,
     SMALL_DRN_V1.experiment_id: SMALL_DRN_V1,
     MNIST_RELU_V1.experiment_id: MNIST_RELU_V1,
+    MNIST_RELU_V2.experiment_id: MNIST_RELU_V2,
     MNIST_IBM_OM_CROSSBAR_RELU_V1.experiment_id: MNIST_IBM_OM_CROSSBAR_RELU_V1,
+    MNIST_IBM_OM_CROSSBAR_RELU_V2.experiment_id: MNIST_IBM_OM_CROSSBAR_RELU_V2,
+    MNIST_IBM_OM_3FC_ADAM_V1.experiment_id: MNIST_IBM_OM_3FC_ADAM_V1,
     MNIST_RELU_DRN_KD_V1.experiment_id: MNIST_RELU_DRN_KD_V1,
     MNIST_RELU_DRN_RESET_V1.experiment_id: MNIST_RELU_DRN_RESET_V1,
     MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1.experiment_id: MNIST_RELU_DRN_RESET_DIFFERENTIAL_V1,

@@ -340,3 +340,49 @@ def test_tiki_taka_runtime_physically_commissions_fast_array_then_transfers(
     assert torch.equal(fast_initial_q[fast_mask], fast_final_q[fast_mask])
     assert recovery["updater_state"]["tile_cursors"].tolist() == [1, 1]
     assert report["recovery_state"]["artifact_reload_bit_exact"] is True
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        "supervised_ce_stochastic_pulse_sgd",
+        "supervised_ce_tiki_taka_v1",
+    ],
+)
+def test_stochastic_recovery_supports_multiple_fixed_final_epochs(
+    policy: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(runtime, "_evaluate_plant_states", _fake_evaluation)
+    plant = _plant()
+    inputs, labels = _batch()
+    is_tiki_taka = policy == "supervised_ce_tiki_taka_v1"
+    context = _context(tmp_path, inputs, labels, tiki_taka=is_tiki_taka)
+    spec = _spec(policy)
+    spec.recovery.epochs = 2
+
+    report, _ = runtime._recover(
+        plant=plant,
+        spec=spec,
+        endpoint_seed=89402,
+        layout=_layout(),
+        digital_scales=(0.5, 0.4),
+        teacher=SimpleNamespace(),
+        validation_loader=[(inputs, labels)],
+        train_loader=[(inputs, labels)],
+        device=torch.device("cpu"),
+        post_fault_context=context,
+    )
+
+    assert report["fixed_final_epoch"] == 2
+    assert [epoch["epoch"] for epoch in report["epochs"]] == [1, 2]
+    assert [epoch["examples"] for epoch in report["epochs"]] == [4, 4]
+    assert report["optimizer"]["optimizer_steps"] == 2
+    assert report["optimizer"]["repair_cohort"]["examples"] == 8
+    assert len(report["optimizer"]["per_epoch_repair_cohorts"]) == 2
+    assert report["checkpoint_policy"] == (
+        "fixed_final_epoch_no_selection_no_final_program_verify"
+    )
+    if is_tiki_taka:
+        assert report["optimizer"]["transfer_events"] == 2

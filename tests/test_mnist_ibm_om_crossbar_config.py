@@ -28,6 +28,45 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIRECTORY = (
     ROOT / "examples" / "mnist_analog_relu" / "ibm_om_onchip_importance"
 )
+NATIVE_NOMAP_CONFIG_DIRECTORY = (
+    ROOT / "examples" / "mnist_analog_relu" / "ibm_om_crossbar_native_nomap"
+)
+NATIVE_NOMAP_RECOVERY_10EP_CONFIG_DIRECTORY = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_crossbar_native_nomap_recovery_10ep"
+)
+NATIVE_NOMAP_RECOVERY_10EP_CUDA_CONFIG_DIRECTORY = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_crossbar_native_nomap_recovery_10ep_cuda"
+)
+FROM_SCRATCH_CUDA_CONFIG_DIRECTORY = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_crossbar_from_scratch_cuda"
+)
+FROM_SCRATCH_ADAM_LR1E3_CUDA_CONFIG_DIRECTORY = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_crossbar_from_scratch_adam_lr1e3_cuda"
+)
+FROM_SCRATCH_ADAM_LR3E3_CUDA_CONFIG_DIRECTORY = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_crossbar_from_scratch_adam_lr3e3_cuda"
+)
+ADAM_CAP_SWEEP_CUDA_CONFIG_DIRECTORY = (
+    ROOT
+    / "examples"
+    / "mnist_analog_relu"
+    / "ibm_om_crossbar_adam_cap_sweep_cuda"
+)
 STUDY_PATH = (
     ROOT
     / "studies"
@@ -62,6 +101,41 @@ LONG_HWA_CROSS_DEFECT_STUDY_PATH = (
     ROOT
     / "studies"
     / "mnist-ibm-om-crossbar-long-hwa-cross-defect-transfer-20260901-v1.json"
+)
+NATIVE_NOMAP_REPEAT_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-native-nomap-repeat-20260903-v1.json"
+)
+NATIVE_NOMAP_RECOVERY_10EP_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-native-nomap-recovery-10ep-20260904-v1.json"
+)
+NATIVE_NOMAP_RECOVERY_10EP_CUDA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-native-nomap-recovery-10ep-cuda-20260904-v1.json"
+)
+FROM_SCRATCH_CUDA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-from-scratch-adam-tiki-taka-cuda-20260904-v1.json"
+)
+ADAM_CAP_SWEEP_CUDA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-adam-cap-sweep-cuda-20260904-v1.json"
+)
+FROM_SCRATCH_ADAM_LR1E3_CUDA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-from-scratch-adam-lr1e3-cuda-20260904-v1.json"
+)
+FROM_SCRATCH_ADAM_LR3E3_CUDA_STUDY_PATH = (
+    ROOT
+    / "studies"
+    / "mnist-ibm-om-crossbar-from-scratch-adam-lr3e3-cuda-20260904-v1.json"
 )
 RUNTIME_MODULE = "experiments.mnist_analog_relu.runtime"
 
@@ -155,6 +229,346 @@ def test_coordinate_matched_recovery_contract_is_frozen() -> None:
     assert spec.offchip.checkpoint_policy == "fixed_final_epoch_no_selection"
     assert spec.evaluation.selection_metric == "fixed_final_epoch_no_selection"
     assert spec.device.bound_policy == "winsorize_raw_active_a_to_unit_interval"
+
+
+def test_aihwkit_default_no_mapping_contract_is_accepted() -> None:
+    payload = _payload("native_frozen.json")
+    payload["mapping"] = {
+        "weight_scaling_omega": [0.0, 0.0],
+        "scaling_policy": "aihwkit_default_no_weight_scaling_direct_q",
+        "out_of_bounds_policy": "retain_request_and_report_endpoint_saturation",
+        "codebook_tie_rule": "lowest_pulse_index",
+    }
+
+    spec = resolve_crossbar_spec(parse_crossbar_config(payload), RunMode.TRAIN)
+
+    assert spec.mapping.weight_scaling_omega == (0.0, 0.0)
+    assert spec.mapping.scaling_policy == "aihwkit_default_no_weight_scaling_direct_q"
+    assert spec.device.bound_policy == "native_sampled_bounds"
+
+
+def test_from_scratch_cuda_configs_freeze_a_matched_random_start() -> None:
+    config_paths = sorted(FROM_SCRATCH_CUDA_CONFIG_DIRECTORY.glob("*.json"))
+    plan = load_study_plan(FROM_SCRATCH_CUDA_STUDY_PATH)
+    planned_paths = {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    }
+
+    assert len(config_paths) == 2
+    assert planned_paths == set(config_paths)
+    specs = []
+    for path in config_paths:
+        _, spec = resolve_experiment_config(path, RunMode.TRAIN)
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.runtime.device == "cuda"
+        assert spec.source.initialization == (
+            "aihwkit_analog_linear_default_kaiming_uniform"
+        )
+        assert spec.source.initialization_seed == 42
+        assert spec.mapping.weight_scaling_omega == (0.0, 0.0)
+        assert spec.mapping.scaling_policy == (
+            "aihwkit_default_no_weight_scaling_direct_q"
+        )
+        assert spec.device.bound_policy == "native_sampled_bounds"
+        assert spec.device.endpoint_seeds == (89402,)
+        assert spec.offchip.policy == "none"
+        assert spec.offchip.epochs == 0
+        assert spec.recovery.epochs == 10
+        assert spec.recovery.maximum_batches == 3_438
+        specs.append(spec)
+
+    assert specs[0].source == specs[1].source
+    assert specs[0].device == specs[1].device
+    assert specs[0].mapping == specs[1].mapping
+    assert specs[0].offchip == specs[1].offchip
+    assert specs[0].runtime == specs[1].runtime
+    assert specs[0].data == specs[1].data
+    tiki_taka = next(
+        spec for spec in specs if spec.recovery.policy == "supervised_ce_tiki_taka_v1"
+    )
+    assert tiki_taka.recovery.tiki_taka.fast_endpoint_seeds == (98402,)
+    assert tiki_taka.recovery.tiki_taka.fast_corruption_policy == "published"
+
+
+def test_from_scratch_source_requires_the_frozen_seed() -> None:
+    payload = json.loads(
+        (
+            FROM_SCRATCH_CUDA_CONFIG_DIRECTORY
+            / "supervised_ce_pulse_adam_10ep.json"
+        ).read_text(encoding="utf-8")
+    )
+    payload["source"]["initialization_seed"] = 41
+
+    with pytest.raises(ValueError, match="from-scratch seed 42"):
+        parse_crossbar_config(payload)
+
+
+def test_from_scratch_adam_lr1e3_changes_only_learning_rate() -> None:
+    predecessor_path = (
+        FROM_SCRATCH_CUDA_CONFIG_DIRECTORY
+        / "supervised_ce_pulse_adam_10ep.json"
+    )
+    successor_path = (
+        FROM_SCRATCH_ADAM_LR1E3_CUDA_CONFIG_DIRECTORY
+        / "supervised_ce_pulse_adam_lr1e3_10ep.json"
+    )
+    plan = load_study_plan(FROM_SCRATCH_ADAM_LR1E3_CUDA_STUDY_PATH)
+
+    assert {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    } == {successor_path}
+    predecessor = json.loads(predecessor_path.read_text(encoding="utf-8"))
+    successor = json.loads(successor_path.read_text(encoding="utf-8"))
+    assert predecessor["recovery"]["learning_rates_q"] == [6e-5, 6e-5]
+    assert successor["recovery"]["learning_rates_q"] == [1e-3, 1e-3]
+    successor["recovery"]["learning_rates_q"] = predecessor["recovery"][
+        "learning_rates_q"
+    ]
+    assert successor == predecessor
+
+    _, spec = resolve_experiment_config(successor_path, RunMode.TRAIN)
+    assert isinstance(spec, CrossbarTrainSpec)
+    assert spec.runtime.device == "cuda"
+    assert spec.model.dims == (784, 50, 10)
+    assert spec.recovery.epochs == 10
+    assert spec.recovery.learning_rates_q == (1e-3, 1e-3)
+    assert spec.recovery.pulse_cap_per_cell == 64
+
+
+def test_from_scratch_adam_lr3e3_changes_only_learning_rate() -> None:
+    predecessor_path = (
+        FROM_SCRATCH_ADAM_LR1E3_CUDA_CONFIG_DIRECTORY
+        / "supervised_ce_pulse_adam_lr1e3_10ep.json"
+    )
+    successor_path = (
+        FROM_SCRATCH_ADAM_LR3E3_CUDA_CONFIG_DIRECTORY
+        / "supervised_ce_pulse_adam_lr3e3_10ep.json"
+    )
+    plan = load_study_plan(FROM_SCRATCH_ADAM_LR3E3_CUDA_STUDY_PATH)
+
+    assert {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    } == {successor_path}
+    predecessor = json.loads(predecessor_path.read_text(encoding="utf-8"))
+    successor = json.loads(successor_path.read_text(encoding="utf-8"))
+    assert predecessor["recovery"]["learning_rates_q"] == [1e-3, 1e-3]
+    assert successor["recovery"]["learning_rates_q"] == [3e-3, 3e-3]
+    successor["recovery"]["learning_rates_q"] = predecessor["recovery"][
+        "learning_rates_q"
+    ]
+    assert successor == predecessor
+
+    _, spec = resolve_experiment_config(successor_path, RunMode.TRAIN)
+    assert isinstance(spec, CrossbarTrainSpec)
+    assert spec.runtime.device == "cuda"
+    assert spec.model.dims == (784, 50, 10)
+    assert spec.recovery.epochs == 10
+    assert spec.recovery.learning_rates_q == (3e-3, 3e-3)
+    assert spec.recovery.pulse_cap_per_cell == 64
+
+
+def test_from_scratch_adam_cap_sweep_changes_only_the_lifetime_cap() -> None:
+    baselines = {
+        "lr1e3": (
+            FROM_SCRATCH_ADAM_LR1E3_CUDA_CONFIG_DIRECTORY
+            / "supervised_ce_pulse_adam_lr1e3_10ep.json"
+        ),
+        "lr3e3": (
+            FROM_SCRATCH_ADAM_LR3E3_CUDA_CONFIG_DIRECTORY
+            / "supervised_ce_pulse_adam_lr3e3_10ep.json"
+        ),
+    }
+    expected = {
+        "supervised_ce_pulse_adam_lr1e3_cap128_10ep.json": ("lr1e3", 128),
+        "supervised_ce_pulse_adam_lr1e3_uncapped_10ep.json": ("lr1e3", None),
+        "supervised_ce_pulse_adam_lr3e3_cap128_10ep.json": ("lr3e3", 128),
+        "supervised_ce_pulse_adam_lr3e3_uncapped_10ep.json": ("lr3e3", None),
+    }
+    plan = load_study_plan(ADAM_CAP_SWEEP_CUDA_STUDY_PATH)
+    planned_paths = {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    }
+    successor_paths = set(ADAM_CAP_SWEEP_CUDA_CONFIG_DIRECTORY.glob("*.json"))
+
+    assert planned_paths == successor_paths
+    assert set(path.name for path in successor_paths) == set(expected)
+    for successor_path in successor_paths:
+        baseline_key, cap = expected[successor_path.name]
+        baseline = json.loads(baselines[baseline_key].read_text(encoding="utf-8"))
+        successor = json.loads(successor_path.read_text(encoding="utf-8"))
+        assert baseline["recovery"]["pulse_cap_per_cell"] == 64
+        assert successor["recovery"]["pulse_cap_per_cell"] == cap
+        successor["recovery"]["pulse_cap_per_cell"] = 64
+        assert successor == baseline
+
+        _, spec = resolve_experiment_config(successor_path, RunMode.TRAIN)
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.runtime.device == "cuda"
+        assert spec.model.dims == (784, 50, 10)
+        assert spec.recovery.epochs == 10
+        assert spec.recovery.maximum_batches == 3_438
+        assert spec.recovery.pulse_cap_per_cell == cap
+
+
+def test_native_nomap_repeat_configs_change_only_the_requested_interventions() -> None:
+    successor_paths = sorted(NATIVE_NOMAP_CONFIG_DIRECTORY.glob("*.json"))
+    plan = load_study_plan(NATIVE_NOMAP_REPEAT_STUDY_PATH)
+    planned_paths = {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    }
+
+    assert len(successor_paths) == 28
+    assert len(plan["arms"]) == 28
+    assert planned_paths == set(successor_paths)
+
+    for successor_path in successor_paths:
+        predecessor_name = successor_path.name
+        if predecessor_name.startswith("smoke_published_defects_native_nomap_"):
+            predecessor_name = predecessor_name.replace(
+                "smoke_published_defects_native_nomap_",
+                "smoke_published_defects_matched_winsorized_",
+                1,
+            )
+        elif predecessor_name.startswith("smoke_native_nomap_"):
+            predecessor_name = predecessor_name.replace(
+                "smoke_native_nomap_",
+                "smoke_matched_winsorized_",
+                1,
+            )
+        else:
+            predecessor_name = predecessor_name.replace("_native_nomap.json", ".json")
+
+        predecessor = json.loads(
+            (CONFIG_DIRECTORY / predecessor_name).read_text(encoding="utf-8")
+        )
+        successor = json.loads(successor_path.read_text(encoding="utf-8"))
+        assert successor["device"]["bound_policy"] == "native_sampled_bounds"
+        assert successor["mapping"]["weight_scaling_omega"] == [0.0, 0.0]
+        assert (
+            successor["mapping"]["scaling_policy"]
+            == "aihwkit_default_no_weight_scaling_direct_q"
+        )
+
+        successor["device"]["bound_policy"] = predecessor["device"]["bound_policy"]
+        successor["mapping"]["weight_scaling_omega"] = predecessor["mapping"][
+            "weight_scaling_omega"
+        ]
+        successor["mapping"]["scaling_policy"] = predecessor["mapping"][
+            "scaling_policy"
+        ]
+        assert successor == predecessor
+
+
+def test_native_nomap_ten_epoch_recovery_changes_only_the_epoch_budget() -> None:
+    predecessor_names = {
+        "supervised_ce_stochastic_pulse_sgd_ten_epoch_native_nomap.json":
+            "supervised_ce_stochastic_pulse_sgd_full_epoch_native_nomap.json",
+        "supervised_ce_pulse_adam_ten_epoch_native_nomap.json":
+            "smoke_supervised_ce_retraining_full_epoch_native_nomap.json",
+        "supervised_ce_tiki_taka_v1_repaired_fast_ten_epoch_native_nomap.json":
+            "supervised_ce_tiki_taka_v1_repaired_fast_full_epoch_native_nomap.json",
+        "supervised_ce_tiki_taka_v1_published_fast_ten_epoch_native_nomap.json":
+            "supervised_ce_tiki_taka_v1_published_fast_full_epoch_native_nomap.json",
+    }
+    successor_paths = sorted(
+        NATIVE_NOMAP_RECOVERY_10EP_CONFIG_DIRECTORY.glob("*.json")
+    )
+    plan = load_study_plan(NATIVE_NOMAP_RECOVERY_10EP_STUDY_PATH)
+    planned_paths = {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    }
+
+    assert len(successor_paths) == 4
+    assert len(plan["arms"]) == 4
+    assert planned_paths == set(successor_paths)
+    assert set(predecessor_names) == {path.name for path in successor_paths}
+
+    for successor_path in successor_paths:
+        predecessor = json.loads(
+            (
+                NATIVE_NOMAP_CONFIG_DIRECTORY
+                / predecessor_names[successor_path.name]
+            ).read_text(encoding="utf-8")
+        )
+        successor = json.loads(successor_path.read_text(encoding="utf-8"))
+
+        assert predecessor["recovery"]["epochs"] == 1
+        assert successor["recovery"]["epochs"] == 10
+        successor["recovery"]["epochs"] = 1
+        assert successor == predecessor
+
+        _, spec = resolve_experiment_config(successor_path, RunMode.TRAIN)
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.recovery.epochs == 10
+        assert spec.recovery.maximum_batches == 3_438
+        assert spec.mapping.weight_scaling_omega == (0.0, 0.0)
+
+
+def test_native_nomap_ten_epoch_cuda_configs_change_only_runtime_device() -> None:
+    cuda_paths = sorted(
+        NATIVE_NOMAP_RECOVERY_10EP_CUDA_CONFIG_DIRECTORY.glob("*.json")
+    )
+    plan = load_study_plan(NATIVE_NOMAP_RECOVERY_10EP_CUDA_STUDY_PATH)
+    planned_paths = {
+        Path(config["resolved_path"])
+        for arm in plan["arms"]
+        for config in arm["configs"]
+    }
+
+    assert len(cuda_paths) == 4
+    assert len(plan["arms"]) == 4
+    assert planned_paths == set(cuda_paths)
+
+    for cuda_path in cuda_paths:
+        cpu = json.loads(
+            (NATIVE_NOMAP_RECOVERY_10EP_CONFIG_DIRECTORY / cuda_path.name).read_text(
+                encoding="utf-8"
+            )
+        )
+        cuda = json.loads(cuda_path.read_text(encoding="utf-8"))
+
+        assert cpu["runtime"]["device"] == "cpu"
+        assert cuda["runtime"]["device"] == "cuda"
+        cuda["runtime"]["device"] = "cpu"
+        assert cuda == cpu
+
+        _, spec = resolve_experiment_config(cuda_path, RunMode.TRAIN)
+        assert isinstance(spec, CrossbarTrainSpec)
+        assert spec.runtime.device == "cuda"
+        assert spec.recovery.epochs == 10
+        assert spec.recovery.maximum_batches == 3_438
+        assert spec.device.bound_policy == "native_sampled_bounds"
+
+
+@pytest.mark.parametrize(
+    ("scaling_policy", "omega"),
+    [
+        ("one_shared_absmax_scale_per_logical_layer", [0.0, 0.0]),
+        ("aihwkit_default_no_weight_scaling_direct_q", [1.0, 1.0]),
+    ],
+)
+def test_mapping_policy_and_omega_must_agree(
+    scaling_policy: str,
+    omega: list[float],
+) -> None:
+    payload = _payload("native_frozen.json")
+    payload["mapping"]["scaling_policy"] = scaling_policy
+    payload["mapping"]["weight_scaling_omega"] = omega
+
+    with pytest.raises(ValueError, match="weight_scaling_omega"):
+        parse_crossbar_config(payload)
 
 
 def test_direct_frozen_control_has_no_optimizer_updates() -> None:
@@ -852,8 +1266,8 @@ def test_stochastic_pulse_recovery_allows_positive_declared_q_rates() -> None:
             "two positive numbers",
         ),
         (
-            lambda value: value["recovery"].__setitem__("epochs", 2),
-            "exactly one epoch",
+            lambda value: value["recovery"].__setitem__("epochs", 0),
+            "one or more epochs",
         ),
         (
             lambda value: value["data"].__setitem__("num_points", 32),
