@@ -1,0 +1,329 @@
+{
+  "arm_id": "conv3_ours_p90_sigma1em4_seed0",
+  "batch_state_policy": "reset_each_batch",
+  "beta": 0.0823243200175,
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "params": {
+        "affine_config": null,
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "num_workers": 0,
+        "pin_memory": false,
+        "root": "/home/filip/datasets/mnist",
+        "shuffle_seed": 0,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "eqprop": {
+    "amplification_factor": 64.0,
+    "beta_tier": "refined_per_matrix_cosine_only",
+    "current_scale": "auto",
+    "endpoint_read_noise_seed": 2026081601,
+    "endpoint_read_noise_std": 0.0001,
+    "injected_beta_B": 5.26875648112,
+    "input_read_noise": false,
+    "layer_noise_correlation": "independent",
+    "matched_standard_normal_draws_across_cases": true,
+    "noise_applied_after_equilibrium_before_local_energy_gradient": true,
+    "normalize_current_scale": true,
+    "nudging_mode": "current",
+    "phase_noise_correlation": "independent",
+    "variant": "centered"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "epoch_split": "validation",
+    "inclusion_rule": "Retain every scientific terminal outcome. A stable arm completes its full predeclared epoch budget with finite metrics and finishes less than 5.00 percentage points below its own best validation accuracy.",
+    "official_test": {
+      "policy": "disabled"
+    }
+  },
+  "handoff": {
+    "diagnostic_bias_ablation": {
+      "all_weight_learning_rates_unchanged": true,
+      "bias_initialization": "zero",
+      "dataset_variant": "ordinary_mnist_train_validation",
+      "freeze_method": "exact zero learning rate with ordinary post-step nonnegative projection",
+      "frozen_parameters_csv": "Bias_0,Bias_1,Bias_2",
+      "scientific_question": "Do baseline, ours, and legacy retain their ordinary-MNIST performance ordering when every hidden bias is frozen at zero?",
+      "source_config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/03_ours_adam_seed0.json"
+    },
+    "downstream_weight_contract_authorized_at": "2026-07-29",
+    "downstream_weight_contract_authorized_by": "Filip",
+    "entry_id": "conv3_ours_adam",
+    "id": "perfectdiode-conv3-unbounded-selected-lr-20260729-v1",
+    "path": "configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json",
+    "sha256": "47c88be060efbbff49708d3ed9ef94f38c0bc4955858e7f0ea9cf648aecc70bb",
+    "source_selection_weight_contract_exact_match": false
+  },
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 30,
+    "model_key": "mnist_bp_conv_amp"
+  },
+  "learning_rates_by_parameter": {
+    "Bias_0": 0.0,
+    "Bias_1": 0.0,
+    "Bias_2": 0.0,
+    "ConvWeight_0": 0.007802510895760823,
+    "ConvWeight_1": 0.0013830409123187907,
+    "ConvWeight_2": 0.000979562021138172,
+    "DenseWeight_0": 0.00032928176432380754
+  },
+  "log_interval": 500,
+  "lr": [
+    0.007802510895760823,
+    0.0013830409123187907,
+    0.000979562021138172,
+    0.00032928176432380754,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 360.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 8,
+    "num_iterations_training": 8,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 4.0,
+    "weight_init_mode": "kaiming_uniform",
+    "weight_max": 100.0,
+    "weight_min": 0.0
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 1
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          128,
+          7,
+          7
+        ],
+        [
+          256,
+          7,
+          7
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "amsgrad": false,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "capturable": false,
+    "differentiable": false,
+    "eps": 1e-08,
+    "foreach": false,
+    "fused": false,
+    "learning_rate": [
+      0.007802510895760823,
+      0.0013830409123187907,
+      0.000979562021138172,
+      0.00032928176432380754,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "lr_decay": 1.0,
+    "maximize": false,
+    "momentum": 0.0,
+    "name": "Adam",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0",
+    "Bias_0",
+    "Bias_1",
+    "Bias_2"
+  ],
+  "qualification_source": {
+    "source_config": "paper_ready_results/bundles/table2_wide_ep/conv3/ours/seed0/config.used.json",
+    "source_config_sha256": "62bc5b0ce91c97444cf5cd664e6e5c95e27be99c1ade5ab1f17530704006aa55",
+    "calibration_report": "paper_ready_results/beta_refinement_20260919.md",
+    "rule": "every weight matrix cosine strictly > threshold on all72 replays; no norm gate",
+    "T_K_policy": "unchanged accepted training operating point; Conv3 residual caveat retained",
+    "gradient_gate_override": "user_authorized_p90_read_noise_followup_after_clean_stability",
+    "previous_injected_beta": 3.0,
+    "paper_ready": false,
+    "refined_selection": {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "threshold": "0.9",
+      "previous_beta": "3.0",
+      "beta": "5.26875648112",
+      "multiplier": "1.7562521603733332",
+      "minimum_cosine": "0.9003483459817969",
+      "maximum_norm_mismatch": "0.41160723434892454",
+      "limiting_matrix": "ConvWeight_0",
+      "limiting_checkpoint": "reconstructed_initialization",
+      "limiting_batch": "2",
+      "next_failing_beta": "5.50202425923",
+      "bracket_width": "0.04427378242776814",
+      "open_upper_edge": "False"
+    }
+  },
+  "reporting": {
+    "arm_id": "conv3_ours_p90_sigma1em4_seed0",
+    "evidence_class": "ordinary_mnist_eqprop_read_noise_training_diagnostic",
+    "evidence_tier": "diagnostic",
+    "paper_facing": false,
+    "study_id": "eqprop-conv3-p90-read-noise-20260919-v1"
+  },
+  "runtime_dtype": "float64",
+  "schema_version": "mnist-conv-zero-bias-adam-eqprop-exact-run/v1",
+  "seed": 0,
+  "study_id": "eqprop-conv3-p90-read-noise-20260919-v1",
+  "training_algorithm": "EP",
+  "init_checkpoint_path": "assets/conv3_seed0.pt",
+  "initialization": {
+    "checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+    "recipe": "wide_kaiming",
+    "seed": 0,
+    "optimizer_state": "fresh"
+  },
+  "stability_pilot": {
+    "architecture": "conv3",
+    "scheme": "ours",
+    "finite_every_step": true,
+    "gradient_trace_samples_per_epoch": 8,
+    "stable_final_drop_strictly_less_than_pp": 5,
+    "minimum_accuracy_gate": null,
+    "read_noise_std": 0.0001,
+    "max_runtime_hours": 16,
+    "interpretation": "Full30-epoch single-seed read-noise diagnostic; retain failures; no official-test or multiseed qualification.",
+    "cosine_only_thresholds": [
+      0.9
+    ]
+  },
+  "read_noise_study": {
+    "architecture": "conv3",
+    "scheme": "ours",
+    "sigma": 0.0001,
+    "model_seed": 0,
+    "noise_seed": 2026081601,
+    "clean_reference_case": "conv3_ours_p90_sigma0_seed0",
+    "clean_reference_kind": "new_RTX5090_matched_beta_control",
+    "qualification_clean_bundle": "results/eqprop-conv3-refined-beta-training-20260919-v1/jz/retry-v2/task_5/runs/000_conv3_ours_cos90_seed0_612bec9a",
+    "parent_config": "configs/conv/eqprop_conv3_refined_beta_training_20260919_v1/conv3_ours_cos90_seed0.json",
+    "parent_config_sha256": "612bec9a36cb5d1f31455c519f8dda8d97a9cb1e631990b4f7b8e4b769b05fd2",
+    "noise_stream_matching_policy": "same RTX5090/PyTorch/CUDA contract across recorded hosts, fixed seed; audit implementation and counts; no cross-GPU-class identity assumption",
+    "official_test_read": false,
+    "epochs": 30
+  }
+}

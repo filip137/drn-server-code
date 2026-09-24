@@ -1,0 +1,6 @@
+conv3_baseline_p95_sigma5em4_seed0.json
+conv3_ours_p95_sigma5em4_seed0.json
+conv3_legacy_p95_sigma5em4_seed0.json
+conv3_baseline_p95_sigma0_seed0.json
+conv3_ours_p95_sigma0_seed0.json
+conv3_legacy_p95_sigma0_seed0.json
