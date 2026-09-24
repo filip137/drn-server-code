@@ -1,0 +1,7 @@
+scheme,beta,base_beta,sigma,state,epochs_completed,final_validation_pct,best_validation_pct,clean_relative_drop_pp,best_to_final_drop_pp,passes_final_drop_screen,max_running_best_drawdown_pp,latest_validation_pct,best_observed_validation_pct,failure_kind,failure_epoch,failure_batch,failure_detail,bundle
+baseline,147.682614594,147.682614594,0.001,pending,0,,,,,,,,,,,,,
+ours,2.49274796756,0.038949186993125,0.001,pending,0,,,,,,,,,,,,,
+legacy,2.81845428732,0.0006880991912402343,0.001,pending,0,,,,,,,,,,,,,
+baseline,147.682614594,147.682614594,0.0,pending,0,,,,,,,,,,,,,
+ours,2.49274796756,0.038949186993125,0.0,pending,0,,,,,,,,,,,,,
+legacy,2.81845428732,0.0006880991912402343,0.0,pending,0,,,,,,,,,,,,,

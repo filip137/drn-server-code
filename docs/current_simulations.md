@@ -1,6 +1,6 @@
 # Current Simulations
 
-Updated: 2026-09-11
+Updated: 2026-09-23
 
 The Active section is generated from local `results/**/status.json` files.
 Maintain the persistent directory index and other sections manually. Every
@@ -11,6 +11,74 @@ and superseded directories. Scientific conclusions belong in
 direction belongs in [`current_state.md`](current_state.md). State definitions
 and the `ready-for-review` gate are in
 [`experiment_reporting.md`](experiment_reporting.md#simulation-dashboard-and-result-directory-index).
+
+## Current focus: choosing beta for read-noise runs
+
+Recorded September 22, 2026. **The open question is how to choose a beta
+that gives useful learning and remains stable over the intended noisy
+training run. Initialization gradient matching alone does not settle this.**
+
+**September 22: matching initial output displacement.** Direct replay at
+injected beta baseline `88.7`, ours `1.385`, legacy `.02173` gives pooled
+output `RMS(v_plus-v_free)` of `1.000301`, `.999812`, `.999881`: all within
+`.031%` of one over the same576 validation examples. This verifies the
+output-response choice at initialization; noisy-training stability remains
+a separate question. [Measured results and validation](../results/eqprop-conv3-output-rms1-init-20260922-v1/analysis/report.md).
+
+Historically, Filip selected beta to meet the p99 EP–BPTT gradient-matching
+criterion at initialization. This often gave good training results. Here
+p99, p95 and p90 denote cosine thresholds .99, .95 and .90, not percentiles
+or probabilities of stable training. The recent calibration additionally
+checks every weight matrix on 36 batches at initialization and 36 at a saved
+BPTT checkpoint; even that extended check samples only reference states.
+
+The observations motivating the current work are:
+
+- **Depth changes the useful beta range.** Deeper networks can learn with
+  substantially larger beta, including candidates admitted by the looser
+  p90 criterion. Conv3's three p90 choices completed thirty clean epochs.
+  Thus p99 can be conservative for training, and the largest beta passing
+  a gradient check is not necessarily the largest stable training beta.
+- **Initial agreement can miss later divergence.** In single-hidden-layer
+  networks, a beta that looks acceptable at initialization can become
+  unstable as training changes the weights. Historical Conv1 candidates
+  failed while smaller-beta controls trained successfully; those older
+  settings differ from the current contract, so they do not establish its
+  stability boundary. See the [beta stability record](beta_study.md).
+- **Clean or weaker-noise success can miss stronger-noise failure.** A
+  fixed beta may train well before failing at larger read-noise amplitude.
+  The relevant failure is divergence of the training trajectory at that
+  beta; beta itself remains fixed. Clean gradient fidelity, numerical
+  nondivergence and validation performance must be reported separately.
+
+Recent evidence makes the noise dependence concrete. With Conv3 p90 beta
+at sigma `1e-3`, baseline completed thirty epochs, while legacy and ours
+became nonfinite in epochs 8 and 18
+([results](../paper_ready_results/conv3_p90_read_noise_1em3_20260920.md)).
+Tightening to p95 has not established a generally safe choice: at sigma
+`5e-4`, baseline and ours completed thirty epochs but legacy failed in
+epoch 28 ([September 22 status and local evidence](../results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/status-update-20260922.md)).
+At sigma `1e-3`, p95 ours failed in epoch 18; baseline and legacy were
+stopped early, so their full-horizon stability remains unknown. These are
+single-seed observations; the detailed study states are retained below.
+
+The [provisional selection direction](eqprop_beta_stability_protocol_20260921.md)
+is to find the largest **tested** stable beta under fixed training
+conditions, using gradient matching to nominate and characterize candidates.
+The rough Conv1 p99/10, Conv2 p99 and Conv3 p95 guide remains a hypothesis;
+the newer noisy failures prevent treating it as a settled rule. Smaller beta
+can improve clean gradient fidelity while reducing the phase signal relative
+to read noise, so reducing beta is not automatically a solution for noisy
+learning ([initialization replay](../paper_ready_results/conv3_init_beta_noise_20260921.md)).
+
+The remaining scientific choice is whether beta is selected for clean
+stability, with noisy failures reported as robustness outcomes, or must
+remain stable across a declared read-noise range. The latter requires
+qualification under those noise conditions over the full training horizon,
+with seeds, optimizer/LRs, T/K and the validation criterion fixed. A short
+pilot or initialization check cannot establish that qualification. Selection
+uses training/validation data; official-test results remain outside this
+decision. See the [selection assessment and evidence limits](../paper_ready_results/beta_selection_protocol_assessment_20260919.md).
 
 ## Physical-KCL rerun closeout
 
@@ -39,12 +107,543 @@ and [worktree retirement record](result_relocations/20260911-worktree-retirement
 | Run | Arm | Progress | Target | Updated | Status file |
 |---|---|---|---|---|---|
 | `044_rc_0p000111111111111_rd_0p00037037037037` | `adam-rho-0.000111111-0.00037037` | starting | `main` | `2026-07-29T18:00:44.837178+00:00` | `results/perfectdiode-conv12-bounded-rho-baseline-ours-tk46-seed0-v1/recovery/bounded_uniform__conv1__ours__adam_pre_clean_restart_20260729T2002/rho/cells/044_rc_0p000111111111111_rd_0p00037037037037/status.json` |
+
+### `runs`
+
+| Run | Arm | Progress | Target | Updated | Status file |
+|---|---|---|---|---|---|
+| `000_conv3_baseline_p95_sigma1em3_seed0_faaf4741` | `conv3_baseline_p95_sigma1em3_seed0` | training epoch 23/30 | `jean-zay` | `2026-09-21T15:04:21.689701+00:00` | `results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/.incoming/stopped-production/shards/jean-zay/task_0/runs/000_conv3_baseline_p95_sigma1em3_seed0_faaf4741/status.json` |
+| `000_conv3_legacy_p95_sigma1em3_seed0_bc831159` | `conv3_legacy_p95_sigma1em3_seed0` | training epoch 25/30 | `jean-zay` | `2026-09-21T15:04:11.231174+00:00` | `results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/.incoming/stopped-production/shards/jean-zay/task_2/runs/000_conv3_legacy_p95_sigma1em3_seed0_bc831159/status.json` |
+| `000_conv3_ours_B0p3_sigma5em4_seed0_1371a1db` | `conv3_ours_B0p3_sigma5em4_seed0` | training epoch 9/10 | `trex` | `2026-09-22T23:31:37.507089+00:00` | `results/eqprop-conv3-beta-sweep-5em4-10ep-20260922-v2/collected/trex/conv3_ours_B0p3_sigma5em4_seed0/runs/000_conv3_ours_B0p3_sigma5em4_seed0_1371a1db/status.json` |
 <!-- END GENERATED ACTIVE RUNS -->
 
 The generated entry above is an orphaned pre-clean recovery record: it has
 remained at `starting` since 2026-07-29, has no `result.json`, and is not part
 of the recent reviewed studies. Its raw terminal state still needs separate
 reconciliation.
+
+## Paper completion campaign
+
+**Evening review, September 14, 23:19 CEST:** the last admitted clean pilot
+has finished and is now collected and validated. Current coverage is
+**202/216, with 14 unstarted trainings remaining**; Conv3 baseline full-pilot
+coverage is **1/3**. Loulou's tight-ceiling seed-0 EqProp result is
+**77.68/77.68%** best/final validation, matching BPTT, with identical full
+30-epoch split/order records. Both exit receipts are zero and its reservation
+is settled at **6.6025 GPU-hours**. No clean follow-up was launched; admissions
+remain paused. The ledger now has **269.300605 settled + 1 reserved =
+270.300605/300 GPU-hours committed**, including the completed beta audit.
+See the [paper experimental review](paper_experimental_review_20260914.md),
+[updated backlog](../paper_ready_results/current_contract_remaining_runs.md),
+and [pilot check](../paper_ready_results/baseline_tk_revision/conv3_seed0_tight_pair_check_20260914.json).
+There are 220 preserved full-training bundles, including the 18 superseded
+native-T/K baselines; official-test evaluations remain zero. Separate beta
+and overnight noise work retain their own records and authorization.
+
+**September 14 evening: the separate [baseline beta audit](eqprop_baseline_beta_audit_20260914.md)
+is complete.** All 15 required replay cases validate; Conv2 beta 100 is
+numerically confirmed, Conv1 beta 300 fails seed-2 confirmation, and Conv3
+has no passing candidate among 100/200/300. Audit cost is .279801 GPU-hours,
+already included in the reconciled total above. Training remains paused.
+
+### Earlier afternoon campaign snapshot
+
+The host states, counts, and reservations below retain their original check
+timestamps and are superseded by the evening collection above.
+
+**New admissions are paused for Filip's review.** Main completed at **13:15:08 CEST** and is idle; its next seed-2 case was not launched. The stated default is to let the one remaining single-case worker on Loulou finish and stop at its current run boundary. Do not admit, launch or resume further work automatically. The budget/placement extension remains unapproved and is deferred to the review.
+
+[Accuracy agreement analysis](../paper_ready_results/results_agreement_20260914.md) · [Review of completed and remaining work](../paper_ready_results/review_20260914.md) · [Remaining runs](../paper_ready_results/current_contract_remaining_runs.md) · [Validation tables](../paper_ready_results/current_contract_validation_tables.md)
+
+The revised contract has **201/216 collected and validated training results; 15 remain**. All 198 original bundles are preserved; 21 revised bundles bring the preserved total to **219**, including 18 native-T/K BPTT baselines retained as earlier evidence. There are **64/72 complete three-seed conditions**. Official MNIST test evaluations remain zero.
+
+| Target | Current state | Last verified progress | Reservation / expected finish |
+|---|---|---|---|
+| Local/Main RTX 3090 | Idle after Conv3 baseline BPTT seed 1/Gmax 1e-3, T24/K8, source v9 | Collected 30/30 epochs; **89.58/89.58%** best/final validation. Worker and supervisor exited zero; GPU worker absent. | Three-hour reservation settled at **2.166111 GPU-hours**; no next case admitted |
+| Akib RTX 3080 | Idle after Conv2 baseline EqProp seed 1/Gmax 5e-4 | Collected 30/30 epochs at 14:15:59 CEST; **91.50/91.50%** best/final validation. Both exits zero, GPU worker absent; matched BPTT best 91.52%. | Eight-hour reservation settled at **2.243056 GPU-hours**; no follow-up launched |
+| Nom-cool-1 RTX 3090 | Idle after Conv2 baseline EqProp seed 2/Gmax 1e-4 | Collected 30/30 epochs at 14:20:26 CEST; **85.22/85.22%** best/final validation. Both exits zero, GPU worker absent; matched BPTT best 85.24%. | Eight-hour reservation settled at **2.120000 GPU-hours**; no follow-up launched |
+| Loulou RTX 5090 | Finishing first Conv3 baseline EqProp pilot, seed 0/Gmax 1e-4, beta .1, T24/K8, source v11 | 11/30 epochs complete at 14:23 CEST; supervisor 1107229, worker 1107238, GPU 1107255 | 8 GPU-hours; expected around 18:30 CEST, then stop |
+
+Remaining coverage is **Conv2 EqProp: 3 runs; Conv3 BPTT: 3; Conv3 EqProp: 9**. One is running and fourteen are unstarted. All three Main seed-1 BPTT ceilings are collected; all three seed-2 ceilings remain unstarted.
+
+**Conv2 EqProp's numerical and full-pilot gates pass** at beta .1, T12/K6. All three full seed-0 pilots and three repetitions are collected. The tight ceiling now has all three seeds: BPTT 85.393 ± .142% versus EqProp 85.333 ± .103% best validation. The newly collected middle seed-1 and tight seed-2 repetitions are each .02 pp below matched BPTT; their full 30-epoch cohort/order checks pass. All nine revised Conv2 BPTT runs are collected. [Matched-cohort audit](../paper_ready_results/baseline_tk_revision/conv2_matched_cohort_check.json).
+
+**Conv3 numerical qualification passes** at beta .1, T24/K8, but full EqProp pilot coverage is still 0/3. Loulou's current case is the first pilot; two additional seed-0 ceilings and all six repetitions remain unstarted. Repetitions require three stable full pilots and a new frozen guard. Source v11 (7b67ca41, 712 inputs) remains unchanged. [Numerical gate](../paper_ready_results/baseline_tk_revision/beta_qualification.md) · [Full-pilot record](../paper_ready_results/baseline_tk_revision/pilot_stability.md).
+
+Both original bounded Conv3 EqProp waves are fully collected and validated. Loulou's three ours cases settled 12.389722 GPU-hours and Nom's two legacy cases settled 12.382778, with successful worker/supervisor receipts and identical local/remote checksums. The complete three-seed BPTT–EqProp comparisons have maximum paired best-validation differences of .66 pp for ours and .18 pp for legacy; no seed is excluded. [Ours](../paper_ready_results/bounded_conv3_ours_three_seed_validation.md) · [Legacy](../paper_ready_results/bounded_conv3_legacy_three_seed_validation.md).
+
+Settled compute is **262.418304 GPU-hours**, with **9 reserved: 271.418304/300 committed**. The reservations cover the one active eight-hour case and the existing one-hour checks allowance. Retain them until terminal collection and accounting. The full-training forecast is about 335.6 hours at current placement, or 348.3 hours under the unapproved faster plan. The Nom runtime diagnostic projects 9.788 hours per Conv3 EqProp case, exceeding its current eight-hour cap. The proposed 375-hour campaign cap, twelve-hour Nom case limit and split pilot placement remain deferred to review. [Proposal](paper_training_parallel_acceleration_proposal_20260914.md).
+
+Jean Zay is authorized for at most **four concurrent campaign GPUs**, but SSH checks through 12:11 CEST timed out; the last scheduler record lists maintenance through **September 16, 18:00 CEST**. No new job is submitted or reserved. The prepared seed-0 array is superseded by the already-started Loulou group. Do not submit it or any other prepared follow-up during the pause. Loulou remains the sole weekday campaign RTX 5090. The tested two-EqProp packing achieved only .775x aggregate throughput.
+
+Last full host check was **14:23:38 CEST**. Main, Akib and Nom are idle with successful terminal receipts; Loulou shows GPU activity and advancing artifacts without detected errors. Monitoring is handed back for the requested review; no automatic continuation is scheduled.
+
+Historical bookkeeping exception: the three Main seed-0 BPTT bundles and worker exit-zero receipt validate, but the old supervisor finish/exit receipt is missing. Its exit code remains unknown; the reservation was conservatively settled at 6.438082 GPU-hours through verified process absence. Preserve this exception and the recovered transfer/approval-service records.
+
+### Earlier admission and collection history
+
+JZ seed-2 admission at 09:58 CEST September 13: the three exact-config
+synchronous local CPU smokes and their semantic validation pass. The exact
+three-case eight-hour scheduler request passes test-only; no other campaign
+array is active. A full 24-hour reservation raises commitment to
+245.708889/300. Submit the already planned `jz_bounded_conv3_legacy_ep_seed2`
+array now; retain pending reservations until authoritative terminal accounting.
+The source, configs, local command, execution records and validation are in
+`source-v7/`, `launch/jz_conv3_legacy_seed2_local_smokes.py` and
+`checks/bounded_conv3_legacy_seed2_smokes_20260913/`.
+
+Conv3 repetition placement update, September 13 09:45 CEST: JZ scheduler-only
+checks predict September 17 evening with both eight- and six-hour requests.
+No production job, CPU smoke or GPU reservation was submitted for that
+array; its eight-hour request remains unchanged. Move the complete unstarted
+bounded Conv3 EP seed-1/2 comparison groups to verified idle Trex. Legacy
+repetitions qualify now; ours still require all three pilots, and baseline
+stays scientifically held. Stage source v7 `b48c5a22` and run all six exact
+legacy GPU smokes. Admit only the first case initially, legacy seed 1 at
+Gmax=1e-4, with an eight-GPU-hour reservation and expected duration about
+four hours. List `launch/trex_bounded_conv3_legacy_seed1_gmax1em4.txt`;
+remote output `/home/filip/server_code/results/paper-training-completion-20260911-v1/production/trex_bounded_conv3_legacy_seed1_gmax1em4/`.
+Each extra Trex wave must fit its full eight-hour limit plus one hour before
+Monday 00:00 Paris, with cutoff `1789336800`. Stop new extra-GPU admissions
+when that margin no longer fits. Loulou remains primary; transfer primary
+use only after its wave is terminal so weekday concurrency never exceeds
+one campaign 5090. Science and matched initialization/cohorts remain unchanged.
+
+Admitted September 13 at 09:41 CEST: Main Conv2 ours seed 1, Nom seed 2
+and Loulou Conv3 ours seed-0 pilots each reserve 24 GPU-hours after all
+nine same-config GPU smokes pass and remote copies validate. Their full
+commitment is 213.708889/300 hours. Jean Zay remains planned, with its
+local six-case CPU smoke and 48-hour reservation still required before
+production. No extra campaign 5090 is used.
+
+September 13, 09:32 CEST: all overnight workers and all six tasks of JZ
+`2062259` exited successfully. Eleven new bundles are collected with exact
+remote/local checksums and validate locally; coverage is 177/216. Both
+Conv2 legacy repetition waves are stable, completing all three seeds. All
+three Conv2 ours pilots pass at injected beta .001 (maximum drop .12 pp),
+and all three Conv3 legacy pilots pass at injected beta .001 (zero drop).
+All four full reservations are now settled: Main 5.355278, Nom 4.987778,
+Loulou 15.927778 and JZ 14.414167 GPU-hours. Total settled is 140.708889,
+plus one check hour reserved: 141.708889/300 committed. No worker remained
+active at the check. The previous monitoring record is September 12 17:30
+CEST; terminal results provide overnight completion evidence.
+
+Planned September 13 wave, not yet admitted: Conv2 ours seeds 1/2 across
+three ceilings on Main/Nom respectively (24 GPU-hours each, about 5–6 hours
+per serial wave); Conv3 legacy seeds 1/2 across three ceilings on Jean Zay
+(six-case array `%4`, 48 GPU-hours, roughly 6–10 hours plus queue); and the
+three Conv3 ours seed-0 pilots on Loulou (24 GPU-hours, about 12–13 hours
+with exclusive GPU use). Source v7 `b48c5a22` adds the newly complete pilot
+proofs with unchanged training code/configs; Loulou's unchanged seed-0
+configs retain source v4 `2092876a`. Fresh smokes and live resource guards
+precede each launch. Proposed full commitment is 261.708889/300 hours.
+Loulou is the sole and primary campaign RTX 5090 for this next wave; no
+extra 5090 wave is admitted, including across the Monday boundary. Preserve
+its eight-hour per-case caps. The old extra-GPU wave and its cutoff are
+terminal. Campaign output paths are `production/main_bounded_conv2_ours_ep_seed1/`,
+`production/nomcool1_bounded_conv2_ours_ep_seed2/`,
+`production/jz_bounded_conv3_legacy_reps/task_*/`, and
+`production/loulou_bounded_conv3_ours_pilots/` on the recorded targets.
+
+Watchdog at 17:30 CEST: 166/216 collected. Conv2 ours middle-ceiling pilot
+passes full training with best/final validation 96.58/96.58%; its other two
+pilots continue at 28 and 4 epochs. Main/Nom legacy repetitions have
+completed 2/3 epochs with exclusive GPU use and live expected worker PIDs.
+Loulou has completed 14 epochs and retains its recovered 8m18s rate. Akib
+is idle; Trex remains occupied by unrelated work. Full commitment remains
+221.023889/300; no partial-wave settlement. Next full check due 18:00:34 CEST.
+
+Admitted at 17:20 CEST September 12: Main Conv2 legacy EP seed 1 and Nom
+seed 2 each hold 24 GPU-hours for their three ceilings. All six same-config
+GPU smokes pass canonical, finite float64, shared-initializer and zero-test
+checks; the remote smoke copy has exact checksums. Frozen source v6
+`c3fc6d53` contains twelve stable pilot records and changes only the pilot
+proof from v5. Full commitment is 221.023889/300 GPU-hours (100.023889
+settled, 121 reserved). Launch commands and output paths are the previously
+recorded `main_bounded_conv2_legacy_ep_seed1` and
+`nomcool1_bounded_conv2_legacy_ep_seed2` campaign launch files.
+
+Conv2 legacy release at 17:16 CEST September 12: all three seed-0 pilots
+are collected with exact remote/local checksums and pass the complete
+30-epoch finite float64, zero-bias stability gate at injected beta .003.
+Best/final validation is 95.68/95.68%, 97.60/97.60%, and 97.86/97.76%;
+maximum drop .10 pp. Coverage is 165/216. Prepare source v6 by adding this
+complete pilot proof to v5 with all training code and configs unchanged.
+The already planned Main seed-1 and Nom seed-2 three-ceiling waves may
+proceed after fresh same-config GPU smokes and separate 24-hour reservations.
+JZ tasks 3/4/5 continue; retain the full 48-hour reservation until all six
+tasks are terminal. No official-test access.
+
+Watchdog at 17:02 CEST September 12: the four active JZ pilots have completed
+28/27/22/24 epochs; its final task remains pending at the four-task limit.
+Loulou completed epoch ten at 16:54:18 CEST in 8m18s with exclusive GPU use.
+At that rate its first pilot should finish around 19:40 CEST, before the
+20:00 cap, provided exclusive access continues. Main, Nom and Akib are idle;
+Trex and Fifi remain occupied by unrelated work. No new production admission.
+Next full watchdog is due by 17:32 CEST.
+
+All BPTT complete at 16:50 CEST September 12: 163/216 training bundles are
+collected and validated, including all 108 BPTT cases. Akib's complete
+nine-case wave ended at 16:44:33 CEST, worker/launcher exit 0, with exact
+remote/local checksums. All nine bundles validate; actual 5.625 GPU-hours
+settle the 72-hour reservation. Total settled time is 100.023889 hours;
+with the one-hour check and 72 training-hour reservations, commitment is
+173.023889/300. Main, Nom and Akib have no current training jobs. Eleven
+qualified bounded EP pilots and twenty-four gated repetitions remain
+eligible, plus eighteen scientifically held baseline cells.
+
+Loulou recovery observation at 16:44 CEST September 12: the unrelated GPU
+process ended, leaving only the campaign worker `822595` (5,148 MiB). The
+original pilot continues through its ninth epoch, with no restart or change
+to beta, source, target or the eight-hour cap. Re-measure the epoch rate to
+verify the remaining wall-time margin. The staged Trex fallback remains
+unlaunched.
+
+Planned Conv2 legacy repetitions, 16:33 CEST September 12: prepare seed 1
+on Main and seed 2 on Nom-cool-1, three ceilings each, using injected beta
+.003, exact inherited Adam vectors, 30 epochs and T=K=6. Each three-case
+wave requires a 24-GPU-hour reservation (eight-hour case limits); neither
+is reserved or launched yet. Anticipate roughly 3–6 hours per serial wave,
+subject to same-config GPU smoke and measured runtime. Lists are campaign
+`launch/main_bounded_conv2_legacy_ep_seed1.txt` and
+`launch/nomcool1_bounded_conv2_legacy_ep_seed2.txt`; expected outputs are
+`production/main_bounded_conv2_legacy_ep_seed1/` locally and
+`/home/filip/server_code/results/paper-training-completion-20260911-v1/production/nomcool1_bounded_conv2_legacy_ep_seed2/`.
+Freeze a new source containing the complete locally validated pilot proof
+before admission. The other two seed-0 ceilings must finish and pass first;
+current proof is only 1/3. Keep future bounded Conv2 EP ours cases on the
+same respective architecture/seed targets if these legacy waves launch.
+
+Watchdog at 16:31 CEST: Akib final BPTT at 18/30; JZ pilots at 21/20/17/17,
+with the last task pending at the four-task limit. Loulou's ninth epoch has
+reached batch 1000. Main/Nom idle, Trex/Fifi occupied. No numerical failure
+or lost artifact progress. Next full check due by 17:00:55 CEST.
+
+Watchdog at 16:01 CEST September 12: all six active workers advanced.
+Akib is at epoch 25/30 of its eighth case; four JZ pilots are running and
+one is pending at the array limit. Loulou is in epoch eight, batch 2000,
+with persistent unrelated GPU sharing and its original eight-hour case cap.
+No numerical failure or loss of batch progress was observed. Next full
+watchdog is due by 16:31:43 CEST.
+
+Trex readiness guard at 16:00 CEST: source v4 was staged and all 637 inputs
+verified, but unrelated GPU PID 1266327 appeared before the first smoke.
+The idle-GPU guard stopped before training; zero smokes and zero replacement
+production jobs launched. Preserve the empty smoke output and the guard
+record at campaign `launch/trex_conv3_smoke_guard_20260912.json`. The current
+Loulou attempt remains active and unchanged.
+
+Conv3 recovery readiness, 16:00 CEST September 12: prepare the unchanged
+six source-v4 Conv3 seed-0 configs on idle Trex (legacy beta .001 and ours
+.003 across the three ceilings). Run only same-config one-train-batch /
+one-validation-batch GPU smokes, capped at ten minutes within the existing
+one-GPU-hour checks reservation. Output: campaign
+`checks/trex_conv3_pilot_smokes_20260912/`; source `2092876a`, exact Trex/Loulou
+Python 3.12.13 and PyTorch 2.11.0+cu128 environment, existing train-only MNIST.
+The current Loulou attempt continues; no replacement production is admitted
+and no partially trained evidence is promoted. This prepares an operational
+fallback if sharing prevents completion within the existing eight-hour cap.
+
+Watchdog at 15:31 CEST September 12: 161/216 results are collected. Akib
+finished its seventh case and started the middle-ceiling ours run; only two
+BPTT trainings remain. JZ tasks 1–4 have completed 7/6/5/4 epochs, with
+task 5 pending at the four-task concurrency limit. Loulou's seventh epoch
+has advanced to batch 2500 under the same GPU sharing. Main, Nom and Trex
+are idle; Fifi is occupied. Existing partly started comparison groups keep
+their recorded targets. No new replication group has passed its full pilot
+gate yet. Commitment remains 239.398889/300 GPU-hours. Next full watchdog
+due by 16:01:15 CEST.
+
+JZ follow-up at 15:10 CEST: tasks 1–4 are running, and task 5 is pending
+at the intended four-task array limit. All four new tasks have verified
+source-v4 identities, float64/30-epoch/test-disabled configs and repeated
+real-batch progress observations. Raw IDs are 2066264, 2066297, 2066314 and
+2066377. No resource or time-limit change was needed.
+
+Watchdog and collection at 15:05 CEST September 12: 160/216 results are
+collected. Main's final three-case wave completed with exit 0, validated
+locally and settled at 3.886389 GPU-hours; all bounded Conv3 BPTT is complete.
+Current commitment is 239.398889/300, with 94.398889 settled. Akib runs the
+last three bounded Conv2 BPTT ours cases. Main and Nom are idle.
+
+JZ `2062259_0` completed in 02:43:02 of scheduler time. Its 30-epoch Conv2
+legacy tight-ceiling pilot is collected, finite and stable, best/final
+95.68/95.68%; the common-beta three-ceiling group is only 1/3 complete.
+Tasks 1/2/3 are now running and have verified source-v4 float64 manifests
+and real training batches; tasks 4/5 remain pending for priority. Retain the
+full 48-hour array reservation. Loulou's sixth epoch advanced to batch 3000
+under GPU sharing; its existing case limit remains. Trex and Fifi have
+unrelated GPU work. Next full watchdog is due by 15:30:40 CEST.
+
+Wide-table completion at 14:40 CEST September 12: Trex's last two BPTT
+cases are collected, checksum-identical and validated. Worker/launcher both
+exited zero at 14:37:26 CEST. Settle 3.521389 GPU-hours against the 16-hour
+reservation; commitment is now 259.512500/300, with 90.512500 settled. Both
+wide tables are complete (27 BPTT + 27 EqProp); overall coverage is 157/216.
+Loulou is the sole remaining campaign 5090. Trex has unrelated GPU work.
+[Wide Conv3 validation comparison](../paper_ready_results/wide_conv3_validation.md)
+retains seed-0 reuse and numerical caveats. Five bounded BPTT cases, twelve
+qualified pilots and twenty-four gated repetitions remain eligible; eighteen
+baseline cases remain held. Next full watchdog is due by 15:00:30 CEST.
+
+Conv1 completion at 14:12 CEST September 12: all eighteen bounded EP
+repetitions are collected and validated, completing the full Conv1 training
+scope. Nom's final nine-case wave ended at 14:09:23 CEST with worker/launcher
+exit 0, exact remote/local checksums and all nine stability checks passing
+(maximum seed-2 drop .40 pp). Settle 1.031389 GPU-hours against its 18-hour
+reservation. Current commitment is 271.991111/300 GPU-hours; settled time is
+86.991111. No new training is assigned to Nom. Overall collection is 155/216;
+43 eligible deep runs and 18 held baseline cells remain. The complete
+[Conv1 paired report](../paper_ready_results/bounded_conv1_three_seed_validation.md)
+contains all 54 bounded BPTT/EP trainings and their three-seed curves.
+
+Watchdog at 14:04 CEST September 12: 154/216 results are collected. Nom has
+started its ninth and final Conv1 EP seed-2 case. Main reached epoch 8/30 of
+its final bounded BPTT case, Akib epoch 20/30 of its fifth case, and Trex
+epoch 15/30 of its final wide case. Loulou reached the fifth epoch, batch
+1500; its original unrelated GPU process remains active. Trex also acquired
+unrelated GPU work after admission and continues to progress. No scientific
+setting or time limit changed. Next full watchdog is due by 14:34 CEST.
+
+Watchdog at 13:35 CEST September 12: all five lab workers and the allocated
+JZ pilot advanced. Main is at epoch 27/30 of its second case; Akib at 27/30
+of its fourth; Trex completed legacy and reached epoch 3/30 of its final
+wide BPTT case. Nom has four final-seed Conv1 EP cases complete. JZ task 0
+reached epoch 14/30, with five tasks still pending for priority. Loulou's
+current fourth epoch advanced to batch 2000 despite GPU sharing; no
+nonfinite values or operational failures were observed. The full budget
+reservations remain unchanged. Next full watchdog is due by 14:05 CEST.
+
+Seed-2 admission at 13:07 CEST September 12: nom-cool-1's complete nine-case
+Conv1 EP seed-1 wave is collected, checksum-identical and validated. Both
+worker and launcher exited zero; actual GPU time is 1.030833 hours, and all
+nine repetitions pass the stability check (maximum drop .86 pp). Settle its
+18-hour reservation and reserve 18 hours for the nine seed-2 cases, with
+two-hour per-case limits. The unchanged source-v5 command is
+`launch/nomcool1_bounded_conv1_ep_seed2.command.txt`; all same-config GPU
+smokes and the three complete seed-0 group gates passed. Expected duration
+is about one hour from the measured first wave; remote output is
+`/home/filip/server_code/results/paper-training-completion-20260911-v1/production/nomcool1_bounded_conv1_ep_seed2/`.
+State: `running`; the exact production-Python preflight passed and nohup
+supervisor `1314774`, worker `1314782`, launched the unchanged command;
+its first CUDA process and training batches are verified.
+The hard ledger now commits 288.959722/300 GPU-hours. Collection: 143/216.
+
+Watchdog at 12:35 CEST September 12: all five lab workers have advanced and
+JZ `2062259_0` is running its exact Conv2 legacy pilot on `r6i1n3` (raw job
+ID `2062768`); five array tasks remain pending. Its canonical source/config,
+float64, 30-epoch, injected-beta .003 and official-test-disabled contract
+match, with three completed epochs. The later Nom fallback is superseded.
+Loulou acquired an unrelated `kellian` GPU process `823822` at 12:11:51 CEST,
+using 24,728 MiB alongside our `822595` at 5,148 MiB. Our second
+epoch slowed from the first epoch's 8.3 minutes to 22.4 minutes, but metrics
+and training batches continue to advance. Preserve its eight-hour case limit,
+whole 24-hour wave reservation and between-case idle-GPU guard; do not alter
+the unrelated process. Trex also has unrelated CPU contention and continues
+to advance. Fifi is now occupied by another GPU process; no campaign job was
+started there. Next full watchdog due by 13:04 CEST.
+
+September 12, 11:55 CEST: 131/216 training bundles are collected. All 18
+same-config Conv1 EP replication GPU smokes on nom-cool-1 passed and the local
+copies validate, including float64 initialization, finite checkpoints, zero
+biases and zero official-test reads. Source v5 is `1f4334bf`; each nine-case
+seed wave still needs its full 18-hour budget reservation before admission.
+
+Weekend readiness check, not full training admission: stage unchanged source
+v4 `2092876a` on idle Loulou and run six bounded Conv3 seed-0 exact-config
+GPU smokes (ours/legacy at all three ceilings). Limit this synchronous check
+to ten minutes within the existing one-hour check reservation. Results:
+campaign `checks/loulou_conv3_pilot_smokes_20260912/`; command driver
+`launch/loulou_conv3_pilot_smokes.py`. This is a possible whole-unstarted-group
+placement alternative while JZ `2061807` is pending. Preserve the queued
+reservation until any replacement is concrete and its zero-allocation
+cancellation is verified. No running group is moved.
+
+Concrete weekend placement replacement, September 12: all six Loulou Conv3
+smokes passed; replace JZ `2061807` only if every task is still pending with
+zero allocation and no production artifacts. Cancel the entire obsolete
+unstarted array, verify zero-time terminal accounting, then settle its full
+96-hour reservation. Retain its submission and cancellation evidence.
+
+Superseded conditional placement, recorded at 12:29 CEST: task 0 of JZ
+`2062259` started at 12:17 CEST (raw job ID `2062768`) and has a valid
+float64 manifest and three completed training epochs. All six pilots remain
+on JZ; the unused Nom fallback is retired and has no reservation. The
+original conditional record follows: if all six tasks of
+JZ `2062259` remain wholly unstarted when nom-cool-1 finishes its two Conv1
+replication waves, prefer all six qualified Conv2 seed-0 pilots on that freed
+RTX 3090 after fresh same-config GPU smokes. Preserve the complete matched
+architecture/seed group (ours/legacy, all ceilings) on one target. The exact
+configs already exist unchanged in source v5; list
+`launch/nomcool1_bounded_conv2_pilots.txt`. Thirty epochs, T=K=6, injected beta
+ours .001 / legacy .003, unchanged shared initialization and Adam vectors.
+Reserve 48 GPU-hours (eight hours/case), estimated 6–12 elapsed hours until
+the first full case supplies a measurement. Expected remote output:
+`/home/filip/server_code/results/paper-training-completion-20260911-v1/production/nomcool1_bounded_conv2_pilots/`.
+This is `planned`, not admitted. Keep the JZ array and its reservation until
+the alternate GPU is idle and its smoke gate passes; cancel and settle only
+the whole zero-allocation array. If any pilot starts on JZ, keep all six there.
+
+| Replacement output | State | Recorded admission contract |
+|---|---|---|
+| [Conv2 seed-0 pilot replacement](../results/paper-training-completion-20260911-v1/launch/jz_bounded_conv2_pilots.txt) | `running` | Array `2062259`: task 0 complete and collected, stable best/final 95.68/95.68%; tasks 1–4 running with source/config and real-batch verification; task 5 pending at the four-task limit. Legacy/ours injected betas .003/.001; all six remain on Jean Zay. Source v4 `2092876a`, one V100-16GB per task, array concurrency four, eight-hour limits. Full 48-hour reservation retained until terminal reconciliation. First pilot proof: campaign `checks/conv2_legacy_gmax1em4_seed0_pilot_stability.json`. |
+| [Conv3 seed-0 pilots on Loulou](../results/paper-training-completion-20260911-v1/launch/loulou_bounded_conv3_pilots.txt) | `running` | Legacy wave launched at 12:00 CEST with nohup supervisor `822568`, worker `822578`; canonical status, float64 GPU process and first training batches verified. Move the entire unstarted qualified architecture/seed group, all six ours/legacy cases and all ceilings, to Loulou's RTX 5090. Source v4, 30 epochs, T=K=8, injected beta ours .003 / legacy .001. Admit legacy's three cases first with 24 GPU-hours and eight-hour case limits; estimate 9–18 elapsed hours conservatively until measured. Output `/home/filip/server_code/results/paper-training-completion-20260911-v1/production/loulou_bounded_conv3_legacy_pilots/`; ours follows on the same target with a separate later 24-hour reservation and `.../loulou_bounded_conv3_ours_pilots/`. All six exact GPU smokes validate locally. The first wave's 24-hour maximum plus one hour fits before Monday 00:00 Paris; enforce that cutoff for the extra weekend GPU. |
+| [Conv1 seed-1 repetitions](../results/paper-training-completion-20260911-v1/launch/nomcool1_bounded_conv1_ep_seed1.txt) | `complete` | All nine cases collected, checksum-identical and validated; both launcher and worker exited zero. Settled at 1.030833 GPU-hours, maximum final drop .86 pp. Nine released cases on nom-cool-1 RTX 3090; source v5, all three stable seed-0 groups and all same-config GPU smokes validated. Ten epochs, T=K=4, unchanged qualified betas and Adam rates. Reserve 18 GPU-hours, two-hour case limits; estimated 3–5 elapsed hours. Output `/home/filip/server_code/results/paper-training-completion-20260911-v1/production/nomcool1_bounded_conv1_ep_seed1/`. Admit only after the replacement accounting leaves capacity. |
+
+Planned next on Main, not yet admitted: after the current three-case bounded
+Conv3 seed-1 batch at Gmax=1e-4 finishes, validates, and settles, continue all
+three schemes at Gmax=5e-4 on the same RTX 3090. Use
+`launch/main_conv3_bounded_seed1_gmax5em4.txt` and source v3 `82b4e032`;
+30 epochs, unchanged T=K=8, exact Adam vectors, zero biases, and the same
+shared bounded seed-1 initializer. All three configs passed the exact CPU
+smokes, and the current full batch verifies the GPU environment. Reserve
+24 GPU-hours (eight hours/case) at admission; expect about four elapsed hours.
+Output: campaign `production/main_conv3_bounded_seed1_gmax5em4/`.
+The final three cases at Gmax=1e-3 stay on Main, using
+`launch/main_conv3_bounded_seed1_gmax1em3.txt` and a separate later 24-hour
+reservation/output `production/main_conv3_bounded_seed1_gmax1em3/`. Each
+admission needs a free GPU and a fresh check of the hard 300-hour ledger.
+
+Prepared at 19:14 CEST, not admitted: the next Jean Zay batch contains 15
+qualified bounded EqProp seed-0 pilots: Conv1 legacy and Conv2/Conv3 ours and
+legacy, each at all three ceilings. The combined inventory is
+`launch/jz_bounded_pilots_next.txt`. Launch three Conv1 cases in a two-hour
+array from `launch/jz_bounded_conv1_legacy_pilots.txt` (six GPU-hours reserved),
+then, only after it is terminal, twelve Conv2/3 cases in an eight-hour array
+from `launch/jz_bounded_conv23_pilots.txt` (96 GPU-hours reserved). This matches
+Slurm limits to the architecture reservations. Total planned reservation is
+102 GPU-hours across the successive admissions; expected
+elapsed time is about 10–13 hours on four V100s. Frozen source v4 `2092876a`
+adds the 45 newly qualified configs and completed beta report, with all 355
+Python files and both transport scripts unchanged from v3. All bounded
+replications retain their full-pilot and budget-review holds. Expected output
+directories are `production/jz_bounded_conv1_legacy_pilots/` and
+`production/jz_bounded_conv23_pilots/` under the campaign's fmu result root
+`/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/paper-training-completion-20260911-v1/`.
+The current `2028114` array must be terminal, accounting reconciled, and a
+fresh synchronous local exact-config semantic smoke passed immediately before
+each production admission. This preparation does not reserve time or submit
+another array, including a pending dependent array.
+
+Planned at 18:27 CEST, not yet admitted: after Akib's initial nine-case list
+finishes and its final corrected reference is collected and validated, settle
+that reservation and run all nine bounded Conv2 BPTT seed-1 cases on the same
+RTX 3080. The three schemes and three ceilings retain T=K=6, 30 epochs,
+the shared bounded initializer, frozen Adam vectors, and zero biases.
+`launch/akib_bounded_seed1.txt` uses guarded source v3 `82b4e032`; every
+config passed its exact local CPU smoke and the same architecture is already
+running successfully in Akib's verified GPU environment. Full reservation
+will be 72 GPU-hours (eight hours/case); measured duration suggests about
+six elapsed hours. Recheck the full inventory and 300-hour ledger at admission.
+Expected output is
+`/home/filiposana/server_code/results/paper-training-completion-20260911-v1/production/akib_bounded_seed1/`.
+
+At 18:24 CEST, Loulou's current wide Conv3 baseline seed-2 case is progressing
+at epoch 7/30, but an unrelated `kellian` GPU process (`722698`) has appeared
+since admission. Its next two schemes remain subject to the source-v3
+between-case idle-GPU guard. Keep the current eight-hour case limit and
+the whole 24-hour reservation until terminal accounting; do not change the
+other user's process or move a partly started comparison group. Loulou remains
+the sole campaign 5090. The latest full watchdog found all five training
+lanes progressing, no reported failures, and exactly four campaign V100 tasks.
+
+Planned at 17:45 CEST: after collecting and settling nom-cool-1's completed
+three-case bounded Conv3 seed-2 batch, continue all three schemes at Gmax
+5e-4 and 1e-3 on that same RTX 3090. Six unchanged BPTT configs from
+`launch/nomcool1_conv3_bounded_seed2_remaining_ceilings.txt`, 30 epochs,
+T=K=8, shared bounded seed-2 initializer, exact Adam vectors, and zero biases.
+All six same-config CPU smokes passed; its GPU environment and architecture
+fit are verified by the completed three-case batch. Source v3 `82b4e032`.
+Reserve 48 GPU-hours (8 hours/case); expect 6–8 elapsed hours from measured
+3090 rates. Output is campaign
+`production/nomcool1_conv3_bounded_seed2_remaining_ceilings/`. The preferred
+wide seed-2 group goes to Loulou after its successful GPU smokes; the earlier
+nom-cool-1 wide wrapper remains unlaunched.
+
+Placement update at 17:30 CEST, not yet admitted: Loulou became idle in the
+fresh complete host inventory. Stage Trex's existing Python 3.12.13 /
+PyTorch 2.11.0+cu128 environment, source v3, and train-only MNIST there.
+After Trex's current GPU process exits and the old queue is retired, prefer
+the complete unstarted wide Conv3 BPTT seed-2 group on Loulou if its same-config
+GPU smokes pass and it is still idle. Loulou would be the only campaign 5090;
+Trex's two seed-1 continuations must wait while it is active. This leaves
+nom-cool-1 available for its remaining bounded seed-2 ceilings. Keep its
+prepared wide continuation as an unlaunched fallback. Three unchanged
+30-epoch cases, 8-hour limits, 24 GPU-hours at admission; use a conservative
+3–4-hour group estimate until measured on this host. GPU smokes fit within
+the existing one-hour check reservation. Expected Loulou output:
+`/home/filip/server_code/results/paper-training-completion-20260911-v1/production/loulou_wide_conv3_seed2/`.
+
+Planned at 17:15 CEST, not yet admitted: once Trex's current wide Conv3
+baseline seed-1 case and its exact-run child finish, retire the paused old
+serial parent. Do not resume its five-case remainder. Its two unstarted
+seed-1 schemes stay on Trex, using guarded source v3 and
+`launch/trex_wide_seed1_remaining.txt`; the complete unstarted seed-2 group
+moves to nom-cool-1 after that host's current three-case bounded batch.
+The latter list is `launch/nomcool1_wide_conv3_seed2.txt`. All configs retain
+their original exact bytes and passed the initial same-config GPU smokes;
+nom-cool-1's matching 3090/PyTorch environment is verified by its active Conv3
+work. Each case keeps 30 epochs and an 8-hour limit. New full reservations
+will be 16 and 24 GPU-hours, respectively, only after reconciling the old
+queue and checking live lanes and total budget. Allow roughly 3–4 hours for
+the three-case nom-cool-1 group; Trex availability remains uncertain.
+Expected outputs are campaign `production/trex_wide_seed1_remaining/` and
+`production/nomcool1_wide_conv3_seed2/`. No additional 5090 is used.
+
+Planned at 15:34 CEST: after Main's nine Conv1 bounded seed-2 cases finish
+and validate, run Conv3 bounded BPTT seed 1 at Gmax=1e-4 for all three schemes
+on the same Main RTX 3090. This is a whole unstarted BPTT comparison group;
+remaining Conv3 bounded seed-1 ceilings are also assigned to Main. Exact
+CPU smokes passed, and this architecture fits in the validated 3090 GPU
+environment. Thirty epochs, unchanged T=K=8, frozen Adam vectors and shared
+initializer; source v3 `82b4e032`. Reserve 24 GPU-hours (8 hours/case), expect
+3–4 hours from the measured nom-cool-1 3090 rate. The dependency wait has a
+two-hour deadline and allocates no additional GPU. Output:
+`results/paper-training-completion-20260911-v1/production/main_conv3_bounded_seed1_gmax1em4/`.
+Wrapper/list: `launch/main_conv3_bounded_seed1_gmax1em4_after_conv1.sh` and
+`launch/main_conv3_bounded_seed1_gmax1em4.txt`. Total committed at admission:
+288.8553/300 GPU-hours. Trex's started wide seed-1 comparison stays on Trex.
+
+Planned at 15:16 CEST: queue all nine bounded Conv1 seed-2 BPTT cases
+(three schemes × three ceilings, ten epochs, unchanged T=K=4 and exact Adam
+vectors) on Main's RTX 3090 after the current nine seed-1 cases finish and
+validate. Same-config CPU smokes passed; source v3 `82b4e032` is unchanged.
+The queue reserves 18 GPU-hours (two hours per case), with about one hour
+expected. Its one-hour dependency wait consumes no additional GPU allocation
+and stops if the predecessor does not finish. Output:
+`results/paper-training-completion-20260911-v1/production/main_bounded_seed2/`.
+Wrapper/list: `launch/main_bounded_seed2_after_seed1.sh` and
+`launch/main_bounded_seed2.txt` under the campaign. Total settled plus
+reserved time at this admission is 281.8795/300 GPU-hours.
+
+On 2026-09-11 at approximately 13:50 CEST, the Trex GPU also carried an
+unrelated `kellian` process (`853945`, about 24 GiB). Our first Conv3 BPTT
+case continues under its original limit. Only our serial parent launcher
+`850967` was paused with SIGSTOP; its current training/timeout children were
+left running. The five subsequent cases remain stopped; the 17:15 plan above
+retires this parent and moves only the wholly unstarted seed-2 group.
+The unrelated process was not changed. Main, Akib, and the four-task V100
+array remain active.
+
+At 14:28 CEST, all nine initial Main BPTT cases have completed and are
+collected and validated locally (0.9292 allocated GPU-hours). The next
+planned Main batch contains the nine bounded Conv1 seed-1 cases, keeping all
+schemes and ceilings together on its RTX 3090. Each has a 2-hour limit;
+18 GPU-hours are reserved, with about one hour expected from measured times.
+The exact twelve-config local CUDA smoke, including the fallback cases below,
+passed in 74.55 seconds and all twelve bundles validate. Frozen transport v3
+adds an idle-GPU check before every lab case; scientific code is unchanged.
+
+The idle nom-cool-1 RTX 3090 is the planned target for all three schemes of
+bounded Conv3 seed 2 at Gmax=1e-4. Its previously absent environment was staged
+from Main at the same path and imports PyTorch 2.5.1/CUDA 12.1 successfully;
+only MNIST training files were staged. These three runs reserve 24 GPU-hours
+(8 hours each; expected 3–6 hours total). Remaining ceilings of this
+architecture/seed stay assigned to this target if admitted later. Main's
+output is `results/paper-training-completion-20260911-v1/production/main_bounded_seed1/`;
+the fallback output is `/home/filip/server_code/results/paper-training-completion-20260911-v1/production/nomcool1_conv3_bounded_seed2_gmax1em4/`.
+The corresponding plain lists are in the campaign's `launch/` directory.
+Settled time plus full outstanding reservations is 188.2412/300 GPU-hours.
 
 ## Jean Zay Production
 
@@ -89,7 +688,115 @@ after submission.
 
 | Results | State | Summary |
 |---|---|---|
-| [Three-table paper result collection](../paper_ready_results/) | `planned` | Collect the available bundles for the 216-run plan dated 2026-09-11, validate their local copies, and record the remaining training and official-test evaluation work in `docs/paper_ready_results_manifest.md`. Collection only; the existing metrics retain their validation evidence class. |
+| [CIFAR L8 overnight BN/gain follow-up](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/) | `reviewed` | Declared coverage complete: normalized legacy 50/50, two gain controls, 16 Adam/BN checkpoint cases and epoch-48 audit. Normalized/raw legacy finish 88.82/88.72%; no sustained validation benefit from epsilon correction at selected legacy rates. Native final solver audit passes. All nine bundles validate locally, including the preserved paused ancestor. Overnight stopped before 08:00; explicitly approved daytime completion finished on Fifi within its one-hour cap. All owned workers exited and GPU resources released; total 13.191/16 GPUh. [Report](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/report.md); [coverage](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/collection_validation.json); [conclusions](experimental_manifest.md#cifar-l8-overnight-bn-adam-step-and-gain-controls-september-24). |
+| [Conv3 RMS-one beta T8 comparison](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/) | `reviewed` | No material gradient-quality change: max noisy/clean median cosine shift1.50e-7/8.73e-8; largest paired cosine shift1.42e-6. Ours retains its Conv3 advantage; early layers remain noise-dominated. Four new cases/2,880 rows paired with T16; eight smokes,119 remote hashes and all residuals validate. Akib exited0;625.35s total. [Report](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/analysis/report.md). |
+| [Conv3 output-RMS-one gradient replay](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/) | `reviewed` | Ours beta1.385 versus legacy .02173: noisy Conv3 cosine .697/.238 initially and .753/.277 at p99 epoch30; ours improves on all36 paired batches at both checkpoints. First two layers remain noise-dominated. Four cases/2,880 comparisons, eight smokes,119 remote hashes and all residuals validate. Akib exited0;634.77s total. [Report](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/analysis/report.md). |
+| [CIFAR L8 BN ablations](../results/cifar10-l8-bn-ablation-seed0-20260923-v1/) | `reviewed` | All7 exploratory cases terminal and authoritative bundles/checkpoints local/valid. Four qualified ten-epoch results: reduced-epsilon baseline70.18%; frozen-affine baseline70.72%, proposed73.76%, legacy73.02% versus trainable75.26/75.36/74.68%. All frozen checkpoints retain gamma1/beta0 with14070 running-stat updates. Baseline/no-BN and legacy/no-BN stopped after epoch1 at10%, exact replay confirming zero outputs/logits/all13gradients. Proposed/no-BN completed10epochs at52.08%, but failed final solver reference stability (8.61% vs1% limit); accuracy provisional. No LR/T retries. All coverage reconciled20:43UTC; Riri/local parent queues stopped after child success, outsourced cases not repeated, original receipts/failures retained. Charged15.2119GPUh of24GPUh. No study workers active. BN/scale effects supported at these settings; no complete qualified no-BN comparison or50epoch causal attribution. [Validation](../results/cifar10-l8-bn-ablation-seed0-20260923-v1/analysis/collection_validation.json); [report](../results/cifar10-l8-bn-ablation-seed0-20260923-v1/analysis/report.md); [findings](cifar_l8_mechanism_findings_20260923.md); [plan](cifar_l8_bn_ablation_plan_20260923.md). [Trajectory conclusions and next-run proposal](cifar_l8_bn_conclusions_and_next_experiments_20260923.md). |
+| [CIFAR L8 amplification mechanism](../results/cifar10-l8-amplification-mechanism-seed0-20260923-v1/) | `reviewed` | Required normalized-legacy control completed10epochs on Loulou, collected/validated locally18:27UTC:75.82% val vs74.68% original legacy (+1.14pp), CE0.698843, solver audit passed, final Adam14070. Runtime11294.81s within4h. Learned block gains100.052887/100.020485/100.038536; the intervention is fixed output normalization16/16/4. Earlier200-step identity and12 checkpoint audits retained; original LR/reference evidence reused. Proposed/legacy repeats cancelled before start; supplementary LR control stopped after5epochs and excluded as an independent primary condition; redundant baseline repeat auxiliary only. No old-study jobs remain active. The seven-case BN follow-up is now terminal and reviewed; single-seed ten-epoch interpretation does not establish50-epoch causality. Original epoch50 scalar gains remain within0.353% of100; endpoint block-gain proposals round to zero. Actual values and BN/gain redundancy are recorded in the findings. [Plan](cifar_l8_mechanism_plan_20260923.md); [findings](cifar_l8_mechanism_findings_20260923.md). |
+| [Conv3 initialization beta/T/K replay](../results/eqprop-conv3-init-beta-tk-20260923-v1/) | `reviewed` | All36 cases/25,920 gradient comparisons and18 smokes validate; baseline/ours/legacy at shared initialization, beta .9873/5.2688, T8/16/32,K8/32,576 examples. Negligible T/K effects: max noisy median change5.87e-8/6.41e-6; max paired-batch change2.35e-5. Fifi exited0, GPU released;0.5354GPUh.509 collected hashes match. [Report](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/report.md) · [Beta notes](beta_study.md#initialization-check-at-the-same-replay-betas). |
+| [Conv3 noise versus phase RMS](../results/eqprop-conv3-p99-noise-rms-analysis-20260923-v1/) | `reviewed` | Saved-data analysis;30 source bundles and17,280 joined measurements validate. At sigma5e-4, interpolated Conv3 noise-dominance crossover is phase RMS≈1.1e-3 for legacy and ours. Training-beta signals: legacy1.57e-3, ours30.896e-3; first two layers remain noise-dominated throughout. [Report](../results/eqprop-conv3-p99-noise-rms-analysis-20260923-v1/analysis/report.md). |
+| [Conv3 p99 beta/K replay](../results/eqprop-conv3-p99-beta-k-replay-20260923-v1/) | `reviewed` | All36 cells/25,920 comparisons and12 smokes validate;509 hashes match; Fifi exited0. K8→64 changes noisy median cosines by <9.62e-7; K32/K64 agree. Best sampled Conv3: legacy.977483 at beta.9873, ours30.967538 at beta10. All20,736 residual checks pass. [Report](../results/eqprop-conv3-p99-beta-k-replay-20260923-v1/analysis/report.md) · [Conclusion](experimental_manifest.md#conv3-p99-betak-replay-september-23). |
+| [Conv3 p99 trained beta replay](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/) | `reviewed` | All42 cells/30,240 comparisons and24 smokes validate;593 hashes match, Fifi exited0. At training beta, noisy Conv3 cosine legacy.799 vs ours.632 (best epoch27:.744); beta3 improves ours to.919/.945, but no tested beta restores all layers. T effect negligible; all residuals pass. [Report](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/analysis/report.md) · [Conclusion](experimental_manifest.md#conv3-p99-trained-checkpoint-beta-replay-september-23). |
+| [Conv3 ours p99 T16/K8, 10 epochs](../results/eqprop-conv3-ours-p99-t16k8-10ep-20260922-v1/) | `reviewed` | Ten finite epochs; final95.38%, best95.58% at epoch9 versus T8 reference95.44%/95.64%. Maximum epochwise gap0.12pp. Both V100 jobs73267/73276 completed0:0; local bundles/checksums validate;1.8164GPUh of3. [Report](../results/eqprop-conv3-ours-p99-t16k8-10ep-20260922-v1/analysis/report.md); [conclusion](experimental_manifest.md#conv3-ours-p99-at-t16k8-for-ten-epochs-september-23). |
+| [Conv3 T/K cosine across amplification schemes](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/) | `reviewed` | All27 grid cells (22new+5cached) and22 smokes validate locally;664 hashes match, exit0/GPU released,2,462s wall within5,400s. Baseline/legacy noisy median ranges <1.7e-4/<6.6e-6. Ours: largerK worsens readout atT8 but helps atT16/32; atT32 K8→32 readout .820→.858 while cleanConv1 .970→.473. [Conclusion](experimental_manifest.md#conv3-tk-cosine-interaction-across-amplification-schemes-september-22) · [Plots/report](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/report.md). |
+| [Conv3 cosine transition across T](../results/eqprop-conv3-cosine-t-transition-20260922-v1/) | `reviewed` | Readout median cosine T8/12/16/20/32/64 = -.293/.611/.685/.736/.820/.885; sign flip already present at T12, all readout comparisons positive from sampled T20. Conv3 peaks at T12 then decreases; K8/training beta fixed. All4 production+4 smokes locally valid,136 hashes match, exit0/GPU released,394s wall within900s. [Conclusion](experimental_manifest.md#conv3-readout-cosine-transition-by-t12-september-22) · [Plot/report](../results/eqprop-conv3-cosine-t-transition-20260922-v1/analysis/report.md). |
+| [Conv3 trained-checkpoint beta/read-noise sweep at T64](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/) | `reviewed` | All 30 cells and 54 smokes validate locally; 1,194 remote hashes match, all exits 0, workers released, 0.516 GPUh within 1.5 GPUh. Five beta factors .1/.3/1/3/10, fixed K8. Legacy median cosines change by less than 3.5e-8 from T8 to T64; only ours/sigma5e-4 changes substantially, with training-beta readout -.293→.885. [Curated conclusion](experimental_manifest.md#conv3-noisy-cosine-changes-from-t8-to-t64-september-22) · [Overlay](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/cosine_T8_vs_T64.png) · [Report](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/report.md). |
+| [Conv3 trained checkpoint minimum T](../results/eqprop-conv3-trained-minimum-t-20260922-v1/) | `reviewed` | All 576 examples replayed. Clean layer median cosines improve from [.738,.760,.388,.007] at T8 to [.996,.998,1.000,1.000] at T32, changing little through T64; fixed K8 and tiny beta. User clarified cosine changes are the objective; residual trace retained as ancillary. Eight bundles validate, corrected retry exit0, 674.32s within 1,200s. [Curated conclusion](experimental_manifest.md#conv3-clean-cosine-changes-with-free-phase-t-september-22) · [Plot/report](../results/eqprop-conv3-trained-minimum-t-20260922-v1/analysis/report.md). |
+| [Conv3 trained-checkpoint beta/read-noise sweep](../results/eqprop-conv3-trained-beta-noise-20260922-v1/) | `reviewed` | All 78 main cells, 18 Akib smokes and four clean-settling bundles collected/validated; 1,392 file hashes match remote, 56,160 main comparisons, both exits 0, GPU released. Best sampled worst-layer medians at sigma3e-4: baseline .9709, ours .6271, legacy .0201; at sigma5e-4: .9625, approximately 0 (clean-control/settling failure), .0125. Baseline retains free-T8 residual caveat; longer T restores close clean direction for ours/sigma5e-4 on 48 examples. 1.892 GPUh within 3h cap; failed/stopped Loulou attempts retained/excluded. [Curated conclusion](experimental_manifest.md#conv3-trained-checkpoint-beta-sweep-under-read-noise-september-22) · [Report/curves](../results/eqprop-conv3-trained-beta-noise-20260922-v1/analysis/report.md) · [Validation](../results/eqprop-conv3-trained-beta-noise-20260922-v1/collection_validation.json). |
+| [CIFAR L8 legacy 10-epoch LR refinement](../results/cifar10-l8-legacy-lr-refinement-e10-seed0-20260922-v1/) | `reviewed` | All five10epoch cases complete before02:00, collected/validated; current rates win74.68%. Head half/double74.44/74.34%; conv half/double74.26/70.80%. All solver audits pass;5 production+7 smoke bundles valid, both exits0, no missing/failed cases.11.3943GPUh. [Report](../results/cifar10-l8-legacy-lr-refinement-e10-seed0-20260922-v1/analysis/report.md). |
+| [Conv3 legacy/ours overnight beta sweep](../results/eqprop-conv3-beta-sweep-5em4-10ep-20260922-v2/) | `scheduled` | Revised six-case grid: injected beta0.1/0.3/0.7 × legacy/ours, sigma5e-4, seed0,10epochs. Armed tmux `beta-sweep-20260922`, PID813483; September22 22:00–September23 07:55 Paris. Same-beta pairs stay on one free3090/5090,6h/4h pair allowance; cap18productionGPUh. All6 local canonical smokes, ours Loulou GPU smoke, six source/config checks and4 admission/pairing tests pass. Old legacy-only scheduler stopped before any production. [Plan](eqprop_conv3_beta_overnight_plan_20260922.md). |
+| [Conv3 legacy overnight beta sweep](../results/eqprop-conv3-legacy-beta-sweep-5em4-10ep-20260922-v1/) | `superseded before production` | User replaced the ten-beta legacy-only grid with beta0.1/0.3/0.7 for legacy and ours. Waiting scheduler PID803081 stopped; zero production cases started. Smoke/timing evidence retained. Replacement: [six-case sweep](../results/eqprop-conv3-beta-sweep-5em4-10ep-20260922-v2/). |
+| [Conv3 initialization output RMS near one](../results/eqprop-conv3-output-rms1-init-20260922-v1/) | `reviewed` | Direct seed0 replay verifies output RMS1.00030097/.99981220/.99988137 at injected beta88.7/1.385/.02173 (baseline/ours/legacy); worst error<.031%. All3 production+3 smoke bundles local and valid,36 batches each,0/1728 residual failures; source/cohort/parameter guards pass. Akib RTX3080,199.47s successful smoke+replay. Original smoke OOM preserved; memory-adjusted retry changed no science. [Report](../results/eqprop-conv3-output-rms1-init-20260922-v1/analysis/report.md); interpretation in experimental_manifest.md. |
+| [CIFAR L8 proposed epoch 30 to 50](../results/cifar10-l8-analog-ours-e30-e50-seed0-20260922-v1/) | `reviewed` | Fifi completed 20 additional epochs31–50 at14:56UTC; final/best89.92% validation vs87.20% at30 (+2.72pp), CE0.372177. Full local bundle and smoke valid,70350 Adam steps, final solver audit/exit0;4.214GPUh. No failures/retries, official-test reads0; GPU free. [Report](../results/cifar10-l8-analog-ours-e30-e50-seed0-20260922-v1/analysis/report.md). |
+| [Conv3 p99 sigma5e-4](../results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/) | `ready-for-review` | Production 52725 completed 30 epochs for both cases; two V100s, elapsed 4:23:44. Legacy B=0.1 final/best 96.86%; ours B=0.987333678708 final 96.04%, best 96.32%. Both passed stability screen. Full local results and checkpoints validated, manifest registered; updates stopped. [Summary](../results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/production-02-summary.md). |
+| [CIFAR L8 baseline/legacy epoch 30 to 50](../results/cifar10-l8-analog-baseline-legacy-e30-e50-seed0-20260922-v1/) | `reviewed` | Both complete50:baseline89.48%(+2.94pp),legacy88.72%(+1.84pp); proposed separate reference89.92%. All5 bundles, actual checkpoint restoration,70350steps and final audits validate locally. GPU-only workers released;20.313GPUh. Legacy native exit sidecar missing, scientific completion independently verified. One-seed validation only. [Report](../results/cifar10-l8-analog-baseline-legacy-e30-e50-seed0-20260922-v1/analysis/report.md) · [Interpretation](experimental_manifest.md). |
+
+| [CIFAR L8 epoch 10 to 30 continuation](../results/cifar10-l8-analog-continue-e10-e30-seed0-20260922-v1/) | `reviewed` | All3 finish30: baseline86.54%, proposed87.20%, legacy86.88%; gains11.28/11.84/12.20pp from10. All11 bundles/checkpoints/final audits validate; successful workers exit0. Cancelled CPU-offloaded Akib attempt preserved/excluded, replaced locally. One-seed validation only,25.20 recordedGPUh. [Report](../results/cifar10-l8-analog-continue-e10-e30-seed0-20260922-v1/analysis/report.md) · [Interpretation](experimental_manifest.md). |
+| [Conv3 initialization beta and read-noise replay](../results/eqprop-conv3-init-beta-noise-20260921-v1/) | `reviewed` | All6 cases and6048 defined comparisons complete on local RTX3090;36 matched batches,one draw per batch/sigma,injected beta .01/.1. Clean cosine>.99 everywhere,zero residual failures; all input/parameter/cohort/noise/BPTT guards and12 smoke/production bundles validate. Early layers are noise-limited from sigma1e-5; legacy has strongest third-Conv alignment at matched B. Interpretation and unequal physical responses recorded in experimental_manifest.md. Replay+smoke10.56min; no training,accuracy or test evaluation. [Figure and tables](../paper_ready_results/conv3_init_beta_noise_20260921.md). |
+| [CIFAR L8 all-scheme Adam LR search](../results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/) | `reviewed` | All 35 scientific cases and 58 canonical bundles validate; all final solver audits pass. Selected epoch-10 validation: baseline 75.26%, proposed 75.36%, legacy 74.68%. Adam, batch 32, trainable BN, augmentation and CE. Peak seven workers on six GPUs; recorded 54.67 worker GPUh within the 72h cap. All workers exited. One seed, validation only; no official test. [Full LR vectors and report](../results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/analysis/report.md) · [Scientific interpretation](experimental_manifest.md) · [Plan](cifar_l8_analog_lr_plan_20260921.md). |
+| [CIFAR L8 analog conv and dense head batch comparison](../results/cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1/) | `reviewed` | All three seed-0 five-epoch runs complete and locally validated; rank32/16/64. Epoch5 validation: batch32 **65.50% / CE0.9718**, batch16 **61.02% / CE1.0940**, batch64 **60.02% / CE1.1275**. All conv layers and dense classifier analog; trainable boundary BN, crop/flip, cross-entropy, inherited Adam rates. All initial/final solver audits pass; nine bundles validate, all production/launcher exits0, no study worker remains. User-authorized host split: batches16/64 Fifi RTX5090, batch32 Nom RTX3090 with isolated cuDNN9.1; hardware/software confound retained. Failed pre-step Nom smoke and first guarded handoff attempt preserved/excluded. Production 4.7748GPUh. Batch32 is provisional five-epoch choice; no further run launched. [Report](../results/cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1/analysis/report.md) · [Plan](cifar_l8_analog_batch_plan.md). |
+| [CIFAR-10 digital wider L8 with trainable BN](../results/cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1/) | `reviewed` | Completed 50 epochs / 4900 steps on Akib RTX3080. Best/final monitored-test accuracy 92.62/92.57%; 5,395,594 parameters, trainable affine BN, crop/flip augmentation, CE, Adam .001 cosine, batch512. Runtime 12m15s; production/smoke bundles collected and validated, exit0. Exploratory test-monitored reference; no worker remains. [Report](../results/cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1/analysis/report.md); [consolidated review](cifar_experiment_review_20260924.md). |
+| [Conv3 p90 final-checkpoint gradient cosine versus noise](../results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/) | `reviewed` | 25/25 existing epoch-30 checkpoints replayed on local RTX3090; 12,816 defined per-matrix comparisons on36 matched batches, four noise draws per noisy batch. All bundles/source hashes validate; no training/test access. High-noise legacy/ours lose clean EP–BPTT alignment too; sigma1e-3 failures have no final checkpoints. [Report](../paper_ready_results/conv3_p90_final_noise_cosine_20260921.md). |
+| [Conv3 p95 sigma 1e-5 and 1e-4](../results/eqprop-conv3-p95-read-noise-1em5-1em4-20260921-v1/) | `blocked — production unlaunched` | Six production cases were never submitted. Canary **28668** exited0 September21; full release gates remain unreviewed. Shared stop-all monitor failed, and the5e-4 legacy case subsequently failed; no further launches. [Plan](eqprop_conv3_p95_read_noise_1em5_1em4_plan_20260921.md). |
+| [Conv3 p95 sigma 5e-4](../results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/) | `collected — partial failure` | Baseline and ours completed30epochs; legacy **28109_2** failed at epoch28/batch735. All jobs terminal. Full stopped snapshot local and registered; terminal bundle checks passed. Stop-all monitor had disconnected, so baseline/ours continued after legacy failed. [Status and evidence](../results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/status-update-20260922.md). |
+| [Conv3 p95 sigma 1e-3 and clean controls](../results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/) | `partial` | All sigma1e-3 jobs stopped. At Filip's explicit request, baseline **22683_0** and legacy **22683_2** were cancelled and confirmed terminal at 15:11 UTC September21; complete stopped snapshots now copied locally and registered; partial bundle checks passed (baseline23, ours17, legacy25 completed epochs). See `.incoming/stopped-production/shards/jean-zay` and `stopped-production-local-validation.json` in the result directory. Ours **22682_1** stopped with NonFiniteTrainingError at epoch18/batch2046; its final segment was automatically cancelled. Original epoch10 array **19589** and baseline/legacy epoch20 segments completed; no further sigma1e-3 continuation is queued. Clean controls have not started. The conditional broad expansion was not released. Cancellation receipts are in the result directory. [Plan](eqprop_conv3_p95_read_noise_1em3_plan_20260921.md). |
+| [CIFAR-10 digital L12 logical-width Adam baseline](../results/cifar10-digital-l12-logical-width-adam-seed0-20260921-v1/) | `reviewed` | All 50 epochs / 4900 steps complete on Akib RTX 3080; best/final official-test accuracy 92.30% at epoch 50, final augmented-train 99.754%. Logical widths 128/256/512, 10,849,674 parameters, seed 0, Adam .001 with cosine decay, batch 512. Runtime 16m16s (.2710 GPUh), peak reserved memory 6.68 GiB. Local production/three target smoke bundles validate; all 26 production/launcher hashes match Akib, exit 0, no GPU worker remains. Auxiliary local cuDNN failure retained/excluded. Exploratory monitored-test evidence; interpretation in experimental_manifest.md. [Report](../results/cifar10-digital-l12-logical-width-adam-seed0-20260921-v1/analysis/report.md). |
+| [Conv3 p90 sigma 1e-3 extension](../results/eqprop-conv3-p90-read-noise-1em3-20260920-v1/) | `reviewed` | All3 cases terminal and locally validated;1 full30-epoch completion,2 scientific failures,zero operational failures/repeats. Baseline final97.16%,best97.20%,matched clean97.72%,drop0.56pp. Legacy nonfinite epoch8/batch2791,last94.76% (epoch7),best97.22%;ours nonfinite epoch18/batch1638,last95.14% (epoch17),best96.40%. Both fail in Layer_1 inference; partial accuracies are not30-epoch results. Fifi RTX5090 sequential; same p90 betas/T8/LRs/init; previous clean controls reused. All97 remote/local production-file hashes match; canonical validation passes; native exits0/1/1,launcher0. Production7.640955 GPUh;no worker remains. [Report](../paper_ready_results/conv3_p90_read_noise_1em3_20260920.md). |
+| [Conv3 V100 continuation canary](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/v100-continuation-canary/) | `complete` | Slurm2179778 completed0:0 in66s; collected/validated; native75/75/0,48 noise draws,zero official-test reads. One V100,4CPUs,fmu@v100/gpu_p13/qos_gpu-dev,v100-16g,5min,singleton0-0. Same frozen continuation source and local semantic smoke; wrapper `run_conv3_p90_read_noise_continuation_v100.sh` loads the V100 module and uses119min production timeout. Three short native invocations test both restores. Remote fmu root/eqprop-conv3-p90-read-noise-20260919-v1/v100-continuation-canary. |
+| [Conv3 A100 continuation canary](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-continuation-canary/) | `complete` | Slurm2179703 completed0:0 in63s; local bundle and scheduler gate pass; three native invocations75/75/0,48 noise draws,zero official-test reads. One A100,4CPUs,umg@a100/gpu_p5/qos_gpu_a100-dev,5min,singleton0-0. New frozen continuation source; three short native invocations exercise two planned checkpoint restores with highest-noise baseline. Local six-case equivalence passed bitwise against the original runner. Wrapper `experiments/run_conv3_p90_read_noise_continuation_a100.sh`; remote fmu result root/eqprop-conv3-p90-read-noise-20260919-v1/a100-continuation-canary. No full training before local smoke and live restore validation. |
+| [Conv3 A100 throughput canary](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-canary/) | `complete` | Slurm2179514 completed0:0 in6m26s; collected and canonical validation passes,27504 noise draws,zero official-test reads. User authorized V100 or A100. One A100,4CPUs,umg@a100/gpu_p5/qos_gpu_a100-dev,20min cap,singleton0-0. Frozen source; exact30-epoch high-noise baseline config with explicit one-epoch diagnostic override. Measures whether full30 epochs fit two-hour allocations; excluded from scientific sweep. Wrapper `experiments/run_conv3_p90_read_noise_a100.sh`; remote fmu result root/eqprop-conv3-p90-read-noise-20260919-v1/a100-canary. Production remains blocked on measured throughput. |
+| [Conv3 V100 compact allocation canary](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/v100-canary-compact/) | `superseded` | Slurm2179134 canceled while pending,zero allocated GPU time; one V100,2CPUs,2min smoke, fmu@v100/gpu_p2s/qos_gpu-t3. User requested smaller allocations. Same frozen runner/config/module. Prior2179098 canceled before allocation. Production waits for semantic completion. |
+| [Conv3 p90 V100 canary](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/v100-canary/) | `superseded` | Canceled while still pending;zero allocated GPU time.  Slurm 2179098.  Final30-epoch config in smoke mode; fmu@v100,gpu_p2s,qos_gpu-t3,v100,6CPUs,10min canary cap. Exact single-config wrapper and V100 module contract. Remote fmu result root/eqprop-conv3-p90-read-noise-20260919-v1/v100-canary. Production has6h caps. |
+| [Conv3 p90 noise pack canary](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/canary/) | `complete` | Slurm 2178929.  One H100 task, same two-case wrapper/resources, cases0 and8 in smoke mode; fifteen local semantic smokes and62 focused tests pass. Remote fmu result root/eqprop-conv3-p90-read-noise-20260919-v1/canary. Completed0:0; superseded H100 preparation, excluded from V100 qualification. No H100 noisy production submitted. |
+| [Conv3 p90 local acceleration: fifi](../results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/fifi/) | `complete` | Baseline clean and sigma3e-5 RTX5090,seed0,30epochs each; native/launcher exits0,full local bundles valid,remote/local checksums match,zero official-test reads. Clean/noisy final validation97.72/97.56%,drop0.16pp. Both finite and final-drop screen passes. Physical GPU time8.8158h. Automatic clean resume preserved live state; no worker remains. |
+| [Conv3 p90 local acceleration: riri](../results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/riri/) | `complete` | Legacy clean and sigma3e-5 RTX5090,seed0,30epochs each; native/launcher exits0,full local bundles valid,remote/local checksums match,zero official-test reads. Clean/noisy final validation98.70/98.70%,drop0.00pp. Both finite and final-drop screen passes. Physical GPU time8.9998h from same-host timestamps. Automatic clean resume preserved live state; no worker remains. |
+| [Conv3 p90 local acceleration: loulou](../results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/loulou/) | `complete` | Ours clean RTX5090,seed0,30epochs; launcher/native exit0,full local bundle validates with zero official-test reads. Final validation98.52%,best98.62%; finite and final-drop screen passes. Physical GPU time4.1205h. GPU idle after completion. Tmux p90-noise-20260920; remote /home/filip/server_code/results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/loulou/production. |
+| [Conv3 p90 local acceleration: trex](../results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/trex/) | `complete` | Ours sigma3e-5 RTX5090,seed0,30epochs; launcher/native exit0,full local bundle validates with825120 noise tensor draws and zero official-test reads. Final validation98.12%,best98.24%; matched clean drop0.40pp; finite and final-drop screen passes. Physical GPU time4.4801h. Tmux p90-noise-20260920; remote /home/filip/server_code/results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/trex/production. |
+| [Conv3 p90 local acceleration: local](../results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/local/) | `superseded` | Excluded smokes/probes only; no production. Throughput slower than retained Jean Zay path. Superseded three concurrent RTX3090 workers, baseline/legacy/ours at sigma0;30epochs,unchanged p90 betas and T=K=8. Source74f41a03 frozen. Same-runner concurrent smokes and100-batch throughput checks before production; provisional16h per-host cap. Remote /home/filip/server_code/results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/local/production (local host stays in worktree). |
+| [Conv3 p90 local acceleration: nom-cool-1](../results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/nom-cool-1/) | `superseded` | Excluded smokes/probes only; no production. Throughput slower than retained Jean Zay path. Superseded three concurrent RTX3090 workers, baseline/legacy/ours at sigma1e-05;30epochs,unchanged p90 betas and T=K=8. Source74f41a03 frozen. Same-runner concurrent smokes and100-batch throughput checks before production; provisional16h per-host cap. Remote /home/filip/server_code/results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/nom-cool-1/production (local host stays in worktree). |
+| [Conv3 V100 production group0: clean controls](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/v100-production/) | `complete` | Slurm 2179803,2179804,2179805. First baseline block2179803_0 completed0:0 in1h25m26s at10epochs; local checkpoint/hash/canonical pause verified. Legacy block2179803_3 also completed0:0 in1h25m30s; local checkpoint verified. Ours block2179803_6 completed0:0 in1h26m25s; all three first10 checkpoints validate. Baseline continuation2179804_0 completed0:0 in1h26m47s at20epochs; local checkpoint validates. Legacy continuation2179804_3 completed0:0 in1h35m52s at20epochs; local checkpoint validates. Ours continuation2179804_6 completed0:0 in1h33m40s; all three20-epoch checkpoints validate. Baseline final block2179805_0 completed0:0 in1h26m39s; full30-epoch local bundle validates: final97.56%,best97.66% validation. Legacy final block2179805_3 completed0:0 in1h26m00s; full30-epoch local bundle validates: final98.76%,best98.88% validation. Ours final block2179805_6 completed0:0 in1h26m51s; full30-epoch local bundle validates: final/best98.58%. All3 clean outcomes locally validated and all9 allocations reconciled; actual13.219 GPU-hours. Cases0,3,6,three dependent arrays0,3,6%1,10+10+10 epochs,120min/allocation,one V100 active. Source/wrapper match passed canary2179778. Remote fmu root/eqprop-conv3-p90-read-noise-20260919-v1/v100-production/task_{0,3,6}. |
+| [Conv3 A100 production group0: clean controls](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/) | `complete` | Slurm 2179755,2179759,2179760. First baseline block2179755_0 completed0:0 in58m28s at10epochs; local checkpoint/hash/canonical pause verified. Legacy block2179755_3 also completed0:0 in59m52s; local checkpoint verified. Ours block2179755_6 completed0:0 in1h00m20s; all three first10 checkpoints validate. Baseline continuation2179759_0 completed0:0 in58m37s at20epochs; local second checkpoint validates. Legacy continuation2179759_3 completed0:0 in1h00m01s at20epochs; local checkpoint validates. Ours continuation2179759_6 completed0:0 in1h01m20s; all three20-epoch checkpoints validate. Baseline final block2179760_0 completed0:0 in58m43s; full30-epoch local bundle validates: final97.58%,best97.74% validation,zero official-test reads. Legacy final block2179760_3 completed0:0 in59m35s; full30-epoch local bundle validates: final98.72%,best98.86% validation. Ours final block2179760_6 completed0:0 in58m04s. All3 full30-epoch local bundles validate: final baseline97.58%,legacy98.72%,ours98.50%; all9 allocations completed0:0. Group0 coverage and accounting reconciled. Cases0,3,6 (baseline/legacy/ours clean),three dependent arrays0,3,6%1,chunk0→1→2,90min/allocation,one A100 active. Source and wrapper match passed live canary2179703. Remote fmu root/eqprop-conv3-p90-read-noise-20260919-v1/a100-production/task_{0,3,6}. |
+| [Conv3 A100 production group1: sigma 5e-4](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/) | `complete` | Slurm2186118,2186119,2186120; all9 allocations completed0:0,actual8.852GPUh. All three30-epoch native bundles collected and validated,825120 noise draws each,zero official-test reads,finite parameters and final-drop screen passes. Final validation baseline97.40%,legacy95.72%,ours97.12%; matched clean drops0.18/3.00/1.38pp. Legacy recovered after88.42% at epoch20; retain the full fluctuating curve. [Validation](../results/eqprop-conv3-p90-read-noise-20260919-v1/a100-production-group1-validation.json). |
+| [Conv3 A100 production group2: sigma 1e-4](../results/eqprop-conv3-p90-read-noise-20260919-v1/) | `complete` | Slurm2191887,2191888,2191889; all9 allocations completed0:0,actual8.9119GPUh. All three30-epoch bundles collected and validated,825120 noise tensor draws each,zero official-test reads,finite parameters and final-drop screen passes. Final validation baseline97.56%,legacy98.64%,ours97.86%; matched clean drops0.02/0.08/0.64pp. [Validation](../results/eqprop-conv3-p90-read-noise-20260919-v1/a100-production-group2-validation.json). |
+| [Conv3 A100 production group3: sigma 3e-4](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/) | `complete` | Slurm2195164,2195165,2195166; all9 allocations completed0:0, actual9.0297 GPUh. All three30-epoch bundles collected and validated,825120 noise tensor draws each,zero official-test reads,finite parameters and final-drop screen passes. Final validation baseline97.56%,legacy96.26%,ours97.48%; matched clean drops0.02/2.46/1.02pp. All A100/V100 production complete. [Validation](../results/eqprop-conv3-p90-read-noise-20260919-v1/a100-production-group3-validation.json). |
+| [Conv3 V100 production group1: sigma 1e-5](../results/eqprop-conv3-p90-read-noise-20260919-v1/jz/v100-production/) | `complete` | Slurm2187476,2187477,2187478; all9 allocations completed0:0, actual13.6525 GPUh. All three30-epoch bundles collected and validated,825120 noise tensor draws each,zero official-test reads,finite parameters and final-drop screen passes. Final validation baseline97.50%,legacy98.72%,ours98.38%; matched clean drops0.06/0.04/0.20pp. All V100 production complete. [Validation](../results/eqprop-conv3-p90-read-noise-20260919-v1/v100-production-group1-validation.json). |
+| [Conv3 V100 production group2: sigma 3e-5](../results/eqprop-conv3-p90-read-noise-20260919-v1/) | `superseded` | Replaced before submission by matched RTX5090 cases on fifi/riri/trex plus clean controls on fifi/riri/loulou. Historical plan: baseline/legacy/ours cases 2,5,8; 30 epochs via three dependent 10-epoch arrays, concurrency 1, 120min/allocation. Submit after the preceding V100 group is collected and reconciled. Same accepted continuation source and `experiments/run_conv3_p90_read_noise_continuation_v100.sh`; argument templates in the study root. Expected remote output: fmu root/eqprop-conv3-p90-read-noise-20260919-v1/v100-production/task_{2,5,8}. |
+| [Conv3 p90 read-noise sweep](../results/eqprop-conv3-p90-read-noise-20260919-v1/) | `reviewed` | All24 thirty-epoch outcomes complete and locally validated:15 noisy plus9 GPU-matched clean controls,seed0,zero official-test reads. All54 Slurm allocations and4 local launchers successful; all remote/local production checksums match. Physical production GPU time88.9982h (62.5819 HPC,26.4162 local),preparation separate. No failures or scientific exclusions. Highest-noise clean-relative drops:baseline0.18pp,legacy3.00pp,ours1.38pp. Legacy temporary running-best declines7.34/9.16pp at sigma3e-4/5e-4 despite passing endpoint screen. Mixed robustness conclusion and defensible beta protocol recorded in experimental_manifest.md. Local4×RTX5090 acceleration and measured32% contention improvement preserved all training states; no active or queued study work remains. [Report](../paper_ready_results/conv3_p90_read_noise_20260919.md) · [Closeout](../results/eqprop-conv3-p90-read-noise-20260919-v1/closeout-validation.json). |
+| [Refined Conv3 training retry](../results/eqprop-conv3-refined-beta-training-20260919-v1/jz/retry-v2/) | `complete` | Array2178358, indices1–5, throttle4 after original baseline completed. All five replacements completed ten epochs and validate locally. Native exit receipts and canonical bundles retained. Scientific configs/source unchanged; wrapper v2 fixes double Slurm-array indexing. |
+| [Refined Conv3 recovery canary](../results/eqprop-conv3-refined-beta-training-20260919-v1/jz/canary-v2/) | `complete` | Slurm 2178310 completed 0:0; local canonical bundle, semantic summary, native receipt and H100 resource contract validate. Wrapper v2 explicitly passes --index 0 after Slurm case selection. Excluded smoke evidence. |
+| [Refined Conv3 beta ten-epoch training](../results/eqprop-conv3-refined-beta-training-20260919-v1/) | `reviewed` | All6 ten-epoch settings collected/validated; finite and stable. Finalp95→p90:baseline97.14→97.16%,ours98.48→98.52%,legacy98.58→98.54%. Same initializer/cohort/order;zero official-test reads;zero remote/local checksum differences. Original2178212_0 plus2178358_1–5 complete; five excluded pretraining index errors and canary2178310 retained.3.44556H100GPU-hours plus local checks. [Report](../paper_ready_results/conv3_refined_beta_training_20260919.md);manifest interpretation recorded. |
+| [Refined beta boundaries and protocol assessment](../results/eqprop-beta-refinement-20260919-v1/) | reviewed | 88 new beta settings (31 Conv2,57 Conv3),6,336 replays;190 settings including reuse. All12 cosine>.90/.95 boundaries bracketed within5%, all bundles/receipts validated, workers ended. Both production workers used local RTX3090; preserved remote smokes and staging exclusions reconciled. Conservative2.6462/4 GPU-hours. [Assessment](../paper_ready_results/beta_selection_protocol_assessment_20260919.md): training/validation qualification should select beta; static cosine alone is not a stability certificate. No new training at refined betas or official-test access. |
+| [Per-matrix beta training comparison](../results/eqprop-layerwise-beta-training-20260919-v1/) | reviewed | All 12 cosine >.90/.95 conditions reconciled as nine settings: eight ten-epoch stable, one reused Conv2 legacy beta30 nonfinite failure. All five new settings completed. Larger-minus-smaller accuracy: Conv2 ours +.12pp, Conv3 baseline .00pp, Conv3 ours -.04pp. Zero noise, seed0, T/K6/8; no consistent accuracy penalty and no stability guarantee from static cosine. Remote results collected and canonical bundles validated. Two Loulou attempts superseded for contention; local replacements, probes and transport abort documented. No owned workers remain; 8.67 production worker-hours including superseded work, below budget. [Report](../paper_ready_results/layerwise_beta_training_20260919.md); [audit](../results/eqprop-layerwise-beta-training-20260919-v1/closeout-validation.json). |
+| [Larger-beta training stability](../results/eqprop-beta-training-stability-20260918-v1/) | analyzed | All 9/9 seed-0, zero-noise, ten-epoch pilots reconciled and locally validated. All six Conv1/Conv2 larger-beta candidates failed nonfinite: Conv1 epoch 1; Conv2 baseline epoch 7, ours epoch 3, legacy epoch 5. All three Conv3 candidates passed: baseline beta750 97.08%, ours beta22.5 98.38%, legacy beta1 98.64% final validation; matched-control differences +.06/-.04/.00pp. Fixed T/K=4/6/8 and inherited Adam vectors; no official-test reads or promotion. Eight cases used Riri, one used Trex; all study-owned processes exited, supervised native receipts validate, no exclusions/retries. Source/config hashes, checkpoints, initialization and order checks pass. Production host occupancy 6.03 GPU-hours and worker time 10.28 hours within budget. [Results](../paper_ready_results/beta_training_stability_20260918.md), [plan](eqprop_beta_training_stability_plan_20260918.md), [audit](../results/eqprop-beta-training-stability-20260918-v1/closeout-validation.json); interpretation in experimental_manifest.md. |
+| [Conv3 initialization gradient magnitudes](../results/section43-conv3-initialization-magnitudes-20260918-v1/) | analyzed | All 72 new balanced/legacy initialization batches complete; baseline and trained values reused on the identical 36×16 cohort and local RTX 3090. Legacy clean gradient RMS is largest in every layer at initialization (56–63× baseline); it falls in all layers by the selected trained checkpoint. All initialization residual-p90 checks pass. Three-scheme smoke matches baseline and production; four replay bundles validate. GPU released after 2.570/10 GPU-minutes; no failures/exclusions. [Report and figure](../paper_ready_results/section43_conv3_initialization_magnitudes.md). |
+| [Beta selection rule comparison](../results/eqprop-beta-rule-comparison-20260918-v1/) | analyzed | All 153/153 seed-0 zero-noise cases complete and locally validated: 11,016 replays, 33,048 layer comparisons, 108 joint rules. Whole-gradient selection allows larger beta in 50/54 comparisons; norm gating changes 16/54. Local RTX3090 (51 Conv3 cases) and Akib RTX3080 (102 Conv1/Conv2 cases) both exited zero; all remote outputs collected. 26 tests pass; 13 historical cases agree within 1.10e-14. No failed/excluded cases; 2.7499/6 GPU-hours including smokes. No training or beta promotion. [Report and figures](../paper_ready_results/beta_rule_comparison_20260918.md); interpretation in experimental_manifest.md. |
+| [Conv3 baseline initialization versus trained](../results/section43-conv3-baseline-initialization-20260918-v1/) | analyzed | All 36 initialization batches and paired trained clean replays complete; 5,904 new comparisons. At sigma5e-4, first/second-layer initialization cosine .00574/.00405 versus .00400/.00418 trained: near-zero alignment predates training. Canonical bundles and regression test pass; 3.478/10 GPU-minutes on local RTX 3090. Pre-GPU hash-schema failure retained and corrected; no exclusions. [Report](../paper_ready_results/section43_conv3_baseline_initialization.md). |
+| [Section 4.3 EqProp checkpoint mechanism](../results/section43-eqprop-mechanism-20260918-v1/) | analyzed | All 9 checkpoints × 36 batches complete: 39,852 comparisons and 162 cosine cells; source/smoke/full bundles validate, 492 smoke comparisons exactly match production. Local RTX 3090 used 0.1884/1 GPU-hours including smokes; no failures/exclusions. Matplotlib PDF/JPG/PNG/SVG figures and [interpretation](../paper_ready_results/section43_mechanism.md) complete. Legacy has much smaller deep-layer phase contrast; finite-K, beta, and Conv3 baseline residual caveats retained. |
+| [Digital ReLU Table 1/2 reference](../results/digital-relu-table12-20260917-v1/) | reviewed | All 18/18 half-channel, zero-bias MSE/CE trainings complete on local/Akib/Trex; all bundles, split/order matches and best-checkpoint replays validate. Mean validation MSE/CE: Conv1 96.47/97.59%, Conv2 98.19/98.38%, Conv3 99.01/98.77%. Latest Overleaf updated and pushed as `8a889d7`: MSE references in Table 1 only, Tables 2/3 unchanged. CE retained as supporting evidence. All launchers exit 0; .4975/4 production GPU-hours. Ten smokes pass; initial local cuDNN failure preserved and recovered in py309, with no full-training retries/exclusions. Official test unread. [Report](../paper_ready_results/digital_relu_table12_20260917.md), [plan](digital_relu_table12_plan_20260917.md). |
+| [Baseline EqProp read-noise](../results/eqprop-read-noise-seed0-baseline-20260916-v1/) | reviewed | All22 full trainings collected and revalidated:20 noisy cases+2 new clean controls, seed0. Conv1 loses at most.04pp; Conv2 has no observed loss; Conv3 beta10 loses.16–1.60pp, ending at96.04% for sigma5e-4 versus97.64% clean. All queues exit0; Fifi finishes at00:39:15 CEST September18 and releases its GPU. Remote/local checksums match;45 smoke/timing runs validate. No production failures/exclusions/replacements; pretraining wrapper failure preserved.43.294845/60 GPU-hours settled. Validation only; beta/residual and environment caveats remain. [Results](../paper_ready_results/baseline_read_noise_results_20260916.md), [closeout](../paper_ready_results/provenance/baseline_read_noise_closeout_20260918.json). |
+| [T-only displacement sweep for affected Conv cases](../results/eqprop-phase-displacement-t-sweep-20260916-v1/) | reviewed | All15 included cases and2 smokes validate:900 replays/3,420 comparisons. Every-batch drift <=1% first holds at Conv3 baseline T12/24 (init/best), Conv3 legacy T16/12 and Conv2 legacy init T10. Controlled-response RMS varies <.001%. Conv2 count-metadata failure is preserved and replaced by T6_v2; scientific configs unchanged, recovery regression passes. Local recovery driver1264547 exited0 at14:58 CEST; GPU idle; .460455/1 GPU-hours settled including failure. [Report](../paper_ready_results/phase_t_sweep_20260916.md), [plan/recovery](eqprop_phase_displacement_t_sweep_plan_20260916.md). |
+| [Conv1–3 phase displacement across amplification schemes](../results/eqprop-phase-displacement-conv123-20260916-v1/) | reviewed | All9 cases and smoke validate:648 replays,1,944 gradient comparisons,9,720 individual-layer measurements and270 pooled rows. Trained Conv3 baseline H1 raw displacement is224.5 times the matched-zero response, showing continued relaxation dominates the raw difference. Beta10 remains unconfirmed; Conv3-ours gradient exception retained. No failures/exclusions/replacements. Local driver1239772 exited0, GPU idle; .202105/1 GPU-hours settled. [Report](../paper_ready_results/phase_displacement_20260916.md), [plan](eqprop_phase_displacement_plan_20260916.md). |
+| [Conv3 baseline beta sweep at fixed T8/K8](../results/eqprop-conv3-baseline-beta-tk8-20260916-v1/) | reviewed | All7 new formal cases and smoke validate;504 replays and2,016 layer comparisons, with beta100 reused separately. Beta10 passes seed0 selection and confirmation seeds0/2, but seed1 fails two initialization comparisons; no three-seed-confirmed beta. T=K=8 and its equilibrium caveat remain. Local driver1230581 exited0; .275828/1 GPU-hours settled. No training resumed. [Report](../paper_ready_results/conv3_baseline_beta_tk8_20260916.md), [plan](eqprop_conv3_baseline_beta_tk8_plan_20260916.md). |
+| [Wide Conv3 baseline free-phase T audit](../results/eqprop-baseline-wide-t-relaxation-20260916-v1/) | reviewed | All4 new T12/16/24/32 cases and smoke validate at fixed beta100/K8. Equilibrium passes for all four, but all retain the same seven initialization gradient failures (worst cosine .967393, norm mismatch .184260); no joint passing T, so conditional confirmation is correctly omitted. 288 new replays/1,152 layer comparisons; T8 reused separately. Local driver1218622 exited0, GPU idle; .166037/2 GPUh settled. [Report](../paper_ready_results/baseline_wide_t_audit_20260916.md), [plan](eqprop_baseline_read_noise_beta_plan_20260916.md), and experimental_manifest.md record the conclusion. No training resumed or beta changed. |
+| [Single-seed ours/legacy read-noise sweep](../results/eqprop-read-noise-seed0-ours-legacy-20260914-v1/) | reviewed | All 30/30 full trainings are collected, validated and analyzed. Final run finished September 16 at 06:20:46 CEST, before the 08:00 deadline; no active/queued/held cases and all five continuation GPUs released. Full training packs all exited 0; remote production artifacts and terminal receipts match local checksums. Local pretraining nohup failure is preserved in continuation_20260915/local/, replaced by unchanged local_tmux_v2/; local/Akib final queue code 1 is the documented guard preventing duplicates of the Trex/Fifi transfers. No full training excluded, discarded or retried. First window used 22.142636/36 physical GPU-hours; continuation 55.089836/78, including checks and recovery; total 77.232472. Conv2 highest-noise final validation: ours 97.60%, legacy 95.72%; Conv3: 96.60% versus 75.44%. One seed, inherited differing betas, Conv3-ours qualification exception and all-five-Conv3 cross-environment/noise-stream comparisons limit causal interpretation. Source-v2/configs unchanged. Official-test reads zero; clean campaign remains paused. [Final report](../paper_ready_results/read_noise_sweep_results.md), [30-run tracker](../paper_ready_results/read_noise_run_status_20260914.md), [manifest](experimental_manifest.md), [completed plan](eqprop_read_noise_continuation_plan_20260915.md), [checksum proof](../paper_ready_results/provenance/read_noise_final_reconciliation_20260916.json). |
+| [Baseline beta audit with larger cohorts](../results/eqprop-beta-selection-audit-20260914-v1/) | reviewed | All9 selection plus6 conditional confirmation cases validate (1,080 replays/3,024 layer comparisons). Conv2 beta100 confirmed across seeds0/1/2; Conv1 beta300 fails three trained-checkpoint C0 rows on seed2 (mincos.976462); Conv3 fails100/200/300 at initialization and retains its equilibrium caveat. Historical72 baseline comparisons reproduce exactly. Main driver962009 exited zero and GPU idle. Settled.279801GPUh; ledger271.698105/300. Other betas/LRs and training pause unchanged; full conclusions in experimental_manifest.md. |
+| [Revised Conv3 BPTT seed1 final ceiling](../results/paper-training-completion-20260911-v1/production/main_baseline_tk_conv3_bptt_seed1_gmax1em3_3h/) | collected — Main idle | Source v9, T24/K8, seed 1/Gmax 1e-3, all 30 epochs validated locally. Best/final validation 89.58/89.58%. Worker 736654 and supervisor 736645 exited zero at 13:15:08 CEST; GPU worker absent. Three-hour reservation settled at 2.166111 GPU-hours. No seed-2 follow-up launched; admissions paused for review. |
+| [Revised Conv2 EqProp seed2 first ceiling on Nom](../results/paper-training-completion-20260911-v1/collected/nom_baseline_tk_conv2_ep_seed2_gmax1em4/) | collected; Nom idle | Source v11, beta .1, T12/K6, seed 2/Gmax1e-4; all 30 epochs validated. Best/final 85.22/85.22%, paired BPTT best 85.24%; exact 30-epoch cohort/order match. Both worker/supervisor exited zero at 14:20:26 CEST, local/remote checksums identical. Eight-hour reservation settled 2.120000 GPU-hours. No follow-up launched. |
+| Revised Conv2 EqProp seed-1/2 repetition groups | three repetitions collected; later cases paused | Source v11, beta .1, T12/K6. Seed-1 tight and middle plus seed-2 tight are collected, with best/final 85.36/85.04%, 91.50/91.50%, 85.22/85.22%. Every full 30-epoch BPTT cohort/order pair matches. Middle Akib worker/supervisor ended zero at 14:15:59 CEST, checksum-identical collection; 2.243056 GPU-hours settled from eight. Akib/Nom are idle. The three remaining repetitions have no admission or launch. |
+| Revised Conv3 EqProp pilots on Jean Zay | superseded — pilot group started on Loulou | `launch/jz_baseline_tk_conv3_ep_seed0.command.txt`, list and source v11 prepared locally. Expected remote `/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/paper-training-completion-20260911-v1/production/jz_baseline_tk_conv3_ep_seed0/`; array0-2%4, one V100 per task, eight-hour cap, 24GPUh maximum. Zero reserved/submitted. Fresh account/source/scheduler checks, budget admission, exact local smoke and semantic validation required. Transfer all three seed0 cases only if none has started elsewhere. Otherwise keep Loulou pilots and prepare a complete unstarted repetition group after pilot qualification. At most four total campaign Jean Zay GPUs across all jobs. SSH timeout10:11CEST; last maintenance end September16 18:00CEST. |
+| Revised Conv3 EqProp seed-0 pilots | first pilot running; later admissions paused | Source v11 7b67ca41, beta .1, T24/K8, float64, 30 epochs. All three numerical gates and exact CPU/Loulou GPU smokes pass; target smokes settled .001981 GPU-hours. First pilot `production/loulou_baseline_tk_conv3_ep_seed0_gmax1em4/` has eleven epochs complete at 14:23 CEST; supervisor 1107229, worker 1107238, GPU 1107255. Eight-hour reservation, about 6.6-hour projected runtime. Finish this case and stop. Two further seed-0 pilots and six repetitions remain unstarted; repetitions still require all three stable full pilots and a new frozen guard. |
+| Revised Conv3 EqProp runtime check on preferred 3090 | `collected — exceeds current eight-hour case cap` | Unmeasured 3090 runtime currently forecasts above the eight-hour full-case cap. Once Nom's original wave is complete/collected/accounted, admit at most .25 GPU-hour for a 256-train-batch/one-validation-batch timing diagnostic, seed0/Gmax1e-3, T24/K8, beta .1, qualified frozen source, no official test. Expected a few minutes; hard maximum15 minutes. Output `results/paper-training-completion-20260911-v1/checks/nom_conv3_baseline_ep_timing_20260914/`. Determine whether a whole unstarted replication seed group can fit on Nom after all three Conv3 pilots pass; require margin below8h, new exact-config smoke and full budget admission. Preserve scientific settings and host consistency within each seed group. Qualified-source derived config and timing driver are staged; the exact CPU smoke is collected/validated. The target one-batch smoke and 256-batch timing share the .25 GPU-hour / 15-minute bound, with a conservative 15% projection margin. The timing check is collected and validated; .027433GPUh settled. Measured projection9.788h, 11.256h with15% margin, exceeds the current8h cap. The proposed12h cap and375h campaign budget are unapproved. |
+| Revised baseline Conv2 BPTT seed-1, shorter scheduler window | `collected — array 2117432` | All three unchanged v9 T/K=12/6, 30-epoch cases completed with exit 0:0 and are locally collected/validated with identical remote checksums. Best/final validation across ceilings: 85.42/85.06%, 91.52/91.46%, 93.62/93.62%. Three-hour Slurm ceiling plus 10,740-second outer timeout and 20-second kill allowance; full nine-hour reservation settled at 6.693056 allocated GPU-hours. Evidence `collected/jz_baseline_tk_conv2_bptt_seed1_3h/`; receipts `launch/jz_baseline_tk_conv2_bptt_seed1_3h.{terminal_accounting,collection_accounting}.json`. Original pending eight-hour request 2117328 remains cancelled at zero GPU time. |
+| Revised baseline Conv2 BPTT seed-1 eight-hour request | `cancelled — zero GPU time` | Array 2117328 was submitted after exact smokes and scheduler checks, then cancelled entirely unallocated at 02:55:22 CEST because all-node maintenance prevented an eight-hour fit. Authoritative sacct reports CANCELLED, zero elapsed and no allocation. Its 24-hour reservation is settled at zero. Replaced by the same three scientific cases under array 2117432 with a three-hour operational ceiling; original attempt receipts remain in `launch/jz_baseline_tk_conv2_bptt_seed1.*`. |
+| Revised baseline Conv2 EqProp seed-0 largest ceiling | collected — stable | Full source-v10 30-epoch pilot at beta .1, T12/K6, Gmax1e-3 gives 93.92/93.54% best/final validation, .38pp drop. Canonical/float64/finiteness/bias/bounds/initializer/PT-NPZ checks pass. Worker133002 and supervisor132993 exited zero at 09:25:33 CEST. Whole wave/launcher collected with identical checksums; eight-hour reservation settled at 2.230278 GPU-hours. Proof checks/baseline_tk_revision_pilots/conv2_1em3_seed0.json. |
+| Revised baseline Conv2 EqProp seed-0 middle ceiling | `collected — stable` | Full 30-epoch v10 pilot at beta .1, T12/K6, Gmax5e-4 gives 92.54/92.30% best/final validation, .24pp drop. Float64/bias/bounds/initializer/PT-NPZ and canonical checks pass. Worker117915 and supervisor117906 exited zero at 07:08:58 CEST. Whole wave/launcher collected with exact checksums; eight-hour reservation settled at 2.236111 GPU-hours. Proof `checks/baseline_tk_revision_pilots/conv2_5em4_seed0.json`; local bundle in the revision collection. |
+| Revised baseline Conv2 EqProp seed-0 pilots | collected — 3/3 stable | All numerical beta .1 gates and full 30-epoch T12/K6 pilots pass at best/final 85.42/85.00%, 92.54/92.30%, 93.92/93.54%. All collected and validated; each whole reservation settled. Source-v11 guard releases all six Conv2 repetitions. Official test unread. |
+| Revised baseline Conv2 BPTT seed-2 repetitions | `collected — array2118922` | All three v9 T12/K6 30-epoch runs complete0:0, locally collected and validated with exact production/log checksums. Best/final validation85.24/85.24%,92.22/92.22%,93.50/93.40%. Full nine-hour reservation settled7.028333 GPU-hours from sacct7940/9483/7879 seconds. Source/config/initializers and finite/bias/bounds checks pass. Root `collected/jz_baseline_tk_conv2_bptt_seed2_3h/` includes separately verified local slurm_logs/. No active campaign JZ allocation. |
+| Revised baseline Conv2 BPTT seed-0 references | `collected — Akib` | User-authorized matched BPTT/EqProp T/K revision. Three bounded baseline ceilings, seed 0, T/K=12/6, 30 epochs, exact inherited Adam vectors, same initializer/cohorts and zero biases. Source v9 `40348282a` frozen; full 24-hour reservation admitted, expected 2–4 hours. Output `/home/filiposana/server_code/results/paper-training-completion-20260911-v1/production/akib_baseline_tk_conv2_bptt_seed0/`. New best checkpoints must pass the beta gate before revised EqProp pilots. |
+| Revised baseline Conv3 BPTT seed-1/2 repetitions | seed 1 collected; seed 2 paused before launch | All three seed-1 v9/T24/K8 cases are collected and validated with both exit receipts zero; settled costs are 2.109167, 2.272500 and 2.166111 GPU-hours across ascending ceilings. The last case completed at 13:15:08 CEST with 89.58/89.58% validation. Three exact seed-2 configs/commands remain prepared with three-hour operational caps, but have no reservation or launch. Main is idle pending review. |
+| Revised baseline Conv3 BPTT seed-0 references | `collected — Main` | Three bounded baseline ceilings, seed 0, T/K=24/8 (all original-reference fidelity/residual and larger-beta checks completed), 30 epochs, exact inherited Adam vectors and shared initialization. Source v9 `40348282a` frozen; full 24-hour reservation admitted, expected 6–7 hours. Local output `results/paper-training-completion-20260911-v1/production/main_baseline_tk_conv3_bptt_seed0/`. Same-config CPU and GPU smokes precede production. Original baseline BPTT results remain intact; new results enter the separate baseline revision ledger. |
+| [Loulou Conv3 ours bounded EP seed-1 wave](../results/paper-training-completion-20260911-v1/collected/loulou_bounded_conv3_ours_ep_seed1/) | collected and validated | All three source-v8/T8/K8/beta .003 cases have complete 30-epoch bundles, worker/supervisor exit-zero receipts and identical local/remote checksums. Wave ended 11:45:45 CEST September 14; 12.389722 GPU-hours settled from 24. Final largest-ceiling best/final validation 95.78/95.64%. Complete three-seed comparison is in `paper_ready_results/bounded_conv3_ours_three_seed_validation.md`. |
+| [Nom-cool-1 Conv3 legacy bounded EP remaining seed-1 wave](../results/paper-training-completion-20260911-v1/collected/nom_bounded_conv3_legacy_ep_seed1_remaining/) | collected and validated | Both source-v8/T8/K8/beta .001 cases have complete 30-epoch bundles, worker/supervisor exit-zero receipts and identical local/remote checksums. Wave ended 11:49:47 CEST September 14; 12.382778 GPU-hours settled from 16. Middle/largest best-final validation: 97.84/97.82% and 98.10/98.10%. Earlier tight ceiling remains on Trex with the authorized host split recorded. All three-seed legacy comparisons are complete. |
+| Baseline larger-T/K beta diagnostic | `collected — numerical candidates pass` | All 61 full replays and the CPU smoke are locally collected and validated; GPU time settled at .340910 hours. Candidate beta .1 passes all ceilings at Conv2 T/K=12/6 and Conv3 24/8. Source checkpoints are native-T/K evidence; new-reference gates and full EqProp pilots remain separately required. [Report](../paper_ready_results/baseline_tk_beta_qualification.md). |
+| Trex final bounded Conv3 seed-1 wave | `superseded without launch` | Source and CPU smokes were prepared, but no target GPU smoke, reservation or worker was admitted. Filip explicitly requested another host, then nom-cool-1 fallback if Loulou packing is inefficient. Its five cases now run in the two waves above. |
+| JZ Conv3 ours bounded EP seed-2 wave | `collected — array 2110632` | All three original T=K=8, beta .003, source-v8 cases completed 30 epochs with exit 0:0 and are locally collected and validated. Best validation across ascending ceilings: 85.60/95.04/95.88%. Scientific file checksums match; canonical bundles, histories, initialization, finite float64 checkpoints, zero biases, bounds and PT/NPZ checks pass. Settled 12.935556 allocated GPU-hours. Evidence `collected/jz_bounded_conv3_ours_ep_seed2/`; receipts `launch/jz_bounded_conv3_ours_ep_seed2.{terminal_accounting,collection_accounting}.json`. |
+| Conv3 legacy bounded EP seed-2 JZ array | `collected` | All three tasks in `2084633_[0-2]%4` completed with exit `0:0`; workers exited 0. Source v7 `b48c5a22`, injected beta .001, 30 epochs/T=K=8 unchanged. All three full bundles, worker receipts and closed logs are locally collected with exact remote checksums. Tight/middle/largest best-final: 93.20/93.20%, 98.00/97.88%, 98.06/98.06%; maximum decline .12 pp. Allocation seconds 15,355/16,607/15,372 yield 13.148333 GPU-hours and settle the complete 24-hour reservation. Local `collected/jz_bounded_conv3_legacy_ep_seed2/` and `collected/jz_bounded_conv3_legacy_ep_seed2_logs/`. All future bounded Conv3 EP seed-2 schemes retain JZ. No active campaign array. |
+| Conv3 legacy bounded EP JZ repetition placement | `superseded-before-launch` | Both eight- and six-hour scheduler-only requests predicted September 17 evening. No live job, GPU allocation, local smoke, or 48-hour reservation occurred. The complete unstarted bounded Conv3 EP seed-1/2 comparison groups moved to Trex with unchanged science. Staged v7 source and original eight-hour args are retained; see `launch/conv3_replication_target_replacement_20260913.json`. |
+| Trex Conv3 legacy bounded EP seed-1 tight ceiling | `collected` | Injected beta .001, source v7 `b48c5a22`, full 30 epochs/T=K=8. Best/final 94.84/94.72%, decline .12 pp, locally validated with exact remote checksums. Worker `1470679` and nohup `1470669` exited 0 at 15:01:04 CEST; actual 5.188889 GPU-hours settles the full eight-hour reservation. Local `collected/trex_bounded_conv3_legacy_seed1_gmax1em4/` and launcher receipts. Another extra-weekend eight-hour case fails the full-limit-plus-one-hour guard; Trex remains idle until Loulou's full primary wave is terminal. Remaining seed-1 ceilings and schemes retain Trex. |
+| Main/Nom Conv2 ours bounded EP repetitions | `collected` | All six repetitions at injected beta .001 are collected and stable, giving nine complete Conv2 ours EP cases. All finite float64 histories/checkpoints, shared initializers, zero biases and canonical bundles validate. Main worker `527650` exited 0 at 15:04 CEST, actual 5.362778 GPU-hours. Nom worker `1401760` and launcher `1401752` exited 0 at 14:41:04 CEST, actual 4.979444 hours. Both complete 24-hour reservations are settled. Main local `production/main_bounded_conv2_ours_ep_seed1/`; Nom local `collected/nomcool1_bounded_conv2_ours_ep_seed2/` has exact remote checksums and launcher receipts. [Complete paired analysis](../paper_ready_results/bounded_conv2_ours_three_seed_validation.md). |
+| Loulou Conv3 ours bounded EP seed-0 pilots | `collected` | All three full pilots stable at injected beta .003, source v4 `2092876a`: best/final tight 85.20/84.64%, middle 94.68/94.50%, largest 95.72/95.72%; maximum decline .56 pp. All 30-epoch finite-float64/zero-bias/bounds/init checks pass. Complete remote wave and closed logs/receipts are locally checksum-verified. Nohup `938925` and worker `938933` exited zero at 22:07:45 CEST. Full 24-hour reservation settled at 12.426944 GPU-hours. All six ours repetitions now pass the scientific pilot gate in source v8. |
+| [Main bounded Conv2 legacy EP seed 1](../results/paper-training-completion-20260911-v1/production/main_bounded_conv2_legacy_ep_seed1/) | `collected` | All three ceilings complete, stable and locally validated. Worker 517313 exited zero September 12 at 22:41:30 CEST; actual 5.355278 GPU-hours settles 24 reserved. Source v6 `c3fc6d53`, beta .003, 30 epochs and T=K=6 unchanged. |
+| Nom bounded Conv2 legacy EP seed 2 | `collected` | All three ceilings complete, stable and locally validated with exact remote checksums. Worker 1333978 and launcher 1333970 exited zero September 12 at 22:19:31 CEST; actual 4.987778 GPU-hours settles 24 reserved. Local campaign `collected/nomcool1_bounded_conv2_legacy_ep_seed2/`. All nine bounded Conv2 legacy EP cells are complete. |
+| Bounded Conv1 EP seed-1/2 repetitions | `collected` | All eighteen repetitions are locally collected, checksum-identical and stable. Seed-1/2 waves used 1.030833 / 1.031389 GPU-hours and both reservations are settled. Closed worker `1314782` and launcher `1314774` exited zero at 14:09:23 CEST. Source v5 `1f4334bf`; all original gates and scientific controls preserved. All 27 bounded Conv1 EP cells and their 27 BPTT controls are complete. [Paired three-seed report](../paper_ready_results/bounded_conv1_three_seed_validation.md); official test unread. |
+| Main final bounded Conv3 seed-1 ceiling | `collected` | All three Gmax=1e-3 schemes are complete, locally collected and validated. Worker `357041` exited zero at 14:59:24 CEST; GPU released. Actual time 3.886389 GPU-hours; the full 24-hour reservation is settled. Unchanged source v3 `82b4e032`, 30 epochs, T=K=8 and matched Main RTX 3090 target. Evidence: campaign `production/main_conv3_bounded_seed1_gmax1em3/`; all 27 bounded Conv3 BPTT cells are now collected. |
+| Akib bounded Conv2 seed 2 | `collected` | All nine cases are collected, checksum-identical and validated. Worker `42609` and launcher `42601` exited zero at 16:44:33 CEST; GPU released. Actual 5.625 GPU-hours settles the full 72-hour reservation. Source v3 `82b4e032`, unchanged 30 epochs, T=K=6, initialization and rates. Local evidence: campaign `collected/akib_bounded_seed2/`. All 81 bounded BPTT cells are now complete. |
+| Trex remaining wide Conv3 seed 1 | `collected` | Both legacy/ours cases are complete and locally validated with zero checksum differences; the entire wide BPTT table is complete. Worker `1136224` and launcher `1136216` exited zero at 14:37:26 CEST. Actual time 3.521389 GPU-hours; the full 16-hour reservation is settled. Source v3 `82b4e032`, original 30 epochs, T=K=8, initialization and Adam vectors unchanged. Local evidence: campaign `collected/trex_wide_seed1_remaining/`; [paired report](../paper_ready_results/wide_conv3_validation.md). |
+| [Bounded Conv1 legacy EP seed-0 pilots](../results/paper-training-completion-20260911-v1/collected/jz_bounded_conv1_legacy_pilots/) | `collected` | All three tasks of `2060809` completed with exit `0:0` in 1042–1096 seconds, totaling .896389 GPU-hours. Local copies have zero checksum differences; full ten-epoch histories, canonical bundles, float64 checkpoints, zero biases, shared initial states, and strict stability checks pass. Maximum best-to-final drop is .74 pp. Injected beta .03 qualifies across all ceilings. All nine Conv1 pilots now pass, so their seed-1/2 repetitions are scientifically released under Filip’s September 12 instruction; all eighteen Conv1 repetitions have subsequently completed and been collected. |
+| Bounded Conv2/3 original twelve-case EP pilot array | `superseded` | Array `2061807_[0-11]%4` was wholly unstarted and canceled on September 12 with zero elapsed GPU allocation and no production artifacts. Its full 96-hour reservation is settled at zero. The complete unstarted Conv3 group moved to verified idle Loulou; Conv2 uses replacement array `2062259_[0-5]%4`. See the current replacement rows above and retained `collected/bounded_conv23_pilots_submission/replacement_20260912.json`. |
+| [Conv2/3 wide EP replications](../results/paper-training-completion-20260911-v1/collected/jz_wide_conv23_ep_reps/) | `collected` | All twelve tasks of `2028114` completed with exit `0:0`, consuming 38.683611 allocated GPU-hours. All twelve bundles are locally collected and validated, with zero remote/local checksum differences. Wide EqProp coverage is complete across all three architectures and seeds. Source v2 `19b35010`; official-test access stayed disabled. |
+| [Conv1 EP replications and bounded pilots](../results/paper-training-completion-20260911-v1/collected/jz_conv1_ep_next/) | `collected` | All twelve tasks of `2024429_[0-11]%4` completed with exit `0:0`; 3.638333 allocated GPU-hours. Local copies have zero checksum differences and all canonical bundles, full histories, shared initial states, finite float64 checkpoints, zero biases, and projection bounds validate. Six wide Conv1 seeds 1/2 and six bounded Conv1 baseline/ours seed-0 pilots at injected beta .1/.03. All six bounded pilots pass the strict <5 pp stability rule (maximum drop 2.44 pp), and the later group-release authorization has since enabled all eighteen Conv1 repetitions to finish; deep groups retain their own pilot gates. Frozen source v2 `19b35010`; no official-test read. |
+| [Paper training completion](../results/paper-training-completion-20260911-v1/) | admissions paused; admitted clean workers terminal | September 14, 23:19 CEST: 202/216 current-contract trainings collected/validated; 14 unstarted runs remain. Loulou's first revised Conv3 baseline EqProp pilot is stable at 77.68/77.68% and collected with matching full split/order, checksums, and both exit-zero receipts. Conv3 full-pilot coverage is 1/3. All 220 successful full bundles are preserved, including 18 superseded native-T/K baselines. Settled 269.300605 plus 1 reserved = 270.300605/300 GPU-hours. No clean follow-up or budget increase. [Evening review](paper_experimental_review_20260914.md); [Remaining runs](../paper_ready_results/current_contract_remaining_runs.md). |
+| [Three-table paper result collection](../paper_ready_results/) | `partial` | 210 full training bundles preserved: 196 in the original inventory and fourteen matched baseline T/K replacements. Current scientific contract: 192/216 collected and validated; 24 full training completions remain. Eighteen native-T/K BPTT baselines are retained as earlier evidence and excluded from revised coverage. Official-test results remain zero. [Generated remaining-training manifest](../paper_ready_results/current_contract_remaining_runs.md); [continuing experiment ledger](paper_ready_results_manifest.md). Original 38-run inventory and its integrity audit remain preserved; Riri discovery remains unavailable because SSH host-key verification failed. |
 | [Retired worktree source archives](../results/worktree-retirement-20260911/) | `complete` | Five redundant worktrees were removed on 2026-09-11 after preserving the physical-KCL handoff and all uncommitted simple/short launcher files. All 12 files are recoverable from verified archives; Git branch references and consolidated experimental artifacts remain. See the [recovery guide](../results/worktree-retirement-20260911/README.md) and [retirement record](result_relocations/20260911-worktree-retirement.json). |
 | [Short-launch-protocol historical launch archive](../results/short-launch-protocol-archive-20260911/) | `complete` | Local requests, frozen source snapshots, launch logs, historical states, and inputs were relocated from `short-launch-protocol/results/` on 2026-09-11. All 16,844 regular files and directory checksums still match after retiring the source worktree; use the archive's canonical paths. This is a preservation archive, not a new scientific completion claim. See the [relocation record](result_relocations/20260911-short-launch-protocol.json). |
 | [Conv2 legacy-Adam clean/noisy EqProp physical-KCL repeats](../results/perfectdiode-conv2-legacy-adam-clean-noisy-eqprop-physical-kcl-reruns-seed0-20260826-v1/) | `complete` | Corrected legacy `(A,B)=(4,.25)` exact-config repeats on `umg@v100`: clean/noisy jobs `1416203/1416204` completed `0:0` in `02:04:11/02:11:25`, with best validation `98.30/95.76%` and final validation `98.06/95.76%`. Both retained injected beta `.03` (base beta `.0001171875`), `T=K=6`, seed/order `0`, 30 epochs, the archived Adam learning-rate vector, exact-zero bias rates, ordinary-MNIST train/validation only, and no official-test read. Both remote and local canonical validators pass. The authoritative local production tree is topology- and checksum-identical to Jean Zay: 56 regular files, 28 symlinks, regular digest `ebfada9e...b7c113`, symlink digest `af037b66...cea6a0`, result-archive SHA-256 `b346e86c...380dc1`; local smoke evidence is preserved separately. Frozen source commit `f9ac1533`, source-archive SHA-256 `35852204...ed5d6b`; smokes, 41 focused tests, guards, and both scheduler requests pass. Remote root: `/lustre/fsn1/projects/rech/umg/ucy17uy/server_code/results/perfectdiode-conv2-legacy-adam-clean-noisy-eqprop-physical-kcl-reruns-seed0-20260826-v1`. |

@@ -1,0 +1,14 @@
+{
+  "source_inclusion": "three_table_overview_20260916.csv: table2_native",
+  "included_runs": 81,
+  "checkpoint_role": "best_validation",
+  "count_definition": "Exact equality to bounds cast to checkpoint dtype; convolution and dense weights only",
+  "aggregation": "Pooled parameter counts within each seed; mean and sample SD across seeds 0,1,2",
+  "checks": "81 result, manifest, metrics.jsonl, config and selected checkpoint hashes; completion, contract, finiteness and bounds",
+  "official_test_read": false,
+  "training_performed": false,
+  "numpy_version": "2.0.1",
+  "matplotlib_version": "3.10.6",
+  "command": "/home/filip/miniconda3/envs/py312/bin/python plot_bounded_conductance_occupancy.py",
+  "script_sha256": "b78b6169873440e7879aebc282135ce529ee22f7f242624b5889baf011ad525f"
+}

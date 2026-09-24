@@ -1,61 +1,305 @@
 {
-  "schema_version": "experimental-manifest/v1",
   "entries": [
     {
-      "record_id": "result_8e83d1988d679af4e465e3e3",
-      "experiment_id": "perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
-      "attempt_id": "local-relocation-20260911",
-      "result_id": "complete-study",
-      "target": "local",
-      "source": "local_execution",
-      "remote_result_path": null,
-      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
+      "attempt_id": "local-smoke-02",
+      "completion_receipt": {
+        "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/local-gate-01.json",
+        "sha256": "2478b6f7cdfdbca8f849bd89c722a1495ccfd4eb9974cd835a7891e6d02e614f"
+      },
+      "completion_state": "passed",
+      "experiment_id": "eqprop-conv3-p95-read-noise-1em3-20260921-v1",
+      "latest_inventory": null,
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/local-smoke-02",
       "local_state": "locally_validated",
-      "completion_state": "relocation_complete",
+      "record_id": "result_f75f5b7cd32523a0d693f7ea",
+      "remote_result_path": null,
+      "result_id": "six-config-smokes",
       "scientific_validation": "passed",
+      "source": "local_execution",
+      "target": "local",
       "transfer_receipts": {},
+      "updated_at": "2026-09-21T10:36:19.930613+00:00"
+    },
+    {
+      "attempt_id": "p95-1em3-stopped-20260921",
+      "completion_receipt": null,
+      "completion_state": "incomplete_with_valid_markers",
+      "experiment_id": "eqprop-conv3-p95-read-noise-1em3-20260921-v1",
+      "latest_inventory": {
+        "byte_count": 73124166,
+        "content_hashed": false,
+        "file_count": 103,
+        "inventory_sha256": "6076442852e8b3854848fe4f71055b61a4629a0fcdc2a199a004b12372891246",
+        "symlink_count": 10
+      },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/.incoming/stopped-production/shards/jean-zay",
+      "local_state": "incomplete_full_snapshot_available",
+      "record_id": "result_3bad46847e190cdc605ada49",
+      "remote_result_path": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/production",
+      "result_id": "three-stopped-noisy-cases",
+      "scientific_validation": "pending",
+      "source": "remote_transfer",
+      "target": "jean-zay",
+      "transfer_receipts": {
+        "full": {
+          "completed_at": "2026-09-21T15:45:55.787814+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/_transfer_receipts/stopped-production-full-01.json",
+          "sha256": "423c78d697830d4ae4cfc47051f38b7610f657a54c50038324740f58f8abf5dd"
+        },
+        "metadata": {
+          "completed_at": "2026-09-21T15:45:07.656387+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/_transfer_receipts/stopped-production-metadata-01.json",
+          "sha256": "a62522df6de2b9e1f319552e78bd53cbf56b1a87bb25eb6edc658d71d025f813"
+        }
+      },
+      "updated_at": "2026-09-21T15:45:55.787814+00:00"
+    },
+    {
+      "attempt_id": "p95-v100-canary-01",
+      "completion_receipt": null,
+      "completion_state": "completion_markers_verified",
+      "experiment_id": "eqprop-conv3-p95-read-noise-1em3-20260921-v1",
+      "latest_inventory": {
+        "byte_count": 220703367,
+        "content_hashed": false,
+        "file_count": 288,
+        "inventory_sha256": "d55e061818fa12d691cb1f51daf5d895705605871a9ebe794aa6d60af9edc6a8",
+        "symlink_count": 120
+      },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/.incoming/canary-01/shards/jean-zay",
+      "local_state": "full_snapshot_available",
+      "record_id": "result_f14b03066198bd5c1322184d",
+      "remote_result_path": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/canary-01",
+      "result_id": "six-case-continuation-canary",
+      "scientific_validation": "passed",
+      "source": "remote_transfer",
+      "target": "jean-zay",
+      "transfer_receipts": {
+        "full": {
+          "completed_at": "2026-09-21T10:39:01.128094+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/_transfer_receipts/canary-01-full.json",
+          "sha256": "244ce477e4578b9d9e2e18ea18b644ab01103d081f990a39fcac733eb62f693e"
+        },
+        "metadata": {
+          "completed_at": "2026-09-21T10:37:52.822912+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/_transfer_receipts/canary-01-metadata.json",
+          "sha256": "80e389b8ee36a2a2b10cc2f640f88cb11bdde33b651c91eb0dd91699cf660664"
+        }
+      },
+      "updated_at": "2026-09-21T10:40:50.018612+00:00"
+    },
+    {
+      "attempt_id": "p95-5em4-canary01",
+      "completion_receipt": null,
+      "completion_state": "completion_markers_verified",
+      "experiment_id": "eqprop-conv3-p95-read-noise-5em4-20260921-v1",
+      "latest_inventory": {
+        "byte_count": 220703563,
+        "content_hashed": false,
+        "file_count": 288,
+        "inventory_sha256": "0bcd05478eac1e98ca1db604202e8577fdcc4c42249485a4c5dbdee32deb2d72",
+        "symlink_count": 120
+      },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/.incoming/canary-01/shards/jean-zay",
+      "local_state": "full_snapshot_available",
+      "record_id": "result_d82c31534f33f056f7d20c36",
+      "remote_result_path": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/canary-01",
+      "result_id": "six-case-continuation-canary",
+      "scientific_validation": "passed",
+      "source": "remote_transfer",
+      "target": "jean-zay",
+      "transfer_receipts": {
+        "full": {
+          "completed_at": "2026-09-21T15:34:39.474874+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/_transfer_receipts/canary-01-full-02.json",
+          "sha256": "04f8520b4199a894c658fc61c59231d040d8c1f6bb2238be9cd61a19c340c019"
+        },
+        "metadata": {
+          "completed_at": "2026-09-21T15:27:58.952985+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/_transfer_receipts/canary-01-metadata.json",
+          "sha256": "dbc61b92fe84f0972baa4ebe8da225f9cdc2a09a186f712e339ee6c736e25211"
+        }
+      },
+      "updated_at": "2026-09-21T15:35:24.596952+00:00"
+    },
+    {
+      "attempt_id": "p95-5em4-terminal-collection-20260922-01",
+      "completion_receipt": null,
+      "completion_state": "incomplete_with_valid_markers",
+      "experiment_id": "eqprop-conv3-p95-read-noise-5em4-20260921-v1",
+      "latest_inventory": {
+        "byte_count": 107760659,
+        "content_hashed": false,
+        "file_count": 134,
+        "inventory_sha256": "330482fd268177c396cd4c085d0e150fdbb5618f8cb0c9ee2b274be7380732f8",
+        "symlink_count": 51
+      },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/.incoming/terminal-production/shards/jean-zay",
+      "local_state": "incomplete_full_snapshot_available",
+      "record_id": "result_bf977fe479b4c0c35b2a11f1",
+      "remote_result_path": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/production",
+      "result_id": "three-terminal-production-cases",
+      "scientific_validation": "pending",
+      "source": "remote_transfer",
+      "target": "jean-zay",
+      "transfer_receipts": {
+        "full": {
+          "completed_at": "2026-09-22T09:32:40.878726+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/_transfer_receipts/terminal-production-full-20260922-01.json",
+          "sha256": "4a2c9dae093add07f356fa54c83b17b6220e1ecbaf173d44fad56aa2df214256"
+        },
+        "metadata": {
+          "completed_at": "2026-09-22T09:31:38.932153+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p95-read-noise-5em4-20260921-v1/_transfer_receipts/terminal-production-metadata-20260922-01.json",
+          "sha256": "b086c9192a6556816a52208f5971cb812ee3bc52518c15747b5f61da234fa2f7"
+        }
+      },
+      "updated_at": "2026-09-22T09:32:40.878726+00:00"
+    },
+    {
+      "attempt_id": "canary-validation-02",
+      "completion_receipt": null,
+      "completion_state": "completion_markers_verified",
+      "experiment_id": "eqprop-conv3-p99-read-noise-5em4-20260922-v1",
+      "latest_inventory": {
+        "byte_count": 41946395,
+        "content_hashed": false,
+        "file_count": 56,
+        "inventory_sha256": "bf0f3e27640c7502057a16270e4ad59a6250cd38665e61336250e4368723df67",
+        "symlink_count": 32
+      },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/.incoming/canary-01/shards/jean-zay",
+      "local_state": "full_snapshot_available",
+      "record_id": "result_93c7e6e5d9979e00e05bea7d",
+      "remote_result_path": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/canary-01",
+      "result_id": "two-v100-canary",
+      "scientific_validation": "passed",
+      "source": "remote_transfer",
+      "target": "jean-zay",
+      "transfer_receipts": {
+        "full": {
+          "completed_at": "2026-09-22T11:30:02.646783+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/_transfer_receipts/canary-validation-02-full.json",
+          "sha256": "89d00203d475ed34e8caf6108527de9875e002362c78ff9342614f59563d9ebe"
+        },
+        "metadata": {
+          "completed_at": "2026-09-22T11:28:34.723591+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/_transfer_receipts/canary-validation-02-metadata.json",
+          "sha256": "80b42ee2fc5ca997cf7feddf63b2038650e73e14b82581494b9970c057f915f1"
+        }
+      },
+      "updated_at": "2026-09-22T11:33:18.617924+00:00"
+    },
+    {
+      "attempt_id": "local-smoke-02",
+      "completion_receipt": {
+        "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/local-gate-01.json",
+        "sha256": "f8c1f127497ab448cf3df9e60b112c427899230eb9db8138cd43ec006051d48e"
+      },
+      "completion_state": "passed",
+      "experiment_id": "eqprop-conv3-p99-read-noise-5em4-20260922-v1",
+      "latest_inventory": null,
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/local-smoke-02",
+      "local_state": "locally_validated",
+      "record_id": "result_c2db58f7668c0df4253aa183",
+      "remote_result_path": null,
+      "result_id": "two-case-smoke",
+      "scientific_validation": "passed",
+      "source": "local_execution",
+      "target": "local",
+      "transfer_receipts": {},
+      "updated_at": "2026-09-22T10:24:57.536619+00:00"
+    },
+    {
+      "attempt_id": "production-02",
+      "completion_receipt": null,
+      "completion_state": "completion_markers_verified",
+      "experiment_id": "eqprop-conv3-p99-read-noise-5em4-20260922-v1",
+      "latest_inventory": {
+        "byte_count": 51215118,
+        "content_hashed": false,
+        "file_count": 56,
+        "inventory_sha256": "c68c799ed1bf67db1394b002b6f4fd67257de158f1c0096752790903e29d1adf",
+        "symlink_count": 32
+      },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/.incoming/production-02/shards/jean-zay",
+      "local_state": "full_snapshot_available",
+      "record_id": "result_10e93d8410ece9929e3942bc",
+      "remote_result_path": "/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/production-02",
+      "result_id": "two-v100-production",
+      "scientific_validation": "passed",
+      "source": "remote_transfer",
+      "target": "jean-zay",
+      "transfer_receipts": {
+        "full": {
+          "completed_at": "2026-09-23T07:51:13.673631+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/_transfer_receipts/production-02-full.json",
+          "sha256": "5655caf43bfd5b845ef3a262b6975f1d17f399f2ac7e4b087e5b1ed9bbb3b2df"
+        },
+        "metadata": {
+          "completed_at": "2026-09-23T07:51:11.950968+00:00",
+          "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/_transfer_receipts/production-02-metadata.json",
+          "sha256": "39f87606158b0145182dce80cca663ef298b581b1410ab72d194986544d62ab9"
+        }
+      },
+      "updated_at": "2026-09-23T07:52:35.053600+00:00"
+    },
+    {
+      "attempt_id": "local-relocation-20260911",
       "completion_receipt": {
         "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/docs/result_relocations/20260911-physical-kcl.json",
         "sha256": "bdc8d80ba850f7c573e1e740624d8e81c3178849a6e4610ba6ebea2fef2f1b03"
       },
+      "completion_state": "relocation_complete",
+      "experiment_id": "perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
       "latest_inventory": {
-        "regular_files": 103,
-        "regular_file_bytes": 17299681,
-        "symlinks": 56,
         "broken_symlinks": 0,
+        "directory_topology_sha256": "4cd68903d70bb92b706c7a07c9874f1542bab2cc2faee9806120627c22ab5608",
+        "regular_file_bytes": 17299681,
+        "regular_files": 103,
         "regular_files_sha256": "9fd74a10d4792461cd31e0057828b02bfc3d77a0c08c3973f86c3090be89ede0",
         "symlink_topology_sha256": "b430c1975dea1e5229f43a1fd427127435210a18fdf334c5b8f7dcc9909f6903",
-        "directory_topology_sha256": "4cd68903d70bb92b706c7a07c9874f1542bab2cc2faee9806120627c22ab5608"
+        "symlinks": 56
       },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/perfectdiode-conv1-legacy-physical-kcl-same-weights-and-bptt-rerun-seed0-20260825-v1",
+      "local_state": "locally_validated",
+      "record_id": "result_8e83d1988d679af4e465e3e3",
+      "remote_result_path": null,
+      "result_id": "complete-study",
+      "scientific_validation": "passed",
+      "source": "local_execution",
+      "target": "local",
+      "transfer_receipts": {},
       "updated_at": "2026-09-11T09:16:32Z"
     },
     {
-      "record_id": "result_eef311e3479068d64addf2cf",
-      "experiment_id": "short-launch-protocol-archive-20260911",
       "attempt_id": "local-relocation-20260911",
-      "result_id": "historical-launch-artifacts",
-      "target": "local",
-      "source": "local_execution",
-      "remote_result_path": null,
-      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/short-launch-protocol-archive-20260911",
-      "local_state": "local_result_available",
-      "completion_state": "relocation_complete",
-      "scientific_validation": "pending",
-      "transfer_receipts": {},
       "completion_receipt": {
         "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/docs/result_relocations/20260911-short-launch-protocol.json",
         "sha256": "0b99de7a05f72bafde11e200b5e42e0b9ec75ac310f06a1c91fd0aa5438c3e3b"
       },
+      "completion_state": "relocation_complete",
+      "experiment_id": "short-launch-protocol-archive-20260911",
       "latest_inventory": {
-        "regular_files": 16844,
-        "regular_file_bytes": 1393431577,
-        "symlinks": 0,
         "broken_symlinks": 0,
+        "directory_topology_sha256": "941acddc3c1fad01651a7313a2911a9917a1c064d0749dff49cf4c192fd0d42f",
+        "regular_file_bytes": 1393431577,
+        "regular_files": 16844,
         "regular_files_sha256": "7c6834351f8bd0ad86948eee1fde6672533243d10c2d7207bd3e58b40a2d8f51",
         "symlink_topology_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "directory_topology_sha256": "941acddc3c1fad01651a7313a2911a9917a1c064d0749dff49cf4c192fd0d42f"
+        "symlinks": 0
       },
+      "local_result_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/short-launch-protocol-archive-20260911",
+      "local_state": "local_result_available",
+      "record_id": "result_eef311e3479068d64addf2cf",
+      "remote_result_path": null,
+      "result_id": "historical-launch-artifacts",
+      "scientific_validation": "pending",
+      "source": "local_execution",
+      "target": "local",
+      "transfer_receipts": {},
       "updated_at": "2026-09-11T09:16:32Z"
     }
-  ]
+  ],
+  "schema_version": "experimental-manifest/v1"
 }

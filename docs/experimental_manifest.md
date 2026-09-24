@@ -1,6 +1,6 @@
 # Experimental Manifest
 
-Updated: 2026-08-25
+Updated: 2026-09-24
 
 This is the manually curated ledger of analyzed studies. It is not generated
 from raw metrics and does not track transient job state.
@@ -23,6 +23,2804 @@ metric from a sealed eligible checkpoint is paper-facing. Existing entries
 retain their recorded evidence class until a separate reuse audit and test
 evaluation explicitly promote them. An operational failure needs an entry
 only when it materially affects the scientific conclusion.
+
+The [CIFAR experiment review, September 24](cifar_experiment_review_20260924.md)
+consolidates the digital references, analog searches and continuations, and
+BN/epsilon/gradient/gain controls, with completed and failed cases distinguished.
+
+## CIFAR L8 overnight BN, Adam-step and gain controls, September 24
+
+Outcome: **mixed; declared coverage complete through epoch 50**.
+This seed 0 follow-up tests whether BN inference statistics, excessive Adam
+steps, voltage normalization or input-gain adaptation explain legacy's CIFAR
+disadvantage. All cases retain the existing 45,000/5,000 split and selected
+rates; training uses augmentation, cross-entropy, batch 32 and the original
+50-epoch cosine horizon. Normalized legacy retains trainable affine BN and
+divides block outputs by 16/16/4 without changing legacy KCL physics. The
+gain pair fixes BN gamma 1/beta 0 while updating its running statistics.
+
+- **BN recalibration:** all seven checkpoints completed. At epoch 50,
+  legacy accuracy changes 88.72→88.34%, baseline 89.48→89.62%, and
+  proposed 89.92→89.76%. CE improves, but legacy's accuracy gap widens.
+  This recalibration policy does not repair the observed disadvantage.
+- **Saved-Adam probes:** all nine checkpoints at 10/30/50 completed. Every
+  one of 36 sampled directions lowers same-batch CE with half, nominal and
+  double projected steps, with double improving most. Separate-cohort effects
+  are mixed. Larger raw gradients alone do not establish excessive effective
+  updates; these local probes do not establish optimal training rates.
+- **Frozen-BN gain pair:** fixed gains reach 68.00%, log gains 69.72% at 10;
+  log gains finish 114.114/191.112/33.360 from 100. The log case leads over
+  epochs 6–10 by an average 1.02pp, but both remain below the historical
+  softplus-gain reference 73.02%. Parameterization and relative step size
+  change together; historical reference placement is a comparison limitation.
+- **Normalized legacy:** full-state continuation completes epochs 11–50,
+  ending at 88.82%; matched epoch 50 raw legacy/baseline/proposed are
+  88.72/89.48/89.92%. Normalized training CE is lower than raw legacy
+  (.06016/.07195), but validation CE is higher (.39024/.38564).
+  The endpoint gain is only .10pp, and mean normalized-minus-raw accuracy
+  over 41–50 is +.008pp. Correcting effective epsilon alone at the selected
+  legacy rates does not demonstrate a sustained late validation benefit.
+- **Epsilon interpretation:** the reused ten-epoch controls lose 5.08pp when
+  baseline uses legacy's smaller effective BN epsilon, versus 1.14pp with
+  legacy's rates. Epsilon affects training and interacts with rates; the
+  completed continuation does not establish that epsilon is irrelevant or
+  identify an optimum. The original four-way comparison remains single-seed
+  evidence, with a transient BN running-variance initialization distinction.
+
+All nine production bundles validate locally: eight complete and one preserved
+paused ancestor. Both gain endpoints, the separately replayed epoch 48
+checkpoint and the native epoch 50 endpoint pass solver/gradient audits.
+The deliberate overnight pause (exit 75) preserves model/Adam/scheduler/BN/
+gain/RNG state without a successful result file; its approved child completes
+the trajectory without modifying that ancestor. One local cuDNN smoke failure
+is retained and excluded; the unchanged remote smoke passed. The prepared
+recovery selector never ran. Overnight workers on Fifi, Trex, Loulou and Riri
+were gone by 07:49 Paris, before the 08:00 deadline. Filip explicitly approved
+the final two epochs beyond that cutoff; they completed on Fifi within the
+additional one-hour cap, and its workers have exited. Recorded total compute
+13.191 GPUh is below 16 GPUh; shared-host timing is not an exclusive benchmark.
+
+Keep trainable BN, augmentation and CE as the current default. These results
+do not justify blanket LR reduction based on raw gradient scale or replacement
+of the existing gain policy. A matched additional seed should precede strong
+claims about small accuracy differences; any future epsilon tuning should
+account for its interaction with LR. No further jobs are scheduled.
+This is exploratory, single-seed validation evidence; no official test was read.
+
+The subsequent late-training comparison distinguishes accuracy plateau from
+overall improvement: mean accuracy at 46–50 minus 41–45 is baseline +0.108pp,
+legacy +0.180pp, normalized legacy +0.404pp and proposed +0.472pp. Baseline
+is flattest by that measure; legacy gains least over 30→50 (+1.84pp).
+All four still reduce training CE substantially, while proposed's late mean
+validation CE worsens slightly despite improving accuracy. Window/metric
+dependence and single-seed limits are retained in the
+[consolidated review](cifar_experiment_review_20260924.md).
+
+[Full report and next steps](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/report.md) ·
+[Training and gain curves](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/training_and_gains.png) ·
+[Coverage, hashes and budget](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/collection_validation.json) ·
+[Execution plan](cifar_l8_bn_gain_overnight_plan_20260923.md).
+
+## Conv3 T8 check at output-displacement-one betas, September 23
+
+Outcome: **negative for a material T effect on gradient quality** at these
+initial and p99-trained checkpoints. Four new T8/K8 cases compare directly
+against the four completed T16/K8 RMS-one-beta replays. Ours injected beta
+1.385 and legacy .02173, initialization and p99 epoch30, 36 matched validation
+batches, float64 centered frozen-current EqProp, clean reads plus four paired
+sigma5e-4 draws. Source/checkpoint bytes, runner, cohort, noise seeds, Akib
+RTX3080 device and PyTorch/CUDA/Python environment match. Only T changes.
+
+Maximum noisy layer-median cosine change is **1.50245e-7**; maximum clean
+median change is **8.72897e-8**. Maximum individual or paired-batch cosine
+change is **1.41724e-6**. Noisy Conv3 medians at T8/T16 are legacy
+initialization .238445325/.238445314, ours initialization
+.697435152/.697435147, legacy epoch30 .276864701/.276864710, and ours
+epoch30 .753430189/.753430039. Ours retains the strong noisy Conv3 advantage;
+both early layers remain noise-dominated. Gradient RMS, norm ratios and
+noise/clean ratios change by at most7.35e-6 relatively across individual
+measurements. The largest relative gradient-error change is1.97% only because
+a tiny clean readout error changes from4.81314e-6 to4.90782e-6; maximum
+absolute change in any relative gradient error is7.83857e-6.
+
+T affects a separate displacement diagnostic: legacy initialization hidden1
+positive-free RMS is1.69770e-7 at T8 versus6.75692e-8 at T16, while centered
+phase RMS is6.75742e-8 at both. Zero-nudge continuation RMS1.54506e-7 at T8
+versus5.30729e-13 at T16 identifies residual common relaxation. Across all
+layers/checkpoints, pooled centered phase RMS changes by at most2.72798e-7
+relatively. All2,304 new residual checks pass, maximum7.92642e-6 below .01.
+
+All four new production/eight smoke bundles validate locally. All2,880 new
+rows pair against the2,880 validated T16 rows;119 remote file hashes match.
+No failures, exclusions or missing cases. Akib exited zero and released the
+GPU;337.22s production,625.35s combined CPU/GPU smoke and replay within1,800s.
+This is exploratory, single-seed validation replay with no training, accuracy
+evaluation or official-test read. It does not overturn the earlier large T
+effect at a different p90-trained ours checkpoint or qualify training at the
+new betas.
+
+[Report and plot](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/analysis/report.md) ·
+[Paired T effects](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/analysis/T_effects.csv) ·
+[Source/runtime pairing](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/analysis/T_validation.json) ·
+[Collection validation](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/collection_validation.json) ·
+[Plan](eqprop_conv3_rms1_t8_replay_plan_20260923.md).
+
+## Conv3 gradient quality at output-displacement-one betas, September 23
+
+Outcome: **mixed overall, with a clear noisy third-convolution advantage for
+ours**. Injected beta 1.385 for ours and .02173 for legacy were calibrated to
+output displacement approximately one at the shared initialization. Read-only
+replay at those fixed values compares initialization and both existing p99
+epoch-30 final checkpoints, T16/K8, float64 centered frozen-current EqProp,
+clean reads and four paired endpoint-noise draws at sigma 5e-4. The same 36
+validation batches contain 576 ordinary-MNIST examples. No optimizer step or
+official-test read occurred.
+
+Median noisy Conv3 EqProp–BPTT cosine is **.697435 ours versus .238445 legacy
+at initialization**, and **.753430 versus .276865 at epoch 30**. Ours improves
+on all 36 paired batches at each checkpoint. Median noise/clean gradient
+ratios are 1.0221/4.0851 initially and .8517/3.4199 at epoch 30 (ours/legacy).
+The corresponding noisy relative errors against BPTT are 1.0203/4.0859 and
+.8604/3.4107. Ours reduces early-layer noise error too, but both first and
+second convolutional gradients remain noise-dominated in all measurements,
+with cosines near zero. Both readouts stay nearly perfectly aligned, with a
+small advantage for legacy. Legacy also has smaller clean finite-beta error;
+ours epoch-30 Conv3 clean cosine is .996677 median but .948477 minimum.
+
+Initial centered output displacement is .999812 ours and .999881 legacy,
+while ours has 6.70/5.15/3.92 times the hidden-layer phase signal. This supports
+an upstream signal advantage under the initial output-displacement constraint.
+At the trained checkpoints, output positive-free RMS is .212876 ours and
+.558918 legacy: fixed initialization-calibrated beta no longer matches the
+trained output excursion. The p99 parents trained at different original
+betas (.987333678708 ours and .1 legacy), with inherited scheme-specific
+learning rates and distinct learned weights. This replay does not establish
+training stability or accuracy at the new beta choices, nor reverse the
+earlier independently optimized comparison with unconstrained output motion.
+
+All four production cells and eight CPU/GPU smoke bundles validate locally;
+2,880 gradient comparisons, 2,304 passing residual checks, maximum selected
+residual 2.82041e-7, and 119 matching remote file hashes. Source/checkpoint,
+cohort, frozen-force, zero-bias, parameter and matched-noise guards pass.
+Akib RTX3080 exited zero and released the GPU; production 344.60s, total
+charged smoke plus replay 634.77s within 1,800s. Thirteen focused tests pass.
+No failures, exclusions or missing cases. This is single-seed exploratory
+validation evidence; batch/draw spreads are not independent-seed uncertainty.
+
+[Report and plots](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/analysis/report.md) ·
+[Layer statistics](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/analysis/layer_summary.csv) ·
+[Paired effects](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/analysis/paired_effects.csv) ·
+[Collection validation](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/collection_validation.json) ·
+[Plan](eqprop_conv3_rms1_gradient_replay_plan_20260923.md).
+
+## Conv3 initialization beta/T/K replay, September 23
+
+Outcome: **negative for meaningful T/K dependence at initialization on the
+tested grid**, supporting the checkpoint-specific interpretation of the older
+ours result. Baseline, ours, and legacy share the exact saved seed-0 initializer,
+injected beta `.987333678708` and `5.26875648112`, T8/16/32, K8/32, float64
+centered frozen-current EqProp, zero biases, input gain 360, and the existing
+576-example validation cohort. Clean endpoints and four matched draws at
+sigma `5e-4` yield all 36 cells and 25,920 layer comparisons. This is read-only
+selection/mechanism evidence; no optimizer step or official-test access occurs.
+
+Across all schemes, betas, and layers, the largest noisy median-cosine change
+is `5.87e-8` across T and `6.41e-6` across K; the largest clean change is
+`2.49e-6`. A fixed K32 BPTT reference gives the same practical conclusion.
+The maximum absolute paired-batch change is `2.35e-5`, averaging the four
+noise draws within each noisy batch. Thus the pooled result does not conceal
+a large effect in a few examples. These are descriptive batch comparisons,
+not independent training-seed replications.
+
+Ours' noisy readout stays `.999978` at beta `.987334` and `.999923` at beta
+`5.268756` throughout the grid. At the latter beta, the older p90-trained
+checkpoint instead changes `-.293154 → .820463` with T8→32 at K8; paired
+readout improvement occurs on 35/36 batches at T16 and 36/36 at T32. The large
+T/K sensitivity is therefore absent at initialization and appears later in
+that trajectory. Its onset epoch and mechanism remain unmeasured. Historical
+replay environments differ, although cohort bytes match exactly. Beta itself
+still matters at initialization: ours' noisy Conv3 median rises
+`.571775 → .960893` between these betas, while early layers remain noise-limited.
+This neither freezes a training beta nor predicts accuracy at another T/K.
+
+All 36 production and 18 local GPU smoke bundles validate; all 509 collected
+file hashes and 606 frozen source/input files match. Fifi RTX 5090 exited 0
+and released its worker after 1851.02 seconds of production; including smoke,
+1927.27 seconds (0.5354 GPUh) is within the one-hour cap. Twelve focused tests
+pass. No scientific case failed or was excluded; two prelaunch staging
+corrections are preserved in the plan. Earlier partial analyses are superseded.
+
+[Report](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/report.md) ·
+[Initialization versus trained](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/ours_initialization_vs_trained.png) ·
+[Paired effects](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/effects.csv) ·
+[Collection validation](../results/eqprop-conv3-init-beta-tk-20260923-v1/collection_validation.json) ·
+[Beta notes](beta_study.md#initialization-check-at-the-same-replay-betas) ·
+[Plan](eqprop_conv3_init_beta_tk_plan_20260923.md).
+
+## CIFAR L8 amplification and KCL implementation audit, September23
+
+Outcome: **positive** for the implemented blockwise circuit. Synthetic CPU
+checks compare independent physical KCL currents with the energy derivatives
+and coordinate updates in two- and three-convolution circuits, all three
+production schemes plus a non-reciprocal control. CIFAR states and input/weight
+gradients match the fully analog MNIST interaction/tracking-solver path
+bit-for-bit on these small circuits. The separate analog classifier matches
+the standard quadratic update and an independent branch-current balance.
+The focused suite passes **136/136** checks, including 21 new architecture
+checks. Nine relevant runtime files match all five frozen production source
+snapshots byte-for-byte; no training implementation or checkpoints changed.
+
+The architectural distinction is explicit: digital max-pool/affine-BN bridges
+and voltage clamps isolate the analog circuits. Electrical feedback and
+amplification do not extend across those boundaries. The isolated one-edge
+classifier has no internal amplified edge, so A/B do not affect its solution
+at fixed input/weights/gain. Matched-weight legacy blocks reproduce baseline
+outputs scaled by 16/16/4; ideal BN cancels those factors. This supports a
+mechanism hypothesis, not a causal attribution of the observed accuracy gap
+or a full-width hardware validation. See the [audit and reproducible
+checks](cifar_l8_amplification_audit_20260923.md).
+
+Exploratory follow-up, September23: baseline and legacy with
+block-output normalization and the complete baseline optimizer matched exactly
+through200 real CIFAR training minibatches of32 examples. Maximum observed
+relative error was0 for logits, loss, all trainable gradients, BN buffers,
+parameters and projected updates. This validates the scaling identity through
+Adam training over the tested window with production BN epsilon. All12 saved
+checkpoint replays subsequently passed their solver audits. The first-block
+epoch50 training BN epsilon share was73.77% for baseline,61.43% for proposed,
+and2.30% for legacy. Existing reference and LR evidence are reused; redundant
+reference repeats and the supplementary LR intervention were cancelled.
+
+**BN follow-up is terminal, with limited no-BN evidence.** Five ten-epoch controls are locally
+collected and validated, with passing final solver audits: voltage-normalized
+legacy75.82% validation versus74.68% for original legacy (+1.14pp); baseline
+with reciprocal epsilon70.18% versus75.26% (-5.08pp); frozen-affine legacy
+73.02% versus74.68% (-1.66pp); frozen-affine baseline70.72% versus75.26%
+(-4.54pp); frozen-affine proposed73.76% versus75.36% (-1.60pp).
+All three frozen checkpoints confirm gamma1, beta0 and14070 BN
+running-stat updates. The epsilon control overlaps with the
+effective condition sampled by the cancelled legacy-baseline-LR prefix; those
+five matching epochs are not independent evidence.
+
+Baseline/no-BN and legacy/no-BN each stopped at the first epoch2 batch after
+epoch1 validation10% and CE log(10). One exact read-only replay per failed
+batch confirmed zero block outputs, zero logits and zero gradients for all13
+parameter tensors, including float64 norm/nonzero-count checks. The failed
+bundles and stopped checkpoints are local; no LR retry or ten-epoch
+extrapolation is included. Their final higher-iteration audits were not reached.
+Proposed/no-BN completed ten epochs at52.08%, but failed final solver
+qualification: free-logit relative L2 difference between reference and
+sentinel iterations was8.61% (limit1%). Its bundle and checkpoint are local
+and internally valid; the accuracy is provisional at configured iterations,
+not a qualified steady-state comparison. All seven new cases have terminal
+artifacts and valid local bundles: four qualified ten-epoch results, two
+early collapses, and one completed but solver-unqualified result. The separate
+normalized-legacy control is also complete. No training remains active; obsolete
+Riri/local queue items were cancelled without repeating outsourced cases.
+New-study compute15.2119GPUh is within24GPUh, including checks and recovery.
+All cases use the original selected optimizer,
+augmentation, cross-entropy, seed and50-epoch cosine horizon.
+
+Input-gain extraction from the original epoch0/10/30/50 checkpoints finds
+negligible endpoint adaptation: all start100; the largest final block-gain
+change is0.353%, and legacy's largest is0.095%. Gain Adam LR stays5e-5 initially
+and decays to1e-6; endpoint next-step block-gain proposals round to zero in
+float32 for all three schemes on the diagnostic cohort. This is a shared
+parameterization/update limitation, not evidence of a legacy-specific gradient
+failure. Input gain can change effective BN epsilon; the normalized-legacy
+control tests a much larger fixed scale change than the gains learned. Later
+input gains can also be absorbed into preceding trainable BN gamma/beta;
+constant scalar gains do not imply constant downstream voltage scales.
+
+The completed evidence supports a BN/voltage-scale interaction under the fixed
+optimizers and a trainable-affine benefit for all three schemes at ten epochs.
+Freezing affine parameters hurts baseline more, while proposed and legacy
+lose similar amounts; learned affine BN is not supported as specifically
+harming legacy. This does
+not establish the full cause of the original fifty-epoch gap or general
+BN-free trainability after retuning. No official CIFAR test split was read.
+
+Trajectory analysis refines the normalization conclusion: normalized legacy
+wins at4/10 measured epochs, averages-0.636pp versus its reference over6–10,
+and has nearly unchanged epoch10 training CE. Its+1.14pp endpoint is promising
+but does not establish consistent acceleration. Baseline with reduced epsilon
+averages-6.268pp over6–10 and increases epoch10 training CE by0.2036.
+Viewed in common voltage units, the four existing cases give a descriptive
+epsilon-by-optimizer comparison: baseline-selected rates yield75.26/70.18%
+at baseline/legacy effective epsilon, while legacy-selected rates yield
+75.82/74.68%. The3.94pp difference of endpoint effects supports optimizer/BN
+scale coupling at these settings; it is not an additional replicate or a
+population interaction estimate. Frozen affine BN is worse at every measured
+epoch for each scheme. Correlated epoch averages do not replace the declared
+endpoint or measure seed uncertainty.
+
+Proposed next work is a checkpoint-only BN-statistics comparison, continuation
+of normalized legacy10→50 with the original optimizer/scheduler state, and a
+fixed-versus-log block-gain pair in frozen-affine legacy. Suggested combined
+cap16GPUh; no jobs or configs were launched for this proposal. Defer broad LR
+sweeps and BN-free training pending a separate settling/scale diagnosis.
+See the [conclusions and concrete proposal](cifar_l8_bn_conclusions_and_next_experiments_20260923.md).
+
+Gradient-scale follow-up reuses the same128-example replay CSV. Across eight
+convolution layers, median paired legacy/proposed gradient ratios at10/30/50
+are6.34/6.51/8.63, while projected update/weight ratios are0.903/1.111/0.664.
+Legacy's conductance norms at50 are roughly6–10 times smaller; scaling the
+gradient norm by parameter norm reduces the median50 ratio to1.06. This is
+consistent with a substantial parameter-scale contribution, not a proof that
+the trained models are equivalent rescalings. Large raw gradients do not imply
+uniformly oversized Adam steps. Noise, direction and functional sensitivity
+remain unresolved; the proposed next probe measures loss/logits along actual
+Adam directions. [Detailed measurements](cifar_l8_gradient_scale_interpretation_20260923.md).
+
+See the [mechanism plan](cifar_l8_mechanism_plan_20260923.md),
+[BN ablation plan](cifar_l8_bn_ablation_plan_20260923.md),
+[comparison](../results/cifar10-l8-bn-ablation-seed0-20260923-v1/analysis/report.md),
+[coverage validation](../results/cifar10-l8-bn-ablation-seed0-20260923-v1/analysis/collection_validation.json)
+and [findings with gain values](cifar_l8_mechanism_findings_20260923.md).
+
+## Conv3 noise versus free/nudged phase RMS, September 23
+
+Outcome: **positive for phase amplitude as an explanation of measured gradient
+noise sensitivity**. Local CPU aggregation joins the saved phase-voltage
+measurements to actual noisy-minus-clean EqProp gradient RMS from 21 p99
+T16/K8 replay cells (three checkpoints, seven betas), with nine K64 controls.
+All use sigma5e-4, the same 36 validation batches and four noise draws. There
+is no new model replay, training, checkpoint change, or official-test access.
+
+Noise dominance is RMS(g_noisy-g_clean)/RMS(g_clean)>=1. The centered
+phase signal is D=RMS((v_plus-v_minus)/2), with RMS noise sigma/sqrt(2) in
+that contrast. Free-to-positive and free-to-negative RMS differences are
+reported separately. Gradient acquisition error is separated from clean
+finite-beta EqProp–BPTT error.
+
+The noise-versus-D curves nearly overlap despite differing strongly versus
+beta. Log-interpolated, bracketed median Conv3 crossovers are D=1.172e-3
+for legacy epoch30, 1.068e-3 for ours epoch30, and 1.063e-3 for ours best27.
+The corresponding estimated betas are .0745/1.179/.870. These are estimates
+between sampled points at fixed sigma, not newly measured thresholds or a
+noise-amplitude sweep. Ours' readout crossovers are D≈1.32–1.34e-3;
+legacy's readout is signal-dominated throughout the tested grid.
+
+At their training betas (.1 legacy, .987333678708 ours), median Conv3 D is
+1.571e-3 versus 8.958e-4, and gradient noise/clean ratios are .746 versus
+1.193. Noise dominates 16.0% versus 72.2% of batch/draw measurements.
+Ours best27 is intermediate: D=1.204e-3, ratio .881, and 32.6% dominated.
+At each method's best sampled Conv3 beta, legacy D=.014898 and ratio .0779;
+ours30 D=.008564 and ratio .1211. Both are above the crossover, and finite-beta
+fidelity remains a separate limitation.
+
+The first two layers remain noise-dominated in median at every sampled beta;
+no crossover is extrapolated for them. Even at beta10, noise/clean ratios
+are 16.48/2.04 for legacy and 76.44/10.73 for ours30. Absolute free voltages
+are much larger than their tiny phase contrasts, so free-state RMS alone is
+not a useful criterion for gradient acquisition. At common beta.9873,
+legacy's Conv3 phase signal is about 16.6 times larger than ours30's.
+
+Interpretation: phase RMS is a better comparison coordinate for this noise
+mechanism than numerical beta. An exactly matched phase-signal comparison
+has not been run; one beta need not match all layers. The apparent common
+Conv3 threshold is not universal: pre/post-state correlations, batch/spatial
+averaging, finite-beta effects, and different trained weights remain relevant.
+The checkpoints and betas are not newly qualified for training stability.
+
+All 30 source bundles and the canonical aggregation bundle validate; 17,280
+noisy parameter/batch/draw rows and 36 batch identities reconcile. Source
+result hashes are unchanged. K64 changes median D by at most 2.32e-5
+relatively and median noise ratio by at most 1.15e-4. All seven unbracketed
+crossovers are labeled rather than extrapolated. Runtime is 6.01s on local
+CPU within the 300s budget, with no failures or exclusions.
+
+[Report and figures](../results/eqprop-conv3-p99-noise-rms-analysis-20260923-v1/analysis/report.md)
+· [Crossover brackets](../results/eqprop-conv3-p99-noise-rms-analysis-20260923-v1/analysis/measurements/crossovers.csv)
+· [Full RMS and gradient statistics](../results/eqprop-conv3-p99-noise-rms-analysis-20260923-v1/analysis/measurements/summary.csv)
+
+## Conv3 p99 beta/K replay, September 23
+
+Outcome: **negative for insufficient K as the explanation of the measured
+gradient gap**. The requested read-only follow-up uses common T=16,
+K=8/16/32/64, injected beta=.987333678708/3/10, legacy epoch30, ours epoch30,
+and ours best epoch27. It preserves the preceding 576-example validation
+cohort, clean control, sigma5e-4, four matched endpoint-noise draws, float64
+centered frozen-current EqProp, and exact-zero biases. No training or
+accuracy evaluation is performed.
+
+Across all three checkpoints and betas, increasing K8 to64 changes every
+noisy layerwise median cosine by less than **9.62e-7**. The largest clean
+EqProp gradient relative differences are 1.83e-6 (legacy), 1.58e-4 (ours30),
+and 1.19e-3 (ours27); by K16 these fall below 6.75e-8. Every K32 clean
+EqProp gradient equals K64 exactly. BPTT K32-to64 relative error is below
+2.6e-23. Comparisons against fixed K64 BPTT give the same conclusion,
+separating actual convergence from changes in the reference unroll.
+
+At each method's independently best sampled beta, noisy Conv3 median cosine
+at K64 is **legacy .977483 at beta.987333678708**, **ours30 .967538 at beta10**,
+and **ours27 .955650 at beta10**. The best beta is unchanged across K. For the
+minimum of all four layerwise medians, every checkpoint selects beta10;
+legacy scores .049025, ours30 .005245, and ours27 -.003270. Ours still wins
+Conv3/readout at common beta10 but loses the first two layers. These are
+best tested gradient scores, not global beta optima or training accuracy.
+
+All 36 production cells, 25,920 comparisons, and 12 local smoke cases
+validate. All 20,736 residual records pass. The maximum nudged residual
+falls from 4.75e-5 at K8 to 1.09e-11 at K32/K64 without a material change
+in noisy alignment. All nine K8 cells reproduce the preceding replay's
+checked metrics exactly. Fifi exited0 and released its GPU; all 509 remote
+output hashes match locally. Production took 2,200.07s; charged smoke plus
+production/allowance was 2,265.25s within the 7,200s cap. One sandbox-blocked
+local smoke is preserved and excluded; no scientific cells failed or are
+missing. Twelve focused regression tests passed.
+
+Interpretation: numerical K convergence is already adequate at these frozen
+p99 weights, including beta10. Endpoint noise and finite-beta error remain
+the relevant measured tradeoff. This does not overturn the earlier strong
+T effect at the different p90-trained checkpoint, certify a new training
+operating point, or establish the best beta/K for a new training trajectory.
+The grid stops at beta10, uses one parent seed, and retains the parents'
+different weights and learning-rate histories. Official-test access and
+optimizer steps remain zero.
+
+[Report and plots](../results/eqprop-conv3-p99-beta-k-replay-20260923-v1/analysis/report.md)
+· [K effects](../results/eqprop-conv3-p99-beta-k-replay-20260923-v1/analysis/k_effects.csv)
+· [Validation](../results/eqprop-conv3-p99-beta-k-replay-20260923-v1/collection_validation.json)
+
+## Conv3 p99 trained-checkpoint beta replay, September 23
+
+Outcome: **mixed**. The seven-point injected-beta replay supports a partial
+noise-sensitivity explanation for legacy's validation advantage. Clean
+gradients agree closely with BPTT at each training beta, and doubling T has
+negligible effect. Legacy's third convolution retains better noisy alignment;
+both schemes' first two convolutions remain strongly noise-dominated.
+
+At T8/K8, sigma5e-4, and each checkpoint's training beta:
+
+| Checkpoint | Training beta | Noisy Conv1/Conv2/Conv3/readout median cosine | Conv3 added noise / BPTT norm |
+|---|---:|---|---:|
+| Legacy final/best epoch30 | .1 | .00520 / .00452 / **.79946** / .999999 | .7411 |
+| Ours final epoch30 | .987333678708 | -.00564 / .00884 / **.63167** / .999948 | 1.1969 |
+| Ours best epoch27 | .987333678708 | -.02262 / .01020 / **.74381** / .999950 | .8755 |
+
+Minimum clean layer-median cosines are .99836/.99785/.99651. Ours at beta3
+improves noisy Conv3 cosine to .91897 at epoch30 and .94487 at epoch27,
+without repairing the first two layers. At beta10, the best sampled
+worst-layer medians are only .04903/.00525/-.00327, all upper-bound optima;
+no tested beta provides an all-layer .90 median window. Legacy's larger-beta
+noisy Conv3/readout cosines fall to .76274/.74043 at10; the clean controls
+show the same decline.
+Maximum T8→T16 median change is8.77e-6 clean and8.57e-7 noisy. All24,192
+residual records pass, with largest individual selected residual .000130872
+below the .01 threshold. These p99 checkpoints do not reproduce the earlier
+p90 checkpoint's free-phase settling limitation. This is a checkpoint-specific
+conclusion: the earlier p90-trained ours epoch30 checkpoint at beta5.26875648112
+changed noisy readout cosine from-.293154 to.684545 when T8→T16 at K8,
+whereas the current p99-trained checkpoint stays at.999948. The earlier
+checkpoint also failed the small-beta clean/free-phase control at T8.
+Different trained weights change the unnudged dynamics; varying replay beta
+does not reproduce that difference. T8 sufficiency is not established for
+other ours checkpoints or throughout training. See the
+[earlier T/K comparison](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/report.md).
+
+The frozen scope is three saved checkpoints, beta
+[.001,.01,.1,.3,.987333678708,3,10], T8/16 and K8, all36 original batches
+of16 ordinary-MNIST validation examples and four matched read-noise draws
+plus clean controls. Float64 centered frozen-current EqProp, explicit perfect
+diodes, input gain360, exact-zero biases and unchanged source weights are
+preserved. BPTT differentiates eight zero-nudge steps from the same post-T
+state. There are no optimizer steps, new accuracy evaluations or official-test
+reads. The source validation results remain legacy96.86%, ours final96.04%
+and best96.32%; the gap already existed before ours' final .28-point drop.
+
+The interpretation is conditional on one trained seed, different learned
+weights, amplification, training betas and scheme-specific learning rates.
+Ours' roughly3x convolution and9x readout rates are a causal confound, not
+proof of excessive relative updates. Snapshot replay cannot reconstruct
+Adam's accumulated moments or establish training recovery. A matched training
+comparison of ours' current beta and beta3 is the most direct next test of
+this hypothesis; no new training or automatic range extension was launched.
+
+All42 production cells/30,240 gradient comparisons and24 GPU smoke bundles
+validate locally;593 remote file hashes match,177 runtime/four analyzer
+source files and checkpoint bytes are unchanged. Fifi RTX5090 exited0 and
+released the worker. Production took1560.60s; charged1748.92s, including
+smoke and100s for the stopped CPU attempt, is below7200s. The initial missing-
+dependency import and interrupted CPU smoke (one complete, one failed cell)
+are retained/excluded. There are no missing or excluded scientific cases.
+
+[Report and plots](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/analysis/report.md)
+· [Layer statistics](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/analysis/layer_summary.csv)
+· [Validation](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/collection_validation.json)
+· [Plan](eqprop_conv3_p99_trained_beta_replay_plan_20260923.md).
+
+## Legacy CIFAR L8 ten-epoch LR refinement, September23
+
+Outcome: **negative for improving the current rates with these four local
+perturbations**. All five seed0 ten-epoch evaluations completed before the
+02:00CEST deadline. Current rates remain selected: validation **74.68%**,
+CE0.717528. Classifier half/double gives74.44%/74.34%; convolution half/double
+gives74.26%/70.80%. Every alternative has higher CE. The fresh center matches
+the earlier ten-epoch74.68% result. Retain the existing convolution LR vector
+and classifier0.00016, BN0.001 and gains0.00005.
+
+Matched saved initialization,45k/5k split, seed0, batch32, legacy amplification
+4/0.25, analog L8, trainable BN/gains, Adam, cosine horizon50, T/K[6,6,4],
+augmentation, bounds and loss are fixed. Only conv or classifier LR changes
+by a factor of two. Rank by terminal epoch10 validation accuracy, then CE.
+All five production and seven smoke bundles are collected and validate;
+14070 Adam steps each, all final solver audits pass, both lane exits0.
+No failures, exclusions, missing cases or deadline cancellations; no official
+test reads. Production11.3943GPUh within budget. No further runs launched.
+
+User-authorized parallel placement uses matching RTX5090/software on Fifi
+(center/conv probes) and Riri (classifier probes). One seed, host split and
+validation selection limit inference; the nearest gap0.24pp is12 examples.
+Joint LR interactions and longer training are not resolved. This result does
+not establish inherent legacy-scheme underperformance or a global LR optimum.
+
+[Report](../results/cifar10-l8-legacy-lr-refinement-e10-seed0-20260922-v1/analysis/report.md)
+· [Comparison](../results/cifar10-l8-legacy-lr-refinement-e10-seed0-20260922-v1/analysis/comparison.csv)
+· [Verification](../results/cifar10-l8-legacy-lr-refinement-e10-seed0-20260922-v1/analysis/verification.json)
+· [Plan](cifar_l8_legacy_lr_refinement_plan_20260922.md).
+
+## Conv3 ours p99 at T16/K8 for ten epochs, September 23
+
+Outcome: **mixed**. The requested seed0 run completed ten finite epochs at
+injected beta0.987333678708 and endpoint read noise sigma5e-4. Doubling T
+from8 to16 gave almost identical ten-epoch validation trajectories in this
+comparison: the maximum absolute epochwise difference is0.12pp.
+
+| T | K | Best validation, epochs1–10 | Epoch10 validation | Best epoch |
+|---:|---:|---:|---:|---:|
+| 8, existing reference | 8 | 95.64% | 95.44% | 9 |
+| 16, requested run | 8 | 95.58% | 95.38% | 9 |
+
+The final difference is-0.06pp; both finish0.20pp below their ten-epoch best.
+The T8 values are the first ten epochs of the existing completed30-epoch p99
+run. Both use the same frozen source on Tesla V100-SXM2-16GB with PyTorch2.5.0
+and CUDA12.2. Initial parameter hashes, train/validation split and all ten
+minibatch-order hashes match. The inherited Adam vector, beta, noise seeds,
+batch sizes, input gain360, explicit perfect diodes, float64 centered
+frozen-current EqProp, [0,100] weights and frozen exact-zero biases are
+unchanged. Scientific config differences are T and terminal epoch horizon;
+learning rates are constant. Official-test reads are zero.
+
+This is exploratory ordinary-MNIST training/validation evidence. The inherited
+p99 beta was calibrated at T8/K8; p99 is a clean cosine threshold, not a
+stability probability. T16 changes both training free phases and validation
+inference. This single-seed result supports ten-epoch nondivergence at the
+requested setting, with no observed validation gain. It neither establishes
+thirty-epoch stability nor answers whether higher T rescues larger-beta
+failures.
+
+Jean Zay jobs73267/73276 completed0:0 as two five-epoch continuation segments.
+The second restored the exact epoch5 optimizer/RNG/noise state. Total GPU
+allocation time is6,539seconds (1.8164GPUh), within the3GPUh budget. The local
+same-config and continuation smokes pass, as do17 exact-run and5 continuation
+tests. The new production bundle, existing T8 reference and both smoke
+bundles validate locally. Remote file checksums match the collected copy;
+the dry-run's sole difference is the local study directory's timestamp.
+The expected275,040 endpoint-noise draws are recorded. No failures, retries,
+excluded scientific cases or pending jobs remain.
+
+[Report and trajectories](../results/eqprop-conv3-ours-p99-t16k8-10ep-20260922-v1/analysis/report.md)
+· [Epoch measurements](../results/eqprop-conv3-ours-p99-t16k8-10ep-20260922-v1/analysis/epochs.csv)
+· [Validation](../results/eqprop-conv3-ours-p99-t16k8-10ep-20260922-v1/collection_validation.json)
+· [Config](../configs/conv/eqprop_conv3_ours_p99_t16k8_10ep_20260922_v1/conv3_ours_p99_sigma5em4_t16k8_10ep_seed0.json)
+· [Plan](eqprop_conv3_ours_p99_t16k8_plan_20260922.md).
+
+## Conv3 T/K cosine interaction across amplification schemes, September 22
+
+Outcome: **mixed**. A complete T/K grid at each trained checkpoint's original
+beta shows essentially unchanged baseline and legacy cosines, while ours
+has strong T/K interaction and opposing effects across layers. Increasing
+both phase lengths does not recover legacy's alignment at this fixed beta.
+
+The grid is T=8/16/32 × K=8/16/32 for baseline, ours and legacy at training/read
+sigma 5e-4. Maximum range in any noisy layer median over the nine points is
+1.61e-4 for baseline and 6.55e-6 for legacy; their largest clean ranges are
+2.02e-5 and 1.84e-4. Ours has the following noisy readout medians:
+
+| T | K=8 | K=16 | K=32 |
+|---:|---:|---:|---:|
+| 8 | -0.29315 | -0.48089 | -0.67259 |
+| 16 | 0.68455 | 0.73575 | 0.80633 |
+| 32 | 0.82046 | 0.83396 | 0.85758 |
+
+At T8, larger K worsens the readout; at T16 and T32 it improves it. This is
+not a uniform layerwise improvement. For ours at T32, K8→K32 changes noisy
+Conv1/Conv2/Conv3/readout medians from [.06055,.07781,.30246,.82046] to
+[.01057,.14756,.20515,.85758]. Clean Conv1 falls from .96967 to .47268.
+Clean/noisy readout medians differ by at most 1.41e-6 on this grid, so this
+interaction persists without endpoint read noise. No single K maximizes all
+four layer medians at T32.
+
+The three final epoch-30, seed-0 A100 checkpoints remain frozen, with injected
+betas baseline404.141105702, ours5.26875648112, legacy4.42250110273. The same
+576 validation examples, four matched noise draws, float64 centered
+frozen-current EP, exact-zero biases, explicit perfect diodes, input gain360
+and paired20-output squared loss are used. At each point both EP and BPTT use
+the requested K from the same post-T state. K therefore changes both
+estimators; this grid does not isolate finite-beta EP error from changes in
+the finite-unroll BPTT reference, identify an exact minimum T/K, or establish
+training recovery. The result is conditional on these trained weights and
+betas, with one trained seed per scheme. No training, accuracy evaluation or
+official-test read occurs; residuals do not filter or select the points.
+
+All 27 grid cells are included: 22 new plus five matched cached anchors. All
+44 new production/smoke bundles and five cached bundles validate locally;
+all664 output hashes match Akib and all12 checkpoint source files remain
+unchanged. All324 scheme/T/batch groups have identical post-T state and frozen
+force hashes across K; all972 batch replays verify both requested minimizer
+lengths. Coverage is19,440 layer comparisons (15,840 new), with no failures,
+exclusions or missing points. Akib exited0 and released the worker. Replay
+including smokes took2,400.39s (0.667GPUh), total wall time2,462s, within the
+5,400s cap. No further run is pending.
+
+[Noisy cosine grid](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/noisy_cosine_TK.png)
+· [Clean cosine grid](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/clean_cosine_TK.png)
+· [Report and fixed-T/K curves](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/report.md)
+· [Measurements](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/layer_summary.csv)
+· [Collection validation](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/collection_validation.json)
+· [Plan](eqprop_conv3_cosine_tk_schemes_plan_20260922.md).
+
+## Conv3 readout cosine transition by T12, September 22
+
+Outcome: **positive for localizing the observed median sign change**, with
+continued T dependence beyond it. Filip requested exactly T=12/16/20/32 for
+the final epoch-30 ours/sigma5e-4 checkpoint, keeping the training injected
+beta 5.26875648112 and K=8. The cached T8/T64 cells supply matched anchors.
+
+| T | Conv1 | Conv2 | Conv3 | Readout | Positive readout comparisons |
+|---:|---:|---:|---:|---:|---:|
+| 8 | 0.02007 | 0.02578 | 0.24569 | -0.29315 | 44.4% |
+| 12 | 0.02726 | 0.03409 | 0.56056 | 0.61105 | 94.4% |
+| 16 | 0.03308 | 0.04468 | 0.43053 | 0.68455 | 97.2% |
+| 20 | 0.04147 | 0.05296 | 0.36083 | 0.73593 | 100.0% |
+| 32 | 0.06055 | 0.07781 | 0.30246 | 0.82046 | 100.0% |
+| 64 | 0.08031 | 0.11167 | 0.28897 | 0.88544 | 100.0% |
+
+Layer values are median noisy EP–BPTT cosines over the same 36 validation
+batches and four matched noise draws. T12 is the first sampled positive
+readout median; T9–11 are unmeasured. T20 is the first sampled value where
+all 144 readout comparisons are positive. The readout still changes by
+0.06498 from T32 to T64. Clean and noisy readout medians nearly coincide,
+so the T dependence is also present without endpoint read noise. Conv3
+changes non-monotonically, peaking among these sampled values at T12 and
+decreasing afterward. Early layers remain poorly aligned under read noise.
+
+The single seed-0 A100-trained checkpoint, beta, K, cohort, noise seeds,
+float64 centered frozen-current estimator, explicit perfect diodes,
+exact-zero biases, input gain 360 and paired 20-output loss remain fixed.
+BPTT uses K zero-nudge steps from the post-T state at each sampled T. These
+are exploratory fixed-checkpoint measurements, not a training result or an
+exact minimum-T claim. No residual threshold filters the points, and no
+training, accuracy evaluation or official-test read occurs.
+
+All four production and four smoke bundles validate locally; all 136 output
+file hashes match Akib and all four source checkpoint files remain unchanged.
+The unchanged Akib numerical environment also produced both cached anchors.
+The launcher exited 0, the worker released the GPU, and total wall time was
+394 seconds against a 900-second cap (363.18 seconds of replay including
+smokes). No requested point is missing, failed or excluded; no further T
+sweep is pending.
+
+[Cosine plot](../results/eqprop-conv3-cosine-t-transition-20260922-v1/analysis/cosine_vs_T.png)
+· [Report](../results/eqprop-conv3-cosine-t-transition-20260922-v1/analysis/report.md)
+· [Measurements](../results/eqprop-conv3-cosine-t-transition-20260922-v1/analysis/cosine_vs_T.csv)
+· [Collection validation](../results/eqprop-conv3-cosine-t-transition-20260922-v1/collection_validation.json)
+· [Plan](eqprop_conv3_cosine_t_transition_plan_20260922.md).
+
+## Conv3 noisy cosine changes from T8 to T64, September 22
+
+Outcome: **mixed**. Increasing free-phase T from 8 to 64 substantially changes
+cosine similarity for ours at training/read sigma 5e-4. Legacy at both noise
+levels, baseline at both noise levels, and ours at sigma 3e-4 remain almost
+unchanged. The scientific objective is cosine change, as explicitly clarified
+by Filip; no residual threshold filters or selects these points.
+
+At the original training beta, ours/sigma 5e-4 changes as follows:
+
+| T | Conv1 | Conv2 | Conv3 | Readout |
+|---:|---:|---:|---:|---:|
+| 8 | 0.02007 | 0.02578 | 0.24569 | -0.29315 |
+| 64 | 0.08031 | 0.11167 | 0.28897 | 0.88544 |
+
+These are noisy median EP–BPTT cosines over 36 batches and four read draws.
+Across all four layers and the five matched beta values, the largest absolute
+median change is 1.17860 for this checkpoint. Legacy changes by at most
+3.48e-8/2.26e-8 at sigma 3e-4/5e-4; its output-side loss of alignment at larger
+beta persists. Baseline changes by at most 1.61e-4/1.02e-4, and ours/sigma 3e-4
+by at most 3.21e-6. Thus the legacy pattern survives this higher-T check;
+the pronounced T-sensitive readout discrepancy belongs to ours/sigma 5e-4.
+The latter still has poor noisy early-layer alignment, and its Conv3 cosine
+remains low at the training beta. Increasing T does not resolve every layer.
+
+This is a read-only, same-cohort mechanism diagnostic on six final epoch-30,
+seed-0 p90 Conv3 checkpoints trained on A100s. Baseline/ours/legacy each use
+training/read sigma 3e-4 and 5e-4. The narrowed beta factors are
+`[.1,.3,1,3,10]` relative to each source training beta; the cached T8 data are
+restricted to these same factors. K=8, float64 centered frozen-current EqProp,
+explicit perfect diodes, exact-zero biases, input gain 360, original [0,100]
+weights and 576 validation examples remain fixed. BPTT differentiates K
+zero-nudge steps from the same post-T state. Cohort SHA-256 is
+`95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd`.
+Clean controls and four matched noisy endpoint draws are included. No
+training, accuracy evaluation or official-test read occurs.
+
+The user authorized parallel placement: all schemes at factors .1/3 ran on
+Trex, .3/10 on Loulou, and 1 on Akib. Common smoke comparisons bound cross-host
+cosine disagreement by 2.23e-10; production BPTT norms agree within 2.46e-14
+relative, with numerical rather than bitwise agreement across environments.
+All 30 production and 54 smoke bundles validate locally, all 1,194 output
+hashes match the remote files, all 24 checkpoint source files remain unchanged,
+and all launchers exited 0. Runtime including smoke was 0.516 GPUh against a
+1.5 GPUh cap. Two preflight MPS admission failures occurred before scientific
+computation; logs are retained and no scientific case is excluded or missing.
+
+Limitations: one trained seed per condition, five sampled betas, fixed K, and
+two T values in the noisy comparison. This does not establish the minimum T
+for a cosine threshold, continuous-beta coverage, exact gradients, or improved
+training at a changed beta. The clean small-beta T study below is separate.
+
+[T8/T64 overlay](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/cosine_T8_vs_T64.png)
+· [Report and clean/noisy curves](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/report.md)
+· [Matched cosine changes](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/cosine_change_with_T.csv)
+· [Collection validation](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/collection_validation.json)
+· [Config](../configs/conv/eqprop_conv3_trained_beta_noise_t64_20260922.json)
+· [Plan](eqprop_conv3_trained_beta_noise_t64_plan_20260922.md).
+
+## Conv3 clean cosine changes with free-phase T, September 22
+
+Outcome: **positive for repairing the clean directional comparison by increasing
+T** at the final epoch-30 ours/sigma5e-4 checkpoint. On the same 576 validation
+examples, at injected beta0.000526875648112 and fixed K=8, layer median clean
+EP–BPTT cosines are:
+
+| T | Conv1 | Conv2 | Conv3 | Readout |
+|---:|---:|---:|---:|---:|
+| 8 | 0.73785 | 0.76034 | 0.38812 | 0.00705 |
+| 32 | 0.99595 | 0.99820 | 0.99986 | 0.99972 |
+| 41 | 0.99598 | 0.99903 | 0.99994 | 0.99987 |
+| 64 | 0.99634 | 0.99930 | 0.99998 | 0.99996 |
+
+The medians change little beyond T32. This does not identify the minimum T
+for a chosen cosine threshold: full-cohort cosine was not sampled between8
+and32. Minimum individual layer/batch cosines at32/41/64 are0.98586/0.98557/
+0.98324, so improvement is not monotonic for every comparison. These are
+clean, small-beta measurements; the subsequent T64 noisy-beta sweep addresses
+Filip's clarified question about cosine changes under read noise.
+
+Frozen checkpoint/float64 runtime, zero biases, perfect diodes and validation
+cohort are unchanged. Four production and four smoke bundles validate locally,
+with39 exact direct-state equivalence checks. Both training and official-test
+access are absent. Runtime674.32s including smoke is below1,200s. An initial
+launcher failed before computation because the new config lacked the frozen
+runtime path; its log and initial payload are retained and the corrected retry
+exited0. The initial integer-T residual trace is retained as ancillary evidence;
+Filip explicitly clarified that residual thresholds are not his decision metric.
+
+[Report and cosine plot](../results/eqprop-conv3-trained-minimum-t-20260922-v1/analysis/report.md)
+· [Measurements](../results/eqprop-conv3-trained-minimum-t-20260922-v1/analysis/clean_cosine_vs_T.csv)
+· [Validation](../results/eqprop-conv3-trained-minimum-t-20260922-v1/collection_validation.json).
+
+## Conv3 trained-checkpoint beta sweep under read noise, September 22
+
+Outcome: **mixed**. A read-only sweep of thirteen beta values on six final
+epoch-30 p90 checkpoints supports the proposed conflict for legacy: small
+beta preserves clean gradient direction but leaves early layers noise-dominated;
+larger beta produces large, misdirected gradients near the output. No sampled
+shared beta gives legacy four layer median noisy cosines above 0.90. Baseline
+has a useful measured overlap; ours/sigma 3e-4 is intermediate. Ours/sigma 5e-4
+also fails its native-T8 clean control and requires a settling qualification.
+
+Best shared beta maximizes the minimum of four layer median noisy cosines
+over the sampled grid. Beta below is actual injected B, not base beta.
+
+| Training/read sigma | Scheme | Best sampled B | Worst layer median cosine | Residual qualification |
+|---:|---|---:|---:|---|
+| 3e-4 | baseline | 12124.23317 | 0.97090 | Free T8 fails |
+| 3e-4 | ours | 526.87565 | 0.62706 | Pass; upper grid boundary |
+| 3e-4 | legacy | 4.42250 | 0.02010 | Pass |
+| 5e-4 | baseline | 12124.23317 | 0.96245 | Free T8 fails |
+| 5e-4 | ours | 0.000526876 | -0.00496 | Fails clean/settling control; lower boundary |
+| 5e-4 | legacy | 0.44225 | 0.01247 | Pass |
+
+Legacy's minimum clean layer median cosine at the smallest beta is
+0.999999985/0.999993377 for sigma 3e-4/5e-4. For sigma 3e-4, at one tenth of
+training beta its clean Conv1/Conv2 cosines remain 0.9758/0.9728 while Conv3 is
+0.5029. At training beta its clean Conv3/readout cosines are 0.0536/0.0977,
+with EP/BPTT norm ratios 10.01/10.93. This supports finite-beta distortion as
+the late-layer limitation even when the readout is clean. It does not prove
+that every continuous beta fails or establish training recovery at another beta.
+
+The six seed-0 source checkpoints were trained on A100s. Included replays all
+use one Akib RTX3080, with unchanged final weights, exact-zero biases, explicit
+perfect diodes, input gain360, float64 centered frozen-current EqProp and
+T=K=8. Beta factors span1e-4 to100 relative to each training beta. The same
+36 validation batches of16 (576 examples; cohort SHA-256
+`95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd`)
+are replayed at clean endpoints and four matched noisy draws per beta. BPTT
+differentiates K zero-nudge steps from the same post-T state. Physical
+relaxation and clamped input remain clean. No training, accuracy evaluation
+or official-test read occurs. Medians/ranges describe batches and noise draws,
+not uncertainty across training seeds.
+
+Baseline's free-state residuals fail at Layer_1 and Layer_3 throughout this
+grid; its zero and nudged endpoint checks pass. Its measured alignment is
+therefore a finite-T/K diagnostic without full equilibrium qualification.
+For ours/sigma 5e-4, a separate clean check on the first 48 examples at
+T=8/32/128/512, K=8 and the minimum beta shows that longer free settling
+helps: at T128 all 12 layer/batch cosines exceed0.99623 and residuals pass,
+versus minimum 0.67334 at T8 on exactly that subset. Norm ratios at T128
+remain 0.882–1.070. This supports a settling contribution, without establishing
+exact gradients or full-cohort/K convergence. A subsequent solver-qualified
+noisy sweep is needed before interpreting that checkpoint solely as a
+read-noise/beta tradeoff; none is launched in this closeout.
+
+All 78 main bundles (56160 comparisons),18 Akib smoke bundles and four settling
+bundles validate locally; all 1392 collected file hashes match Akib. The24
+checkpoint source files,177 runtime files and four analyzers are unchanged.
+All 4320 training-beta comparisons exactly reproduce prior RTX3090 cosine,
+BPTT norm and EP norm results. Both Akib jobs exited0 and released the GPU.
+Total charged runtime 6811.13s (1.892GPUh) is below the10800s cap. The27
+successful Loulou smoke bundles, failed noise-identity smoke and stopped
+production attempt after unrelated GPU occupancy are preserved and excluded;
+their local bundles validate. No main scientific case is missing or excluded.
+
+[Report and curves](../results/eqprop-conv3-trained-beta-noise-20260922-v1/analysis/report.md)
+· [Layerwise measurements](../results/eqprop-conv3-trained-beta-noise-20260922-v1/analysis/layer_summary.csv)
+· [Collection validation](../results/eqprop-conv3-trained-beta-noise-20260922-v1/collection_validation.json)
+· [Config](../configs/conv/eqprop_conv3_trained_beta_noise_20260922.json)
+· [Plan and recovery](eqprop_conv3_trained_beta_noise_plan_20260922.md).
+
+## CIFAR L8 proposed continuation to 50 epochs, September 22
+
+Outcome: **positive for continued optimization of this selected seed-0 run**.
+The user-requested 20 additional epochs on Fifi restore the final epoch-30
+model, Adam state and original 50-epoch cosine schedule. Epoch 50 reaches
+**89.92% validation accuracy**, versus 87.20% at 30 (**+2.72pp**); cross-entropy
+changes from 0.393454 to 0.372177. Epoch 50 is the best accuracy within 31–50.
+
+Fully analog L8, proposed voltage/current amplification 4/1, trainable BN/gains,
+batch 32, unchanged selected learning-rate vector, T/K [6,6,4], crop/flip and
+45k/5k split remain fixed. All 20 new epochs and 70,350 cumulative Adam steps
+validate, including final checkpoint and scheduler state; final solver audit
+passes. Full production/smoke artifacts are local and valid, exit 0, no failed
+or excluded cases/retries. Runtime 4.2140 GPUh, Fifi released. No official test
+read. This is one selected seed and validation evidence; only proposed was
+extended, so the gain does not establish superiority over other schemes.
+No additional experiment is launched as part of this closeout.
+
+[Report and curves](../results/cifar10-l8-analog-ours-e30-e50-seed0-20260922-v1/analysis/report.md)
+· [Validation](../results/cifar10-l8-analog-ours-e30-e50-seed0-20260922-v1/collection_validation.json)
+· [Plan](cifar_l8_ours_e30_e50_plan_20260922.md).
+
+## Conv3 beta choices for unit output displacement, September 22
+
+Outcome: **positive for matching the pooled output displacement at the saved
+initialization**. Direct replay of the user-selected injected betas
+baseline `88.7`, ours `1.385`, and legacy `.02173` confirms output
+`RMS(v_plus - v_free)` of `1.0003009717`, `.9998121959`, and `.9998813740`,
+respectively. Deviations from the target of one are `+.030097%`, `-.018780%`,
+and `-.011863%`; the worst absolute error is below `.031%`. Negative-nudge
+and centered-half-difference RMS agree at the displayed six-decimal precision.
+This supports the interpolation-based choices for this initializer.
+
+The exploratory diagnostic uses the identical saved seed-0 initialization
+SHA-256 `5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f`
+and exact prior 36 validation batches of 16 (576 examples), with cohort hash
+`95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd`.
+Conv3 T=K=8, float64 centered frozen-current EqProp, input gain360, wide
+[0,100] weights, explicit perfect-diode dictionaries, exact-zero biases and
+clean endpoints are unchanged. Beta is the actual injected strength;
+base beta is divided by `(voltage_amp/current_amp)^3`. No optimizer step,
+accuracy evaluation or official-test access occurred.
+
+All three production bundles and three one-batch smoke bundles validate
+locally: 108 replay batches, 432 layer-signal records, and zero failures
+among 1,728 projected-KKT residual checks. Input hashes, source hashes,
+parameter immutability and cohort checks pass. Independent aggregation of
+the raw displacement CSV reproduces the output RMS to within `1e-12`.
+The authoritative local archive matches Akib's SHA-256
+`e3c651e8ec69096478a6f70f6e7f60f6e361778449e0b9294287e77113ea73c9`.
+
+All cases ran on Akib's idle RTX3080. An initial smoke OOM prevented
+production; its failed bundle is retained and validates as failed. The
+replacement used expandable allocator segments and a 256-MiB cuDNN workspace
+cap, preserving the scientific configuration and batch size. Successful
+smoke plus production took199.47s, within the900s budget. No scientific
+case was excluded. The original attempt is under `collected/workspace/output/`;
+the successful replacement is under `collected/workspace/output-retry/`.
+
+The match is a pooled initial-state measurement, not a claim about every
+example or later training states. Per-batch output RMS ranges are
+baseline `.996891–1.005512`, ours `.995796–1.005771`, and legacy
+`.987583–1.013621`. Equal output displacement does not establish equal
+hidden-layer signals or stability under noisy training; this diagnostic
+does not replace those separate qualifications.
+
+[Report](../results/eqprop-conv3-output-rms1-init-20260922-v1/analysis/report.md) ·
+[Layer measurements](../results/eqprop-conv3-output-rms1-init-20260922-v1/analysis/layer_summary.csv) ·
+[Coverage validation](../results/eqprop-conv3-output-rms1-init-20260922-v1/analysis/validation.json) ·
+[Config](../configs/conv/eqprop_conv3_output_rms1_init_20260922.json) ·
+[Run and recovery plan](../results/eqprop-conv3-output-rms1-init-20260922-v1/plan.md).
+
+## Conv3 initialization beta and read-noise replay, September 21
+
+Outcome: **mixed**. The user-requested fixed-initialization diagnostic is
+complete: baseline/legacy/ours at injected beta B=.01/.1, with no training,
+trained-checkpoint loading, accuracy evaluation or official-test access.
+All six production bundles and six one-batch smoke bundles validate locally.
+The scientific summaries contain exactly6048 defined layer comparisons:
+6 cases ×36 matched validation batches ×7 read-noise levels ×4 weight matrices.
+Runtime including smoke was633.78s (10.56min) on one local RTX3090, within the
+one-GPU-hour cap. No failures or replacement attempts occurred; operational
+smokes are retained and excluded from scientific aggregation.
+
+The shared saved seed-0 initializer,576 ordinary-MNIST validation examples,
+T=K=8, float64 centered frozen-current EP, same-post-T K-step BPTT, perfect
+diodes, input gain360, wide[0,100] weights and exact-zero biases match the
+previous diagnostic contract. The initializer is loaded in its native
+float32 and promoted exactly to float64. Beta denotes injected B, with base
+beta=B/(v/c)^3. The previous noise grid is retained by stated assumption:
+sigma0,1e-5,3e-5,1e-4,3e-4,5e-4,1e-3. One readout draw per batch/sigma uses
+seed2026092101; standard normals are matched across schemes/betas and reused
+across sigma, while phases/layers remain independent. Only copied endpoint
+voltages are perturbed. All initializer/parameter/cohort/noise guards pass,
+BPTT references are bitwise invariant across beta, and all3456 projected-KKT
+batch/layer/phase residual rows pass. The worst residual p90 is6.98e-6.
+
+Clean EP–BPTT cosine is>.99 for every case, batch and matrix; the minimum is
+.991160714 for legacy B=.1. At the smallest nonzero sigma1e-5, all first/second
+Conv-layer median cosines are already below.23. This grid therefore does not
+resolve their transition from high-fidelity to noise-limited readout. Small
+negative medians near zero should not be interpreted as a reproducible
+anti-gradient mechanism from one draw per batch.
+
+The third convolution shows a clear separation. At sigma1e-5 and B=.01,
+baseline/legacy/ours median cosines are.018007/.984603/.335984; at B=.1 they
+are.163659/.999695/.962394. At sigma1e-4 and B=.1 they are
+.018008/.984408/.335767. Dense readout is more robust: at sigma1e-3 and B=.1,
+baseline/legacy/ours are.863322/.999999/.999543. Increasing beta by10 gives
+approximately a decade of noise tolerance in these measured curves, with
+small finite-beta deviations; this observation applies to these two betas.
+
+These fixed-weight results show no general noisy-gradient advantage for ours
+over legacy under equal injected B. They also demonstrate why the previous
+large-beta baseline result cannot be transferred to B=.01/.1. Equal B does
+not match physical response: at B=.1 the pooled centered output displacement
+RMS is.001127735/4.601386908/.072188604 for baseline/legacy/ours, while the
+first-hidden values are4.87212e-9/3.10829e-7/3.28561e-8. Legacy therefore has
+larger absolute phase signals despite weaker first-hidden response relative
+to its output than ours. The study isolates endpoint readout noise at the
+shared initial weights; it does not establish training accuracy, explain
+the chronology of the earlier trained-checkpoint failures, or equalize
+physical output nudging. Single seed, one draw per batch, the missing
+lower-noise transition and finiteT/K limit broader conclusions. A lower-sigma
+fixed-initializer replay or an explicitly equal-output-response comparison
+would answer different follow-up questions; neither is launched here.
+
+[Figure and complete tables](../paper_ready_results/conv3_init_beta_noise_20260921.md) ·
+[CSV](../paper_ready_results/conv3_init_beta_noise_20260921_summary.csv) ·
+[Plan](eqprop_conv3_init_beta_noise_plan_20260921.md) ·
+[Raw bundles](../results/eqprop-conv3-init-beta-noise-20260921-v1/) ·
+[Coverage validation](../results/eqprop-conv3-init-beta-noise-20260921-v1/analysis/validation.json).
+
+## Provisional stability-based EqProp beta selection, September 21
+
+Scientific direction recorded at Filip's request; **the maximum stable betas
+remain unestablished**. The objective is the largest tested beta that avoids
+training divergence under fixed conditions. Working reference points are
+Conv1 approximately one decade below p99, Conv2 approximately p99, and Conv3
+approximately p95, with Conv3 still under test. Here p99/p95 mean per-matrix
+EP–BPTT cosine thresholds, not percentiles or stability guarantees.
+
+The [protocol and evidence limits](eqprop_beta_stability_protocol_20260921.md)
+record the numerical candidates and two unresolved interpretations: which
+Conv1 p99 reference to use, and whether stability qualification includes
+read noise. Larger candidates already complete clean training in several
+cases, so the proposed depth-dependent relationship is provisional.
+
+The [local run-coverage audit](../paper_ready_results/beta_stability_protocol_run_audit_20260921.md)
+preserves three clean seeds and five noisy seed-0 conditions per group.
+Retaining historical Conv1 betas leaves 32 full-budget completions needed;
+literal latest-p99/10 leaves 48. Each count includes three clean controls
+already declared in the separate Conv3 p95 study. These are conditional
+replacement counts for wide-weight EqProp, not additions to the paused
+clean-paper completion tally. No experiment was launched by this review.
+
+## Conv3 p90 final-checkpoint gradient cosine versus noise, September 21
+
+Outcome: **mixed**. Read-only replay of all25 completed epoch-30 checkpoints
+in the p90 noise sweep measures12,816 per-matrix EP/BPTT comparisons. All25
+bundles validate; source checkpoints and parameter tensors remain unchanged.
+No training or official-test evaluation was performed. The two sigma1e-3
+legacy/ours failures have no final checkpoint and remain explicitly missing.
+The run took approximately36.4 minutes on the local RTX3090, within the
+one-GPU-hour cap; summed per-case runtime is0.5993 GPU-hours, excluding smoke
+and shared setup/collection time.
+
+Frozen setup: seed0, T=K=8, native float64, centered frozen-current EP, wide
+weights[0,100], zero biases, injected beta baseline404.141105702,
+legacy4.42250110273, ours5.26875648112. Every final checkpoint uses the same36
+validation batches of16, with clean readout and four independent noise draws
+per batch at its training sigma. BPTT differentiates the matched K-step
+zero-nudge continuation from the same post-T state. No Adam or LR transform
+is applied to the compared gradients.
+
+At sigma1e-5, noisy median cosines for Conv1/Conv2/Conv3/Dense are baseline
+.985441/.996814/.999482/1.000000, legacy .602313/.869716/.997049/.999999,
+and ours .258183/.414092/.997959/1.000000. Thus early-layer direction can
+degrade substantially while the previously recorded validation accuracies
+remain97.50/98.72/98.38%. This is descriptive evidence, not a causal estimate
+of which layer determines accuracy.
+
+At sigma5e-4, noisy medians are baseline .236215/.457898/.985971/.999985,
+legacy .001441/.083346/-.003131/.082845, and ours
+.020070/.025777/.245687/-.293154. The latter two final checkpoints also
+lose clean-readout alignment: legacy -.165296/.171045/-.003132/.082845;
+ours .723292/.688886/.245614/-.293156. The discrepancy at those weights
+cannot be attributed solely to the added endpoint noise. This replay does
+not separate finite-beta distortion from finite-T/K effects. Residual gates
+are retained separately in the raw evidence and summary.
+
+Baseline at sigma1e-3 has noisy medians .179658/.357652/.971671/.999960
+and clean medians .999753/.999544/.998677/1.000000. Legacy/ours are missing
+at that noise because training became nonfinite during epochs8/18; neither
+best nor earlier checkpoints substitute for a final measurement.
+
+The initial/BPTT-checkpoint p90 admission criterion does not certify
+alignment at final EP-trained states or under noisy readout. Single seed,
+four Monte Carlo draws per batch, finite T/K and different training GPU
+classes limit generalization. All replays use one GPU class; all nine
+original GPU-specific clean controls are retained. The figure's main zero
+point uses RTX5090 controls, and lines are visual guides across training
+conditions rather than a hardware-independent causal noise curve.
+
+[Report, per-layer tables and figure](../paper_ready_results/conv3_p90_final_noise_cosine_20260921.md)
+and [raw bundles/provenance](../results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/).
+The two-checkpoint smoke exercised native final loading and noisy readout;
+final weights matched their NPZ representation exactly, all12816 cosines
+are defined, and the source/runtime/analyzer hashes are preserved.
+
+## Conv3 p90 versus p99: existing evidence comparison, September 21
+
+Outcome: **inconclusive for a training-accuracy comparison between thresholds**;
+the initial clean-gradient and physical-displacement comparison is available.
+This is an aggregation of existing seed-0, T=K=8 diagnostics, with no new
+simulations or official-test evaluations. Six calibration bundles validate
+and share the same 36 initialization replay batches.
+
+Largest measured betas passing every matrix on all 72 initialization/BPTT
+checkpoint replays are baseline/legacy/ours 404.141105702/4.42250110273/
+5.26875648112 for cosine >.90, and 10/.1/.987333678708 for >.99. The last
+value is a retrospective lookup in the refined measurements; the earlier
+coarse-grid p99 choice was .9. No targeted p99 refinement is claimed.
+The p90 initial minimum first-convolution cosines are .901977/.902633/.900348;
+their medians are .992760/.993805/.994578. The worst-batch criterion should
+not be described as a typical-batch cosine.
+
+No matching initial noisy-gradient cosine measurements at sigma1e-3 are
+available in the inspected evidence. At fixed initial weights, physical
+phase displacement is unaffected by the readout-only noise model. Apparent
+noisy-readout RMS expectations are derived analytically and explicitly
+separated from measured clean-state displacement. Neither determines a
+missing noisy-gradient cosine.
+
+The p90 clean/noisy accuracy outcomes are reused from the completed sweep.
+For p99, baseline beta10 has 97.64% final validation at epoch30; the selected
+legacy/ours values have no matching training outcomes. Ours beta.9 has a
+separate ten-epoch clean result of98.46%, not evidence for beta.987334 or a
+30-epoch endpoint. Missing entries remain missing, as requested.
+
+[Comparison and source links](../paper_ready_results/conv3_p90_p99_existing_20260921.md)
+include per-layer minimum/median cosines, free-to-nudged and centered phase
+RMS, accuracy horizons, source hashes, and validation receipts. Reproduce
+with `python -m experiments.summarize_conv3_p90_p99_existing`.
+
+## `cifar10-l8-analog-baseline-legacy-e30-e50-seed0-20260922-v1` — final50epoch continuation comparison
+
+Analyzed September23,2026. Outcome: **positive for additional training at the
+frozen selected rates**. Baseline and legacy each complete20 more epochs from
+their final30 checkpoints on Nom/local RTX3090s, preserving model/conductances,
+Adam moments and counters, trainable affine BN/buffers, trainable gains, saved
+RNG state and the original50epoch cosine schedule. Batch32, crop/flip input
+augmentation, cross-entropy, bounds and T/K[6,6,4] remain unchanged. The separately
+completed proposed/Fifi5090 continuation supplies the matched50epoch reference.
+All measurements below are seed0 CIFAR45000/5000 train/validation, not test.
+
+| Scheme | Epoch30 validation | Epoch50 validation | Gain30→50 | CE50 | Best through50 |
+|---|---:|---:|---:|---:|---:|
+| Baseline |86.54%|89.48%|+2.94pp|0.368819|89.48% at50|
+| Proposed, separate reference |87.20%|89.92%|+2.72pp|0.372177|89.92% at50|
+| Legacy |86.88%|88.72%|+1.84pp|0.385642|88.82% at44|
+
+Continuing the existing rates improves both requested arms, with smaller gains
+than the earlier10→30 interval. All three reach broadly similar performance.
+Proposed has the highest final accuracy by0.44pp over baseline and1.20pp over
+legacy; baseline has slightly lower final cross-entropy. One seed and different
+GPU/software stacks do not establish a robust amplification advantage or a
+global LR optimum. Legacy's final accuracy is0.10pp below its best44checkpoint;
+keep endpoint and best-checkpoint comparisons distinct. No further training
+or learning-rate search is launched by this closeout.
+
+Both new runs and all3smokes validate locally (5canonical bundles). All40new
+full epochs contain45000train/5000validation examples; both final checkpoints
+have70350Adam steps,19optimizer groups,3BN counters at70350, finite bounded
+conductances and scheduler epoch50. Exact parent model/Adam/RNG/scheduler
+restoration and preserved per-epoch cosine rates verify; the separately
+completed proposed checkpoint passes the same checks. All final solver audits
+pass. New production plus smokes cost20.3131workerGPUh, below27h allowance.
+No scientific failures, retries or exclusions. No official-test reads.
+
+Both GPU workers are absent and resources released. Nom's wrapper records
+exit0. Local legacy's wrapper omitted its exit-code/finished-at sidecars;
+its native exit status is unknown. Successful canonical terminal artifacts,
+complete log, final audit and actual checkpoint verification independently
+establish scientific completion. This exploratory launcher-receipt omission
+is retained in closeout_validation.json and logs/local.terminal_observation.json;
+no rerun was made solely to recreate it. Nom briefly had unrelated mumax3 work
+at allocation, so the launcher checked for an idle lane before smoke/production;
+no unrelated job was interrupted and no CPU offloading was used.
+
+[Full1–50 curves and comparison](../results/cifar10-l8-analog-baseline-legacy-e30-e50-seed0-20260922-v1/analysis/report.md) ·
+[Checkpoint verification](../results/cifar10-l8-analog-baseline-legacy-e30-e50-seed0-20260922-v1/analysis/checkpoint_verification.json) ·
+[Coverage validation](../results/cifar10-l8-analog-baseline-legacy-e30-e50-seed0-20260922-v1/closeout_validation.json) ·
+[Plan](cifar_l8_baseline_legacy_e30_e50_plan_20260922.md).
+
+## `cifar10-l8-analog-continue-e10-e30-seed0-20260922-v1` — selected LR continuation to30
+
+Analyzed September22,2026. Outcome: **continuing the selected rates improves
+all three schemes substantially**. Each resumes its own final epoch10 model,
+Adam moments/counters, trainable affine BN, gains, RNG and the original50epoch
+cosine schedule. Batch32, crop/flip augmentation, cross-entropy and accepted
+T/K[6,6,4] remain fixed. Seed0,45000/5000 training/validation; no official test.
+
+| Scheme | Epoch10 validation | Epoch20 | Epoch30 | Gain10→30 | CE30 | Best through30 |
+|---|---:|---:|---:|---:|---:|---:|
+| Baseline |75.26%|83.16%|86.54%|+11.28pp|0.398059|87.14% at29|
+| Proposed |75.36%|83.10%|87.20%|+11.84pp|0.393454|87.20% at30|
+| Legacy |74.68%|82.06%|86.88%|+12.20pp|0.399088|86.88% at30|
+
+The selected learning rates support useful longer training; these results do
+not establish a global LR optimum. Proposed's final lead is0.32pp over legacy
+and0.66pp over baseline. One seed and mixed GPU/software stacks do not establish
+a robust amplification advantage. Epoch-to-epoch fluctuations matter: baseline's
+best29 exceeds its final30. Compare fixed endpoints separately from best checkpoints.
+
+All60 added full epochs,42210 cumulative Adam steps per scheme, exact restored
+model/moments/RNG and numerical scheduler state,19 optimizer groups,3 BN counters,
+finite bounded conductances and final solver audits verify locally. PyTorch2.5
+adds only an inert scheduler verbose=False field relative to the2.11 parent;
+this precise metadata difference is recorded in checkpoint verification.
+All11 canonical bundles validate:3 production,7 smoke and1 intentionally
+cancelled Akib attempt. Akib used GPU compute with CPU saved-tensor storage;
+Filip disallowed offloading, so it was stopped before a complete new epoch and
+replaced by GPU-only local legacy. All production workers have exited0; the
+excluded Akib attempt exited143. Successful production time24.7336GPUh;
+recorded production,smoke and cancelled-attempt time25.2037GPUh, below60h cap.
+
+Filip subsequently requested20 more epochs from the final30 checkpoints for
+baseline and legacy. Those are a separate study; proposed already completed50
+in its separately recorded continuation. Preserve this completed30endpoint.
+
+[Report and curves](../results/cifar10-l8-analog-continue-e10-e30-seed0-20260922-v1/analysis/report.md) ·
+[Checkpoint verification](../results/cifar10-l8-analog-continue-e10-e30-seed0-20260922-v1/analysis/checkpoint_verification.json) ·
+[Coverage validation](../results/cifar10-l8-analog-continue-e10-e30-seed0-20260922-v1/closeout_validation.json) ·
+[Plan](cifar_l8_analog_continuation_plan_20260922.md).
+
+## `cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1` — analog L8 Adam LR selection
+
+Analyzed September 22, 2026. Outcome: **positive for finding short-horizon
+learning-rate settings for all three amplification schemes**. All 35 declared
+scientific runs complete: 27 five-epoch grid points, two triggered proposed
+edge probes and six fresh ten-epoch finalists. Select by terminal epoch-10
+validation accuracy, then lower cross-entropy, using the frozen rule.
+
+| Scheme (voltage/current amplification) | Selected candidate | Epoch-10 validation | Cross-entropy | Initial analog-head LR |
+|---|---|---:|---:|---:|
+| Baseline 1/1 | `baseline_c1_d1_e10` | **75.26%** | 0.722593 | 0.0008335640532273448 |
+| Proposed 4/1 | `ours_edge_head_down_e10` | **75.36%** | 0.691127 | 0.00005334108501991406 |
+| Legacy 4/0.25 | `legacy_c1_d1_e10` | **74.68%** | 0.717528 | 0.00016 |
+
+Retain the baseline and legacy center vectors. Relative to the legacy
+convolution anchor `[[.0045,.00069,.00069],[.00069,.00049,.00049],[.00049,.000345]]`,
+the selected conv multipliers are 3.001373182460858 for baseline,
+9.000971237736372 for proposed, and 1 for legacy. Complete raw vectors and
+scientific fields are preserved in the selected
+[baseline](../configs/cifar/lr_search_20260921/confirmation/baseline_c1_d1_e10.json),
+[proposed](../configs/cifar/lr_search_20260921/confirmation/ours_edge_head_down_e10.json)
+and [legacy](../configs/cifar/lr_search_20260921/confirmation/legacy_c1_d1_e10.json)
+configs. Use these as the tested short-horizon settings for later analog L8
+comparisons; 50-epoch optimality and seed variability remain unmeasured.
+
+The network keeps eight analog convs in [3,3,2] blocks at logical widths
+128/256/512 (physical 256/512/1024), plus the analog 8192-to-10 dense classifier.
+Digital pooling and **trainable affine BN** follow the blocks. Training uses
+**Adam, batch 32, crop/flip augmentation and cross-entropy without label
+smoothing**. BN LR stays .001 and four positive boundary-gain LRs stay .00005;
+gains start at 100. Analog biases are zero and conductances stay in [1e-7,10].
+All runs retain the 50-epoch cosine horizon/final ratio .02, one saved seed-0
+initializer, matched input order/augmentation and the stratified 45k/5k
+training/validation split. The official CIFAR test split is never read.
+
+MNIST Conv1/Conv2 Adam ratios supply approximate conv/head priors; every
+scheme receives the complete 3x3 multiplier grid {1/3,1,3}. Proposed needs a
+higher conv and lower classifier rate than its transferred center: epoch-5
+accuracy rises from 59.84% at that center to 66.68% at the selected edge point.
+The other proposed edge, another 3x increase in conv rates, reaches 54.26%.
+At epoch 10 the selected proposed head beats its 3x larger alternative by
+0.34 pp (75.36% versus 75.02%). The baseline/legacy centers beat their
+alternatives by 0.64/0.56 pp. Baseline's alternate has marginally lower CE;
+accuracy is the declared primary criterion. Proposed's 0.10 pp lead over
+baseline is only five validation examples and does not establish an
+amplification advantage. Its head winner is the lowest tested rate; the
+bounded search permits no further expansion. This is one-seed, short-horizon
+validation evidence, with no paper-facing test accuracy.
+
+All initial/final fixed-eight-example T/K audits pass at [6,6,4] against
+[24,24,16], with reference stability checked at [48,48,32]. All 35 saved initial
+model states have identical tensor hashes; all six ten-epoch executions
+exactly reproduce their source run's first five epochs, including metrics,
+gradients, clipping, LR vectors and step counts. Bounds, conductance changes,
+BN scale/shift changes and update counts, finiteness, complete cohorts,
+resolved configs, source hashes and native exits validate locally.
+
+Peak production concurrency is **seven workers on six GPUs**: Fifi/Loulou/
+Riri/Trex RTX 5090s plus Nom/local RTX 3090s, including two qualified concurrent
+Trex workers. Finalists use only RTX 5090/PyTorch 2.11/cu128/cuDNN 9.19;
+Trex's driver differs, and the core grid's mixed hardware/software remains a
+qualification of the promotion stage. Akib's offload smoke fits but projects
+beyond the per-case cap, so no production arm uses it. All **58 canonical
+bundles** validate: 35 scientific, three preparation, 19 smoke and one
+preserved failed pre-step startup. A missing deterministic cuBLAS environment
+caused that local failure; its unchanged successful replacement is
+`cells/legacy_c2_d2`, with receipt `launcher/local-retry1.json`. Planned old-queue
+no-overwrite stops are explicitly superseded; no active training was killed.
+Riri's clock offset is handled with monotonic timing.
+
+Successful native scientific time is 54.4460 worker GPUh; failed startup and
+reported preparation/smoke time bring recorded time to **54.6697**, below the
+72-hour cap. Concurrent worker times are counted separately. The complete
+local copy is authoritative; no study worker remains on any production host.
+The legacy center also supplies the prior batch study's missing 5090 batch-32
+control: 65.62% versus 65.50% on Nom, with identical scientific config and
+initializer/split/qualification hashes.
+
+[Report and full layerwise rates](../results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/analysis/report.md) ·
+[Learning curves](../results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/analysis/ten_epoch_learning_curves.png) ·
+[Comparison CSV](../results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/analysis/comparison.csv) ·
+[Coverage validation](../results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/closeout_validation.json) ·
+[Plan](cifar_l8_analog_lr_plan_20260921.md).
+
+## `cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1` — analog L8 batch comparison
+
+Outcome: **positive for the requested short comparison**. All three seed-0
+runs completed five epochs; batch **32** has the highest frozen epoch-5
+validation accuracy and lowest cross-entropy. This is exploratory CIFAR-10
+validation evidence, not paper-facing accuracy or a long-run optimum.
+
+| Training batch | Host / GPU | Epoch-5 validation | Cross-entropy | Total runtime |
+|---|---|---:|---:|---:|
+| 16 | Fifi / RTX 5090 | 61.02% | 1.0940 | 66.1 min |
+| 32 | Nom-cool-1 / RTX 3090 | **65.50%** | **0.9718** | 157.5 min |
+| 64 | Fifi / RTX 5090 | 60.02% | 1.1275 | 62.9 min |
+
+The requested wider L8 uses independent analog convolution blocks [3,3,2]
+at logical widths 128/256/512, followed by an analog resistive dense
+8192-to-10 classifier. Physical differential widths are 256/512/1024;
+the dense circuit receives 16384 physical input voltages. Digital max-pool
+and **trainable affine BN** follow each block. All BN scale/shift pairs and
+all nine conductance tensors changed during training. The objective is
+**cross-entropy without label smoothing**, with **crop/flip augmentation**.
+Adam uses the inherited layerwise analog L12 rates; no LR recalibration was
+performed. Voltage/current amplification is 4/0.25, boundary gains start at
+100, analog biases are frozen zero, and conductances stay within [1e-7,10].
+T=K=[6,6,4] passed the initial qualification and every final checkpoint audit.
+
+All runs share the saved initializer, deterministic stratified 45k/5k split,
+epoch sample ordering and stateless per-example augmentation. Only CIFAR
+training files were read; the official test split was never accessed. The
+ranking rule was epoch-5 validation accuracy, then lower CE, then runtime.
+Each arm completed 225000 training-example presentations and five complete
+5000-example validations. All 19 trainable tensors had finite nonzero
+first-batch gradients at each epoch; checkpoints, bounds, BN update counts,
+initialization/split identities and native exits validate locally. All nine
+canonical bundles validate, including the preserved failed Nom smoke.
+Production elapsed time totals **4.7748 GPU-hours**.
+
+Batch 32 leads batch 16 by 4.48 percentage points and batch 64 by 5.48 points;
+it led at every measured epoch. Use **batch 32 as the provisional choice for
+this five-epoch setup**. The user-authorized move to Nom introduced a host and
+software confound (PyTorch 2.5.1/CUDA 12.1/cuDNN 9.1 versus Fifi's
+2.11/CUDA 12.8/cuDNN 9.19). The numerical trajectory and runtime differences
+cannot be attributed exclusively to batch size. Initializer/split hashes
+match, but cross-host bitwise equivalence is not claimed. A matched batch-32
+repeat on a 5090 was still outstanding at this study's closeout. The later
+three-scheme Adam LR study above supplies that reference at 65.62%, with
+identical scientific config and input hashes. One seed, five epochs,
+different optimizer-step counts and batch-dependent BN statistics limit
+generalization. The digital L8's
+92.62% monitored test accuracy used a different split and 50 epochs.
+
+Nom's first smoke failed before any optimizer step because actual cuDNN
+libraries disagreed with package metadata. A study-local cuDNN 9.1 runtime,
+verified by a conv/BN backward probe and repeated smoke, fixed the environment
+without changing global packages. Preserve and exclude that smoke from
+scientific aggregation. The first Fifi queue-handoff attempt failed a
+protective working-directory assertion before modifying jobs; the corrected
+handoff preserved batch 16 and ran only batch 64, avoiding duplicate batch 32.
+All three production runs and both final launchers exited zero. The full
+local artifact copy is authoritative; no run from this study remains active.
+
+[Report](../results/cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1/analysis/report.md) ·
+[Learning curves](../results/cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1/analysis/learning_curves.png) ·
+[Comparison CSV](../results/cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1/analysis/comparison.csv) ·
+[Coverage validation](../results/cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1/closeout_validation.json) ·
+[Plan](cifar_l8_analog_batch_plan.md).
+
+## `cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1` — wider digital L8
+
+Analyzed September 21, 2026. Outcome: **positive** for retaining digital
+CIFAR-10 accuracy with fewer convolutions. The requested wider `[3,3,2]`
+network reaches **92.62% best official-test accuracy at epoch48**, and
+**92.57% final**, versus the existing L12's92.30% best/final. This descriptive
+single-seed difference is +.32pp best / +.27pp final, not a significance claim.
+
+Logical widths128/256/512; eight bias-free3x3 ReLU convolutions, each block
+followed by2x2 max-pooling then trainable affine BN, Linear8192-to-10 head.
+There are5,395,594 parameters versus10,849,674 for L12. Both gamma and beta
+changed in all three BN layers; each accumulated4900 statistic updates.
+Adam .001, cosine50 epochs to.00002, weight decay.0003 except zero on BN,
+batch512, seed0, float32/TF32-off, unchanged CIFAR crop/flip/normalization.
+
+One50-epoch production run and a passing target smoke completed on Akib's
+RTX3080. Runtime734.55s (12m15s,.2040GPUh), mean epoch14.60s versus L12's
+19.36s; peak reserved6.65GiB. All50 full50k/10k epochs and4900 steps are
+present, with16 finite nonzero first-batch parameter gradients each epoch.
+Native launcher exit0; no worker remains. Production/smoke bundles are
+collected and validate locally, including artifact hashes and finite final
+checkpoint state. Local CPU shape/count/BN-gradient check passed. The target
+smoke served as execution gate because of the prior local cuDNN problem and
+remote CIFAR data availability. Initial sandbox-network-blocked launcher
+attempt created no job; permitted retry launched unchanged; no training retry.
+
+The narrower depth preserves the observed digital performance in this run.
+Architecture, pooling and BN changed together, so the comparison does not
+isolate BN's contribution. Official test is monitored every epoch and selects
+the checkpoint: exploratory evidence, not an untouched-test paper estimate.
+Analog accuracy, solver convergence and analog runtime are untested. No analog
+or additional digital run is scheduled.
+
+**Recommendation, recorded at Filip's request on September 21:** use this
+wider L8 as the reference architecture for the next **all-analog convolution
+tests**. Keep three coupled analog blocks of depths **[3, 3, 2]**, with logical
+channels `[128,128,128] / [256,256,256] / [512,512]`. Differential physical
+channels are twice these widths. Retain digital 2x2 max-pooling and trainable
+affine BN after each block, the digital Linear(8192,10) classifier, and the
+same crop/flip augmentation. Here “all-analog” refers to all eight
+convolutions; normalization, pooling and the classifier remain digital.
+
+Use cross-entropy on the 10-class logits, with no label smoothing, as in
+this digital run. Its final test cross-entropy is **0.3224**, versus **0.4268**
+for L12. The digital accuracy and reduced depth motivate this recommendation;
+they do not establish analog accuracy or simulation speed. Qualify the new
+analog blocks' solver convergence and T/K, and choose analog-specific learning
+rates and a fitting batch size before full training; digital batch 512 and
+Adam LR .001 are reference settings, not qualified analog settings. Keep the
+measured digital result as the comparison baseline. This records the next
+architecture recommendation and does not launch another experiment.
+
+[Report](../results/cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1/analysis/report.md) ·
+[Learning curves](../results/cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1/analysis/learning_curves.png) ·
+[Validation](../results/cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1/closeout-validation.json) ·
+[Config](../configs/cifar_digital_l8_wide_affinebn_20260921.json).
+
+## `cifar10-digital-l12-logical-width-adam-seed0-20260921-v1` — digital CIFAR L12 baseline
+
+Analyzed September 21, 2026. Outcome: **positive** for the requested digital
+trainability baseline. The fully digital feed-forward BP network completes
+50 epochs on Akib's RTX 3080 and reaches **92.30% best/final official-test
+accuracy**, both at epoch 50. Final augmented-train accuracy is **99.754%**.
+
+The user explicitly chose to match the analog **logical** widths 128/256/512,
+halving its physical channel counts. Twelve bias-free 3x3 convolutions with
+ReLU are grouped as `[128,128] / [128,128] / [256,256,256] / [256,512,512] /
+[512,512]`; pooling and non-affine BatchNorm positions match the all-analog
+graph. The digital readout is Linear(8192,10), with bias. There are
+**10,849,674 trainable parameters**, no amplification or trainable voltage
+gains, no differential duplication, and no conductance bounds.
+
+Frozen setup: seed 0, Adam LR .001, betas .9/.999, eps 1e-8, weight decay
+.0003, cosine decay to .00002 over 50 epochs, batch **512**, float32 with
+TF32 disabled, and the historical CIFAR flip/crop/normalization. Batch 512
+was selected from fitting target memory smokes at 256/512, with **6.68 GiB**
+peak reserved memory. No learning-rate scaling or search was performed.
+
+All 4900 optimizer steps and 50 full train/test epochs are present; the runner
+took **975.60 seconds (16m16s, .2710 GPU-hours)**. Metrics and recorded first-
+batch gradients remain finite. Final checkpoint state is finite and contains
+4900 BatchNorm updates. The native wrapper exited zero; no GPU worker remains.
+Production and three successful target smoke bundles validate locally, as
+does the preserved failed auxiliary local bundle. All **26 remote production
+and launcher file hashes** match the authoritative local copy. The local
+auxiliary smoke failed at cuDNN initialization before any optimizer step;
+its preceding sandbox CUDA-access failure and both logs are preserved and
+excluded. Production required no retry.
+
+For context, historical hybrid/all-analog best accuracies are 92.32/85.04%:
+the digital result is .02pp below the hybrid and 7.26pp above all-analog.
+This is a descriptive one-seed comparison. Parameter count, activation,
+learning rates, batch size and GPU model differ, so it does not isolate a
+causal effect of analog computation or amplification. The official test set
+is monitored every epoch and selects the checkpoint; this is exploratory
+evidence, not an untouched-test paper estimate. No further runs are scheduled.
+
+[Report](../results/cifar10-digital-l12-logical-width-adam-seed0-20260921-v1/analysis/report.md) ·
+[Learning curves](../results/cifar10-digital-l12-logical-width-adam-seed0-20260921-v1/analysis/learning_curves.png) ·
+[Epoch table](../results/cifar10-digital-l12-logical-width-adam-seed0-20260921-v1/analysis/epoch_metrics.csv) ·
+[Validation](../results/cifar10-digital-l12-logical-width-adam-seed0-20260921-v1/closeout-validation.json) ·
+[Config](../configs/cifar_digital_l12_logical_width_20260921.json).
+
+## `eqprop-conv3-p90-read-noise-1em3-20260920-v1` — higher-noise extension
+
+Analyzed September 21, 2026. Outcome: **mixed**. All three requested cases
+are terminal: baseline completed 30 epochs; legacy and ours became non-finite.
+These are ordinary-MNIST validation diagnostics, seed 0, with no official-test
+read. No clean control or previously tested noisy setting was repeated.
+
+The only scientific change from the matched RTX5090 sweep is endpoint-read
+noise sigma=1e-3. The same frozen runner, saved initialization, train/validation
+split and ordering, float64 centered EqProp, T=K=8, [0,100] weights, zero frozen
+biases and exact Adam rates were reused. Injected beta remains
+404.141105702/4.42250110273/5.26875648112 for baseline/legacy/ours. Three short
+local and three Fifi smoke tests passed. Production ran sequentially on Fifi's
+RTX5090; other 5090s were occupied. The completed RTX5090 clean controls were
+reused (97.72/98.70/98.52% final validation).
+
+| Scheme | Outcome at sigma=1e-3 | Last complete validation | Best observed validation |
+|---|---|---:|---:|
+| Baseline | 30 epochs complete; clean-relative drop 0.56pp | 97.16% (epoch30) | 97.20% |
+| Legacy | Non-finite at epoch8, minibatch2791 | 94.76% (epoch7) | 97.22% |
+| Ours | Non-finite at epoch18, minibatch1638 | 95.14% (epoch17) | 96.40% |
+
+Both failures were `NonFiniteTrainingError` in the inference voltages of
+`Layer_1` (200704 non-finite elements), not OOM or transport failures. Their
+partial accuracies are not 30-epoch results. Both failed bundles, logs and best
+checkpoints are retained; no retries or accuracy-based exclusions were made.
+Baseline's maximum running-best decline was 0.20pp; its final own-best drop
+was 0.04pp and its predeclared endpoint screen passes.
+
+The result places a clear limit on the zero-noise cosine argument: passing
+cosine >.90 across the calibration cohort and passing clean training does not
+guarantee finite training at sigma1e-3. Only baseline completed this setting;
+ours failed later than legacy, which is a single-seed observation rather than
+a general robustness guarantee. Scheme-specific betas/LRs remain part of the
+comparison. The earlier sigma<=5e-4 sweep is a separate completed study;
+comparisons against its A100 high-noise points also change GPU class. No
+noise-specific beta tuning or official-test evaluation is implied.
+
+All three local canonical bundles validate, and all97 production-file hashes
+match the finished remote copy. The launcher exited0 because both failures
+were classified scientific terminal outcomes; native codes were0/1/1.
+Production used7.640955 GPU-hours, with short preparation smokes counted
+separately. No experiment worker remains. Coverage is3/3 terminal,1/3 full
+30-epoch completions,2/3 scientific failures,zero operational failures.
+
+[Results and trajectories](../paper_ready_results/conv3_p90_read_noise_1em3_20260920.md) ·
+[CSV](../paper_ready_results/conv3_p90_read_noise_1em3_20260920.csv) ·
+[Raw study](../results/eqprop-conv3-p90-read-noise-1em3-20260920-v1/) ·
+[Validation](../results/eqprop-conv3-p90-read-noise-1em3-20260920-v1/closeout-validation.json).
+
+## `eqprop-conv3-p90-read-noise-20260919-v1` — refined beta read-noise sensitivity
+
+Analyzed September 20, 2026. Outcome: **mixed**. All 24 thirty-epoch runs
+complete: 15 noisy settings and nine GPU-matched clean controls. The refined
+p90 betas work as empirical Conv3 operating points in this seed, but the
+robustness ordering depends on the scheme, noise level and chosen beta.
+These are ordinary-MNIST validation diagnostics; the official test is unread.
+
+The contract freezes seed 0, the 55,000/5,000 split, matched initialization
+and minibatch order, T=K=8, float64 centered frozen-current EqProp, perfect
+diodes, zero biases, wide [0,100] weights and the existing scheme-specific
+Adam rates. Injected betas are 404.141105702 (baseline), 4.42250110273 (legacy),
+and 5.26875648112 (ours): the largest measured values passing every matrix at
+cosine >.90 across 36 zero-noise batches at initialization and the saved BPTT
+checkpoint. The six p90/p95 ten-epoch clean pilots are separate admission
+and sensitivity evidence. Beta remains fixed across noise levels. Independent
+Gaussian noise affects copied positive/negative non-input endpoint voltages
+for gradient readout; relaxation and validation remain clean.
+
+Final validation drops from each scheme's matching clean control are:
+
+| Read-noise sigma | GPU class | Baseline (pp) | Legacy (pp) | Ours (pp) |
+|---:|---|---:|---:|---:|
+| 1e-5 | V100 | 0.06 | 0.04 | 0.20 |
+| 3e-5 | RTX5090 | 0.16 | 0.00 | 0.40 |
+| 1e-4 | A100 | 0.02 | 0.08 | 0.64 |
+| 3e-4 | A100 | 0.02 | 2.46 | 1.02 |
+| 5e-4 | A100 | 0.18 | 3.00 | 1.38 |
+
+At sigma5e-4, final validation is 97.40/95.72/97.12% for
+baseline/legacy/ours. Baseline loses less accuracy than ours at every level;
+legacy loses less than ours at the three lower levels, while ours is less
+impaired than legacy at the two higher levels. No universal robustness
+ordering follows. The new highest-noise accuracies exceed the earlier
+beta10/.001/3 outcomes by 1.36/20.28/.52pp, respectively, but the environments
+also changed. This comparison cannot isolate a causal beta-only effect.
+
+All runs are finite and pass the predeclared final-best drop <5pp screen.
+That screen misses temporary deterioration: legacy falls 7.34pp below its
+running best at epoch17 for sigma3e-4, and 9.16pp at epoch20 for sigma5e-4,
+then recovers to final best-to-final drops of 1.78/1.86pp. Full curves and
+these diagnostics are retained; no low-accuracy run was excluded. Static
+cosine and finite completion therefore do not certify smooth noisy training.
+Report the actual fidelity-constrained selection followed by empirical
+training qualification, without retrofitting it as the historical beta rule
+or claiming it optimizes noisy performance. Multi-seed confirmation, a noisy
+p95 comparison and noise-aware selection remain separate possible studies.
+The six refined Conv2 values remain calibration-only; finite-T8 caveats persist.
+
+All 24 canonical bundles, 30-epoch histories, best/final float64 checkpoints,
+source/config/initializer/cohort/order checks, zero official-test reads and
+noise draw counts validate locally. All 54 Slurm allocations and four local
+launchers exit successfully. Remote/local production checksums match.
+Production consumed 62.58194 HPC plus 26.41622 local physical GPU-hours,
+88.99817 total; preparation checks are separate from this subtotal. Four
+RTX5090 hosts supplemented A100/V100. Measured paired-worker contention led
+to temporary in-memory clean pauses on Fifi/Riri, then automatic resumes;
+all training states and coverage were preserved. Superseded 3090 preparation,
+smokes, timing/continuation canaries and canceled pending canaries remain
+excluded and named in the closeout. No production run failed or was replaced.
+
+[Full table, curves and CSV](../paper_ready_results/conv3_p90_read_noise_20260919.md) ·
+[Beta protocol assessment](../paper_ready_results/beta_selection_protocol_assessment_20260919.md) ·
+[Plan](eqprop_conv3_p90_read_noise_plan_20260919.md) ·
+[Coverage and accounting](../results/eqprop-conv3-p90-read-noise-20260919-v1/closeout-validation.json).
+
+## `eqprop-conv3-refined-beta-training-20260919-v1` — refined beta and clean training
+
+Analyzed September 19, 2026. Outcome: **positive** for the narrow ten-epoch
+stability question. All six refined Conv3 settings completed ten finite epochs
+and passed the final-drop <5 pp screen. This is ordinary-MNIST validation
+evidence, with no official-test evaluation.
+
+The frozen setup uses seed 0, zero read noise, T=K=8, wide [0,100] weights,
+zero biases, float64 centered EqProp, unchanged scheme-specific Adam rates,
+and matched initialization and minibatch order. The betas are the largest
+measured values passing every matrix on 36 batches at two reference states;
+they are not proven mathematical maxima.
+
+| Scheme | Beta at cosine >.95 | Final validation | Beta at cosine >.90 | Final validation | Larger minus smaller |
+|---|---:|---:|---:|---:|---:|
+| Baseline | 147.682614594 | 97.14% | 404.141105702 | 97.16% | +.02 pp |
+| Ours | 2.49274796756 | 98.48% | 5.26875648112 | 98.52% | +.04 pp |
+| Legacy | 2.81845428732 | 98.58% | 4.42250110273 | 98.54% | -.04 pp |
+
+Historical controls contribute only their first ten epochs: baseline beta 100
+reaches 97.02%, ours beta 3 reaches 98.42%, and legacy beta .001 reaches 98.64%.
+There is no consistent performance penalty from the larger refined beta on
+this seed. Differences of one or two examples do not establish reproducible
+effects. Earlier Conv1/Conv2 failures despite good static cosine still refute
+a universal cosine-based stability guarantee. Keep empirical training and
+validation as selection evidence, with gradient fidelity a separate claim.
+The finite-T8 residual caveat remains.
+
+All six canonical bundles, epoch histories, finite float64 zero-bias best/final
+checkpoints, initializer/split/order checks, native receipts and Slurm receipts
+validate locally. Remote/local checksums match. H100 allocations consumed
+3.44556 GPU-hours including failed startups and the remote canary; local smokes
+are separate preparation. Original task 2178212_0 is retained. Its five siblings
+failed before training from double array indexing; fixed-wrapper canary
+2178310 passed, then replacements 2178358_1–5 completed. Every attempt remains
+preserved. No scientific failure was excluded or replaced.
+
+The separate **30-epoch read-noise follow-up** is now complete: 15 noisy
+settings and nine GPU-matched clean controls across V100, A100 and RTX5090.
+See the September20 entry above. No paper beta was automatically promoted,
+and no official-test read or Overleaf edit occurred. The six refined Conv2
+values still lack new fine-grid training repeats; their earlier coarse-grid
+training evidence remains unchanged.
+
+[Report, plots and CSV](../paper_ready_results/conv3_refined_beta_training_20260919.md) ·
+[Protocol assessment](../paper_ready_results/beta_selection_protocol_assessment_20260919.md) ·
+[Local evidence](../results/eqprop-conv3-refined-beta-training-20260919-v1/) ·
+[Validation and accounting](../results/eqprop-conv3-refined-beta-training-20260919-v1/closeout-validation.json).
+
+## `eqprop-beta-refinement-20260919-v1` — refined cosine boundaries and beta-selection protocol
+
+- Analyzed: 2026-09-19. Outcome: **mixed**. The refined grid resolves all
+  twelve requested static cosine boundaries, but the joined training evidence
+  rules out treating static cosine alone as a stability certificate. This is
+  exploratory calibration and validation evidence; no official test was read.
+- Scope: Conv2/Conv3 × baseline/ours/legacy, seed 0, zero read noise,
+  unchanged centered float64 frozen-current EqProp/BPTT replay, T=K=6/8,
+  36 fixed validation-partition batches at matched initialization and the
+  saved BPTT checkpoint. Every matrix on every replay must exceed .90/.95;
+  no norm gate. Added 31 Conv2 and 57 Conv3 beta settings (6,336 replays),
+  reusing 102 settings for 190 total. All twelve passing/failing brackets
+  have relative beta width 4.14–4.74%; none remains open.
+
+| Model / scheme | Largest measured passing beta, cosine >.90 | Cosine >.95 |
+|---|---:|---:|
+| Conv2 baseline | 720.198 | 542.236 |
+| Conv2 ours | 63.7712 | 34.0866 |
+| Conv2 legacy | 43.0177 | 31.3825 |
+| Conv3 baseline | 404.141 | 147.683 |
+| Conv3 ours | 5.26876 | 2.49275 |
+| Conv3 legacy | 4.42250 | 2.81845 |
+
+- All selected points are limited by the first convolutional matrix at
+  initialization. The curves are not globally assumed monotone: Conv3 legacy
+  improves from cosine .960632 at beta 1 to .970996 at beta 1.5. These are
+  measured brackets, not mathematical maxima or training-qualified betas.
+- Audited 23 distinct existing clean seed-0 training settings: 17 met the
+  ten-epoch stability screen and six became nonfinite. All 23 pass whole-
+  gradient cosine >.99 and symmetric norm mismatch <=.10. Per-matrix >.95
+  still admits two failures. Conv1 ours beta 1500 even passes per-matrix
+  >.95 plus norm mismatch <=.10, but fails in epoch 1. Conversely, Conv3
+  ours beta 22.5 trains for ten epochs at 98.38% final validation despite
+  worst matrix cosine .454946; its beta-3 control reaches 98.42%.
+- Worst-case diagnostics obscure distributions: the stable Conv3 baseline
+  beta-750 and ours beta-22.5 initializer median batch-minimum cosines are
+  .973566 and .965799. Their saved BPTT checkpoint passes .95 on every batch.
+  Failed Conv2 legacy beta 30 passes .95 on every batch at both checkpoints.
+  Neither a minimum nor a median is established as a universal selector.
+- Recommended prospective protocol: declare equal candidate/search budgets,
+  screen using matched ten-epoch training, then confirm a small shortlist at
+  the full paper horizon across seeds 0/1/2 and choose by validation under
+  fixed checkpoint rules. Retain gradient diagnostics as fidelity evidence.
+  For existing fixed-beta noise curves, claim robustness of the listed
+  operating points. Claims about optimized noisy performance need equally
+  budgeted noise-aware tuning; Conv3 legacy's clean-stable beta 1 has not been
+  tested under the same noise sweep. Do not retrofit a new selection rule
+  onto the historical runs or infer a reliable gain from one-seed differences.
+- Validation: all 88 new canonical bundles, six successful smokes, 23 reused
+  training bundles, source guards, coverage and native receipts validate
+  locally. All study workers ended. A conservative physical GPU-time
+  envelope is 2.6462 hours, below the four-hour cap, counting overlapping
+  local workers once and adding remote smoke durations.
+- Placement/deviations: both production workers ran on the local RTX3090.
+  Trex/Riri received only smokes because unrelated clients arrived before
+  production. Preserved snapshot-Git metadata aborts produced no measurements;
+  the documented Trex diagnostic-tolerance review affected no production
+  selection. Exclusions and recovery receipts are named in the closeout.
+- Limits and remaining work: calibration uses two reference parameter states,
+  not the actual new EqProp trajectories. At calibration closeout the refined
+  values had not been newly trained; the subsequent Conv3 training entry above
+  now supplies six ten-epoch outcomes. Full-horizon multi-seed finalist confirmation and any
+  noise-aware selection remain proposed. No additional training, paper edit,
+  automatic beta promotion or official-test evaluation was launched.
+- [Protocol assessment](../paper_ready_results/beta_selection_protocol_assessment_20260919.md),
+  [refined results and plots](../paper_ready_results/beta_refinement_20260919.md),
+  [plan](eqprop_beta_refinement_plan_20260919.md),
+  [local evidence](../results/eqprop-beta-refinement-20260919-v1/),
+  [closeout validation](../results/eqprop-beta-refinement-20260919-v1/closeout-validation.json).
+
+## `eqprop-layerwise-beta-training-20260919-v1` — per-matrix cosine and ten-epoch performance
+
+- Analyzed: 2026-09-19. Outcome: **mixed**. Twelve threshold conditions map
+  to nine distinct settings: eight passed ten finite epochs, and one reused
+  matching pilot became nonfinite. All five newly trained settings completed.
+  Larger beta did not consistently reduce final validation accuracy among
+  completed comparisons; passing the static per-matrix cosine rule still
+  does not guarantee training stability.
+
+| Architecture / scheme | beta for cosine >.90 | Epoch-10 validation | beta for cosine >.95 | Epoch-10 validation |
+|---|---:|---|---:|---|
+| Conv2 baseline | 500 | 96.96% | 500 | Same run |
+| Conv2 ours | 50 | 97.96% | 30 | 97.84% |
+| Conv2 legacy | 30 | Nonfinite epoch 5, batch 1910 | 30 | Same failed run |
+| Conv3 baseline | 300 | 97.02% | 100 | 97.02% |
+| Conv3 ours | 3 | 98.42% | .9 | 98.46% |
+| Conv3 legacy | 1 | 98.64% | 1 | Same run |
+
+- Frozen selection: largest passing **tested injected beta**, with strict
+  cosine `>` for every weight matrix on all 36 fixed calibration batches
+  from the validation partition, at both initialization and the saved BPTT checkpoint (72 replays). Reused
+  September 18 raw calibration measurements; no additional norm gate.
+  Worst symmetric norm mismatch is reported separately and exceeds .10
+  for every selected point. Legacy selections are open upper grid edges,
+  not established maxima. Equal selections are not independent replicas.
+- Training: seed 0, ordinary-MNIST 55k/5k, zero read noise, batch16,
+  float64 centered frozen-current EqProp, T=K=6/8, wide [0,100] weights,
+  zero biases, inherited fixed Adam vectors, saved initializers and matching
+  epochwise minibatch orders. This is exploratory validation evidence;
+  official test data was not read.
+- Larger-minus-smaller final accuracy for the three distinct .90/.95 pairs
+  is +.12pp (Conv2 ours), .00pp (Conv3 baseline), and -.04pp (Conv3 ours).
+  Relative to historical controls, Conv2 baseline beta500 matches beta100
+  at 96.96%; Conv2 ours beta50/beta30 differ by +.08/-.04pp from beta10's
+  97.88%; Conv3 legacy beta1 matches beta.001 at 98.64%. Small differences
+  from one seed do not establish a reliable improvement or degradation.
+- The reused Conv2 legacy beta30 pilot has worst matrix cosine .954935,
+  yet failed in epoch 5. Its beta.03 control reached 98.00% at epoch 10.
+  The two calibrated parameter states do not cover every state reached by
+  the new EqProp training trajectory; this study does not identify the
+  unique mechanism of the failure.
+- Reuse: Conv3 baseline beta100 and ours beta3 use only the first ten
+  epoch records of historical 30-epoch controls, with unchanged fixed rates
+  and data order. Their full-run best checkpoints are not called epoch-10
+  checkpoints. Conv2 legacy beta30 and Conv3 legacy beta1 reuse explicitly
+  named prior ten-epoch pilots, including the numerical failure.
+- Placement: Riri/Trex/Fifi completed three settings; both Conv2 ours
+  settings completed together on the local RTX3090. Two partial Loulou
+  attempts were superseded after unrelated clients arrived, using a
+  predeclared throughput-based decision. Partial results are preserved and
+  excluded; two short operational probes and a transport abort before
+  training are also excluded. No selection between attempts used accuracy.
+- Validation: all nine included bundles, six historical controls, native
+  receipts, and preserved exclusions reconcile locally. Successful runs
+  match initializers and ten epochwise orders; their metric histories and
+  applicable best/final checkpoints are finite. Frozen numerical source
+  hashes reverify locally and on all three completed remote targets.
+  All study workers exited. Seven production attempts consumed 8.67 worker
+  hours including superseded work, within the 20-hour budget; occupancy
+  includes shared GPU time and excludes short smoke/probe overhead.
+- Limits: one seed, ten epochs, zero noise, exploratory host differences;
+  no full-horizon/noisy-training qualification or automatic beta promotion.
+- [Report, plots and epoch CSV](../paper_ready_results/layerwise_beta_training_20260919.md),
+  [plan](eqprop_layerwise_beta_training_plan_20260919.md),
+  [local evidence](../results/eqprop-layerwise-beta-training-20260919-v1/),
+  [coverage audit](../results/eqprop-layerwise-beta-training-20260919-v1/closeout-validation.json).
+
+## `eqprop-beta-training-stability-20260918-v1` — larger-beta training stability
+
+- Analyzed: 2026-09-19 (Europe/Paris). Outcome: **mixed**. All nine pilots
+  have terminal, locally validated outcomes: six Conv1/Conv2 candidates
+  became nonfinite, while all three Conv3 candidates passed ten epochs.
+  Static whole-gradient calibration is insufficient to qualify training
+  stability across these architectures.
+
+| Architecture | Scheme | Injected beta | Outcome | Final validation / smaller-beta epoch-10 control |
+|---|---|---:|---|---|
+| Conv1 | baseline | 5000 | Nonfinite: epoch 1, batch 376 | No completed epoch |
+| Conv1 | ours | 1500 | Nonfinite: epoch 1, batch 546 | No completed epoch |
+| Conv1 | legacy | 900 | Nonfinite: epoch 1, batch 1696 | No completed epoch |
+| Conv2 | baseline | 1000 | Nonfinite: epoch 7, batch 813 | Best before failure 96.48% |
+| Conv2 | ours | 100 | Nonfinite: epoch 3, batch 481 | Best before failure 95.96% |
+| Conv2 | legacy | 30 | Nonfinite: epoch 5, batch 1910 | Best before failure 97.18% |
+| Conv3 | baseline | 750 | Ten-epoch stable | 97.08% / 97.02% (beta 100) |
+| Conv3 | ours | 22.5 | Ten-epoch stable | 98.38% / 98.42% (beta 3) |
+| Conv3 | legacy | 1 | Ten-epoch stable | 98.64% / 98.64% (beta .001) |
+
+- Frozen contract: seed 0, ten epochs, zero endpoint read noise, inherited
+  Adam vectors, zero biases, wide [0,100] weights, T/K=4/6/8, centered
+  frozen-current float64 EP, ordinary-MNIST 55k/5k. The candidates are the
+  largest tested betas passing whole-gradient cosine >=.99 and symmetric
+  norm mismatch <=.10 on all 36 batches at both initialization and a saved
+  BPTT checkpoint. Legacy Conv2/Conv3 were open upper calibration-grid edges.
+  No optimizer steps occurred during calibration.
+- Early stability required ten finite epochs and a final validation drop
+  strictly below 5pp from the run's own best. All three Conv3 final drops
+  were zero; maximum transient drops were .04/.00/.12pp for baseline/ours/
+  legacy. Final differences from their smaller-beta controls were
+  +.06/-.04/.00pp. These single-seed results do not establish an accuracy gain.
+- Instability can follow good early learning. Conv2 legacy reached 97.18%
+  before failing in epoch 5; baseline fell from 96.48% to 93.92% before its
+  epoch-7 failure; ours fell from 95.96% to 84.74% before its epoch-3 failure.
+  Conv1 legacy's sampled first-layer gradient L2 rose from 1.159 to about
+  6962 before failure. Sparse traces do not identify a unique causal mechanism.
+- Conv1 ours beta 1500 also passes the .95 per-matrix cosine rule with its
+  norm gate (worst cosine .951337; mismatch .084590), yet fails in epoch 1.
+  This rejects that particular looser per-matrix candidate too; the pilots
+  do not test every threshold/grouping combination.
+- Placement: eight cases on Riri RTX5090 with two concurrent workers; Conv3
+  ours moved before training to a newly free Trex RTX5090. Trex/Riri smoke
+  losses and gradient/update norms match exactly. Local/Riri smoke differences
+  are below 5.8e-12 for loss and 1.57e-10 for gradient/update norms. This is
+  exploratory evidence with an explicit host-placement revision.
+- Validation: nine canonical production bundles and native exit receipts
+  reconcile; six scientific failures are retained, with no exclusions or
+  production retries. All initializers match historical controls; successful
+  runs additionally match all ten minibatch-order hashes, have ten finite
+  metric records, and finite float64 best/final checkpoints with zero biases.
+  Frozen source/config hashes reverify locally and on both hosts. The Riri
+  supervisor captured both native successful exits and retired the obsolete
+  queues; every case finished within its original four-hour limit. No owned
+  training, queue, or supervisor process remains. Production host occupancy
+  was approximately 6.03 GPU-hours; worker time 10.28 hours, within budget.
+- Limits: one seed, zero read noise, ten epochs only; no full 30-epoch
+  qualification, no noisy-training qualification, no automatic beta or
+  three-seed promotion. Official test data remains unread. The global
+  criterion can hide layerwise errors, but these pilots do not isolate
+  that mechanism from finite-nudge effects along the new training trajectory.
+- [Report and plots](../paper_ready_results/beta_training_stability_20260918.md),
+  [plan](eqprop_beta_training_stability_plan_20260918.md),
+  [local evidence](../results/eqprop-beta-training-stability-20260918-v1/), and
+  [coverage audit](../results/eqprop-beta-training-stability-20260918-v1/closeout-validation.json).
+
+## `eqprop-beta-rule-comparison-20260918-v1` — beta thresholds and gradient grouping
+
+- Analyzed: 2026-09-18. Outcome: **positive for strong dependence on the
+  acceptance rule**, without establishing that larger betas improve training.
+  Whole-gradient selection permits a larger tested beta in 50/54 matched
+  comparisons; adding symmetric norm mismatch <=.10 changes 16/54 selections.
+- Evidence class: zero-noise seed-0 ordinary-MNIST diagnostic. All nine wide
+  [0,100] Conv1/2/3 × baseline/ours/legacy cases use the exact saved initializer
+  and BPTT best-validation checkpoint, fixed zero biases, perfect diodes,
+  centered frozen-current float64 EqProp, and unchanged T=K=4/6/8. Replay the
+  four historical plus 32 additional batches of 16. BPTT uses the same post-T
+  state and K; no optimizer steps or official-test reads.
+- Coverage: all 153 beta cases complete and validate locally: 11,016
+  checkpoint/batch gradients and 33,048 matrix comparisons. Compare .90/.95/.99
+  cosine per matrix versus raw concatenated weight gradient, with and without
+  the norm gate at the same grouping. Require every batch at both checkpoints;
+  report 108 joint selections and 324 joint/checkpoint-specific selections.
+  Choose the largest passing tested beta without another decade reduction.
+- At cosine >=.99 plus norm mismatch <=.10, the selected injected betas are:
+
+  | Case | Every matrix | Whole gradient |
+  |---|---:|---:|
+  | Conv1 baseline | 300 | 5000 |
+  | Conv1 ours | 300 | 1500 |
+  | Conv1 legacy | 60 | 900 |
+  | Conv2 baseline | 100 | 1000 |
+  | Conv2 ours | 10 | 100 |
+  | Conv2 legacy | 3 | 30* |
+  | Conv3 baseline | 10 | 750 |
+  | Conv3 ours | .3 | 22.5 |
+  | Conv3 legacy | .1 | 1* |
+
+  Stars mark passing upper grid edges, not identified maxima. Across all 108
+  rules there are 18 open upper edges and no disconnected passing regions.
+- Interpretation: aggregate alignment can hide errors in matrices with small
+  gradient norms. Conv3 baseline beta 750 has minimum whole-gradient cosine
+  .994088 but worst matrix cosine .696630. Conv3 ours beta 3 reproduces its
+  previously documented initialization C0 failure (cosine .939168, norm
+  mismatch .278178); its .99 cosine-only matrix limit is .9, reduced to .3 by
+  the norm constraint. This is separate from its observed training stability.
+- Validation: 26 focused tests pass. All 13 overlapping historical full cases
+  reproduce within 1.10e-14. The BPTT norm is exactly unchanged in 31,104
+  repeated layer comparisons across beta, with identical input payload hashes.
+  Runtime, checkpoint, frozen-force, parameter and zero-bias guards pass.
+  No numerical or operational case failures, exclusions, or replacements.
+- Execution: user-authorized parallel placement kept all 51 Conv3 cases on
+  local RTX3090 and all 102 Conv1/Conv2 cases on Akib RTX3080. Remote smoke
+  reproduced the historical batch exactly; five path substitutions are the
+  only transported-config changes. Both launchers exited zero. Charged cost
+  2.7499/6 physical GPU-hours, including smokes. An initial local two-worker
+  benchmark yielded 1.068× throughput and retained both completed cases;
+  subsequent execution used one worker per GPU. Superseded admission
+  coordinators were stopped between cases; their archived states remain in
+  the study directory and do not represent failed scientific runs.
+- Limits: one seed, reused selection cohort, only initialization and the
+  selected trained checkpoint. Raw gradients are not learning-rate-scaled or
+  Adam updates. Conv3 baseline retains its independent T8 residual caveat.
+  These are calibration limits, not full-training or multi-seed qualifications;
+  no training beta was promoted and no paper table or training run was changed.
+- Artifacts: [report and all threshold tables](../paper_ready_results/beta_rule_comparison_20260918.md),
+  [beta-limit figure](../paper_ready_results/beta_rule_comparison_20260918_limits.png),
+  [verification](../paper_ready_results/beta_rule_comparison_20260918_verification.json),
+  [raw canonical bundles](../results/eqprop-beta-rule-comparison-20260918-v1/production/),
+  [plan and transport amendment](eqprop_beta_rule_comparison_plan_20260918.md).
+
+## `section43-conv3-initialization-magnitudes-20260918-v1` — Conv3 gradient magnitudes at initialization
+
+- Analyzed: 2026-09-18. Outcome: **negative for uniformly weak clean legacy
+  gradients** as the explanation of its greater read-noise sensitivity.
+  Legacy already has the largest clean gradients in every layer at epoch 0.
+- Matched setup: all schemes share exact saved seed-0 initializer bytes and
+  training fingerprints; same 36 validation batches of 16, local RTX 3090,
+  float64, perfect diodes, frozen zero biases, [0,100] weights, T=K=8,
+  centered frozen-current EqProp and matched finite-K BPTT. Injected betas
+  10/3/.001 retained. No optimizer, read noise, or official-test access.
+- Initialization mean EP per-weight RMS for Conv1/Conv2/Conv3/readout:
+  baseline 4.372e-5/2.806e-6/2.625e-6/9.464e-5;
+  balanced 2.753e-4/1.864e-5/1.746e-5/6.328e-4;
+  legacy 2.429e-3/1.703e-4/1.650e-4/5.914e-3.
+  Legacy is 56–63× baseline. Clean BPTT mean norms agree within .856%.
+- Ratios of trained mean norm to initial mean norm are
+  1.018/11.289/68.966/.6944 for baseline, .2156/1.903/4.162/.2398 for
+  balanced, and .1346/.6078/.8696/.1802 for legacy. Baseline's first-layer
+  gradient remains similar; its second/third grow. Legacy's decrease in all
+  layers. The figure separately reports means of paired minibatch ratios.
+- Coverage: 72 new balanced/legacy initialization batches, 288 EP/BPTT layer
+  comparisons and 576 detailed gradient-statistic rows; reuse 36 baseline
+  initialization batches and all trained clean values at epochs 30/23/23.
+  Three-scheme smoke reproduces four baseline comparisons and eight new
+  production comparisons exactly. Four replay bundles validate, all hashes
+  and parameter guards pass, trained statistics reproduce the previous table.
+  All 1,728 initialization residual-p90 checks pass. No exclusions or failures;
+  154.203 seconds (2.570/10 GPU-minutes) including smoke, exit zero, GPU released.
+- Limits: one seed, only initial/selected-trained endpoints, raw gradient norms
+  rather than Adam updates; amplification, beta, states and losses differ.
+  Trained baseline retains its known free-state residual caveat. Gradient size
+  alone does not explain noisy accuracy or establish a causal mechanism.
+- Artifacts: [report and tables](../paper_ready_results/section43_conv3_initialization_magnitudes.md),
+  [JPG figure](../paper_ready_results/figures/section43_conv3_initialization_magnitudes.jpg),
+  [CSV](../paper_ready_results/section43_conv3_initialization_magnitudes.csv),
+  [provenance](../paper_ready_results/section43_conv3_initialization_magnitudes_provenance.json),
+  [canonical replay](../results/section43-conv3-initialization-magnitudes-20260918-v1/full/).
+
+## `section43-conv3-baseline-initialization-20260918-v1` — Conv3 baseline initialization check
+
+- Analyzed: 2026-09-18. Outcome: **negative for the proposed late-training-only
+  explanation** of near-zero early-layer gradient cosine. The phenomenon is
+  already present at the exact saved initialization. This does not establish
+  what preserves noisy-training accuracy.
+- Scope: Conv3 baseline only, seed 0, injected beta 10, T=K=8, perfect diode,
+  centered frozen-current float64 EqProp, fixed zero biases, wide [0,100]
+  weights. Compare the original saved initialization (epoch 0, float32 values
+  exactly promoted to float64 as in training) with the clean maximum-validation
+  checkpoint (epoch 30). Both training initialization fingerprints match.
+- Matched replay: the same 36 validation batches of 16 examples and six sigma
+  levels as the Section 4.3 replay; eight draws per nonzero sigma, exactly
+  paired with the earlier trained replay. Reuse its trained noisy measurements
+  and repeat all 36 trained clean computations: every clean metric and endpoint
+  state hash reproduces exactly. No optimizer steps or official-test reads.
+- At sigma=5e-4, mean cosine to matched noiseless BPTT for convolution weights
+  1/2/3/readout is .005745/.004053/.306445/.999882 at initialization versus
+  .003998/.004179/.099958/.961369 at epoch 30. At sigma=1e-5 the first two
+  initialization cosines are .1626/.2676, versus .1482/.3210 trained. Clean
+  initialization mean cosines all exceed .9989.
+- H1/H2 centered phase-contrast RMS is 4.8671e-7/2.2782e-6 at initialization
+  versus 4.0733e-7/2.1194e-6 trained. First-weight clean BPTT mean L2 is
+  .00148534 versus .00151070: it does not shrink. Second/third clean gradient
+  norms increase, while third-state/output phase contrast decreases. The
+  earlier suggestion that late-stage gradient shrinkage mainly causes the
+  first two near-zero cosines is unsupported by this matched comparison.
+- Limits: only two actual checkpoints, no saved intermediate epoch trajectory;
+  one seed and one scheme. The raw-gradient cosine does not directly measure
+  Adam updates, their accumulation, or the effect on classification accuracy.
+  All initialization residual-p90 checks pass; the trained post-T baseline
+  caveat persists (72/144 batch-layer failures at .01, largest p90 .26808).
+  Subsequent phase endpoints pass. No scientific cases were excluded.
+- Completion: 5,904 new initialization comparisons and 36 paired clean
+  controls; 164 smoke comparisons identical to production. Four relevant
+  canonical bundles validate. One regression test passes. Local RTX 3090
+  usage including smoke is 208.707 seconds (3.478/10 GPU-minutes); process
+  exited 0. A pre-GPU hash-namespace comparison failure was corrected and
+  regression-tested; its original log remains in the result root.
+- Artifacts: [report](../paper_ready_results/section43_conv3_baseline_initialization.md),
+  [cosine comparison](../paper_ready_results/figures/section43_conv3_baseline_initialization_cosine.jpg),
+  [signal comparison](../paper_ready_results/figures/section43_conv3_baseline_initialization_signal.jpg),
+  [verification](../paper_ready_results/section43_conv3_baseline_initialization_verification.json),
+  and [canonical replay](../results/section43-conv3-baseline-initialization-20260918-v1/full/).
+  Gradient, displacement and signed-mean/RMS voltage CSVs and PDF/JPG/PNG/SVG
+  exports are retained.
+
+## `section43-eqprop-mechanism-20260918-v1` — Trained-checkpoint gradient alignment and phase contrast
+
+- Analyzed: 2026-09-18. Outcome: **mixed**, supporting greater legacy noise
+  sensitivity at the selected operating points while retaining early-layer
+  sensitivity in the other schemes. Evidence: ordinary-MNIST validation
+  mechanism replay; one training seed, no official-test access.
+- Frozen setup: all nine clean seed-0 EqProp best-validation checkpoints,
+  Conv1/2/3 × baseline/balanced/legacy. Conv3 baseline uses the new injected
+  beta 10 clean control. Injected betas are 100/30/3, 100/10/.03, and 10/3/.001;
+  T=K 4/6/8, native float64, centered frozen-current EqProp, perfect diodes,
+  [0,100] weights, exact-zero biases, no optimizer. The preserved September 16
+  cohort contains 36 batches of 16 validation examples. Six sigmas 0 through 5e-4,
+  eight independent draws per nonzero sigma, paired across schemes/sigmas.
+- Complete evidence: 324 checkpoint/batch evaluations, 39,852 individual
+  layerwise gradient comparisons, 162 mean-cosine cells and 162 displacement
+  groups. All 11 source/smoke/full canonical bundles validate; source files and
+  native tensors remain exact. All 492 Conv3 smoke comparisons are bitwise
+  identical to production. Eight targeted tests pass. No failures or exclusions.
+  Local RTX 3090 budget settled at 678.147 seconds (.188374/1 GPU-hours), including
+  smokes; the launcher exited 0 and released the GPU.
+- Measurements: every clean layerwise mean cosine is at least .9986. At
+  sigma 1e-5, Conv2 first-weight cosine is .9980/.9622/.0851 and Conv3
+  third-weight cosine is .9778/.9915/.0426 (baseline/balanced/legacy).
+  Conv3 H1 centered phase-contrast RMS is 4.0733e-7/1.5771e-7/2.9194e-10;
+  legacy is 540.2 times smaller than balanced. Contrast decreases toward the
+  input in all nine cases. Baseline and balanced Conv3 first-layer cosines
+  are also low (.1482/.0672 at sigma 1e-5), and baseline has better Conv2
+  convolution-gradient alignment than balanced across this grid.
+- Interpretation: the figures support a small phase-signal explanation of
+  legacy's greater susceptibility to injected endpoint noise, not intrinsic
+  clean-gradient misalignment or a complete prediction of training accuracy.
+  RMS uses the centered half-difference of nudged phases; raw free-to-nudged,
+  matched-zero, zero-nudge drift and output-normalized measures are retained.
+  Baseline Conv3 H1 raw displacement is 289.3 times the centered contrast,
+  dominated by continued relaxation. The sigma/sqrt(2) band is a voltage
+  noise reference, not an exact gradient SNR or failure threshold.
+- Limitations: source beta and trained weights differ; a clean-checkpoint
+  readout sweep does not isolate amplification or reproduce noisy training
+  trajectories. Within-batch/draw spread is not training-seed uncertainty.
+  Finite-K BPTT is the reference, not a convergence certificate: Conv3
+  baseline has 72/144 failing post-T batch-layer residual-p90 checks at .01
+  (largest p90 .26808), while subsequent endpoint p90 checks pass. Source
+  beta qualification and seed-confirmation caveats remain; no cases are dropped.
+- Conv3 magnitude follow-up (same replay, no new compute): mean clean EP
+  per-weight RMS for Conv1/Conv2/Conv3/readout is
+  4.451e-5/3.168e-5/1.810e-4/6.572e-5 (baseline),
+  5.936e-5/3.547e-5/7.267e-5/1.518e-4 (balanced), and
+  3.270e-4/1.035e-4/1.435e-4/1.065e-3 (legacy). Clean BPTT mean norms
+  agree within .108%. Legacy's clean gradients are not uniformly smaller;
+  at sigma5e-4 its mean paired noisy/clean EP norm ratios are
+  627,987/157,530/1,290/1.016. These are raw gradients, not Adam updates.
+  All 17,712 Conv3 comparisons reaggregate consistently into 72 cells;
+  [report, tables and figure](../paper_ready_results/section43_conv3_gradient_magnitudes.md).
+- Trained Conv3 displacement follow-up: pooled RMS of `(v_plus-v_minus)/2`
+  at H1/H2/H3/output is 4.073e-7/2.119e-6/3.971e-5/.001845 (baseline),
+  1.577e-7/2.455e-6/1.889e-4/.08672 (balanced), and
+  2.919e-10/7.508e-9/9.570e-7/.008611 (legacy). Legacy hidden contrasts
+  are 540/327/197× smaller than balanced. Raw baseline H1 free-to-positive
+  movement is 1.179e-4, dominated by zero-nudge drift; centered and matched-zero
+  contrasts are about 4.073e-7. All 2,592 raw rows reaggregate into 72 cells,
+  with source-bundle and checkpoint hashes verified; no new compute.
+  [Focused two-definition figure and tables](../paper_ready_results/section43_conv3_trained_displacement.md).
+- Artifacts: [report](../paper_ready_results/section43_mechanism.md),
+  [cosine figure](../paper_ready_results/figures/section43_gradient_cosine.pdf),
+  [phase-contrast figure](../paper_ready_results/figures/section43_phase_displacement.pdf),
+  [captions](../paper_ready_results/section43_mechanism_captions.tex),
+  [verification](../paper_ready_results/section43_mechanism_verification.json),
+  and [canonical replay](../results/section43-eqprop-mechanism-20260918-v1/full-1/).
+  Both figures also have JPG/PNG/SVG exports and supporting CSVs.
+
+## `eqprop-read-noise-seed0-baseline-20260916-v1` — Baseline endpoint read-noise training
+
+- Manuscript integration: pulled the latest Overleaf revision and completed
+  Table 3 in `bidir_paper_theory_revised.tex`, pushed as `1d160a9` on
+  2026-09-18. The table preserves best-checkpoint validation accuracy,
+  includes both Conv1 baseline betas and matching clean controls, and covers
+  all50 noisy trainings. All60 accuracy cells were verified against collected
+  metrics; table structure checks pass. No local LaTeX compiler was available.
+- Analyzed: 2026-09-18. Outcome: **mixed** by depth: negligible observed
+  sensitivity at Conv1/2 and increasing degradation at Conv3. Evidence class:
+  `ordinary_mnist_eqprop_read_noise_training_diagnostic`; validation only.
+- Question: how do baseline Conv1/2/3 trainings respond to endpoint-voltage
+  noise under the user-selected betas and fixed T/K, compared descriptively
+  with the completed ours/legacy curves?
+- Frozen setup: centered frozen-current float64 EqProp, baseline ampV/C1/1,
+  perfect diode, wide conductances [0,100], exact-zero frozen biases, original
+  shared initializer and unchanged exact Adam rates. Conv1 beta100/200,
+  Conv2 beta100, Conv3 beta10; T=K4/6/8,10/30/30 epochs, train/validation
+  batch16/64, ordinary MNIST55k/5k. Training seed0 and noise seed2026081601.
+  Independent positive/negative endpoint read noise affects gradient readout
+  only; sigma1e-5/3e-5/1e-4/3e-4/5e-4. Inputs, relaxation and validation are
+  noiseless. Maximum validation accuracy selects the best checkpoint.
+- Coverage: all22 declared trainings are included, comprising20 noisy runs
+  and2 new clean controls (Conv1 beta200 and Conv3 beta10). Audited historical
+  beta100 controls are reused for Conv1/2. All440 epochs/1,512,720 optimizer
+  steps complete. Final validation accuracy (%), in increasing sigma order:
+
+  | Architecture / beta | Clean | 1e-5 | 3e-5 | 1e-4 | 3e-4 | 5e-4 |
+  |---|---:|---:|---:|---:|---:|---:|
+  | Conv1 /100 |96.04|96.04|96.04|96.00|96.02|96.04|
+  | Conv1 /200 |96.02|96.02|96.02|96.02|96.02|96.04|
+  | Conv2 /100 |97.22|97.30|97.38|97.36|97.34|97.24|
+  | Conv3 /10 |97.64|97.48|97.04|96.64|96.48|96.04|
+
+- Interpretation: Conv1's largest observed final loss is.04pp; Conv2 shows
+  no observed loss against its historical clean reference. Conv3's loss rises
+  from.16 to1.60pp. At sigma5e-4, Conv3 baseline/ours/legacy have final
+  accuracies96.04/96.60/75.44% and clean-relative losses1.60/2.04/23.34pp.
+  Ours retains higher absolute accuracy; baseline has less observed loss
+  from its own control. These are descriptions of inherited contracts, not
+  an isolated causal test of amplification or statistical equivalence.
+- Limitations: one training/noise seed; different beta values, rates and
+  GPU/software noise streams across some comparisons. Conv1's beta contrast
+  crosses3080/3090 groups; Conv1/2 beta100 clean references use historical
+  environments. All Conv3 baseline cases share Fifi, including their new
+  beta10 control. Conv3 beta10's seed1 gradient-confirmation failure and T8
+  free-state residual caveat remain; this study does not establish universal
+  beta qualification. The older beta100 Conv3 score is not its noise control.
+  Official-test reads are zero; none of these accuracies is paper-test evidence.
+- Verification: all22 source and collected bundles pass full revalidation,
+  including configs/source identity, initializer/cohort/order, complete epochs
+  and noise draws, finite float64 checkpoints, zero biases, conductance bounds
+  and PT/NPZ agreement. Remote production trees match local checksums. All39
+  smokes and6 timing runs validate. All queues exit0; final Fifi completion is
+  September18,00:39:15 CEST, with its GPU released. Three consecutive pairs
+  retain the requested two-worker concurrency. Settled usage43.294845/60
+  physical GPU-hours. No full training failed, was excluded or replaced;
+  the pretraining Fifi wrapper quoting failure and corrected replacement are
+  retained. The separate clean campaign remains paused at202/216.
+- Evidence: [completed report](../paper_ready_results/baseline_read_noise_results_20260916.md),
+  [per-run metrics](../paper_ready_results/baseline_read_noise_run_status_20260916.csv),
+  [all-scheme comparison](../paper_ready_results/read_noise_all_schemes_validation_20260916.png),
+  [validated bundles](../paper_ready_results/bundles/baseline_read_noise_20260916/),
+  [coverage and terminal proof](../paper_ready_results/provenance/baseline_read_noise_closeout_20260918.json),
+  [exact launch contract](eqprop_baseline_read_noise_launch_plan_20260916.md),
+  [source/logs/receipts](../results/eqprop-read-noise-seed0-baseline-20260916-v1/).
+
+## `digital-relu-table12-20260917-v1` — Half-channel digital ReLU references
+
+- Manuscript inclusion: Table 1 alone retains the three MSE aggregates
+  (nine trainings); CE results remain supporting evidence. Applied to the
+  current Overleaf revision and pushed as `8a889d7`; Tables 2/3 unchanged. DRNs also use
+  squared error, with paired-output encoding and a different class reduction.
+
+- Analyzed: 2026-09-17. Outcome: **mixed** for loss ordering; all requested
+  reference values are available. Evidence class: `ordinary_mnist_selection`.
+- Frozen setup: Conv1/2/3 channels 32, 32/64, 32/64/128 with the DRN convolution
+  geometry, single signed normalized input at unit gain, ten logits, signed
+  unconstrained PyTorch-default weights, and every bias initialized at zero
+  with LR 0. Adam weight LR .001, batch 16, 10/30/30 epochs, model/shuffle seeds 0–2.
+  Both losses use the exact DRN train/validation split and minibatch orders;
+  each MSE/CE pair starts from identical tensors. MSE uses one-hot 0/1 targets
+  averaged over classes/examples; CE uses raw logits. No LR search.
+- Best validation accuracy, mean ± sample SD (%): Conv1 MSE **96.47±0.12**,
+  CE **97.59±0.09**; Conv2 MSE **98.19±0.16**, CE **98.38±0.11**;
+  Conv3 MSE **99.01±0.03**, CE **98.77±0.08**. CE has the higher observed
+  mean at depths 1/2, MSE at depth 3; this fixed-rate comparison does not select
+  one uniformly superior loss or establish statistical significance.
+- All 18/18 full runs, 420 epochs and 1,443,960 optimizer steps validate.
+  Initial/best/final parameters and final Adam state are finite; biases are
+  exactly zero. Independent replay reproduces all 18 selected-checkpoint
+  accuracies exactly. Akib/Trex terminal trees are checksum-identical locally,
+  all three launchers exited 0, and production occupied .4975 GPU-hours.
+- No full training failed, was excluded or retried. Ten same-path smokes passed;
+  one initial local py312 cuDNN failure before an optimizer step is retained at
+  `results/digital-relu-table12-20260917-v1/smoke/conv1_mse_seed0` and replaced
+  operationally by the unchanged six-case local py309 smoke. Conv1/2 use
+  torch 2.5.1 on local/Akib and Conv3 torch 2.11.0 on Trex; each complete depth
+  surface stayed on one host. Unrelated Trex contention is recorded and was
+  not disturbed. Seven CPU regression checks passed.
+- Interpretation/limits: these are conventional digital references with half
+  the hidden channels, not an isolated amplification ablation or equal
+  parameter-count comparison. Input gain, loss/output representation,
+  initialization, signed support and dynamics differ from the DRNs. Only Table 1
+  includes the unconstrained digital reference; there is no digital
+  weight-bound mapping. Official-test reads remain zero.
+- Authoritative local evidence:
+  [`results/digital-relu-table12-20260917-v1/`](../results/digital-relu-table12-20260917-v1/).
+  [Report and verification](../paper_ready_results/digital_relu_table12_20260917.md),
+  [aggregate CSV](../paper_ready_results/digital_relu_table12_20260917.csv),
+  [per-seed CSV](../paper_ready_results/digital_relu_table12_per_seed_20260917.csv),
+  [frozen plan](digital_relu_table12_plan_20260917.md). The Table 1 input
+  and comparison description are updated on the current Overleaf version. No local TeX engine was
+  available; table structure and every numeric cell were checked in source.
+
+
+## `eqprop-phase-displacement-t-sweep-20260916-v1` — T sensitivity of residual phase drift
+
+- Analyzed: 2026-09-16. Outcome: **positive** for the requested mechanism
+  question: longer free-phase relaxation removes the problematic drift while
+  leaving controlled nudging-response RMS essentially unchanged.
+- Cases: Conv3 baseline/legacy initialization and best BPTT checkpoints at
+  T8/10/12/16/24, fixed K8 and injected beta10/.001; Conv2 legacy initialization
+  at T6/8/10/12/16, fixed K6 and beta.03. Only cases with a previous hidden-layer
+  raw/control RMS difference >=1% are included. Seed0, same36 batches of16,
+  wide [0,100], exact-zero biases and float64 centered frozen-current EqProp.
+  Source checkpoints, input gains, beta and K remain fixed along each curve.
+- Measurement: add direct zero-nudge drift RMS(Z_K−F_T) to the previous
+  positive/negative raw and matched-zero displacement comparisons. Pool by
+  element count and retain batchwise ratios. Raw/control RMS close to one is
+  not sufficient to infer small drift because the vector terms can differ
+  in direction. The direct drift/response ratio avoids that ambiguity.
+- Main result: trained Conv3 baseline H1 drift/response falls from224.456 at
+  T8 to15.107 at T10,1.0673 at T12,.005871 at T16 and2.451e-7 at T24. T12
+  passes the separate equilibrium-residual gate but still has drift comparable
+  to the signal. At T16 pooled drift is.587%, but worst-batch drift is1.30%.
+- Descriptive <=1% criterion, sustained at larger tested T, all layers and both
+  signs: smallest pooled/every-batch T is12/12 for Conv3 baseline initialization,
+  16/24 for Conv3 baseline best,16/16 for Conv3 legacy initialization,10/12 for
+  Conv3 legacy best, and10/10 for Conv2 legacy initialization. These are tested
+  grid points, not exact minimum T values or training qualification gates.
+- Controlled-response RMS changes by **<.001%** across every observed layer,
+  sign and checkpoint relative to the largest tested T (maximum.000915105%).
+  Thus the large raw-displacement changes arise from residual relaxation.
+  At trained Conv3 legacy T24 the measured drift reaches exact float64 zero;
+  finite-step numerical stationarity does not establish arbitrary-time or
+  exact-real convergence.
+- Scope limits: one seed and fixed saved checkpoints; no retraining, noise
+  injection or official-test read. All15 included gradient checks pass;
+  baseline T8/T10 retain residual failures. Conv3 baseline beta10's prior
+  seed1 confirmation failure remains unresolved. No training T or beta is
+  adopted, and unaffected schemes were not assigned a direct-drift pass.
+- Coverage/integrity: all15 included bundles and both smokes validate, with
+  900 included replays,3,420 gradient comparisons,20,520 individual-layer rows,
+  570 pooled contexts and190 sign-specific comparisons. Cohort, source-byte,
+  zero-bias and finite/dtype guards pass. All three native-T cases reproduce
+  previous shared measurements exactly; eight focused checks pass.
+- Recovery: `runs/conv2_legacy_seed0_T6` completed36 replays but failed its
+  inherited two-role completion-count check. It remains preserved without
+  a successful result. Corrected metadata in `recovery_v2/` gives36/108 counts;
+  `runs/conv2_legacy_seed0_T6_v2` replaces that attempt. Four unstarted Conv2
+  configs received the same correction. A new regression test passes;
+  numerical source and science are unchanged and two completed Conv3 cases
+  were retained. Original/recovery inputs and the first driver are preserved.
+- Cost: local RTX3090; recovery driver1264547 exited0 at14:58 CEST, GPU idle.
+  **.460455/1 GPU-hours** settled, including the failed attempt and both smokes.
+- Artifacts: [report and plots](../paper_ready_results/phase_t_sweep_20260916.md),
+  [per-layer drift/response CSV](../paper_ready_results/phase_t_sweep_20260916_drift_response_comparison.csv),
+  [all local evidence](../results/eqprop-phase-displacement-t-sweep-20260916-v1/),
+  [completed plan and recovery](eqprop_phase_displacement_t_sweep_plan_20260916.md).
+- Subsequent gradient review and user decision (2026-09-16): **retain T=K=4,
+  6,8 for Conv1,Conv2,Conv3 across baseline,legacy,ours**, respectively, for
+  the present wide-weight comparisons. The tentative Conv3 baseline T12/K8
+  choice is not adopted. The descriptive1% drift target is not a training
+  gate. For trained Conv3 baseline, increasing T8 to24 reduces drift/response
+  from224.456 to2.451e-7 while minimum gradient cosine remains about.999944
+  and maximum norm discrepancy changes only from.00137827 to.00127581.
+  Centered subtraction cancels the sign-independent component but does not
+  prove that incomplete relaxation has no gradient effect. Direct agreement
+  with the matched finite-K BPTT reference is the relevant evidence here;
+  all15 included configurations pass that check. The baseline residual and
+  seed1 beta failures and Conv3 ours gradient exception remain labeled.
+  No training resumes and historical bounded-run settings remain distinct.
+  [Interpretation and decision report](../paper_ready_results/eqprop_drift_gradient_report_20260916.md)
+  and [25 checkpoint/T gradient comparisons](../paper_ready_results/eqprop_drift_gradient_comparison_20260916.csv).
+
+## `eqprop-phase-displacement-conv123-20260916-v1` — per-layer free/nudged displacement
+
+- Analyzed: 2026-09-16. Outcome: **mixed**; clean read-only mechanism evidence.
+  Filip requested all three amplification schemes on Conv1, Conv2 and Conv3
+  after the fixed-T8/K8 Conv3 beta sweep.
+- Cases: all nine architecture/scheme combinations, seed0 initialization and
+  saved BPTT best-validation checkpoints; 36 matched batches of16, wide
+  [0,100], exact-zero biases and float64 centered frozen-current EqProp.
+  Native T/K is4/4,6/6,8/8. Injected betas (baseline/ours/legacy) are
+  100/30/3, 100/10/.03 and10/3/.001. Conv3 baseline beta10 is a seed0
+  candidate that failed seed1 confirmation; it is not promoted for training.
+- Measurements: every hidden/output layer, both nudge signs relative to the
+  common post-T free state and a matched K-step zero-nudge endpoint, plus
+  positive-minus-negative span. RMS and relative displacement are pooled
+  from sums of squares and element counts. Signed means, voltage RMS/spread,
+  extrema, active-set transitions and cohort percentiles are retained.
+- Main finding: trained Conv3 baseline H1 raw RMS displacement is1.02807e-4
+  versus4.57975e-7 relative to the matched zero-nudge endpoint: **224.5×**.
+  H2 is8.10819e-5 versus2.44316e-6 (**33.2×**). Continued relaxation dominates
+  these raw free-to-nudged differences at T8. The matched endpoint comparison
+  does not remove the separate free-state equilibrium qualification failure.
+- Scheme comparison: at trained Conv3 checkpoints, ours exceeds legacy's
+  matched-zero positive-nudge RMS by about545×/321×/191×/9.88× at H1/H2/H3/output.
+  Baseline H1 is3.50× ours, so there is no uniform ours-over-baseline ordering.
+  These are comparisons under the declared different beta/training contracts,
+  not an isolated amplification effect or a read-noise accuracy prediction.
+- Qualification and limits: seed0 diagnostic gates pass in seven cases;
+  Conv3 baseline fails equilibrium and Conv3 ours fails gradient fidelity.
+  Both remain included and labeled. Only one model seed and initialization/
+  best checkpoints are observed; no training trajectory or seed uncertainty
+  is inferred. No endpoint noise, optimizer step or official-test read.
+- Integrity: all nine formal local bundles and smoke validate, covering648
+  replays,1,944 gradient comparisons,9,720 individual-layer rows and270 pooled
+  layer/context rows. Cohort payloads match across all cases; source bytes
+  remain unchanged. Added voltage statistics reproduce the prior smoke's
+  shared gradient, residual and displacement measurements exactly. No missing
+  cases, operational failures, exclusions or replacement directories.
+- Cost: one local RTX3090; driver1239772 exited0 at14:02 CEST, GPU released.
+  **.202105/1 GPU-hours** settled, including smoke; no training resumed.
+- Artifacts: [report with all per-layer tables and figures](../paper_ready_results/phase_displacement_20260916.md),
+  [pooled CSV](../paper_ready_results/phase_displacement_20260916_layer_displacement_summary.csv),
+  [checkpoint provenance](../paper_ready_results/phase_displacement_20260916_sources.csv),
+  [full evidence](../results/eqprop-phase-displacement-conv123-20260916-v1/),
+  [execution plan](eqprop_phase_displacement_plan_20260916.md).
+
+## `eqprop-conv3-baseline-beta-tk8-20260916-v1` — Conv3 baseline beta sweep
+
+- Analyzed: 2026-09-16. Outcome: **mixed**; clean read-only gradient-selection
+  evidence. Filip explicitly retains T=K=8 and the separate equilibrium caveat.
+- Cases: wide Conv3 baseline beta10/30/50/75, with the unchanged beta100
+  reference reused. Seed0 initialization and BPTT best checkpoint,36 matched
+  batches of16. Float64 centered frozen-current EqProp, exact-zero biases,
+  same-state BPTT, unchanged source/LR/input/cohort contracts.
+- Selection: beta10 passes (worst cosine .994886, norm mismatch .057006).
+  Betas30/50/75/100 fail respectively1/2/5/7 of288 layer/batch comparisons,
+  all at initialization; trained gradients pass. Beta10 is frozen before
+  confirmation on seeds0/1/2 with32 fresh batches plus the four regressions.
+- Confirmation: seeds0/2 pass (worst cosine .991247/.992655), but seed1 fails
+  two initialization ConvWeight_0 rows: batch16 norm mismatch .101208, and
+  batch29 cosine .968773. No beta is confirmed across all three seeds and
+  no fallback is tuned on that confirmation cohort. Beta10 remains a seed-0
+  passing candidate, not a promoted common training beta.
+- Equilibrium and interpretation: trained free-state residuals fail at T8;
+  seed0 values are identical across beta, max p90 .188054. Confirmation maxima
+  are .195286/.259774/1.858277. Thresholds are preserved. Lower beta improves
+  seed0 gradient fidelity but this grid does not deliver a robust three-seed
+  choice. Full-training stability and values below10 remain untested here.
+- Integrity and coverage: all7 new formal bundles and smoke validate;
+  504 new replays/2,016 layer comparisons,10 retained failures. Reused100
+  is separate. Matched selection payloads, source immutability, finite
+  float64/zero-bias guards pass; no optimizer step or official-test access.
+- Cost: local RTX3090, driver1230581 exited0; **.275828/1 GPU-hours** settled.
+  The requested displacement comparison follows separately, using candidate
+  beta10 for seed0 with its confirmation failure retained. Training is paused.
+- Artifacts: [report and figure](../paper_ready_results/conv3_baseline_beta_tk8_20260916.md),
+  [case table](../paper_ready_results/conv3_baseline_beta_tk8_20260916.csv),
+  [full evidence](../results/eqprop-conv3-baseline-beta-tk8-20260916-v1/),
+  [plan](eqprop_conv3_baseline_beta_tk8_plan_20260916.md).
+
+## `eqprop-baseline-wide-t-relaxation-20260916-v1` — Conv3 baseline T-only audit
+
+- Analyzed: 2026-09-16. Outcome: **mixed**; clean read-only gradient and
+  equilibrium diagnostics, not training or official-test performance.
+- Question: Before baseline EqProp read-noise training, can increased free
+  relaxation alone make the wide Conv3 baseline beta100 setting credible?
+  Filip directed increasing T first; this study keeps K=8 and beta100 fixed.
+- Setup: wide [0,100], exact-zero biases, centered frozen-current float64
+  EqProp versus identical-state, same-T/K BPTT. Four new seed-0 cases at
+  T12/16/24/32 use the same36 batches of16 at the verified initializer and
+  BPTT best checkpoint as the preserved T8 reference. Source checkpoints
+  were trained at T8/K8; larger-T replay is explicitly diagnostic.
+- Measurements: trained free-state worst residual p90 falls from **.188054**
+  at T8 to **.00111043, 6.71346e-6, 3.33387e-10, 2.36469e-11** at the four
+  larger T values. Every new case passes all equilibrium checks. The worst
+  initialization cosine stays **.967393** and maximum norm mismatch **.184260**,
+  failing the .99/.10 criteria at every T. The same seven ConvWeight_0 batch
+  comparisons fail per case; all trained gradient comparisons pass.
+- Interpretation: longer free relaxation fixes the observed trained
+  equilibrium failure, but does not fix beta100 initialization gradient
+  fidelity. T12 is the smallest tested residual-passing extension, not a
+  fully qualified operating point. No T passes both gates, so the predeclared
+  three-seed confirmation is omitted; its fresh cohort remains unmeasured.
+  A lower-beta check at T12/K8 (starting with10/30) is the proposed next
+  diagnostic, not a launched or qualified replacement. No beta is changed.
+- Coverage and integrity: all4 new formal bundles plus the separate smoke
+  validate. New formal work is288 checkpoint/batch replays and1,152 layer
+  comparisons, including28 retained failures. The reused T8 reference is
+  excluded from those counts. Exact selection payload matching, immutable
+  source/config/checkpoints, float64/zero-bias guards and15 focused tests pass.
+  No operational failure, optimizer step or official-test read occurred.
+- Limits and next work: seed0 and two checkpoint roles do not establish
+  full-training stability or a three-seed result. K and beta were not swept.
+  Any longer-T noisy training requires dependent operating-point/LR checks
+  and a matching clean training control; earlier T8 accuracies cannot supply
+  that control. Cross-scheme T/compute differences must remain explicit.
+- Execution: local RTX3090, driver1218622 exited0 after597.733 seconds;
+  **.166037/2 physical GPU-hours** settled in a separate baseline-noise
+  preparation allowance. Local GPU is idle; clean training remains paused.
+- Artifacts: [report and figure](../paper_ready_results/baseline_wide_t_audit_20260916.md),
+  [measurements](../paper_ready_results/baseline_wide_t_audit_20260916.csv),
+  [full evidence](../results/eqprop-baseline-wide-t-relaxation-20260916-v1/),
+  [execution plan](eqprop_baseline_read_noise_beta_plan_20260916.md).
+
+## `eqprop-read-noise-seed0-ours-legacy-20260914-v1` — completed single-seed noise sweep
+
+- Analyzed: 2026-09-16. Outcome: **mixed**. All **30/30** declared full
+  trainings are collected and validated; no run is active, missing or excluded.
+  Evidence class: ordinary-MNIST validation robustness, not official-test
+  performance. This interpretation is the agent's assessment under the
+  repository's standing scientific authority.
+- Question and gate: How do ours and legacy training respond to Gaussian
+  endpoint-voltage read noise under their inherited EqProp contracts? The
+  completion gate is all 30 full trainings, local canonical/checkpoint
+  validation and reconciled remote receipts.
+- Frozen setup: Conv1/2/3 × ours/legacy × sigma
+  `1e-5,3e-5,1e-4,3e-4,5e-4`, training seed 0 and noise seed 2026081601.
+  Wide [0,100] weights, exact-zero frozen biases, centered frozen-current
+  float64 EqProp, unchanged Adam vectors, 10/30/30 epochs, T/K 4/4,6/6,8/8,
+  batch 16, deterministic ordinary-MNIST 55k/5k split and matched complete
+  minibatch orders. Injected beta is ours 30/10/3 and legacy 3/.03/.001.
+  Noise affects gradient readout only; sigma is in simulator voltage units.
+  Source-v2 SHA-256:
+  `4055090e16606583c276b06c3aac59396e87dcedf58b8cde9be94c5824948fb1`.
+- Measurements, in increasing sigma order: Conv1 final accuracy changes
+  by at most .08 pp from its historical clean reference. Conv2 ours final is
+  **98.08/98.08/98.00/97.80/97.60%**, versus legacy
+  **97.62/97.38/96.52/95.94/95.72%**. Conv3 ours final is
+  **98.26/97.82/97.62/96.82/96.60%**, versus legacy
+  **95.68/93.42/83.08/82.34/75.44%**. At 5e-4, clean-relative final losses
+  are **.42 vs 2.34 pp** for Conv2 and **2.04 vs 23.34 pp** for Conv3.
+  Conv3 legacy at 5e-4 reaches a best 76.36%, with epoch validation values
+  spanning 31.26–76.36%; all checkpoints remain finite.
+- Interpretation: Conv1 changes little across this grid at this seed.
+  Conv2 supports better observed robustness for ours under the inherited
+  contracts at every noise level. Conv3 shows a much larger legacy loss,
+  but its comparisons cross environments. The broad robustness hypothesis
+  is therefore supported descriptively for Conv2/3, while a causal claim
+  isolating amplification remains unresolved. Low accuracy and oscillation
+  are included scientific outcomes, not operational failures.
+- Limits: One training/noise seed cannot quantify seed-to-seed uncertainty;
+  differing beta choices prevent isolating amplification. Conv3 ours retains
+  its inherited beta-3 clean-gradient qualification exception. Clean controls
+  ran on Jean Zay/PyTorch 2.5.0: initializer/cohort/order match, but environment
+  differs, so small clean-relative differences cannot be attributed uniquely
+  to noise. Audited CUDA samples match within the 5090 group and within
+  local/Nom; Akib is a third group. Every Conv1/2 within-sigma pair shares a
+  host. All five Conv3 pairs differ in environment and noise realization:
+  at 1e-5/1e-4/5e-4 ours uses 5090 and legacy uses Nom; at 3e-5/3e-4
+  ours uses local/Akib and legacy uses Trex/Fifi after the authorized deadline
+  transfers. The figure distinguishes groups and connects within groups only.
+- Execution and inclusion: The first 12 completed by September 15,
+  **05:52:58 CEST**; the final continuation run completed September 16,
+  **06:20:46 CEST**, 99 minutes before the 08:00 deadline. All five
+  continuation GPUs are released. All full training packs exited 0; none
+  was discarded or retried. The preserved local nohup attempt ended before
+  training and was replaced by unchanged tmux execution. Local/Akib queues
+  intentionally exited 1 at documented output guards after their retained
+  full trainings, preventing duplicates of the transferred Trex/Fifi cases.
+- Integrity and cost: All 30 included bundles pass canonical/source/config,
+  initializer/cohort/order, full-epoch/noise-count, finite-float64 checkpoint,
+  zero-bias, bounds and PT/NPZ equality checks. All remote production trees
+  and terminal receipts match authoritative local copies by checksum.
+  First window: **22.142636/36 physical GPU-hours**. Continuation:
+  **55.089836/78**, including .341005 hours of checks/probes/recovery.
+  Total: **77.232472 physical GPU-hours**. Official-test evaluations: zero.
+- Remaining decisions: No required run remains within this sweep. For a
+  future causal study, resolve the inherited beta qualification issue and
+  match Conv3 environment/noise draws, then add seeds to quantify variability.
+  These follow-ups are not launched. Baseline, sigma 0/1e-3, extra seeds,
+  official-test evaluation and the paused clean campaign remain outside scope.
+- Artifacts: [full results and interpretation](../paper_ready_results/read_noise_sweep_results.md),
+  [all 30 cases and bundle links](../paper_ready_results/read_noise_run_status_20260914.md),
+  [final figure](../paper_ready_results/read_noise_validation.png),
+  [collection proofs](../paper_ready_results/provenance/read_noise_collection_20260914.json),
+  [final remote reconciliation](../paper_ready_results/provenance/read_noise_final_reconciliation_20260916.json),
+  [final GPU accounting](../paper_ready_results/provenance/read_noise_gpu_budget_continuation_20260916.json),
+  [raw evidence](../results/eqprop-read-noise-seed0-ours-legacy-20260914-v1/),
+  [completed continuation record](eqprop_read_noise_continuation_plan_20260915.md),
+  [preserved first-window report](../paper_ready_results/read_noise_overnight_results_20260915.md).
+
+## `eqprop-beta-selection-audit-20260914-v1` — larger-cohort baseline beta selection
+
+- Analyzed: 2026-09-14. Outcome: **mixed**; ordinary-MNIST read-only
+  gradient-selection evidence, not training or official-test performance.
+- Question: Do wide Conv1/2/3 baseline injected betas 100/200/300 satisfy the
+  unchanged cosine >= .99 and symmetric norm difference <= .10 criteria with
+  broader batch and model-seed coverage?
+- Controls: centered frozen-current float64 EqProp versus matched same-T/K
+  BPTT, native 4/4, 6/6, 8/8, exact-zero biases, original Adam checkpoint/LR
+  contracts, initialization plus best-validation checkpoints. Selection uses
+  seed 0 and 32 new batches of16 plus the original four. Freeze the largest
+  passing candidate before 32 disjoint confirmation batches plus the original
+  four on seeds 0/1/2. Other schemes, bounds, rates and training remain unchanged.
+- Coverage: all 9 selection and 6 conditionally required confirmation cases
+  complete locally and validate, with 1,080 replays and 3,024 layer comparisons.
+  All 72 historical baseline beta 100 comparisons reproduce exactly in input
+  payload, cosine and norm mismatch. No optimizer step or official-test read.
+- Conv1: all three candidates pass seed 0 selection, but nominated beta 300
+  fails confirmation on seed 2 at the trained C0 checkpoint: three new batches
+  have cosines .976462, .986547, .987500. Seeds0/1 pass. Beta 100/200 have only
+  seed 0 selection coverage in this audit; neither is relabeled as confirmed.
+- Conv2: beta 100 passes selection and all three confirmation seeds, with worst
+  confirmation cosine .991173 and maximum norm mismatch .060712. Betas200/300
+  fail selection in 3/216 and 7/216 comparisons (worst cosine .984396/.973355).
+- Conv3: beta 100/200/300 fail in 7/288, 16/288, 29/288 selection comparisons,
+  with worst initial cosine .967393/.940800/.931421 and maximum norm mismatch
+  .184260/.261803/.286851. All failures of the direct gradient gate occur at
+  initialization; trained gradient checks pass. The separate trained free-state
+  residual limitation at T=8 persists. No candidate enters confirmation.
+- Interpretation: additional batches and seeds expose failures hidden by the
+  smaller cohort. This audit supports retaining wide Conv2 beta 100 and does
+  not support promoting Conv1 beta 300 or increasing Conv3 beta in this grid.
+  No automatic fallback uses the now-observed confirmation data, and no new
+  training beta is adopted. Conv1 lower candidates would require a separately
+  declared confirmation round; Conv3 remains unresolved under this grid/T/K.
+- Paper review, 2026-09-16: Filip requested preserving the wide Conv3 baseline
+  qualification caveat and raised **using only BPTT for the bounded-weight
+  results** as a possible paper scope. This remains tentative; no EqProp
+  results are excluded and the clean completion contract is unchanged. The
+  wide T8/K8, beta-100 failure and bounded T24/K8, beta-.1 qualification are
+  separate evidence. A BPTT-only bounded comparison would not resolve the
+  wide EqProp caveat or establish equilibrium convergence. See the
+  [recorded scope discussion and settings](paper_ready_results_manifest.md#baseline-qualification-caveat-and-possible-bptt-only-scope-2026-09-16).
+- Limitations: sampled initial/best checkpoints rather than complete training
+  trajectories; validation data were previously used for checkpoint selection.
+  Numerical qualification does not establish full-training stability. The
+  initial smoke's stale runtime path was rejected before computation; its log
+  and configs are retained, and the corrected smoke/production use verified
+  frozen source. Fifteen focused tests pass. Main is idle after completion;
+  .279801 GPU-hours settled within the 2-hour reservation. Training remains paused.
+- Artifacts: [report and figures](../paper_ready_results/baseline_beta_audit_20260914.md),
+  [case table](../paper_ready_results/baseline_beta_audit_20260914.csv),
+  [layer/cohort table](../paper_ready_results/baseline_beta_layer_cohort_summary_20260914.csv),
+  [complete raw and analysis evidence](../results/eqprop-beta-selection-audit-20260914-v1/),
+  [execution plan](eqprop_baseline_beta_audit_20260914.md).
+
+## Active paper completion: collected training and EqProp pilot evidence (2026-09-11–13)
+
+Evening paper review, September 14: **202/216** current-contract training
+results are now collected and validated, with **14 full trainings remaining**.
+The newly collected Conv3 baseline EqProp seed-0/Gmax1e-4 pilot at T24/K8,
+beta .1 completes 30 epochs at **77.68/77.68%** best/final validation, equal
+to its BPTT control. Full split/order matching, exact initializer/config,
+finite float64 checkpoints, zero biases, bounds, PT/NPZ equality, remote/local
+checksums, and both terminal receipts pass. Its zero best-to-final drop passes
+the pilot stability rule; Conv3 pilot coverage is **1/3**, so the other two
+ceilings and all six repetitions remain required. The 6.6025 GPU-hours are
+settled. Across the 97 completed algorithm pairs, the maximum best-validation
+difference remains .66 pp; the maximum mean difference across 31 complete
+three-seed condition pairs is .193 pp. This is partial validation evidence;
+no official test has been read and no clean follow-up was launched.
+See the [paper review](paper_experimental_review_20260914.md),
+[pilot proof](../paper_ready_results/baseline_tk_revision/conv3_seed0_tight_pair_check_20260914.json),
+and [review verification](../paper_ready_results/paper_review_verification_20260914.json).
+
+September 14 update: the [61 locally validated baseline T/K replays](../paper_ready_results/baseline_tk_beta_qualification.md)
+resolve the original numerical gate failures. Common beta .1 passes every
+ceiling, checkpoint role and fixed validation batch at Conv2 T=12/K=6
+(worst cosine .997674, maximum symmetric norm difference .019507) and Conv3
+T=24/K=8 (.997096 and .071091). All projected-residual gates pass. Larger
+beta candidates 100, 10 and 1 fail; Conv3 T=20/K=8 still fails the norm gate.
+The native GPU controls reproduce the earlier CPU failures. For the tight
+Conv2 ceiling, increasing T alone succeeds while increasing K alone fails,
+supporting insufficient free-phase relaxation in that case.
+
+These are diagnostic replays on previously trained checkpoints, not new
+training outcomes. Filip authorized revised T/K for both BPTT and EqProp.
+Eighteen older baseline BPTT runs are preserved but require matched
+replacements. The [36-cell revision](../paper_ready_results/baseline_tk_revision/README.md)
+requires new BPTT seed-0 best-checkpoint beta checks, full EqProp pilots,
+and then replication. Exact learning rates, initializer/cohort/order, bounds,
+seeds and training budgets remain unchanged. The revision initially added 36 runs alongside eight admitted original
+repetitions. Twenty-one revised results and all 198 original bundles are collected: 201/216
+cells satisfy the current contract and 15 full training completions remain. No official test has been read.
+
+Main completed the final seed-1 Conv3 baseline BPTT ceiling at 13:15:08 CEST
+on September 14: 89.58% best/final validation, 30 epochs, both terminal receipts
+zero, and 2.166111 GPU-hours settled. All six Conv3 BPTT seed-0/1 cases are
+collected. New admissions are paused for Filip’s review; the three current
+EqProp cases may finish and stop at their run boundaries.
+
+The original bounded Conv3 ours and legacy BPTT–EqProp comparisons now each
+contain all 18 validated runs: two algorithms, three ceilings, and three seeds.
+The largest paired best-validation difference is .66 pp for ours and .18 pp
+for legacy, with no excluded seed. All nine pairs per scheme match initializers,
+cohorts and all 30 minibatch orders. The original host/environment split is
+retained in provenance. These validation trajectories support close agreement
+under the frozen controls; three seeds do not establish statistical equivalence
+or official-test performance. [Ours](../paper_ready_results/bounded_conv3_ours_three_seed_validation.md)
+· [Legacy](../paper_ready_results/bounded_conv3_legacy_three_seed_validation.md).
+
+The first revised Conv2 EqProp repetition (seed1/Gmax1e-4) is collected at
+85.36/85.04% best/final validation, versus paired BPTT85.42/85.06%.
+Its complete split and 30 epoch-order fingerprints match; all canonical,
+finite-float64, zero-bias, bounds and PT/NPZ checks pass. The later middle seed-1 and tight seed-2 repetitions also complete at 91.50% and 85.22% best/final validation, each .02 pp below its paired BPTT. Both full cohort/order audits pass and costs settle at 2.243056 and 2.120000 GPU-hours. Three Conv2 EqProp repetitions remain outstanding; those hosts are now idle under the pause.
+
+The September 14 agreement review compares new seeds 1/2 with 32 earlier reused seed-0 references, excluding each reused seed from the new-run
+mean. Wide changes are at most .18 pp. The largest bounded change is Conv3
+ours at Gmax1e-4: 84.54% earlier versus 85.43% for the new-seed mean (+.89 pp).
+Fifteen same-seed original/revised baseline BPTT pairs match initialization,
+exact learning rates, membership and all 30 minibatch orders; the largest
+best-accuracy change is -.50 pp. Conv2 complete means change by -.06, .00,
++.09 pp; Conv3 remains partial. Across 96 completed algorithm pairs, the
+largest BPTT–EqProp best-accuracy difference is .66 pp; the largest mean
+difference among 31 complete three-seed conditions is .193 pp. These are
+descriptive validation comparisons, not proof of equivalence or official-test
+performance. [Full results, matched pairs and figure](../paper_ready_results/results_agreement_20260914.md).
+
+The collected Nom timing diagnostic, with 256 training batches and one
+validation batch, projects9.788hours for a full revised Conv3 EqProp case
+(11.256hours with15% margin). This exceeds the current8h cap and is a
+placement observation, not a training completion or accuracy result.
+[Timing evidence](../results/paper-training-completion-20260911-v1/checks/nom_conv3_baseline_ep_timing_20260914/timing_estimate.json).
+
+The first revised Conv3 baseline BPTT seed-1 repeat (Gmax=1e-4) is
+collected and validated at 77.50/76.70% best/final validation after all
+30 epochs. This remains a partial seed group; no three-seed aggregate is
+reported for this ceiling yet.
+
+The revised Conv3 baseline BPTT seed1 middle ceiling (Gmax=5e-4) is
+also collected and validated after all30 epochs: 87.36/87.36% best/final
+validation. Both terminal receipts are zero and its allocated runtime is
+2.2725 GPU-hours. This is a second seed for that ceiling; seed2 is still
+required before reporting a three-seed aggregate.
+
+The middle-ceiling Conv3 ours EqProp seed-1 repeat on Loulou is collected
+and validated at 94.28/94.28% best/final validation. Tight and middle
+ceilings now have all three seeds; the final-ceiling repeat remains active.
+The complete three-ceiling paired comparison awaits that last result.
+
+The largest revised Conv3 BPTT reference is also collected and validated:
+89.38/89.38% best/final validation, completing all three new Conv3 seed-0
+references. Its full beta .1 gate passes all eight replays and 32 weight-layer
+comparisons: minimum cosine .9970958, maximum symmetric norm difference
+.0687167, all residual gates passing. Both Conv2 and Conv3 now have complete
+three-ceiling numerical qualification at common beta .1. These are validation observations, not official-test results.
+
+The Loulou packing benchmark used 10.1 GiB for two EqProp workers but gave
+0.775x aggregate throughput, so the requested nom-cool-1 fallback is used.
+The earlier Trex tight legacy seed-1 case is retained; the remaining ceilings
+on Nom have an explicitly recorded host/environment split. Nom's middle-ceiling
+legacy seed-1 result is collected and validated at 97.84/97.82% best/final
+validation; the full three-ceiling comparison awaits its last case.
+
+The first new Conv2 baseline BPTT reference (seed 0, Gmax=1e-4,
+T=12/K=6) is now locally collected and validated after 30 epochs. Best/final
+validation is 85.52/85.08%, versus 85.60/85.04% at the original T=K=6;
+this single-seed difference is -.08/+.04 percentage points and is not a
+cross-seed conclusion. Its [new-reference beta .1 recheck](../paper_ready_results/baseline_tk_revision/beta_qualification.md)
+passes all eight replays and 24 layer comparisons, including both checkpoint
+roles and all four batches: minimum cosine .9976736, maximum symmetric norm
+difference .0195065, all residual gates passing. The middle ceiling (Gmax=5e-4) is now also collected after 30 epochs:
+92.38/92.16% best/final validation, versus 92.44/92.32% under native T/K.
+Its full beta .1 check passes all eight replays and 24 layer comparisons,
+with all residual gates passing. The largest ceiling is also collected at 93.54/93.36% best/final validation,
+and its full beta .1 check passes all eight replays and 24 layer comparisons.
+All three revised Conv2 ceilings therefore qualify at common beta .1.
+The three full seed-0 EqProp pilots remain required before seeds 1/2. These accuracy differences remain
+single-seed validation observations. Official-test evaluations remain zero.
+
+All three revised Conv2 baseline EqProp pilots are now collected and stable
+at common beta .1, T=12/K=6. Best/final validation across ascending ceilings
+is 85.42/85.00%, 92.54/92.30%, and 93.92/93.54%; drops .42/.24/.38pp pass
+the strict five-point rule. All 30 epochs, finite float64 states/histories,
+zero biases, bounds, shared initialization and PT/NPZ equality validate.
+This supports the revised relaxation setting for full seed0 training and
+releases the other seeds under the frozen group guard. Replication variability
+remains unmeasured; official-test evaluations remain zero.
+The [matched-cohort audit](../paper_ready_results/baseline_tk_revision/conv2_matched_cohort_check.json)
+also confirms identical split and all30 epoch-order fingerprints for all
+three completed BPTT/EqProp pilot pairs. All nine repetition smoke fingerprints
+match their corresponding BPTT first epoch.
+
+The first revised Conv2 baseline EqProp pilot (tight ceiling, seed 0,
+T=12/K=6, beta .1) is collected and passes full stability: 85.42/85.00%
+best/final validation, a .42-point drop. Its 30-epoch histories and float64
+checkpoints are finite; initialization, zero biases, bounds and PT/NPZ equality
+validate. The paired revised BPTT result is 85.52/85.08%, so the single-seed
+EqProp-minus-BPTT difference is -.10/-.08 pp. This supports stability at the
+tight ceiling; all three ceilings remain required before replication.
+[Full-pilot report](../paper_ready_results/baseline_tk_revision/pilot_stability.md).
+
+The middle-ceiling revised Conv2 EqProp seed-0 pilot is also collected and
+stable: 92.54/92.30% best/final validation, a .24-point drop. All 30 epochs,
+float64 checkpoint/history finiteness, zero biases, bounds, shared initializer
+and PT/NPZ equality validate. Against matched revised BPTT 92.38/92.16%,
+the single-seed difference is +.16/+.14 pp. Stable pilot coverage is 2/3;
+replication still requires the largest ceiling at the same beta.
+
+All three revised Conv2 BPTT seed-1 repetitions are collected and validated
+from Jean Zay: best/final validation is 85.42/85.06%, 91.52/91.46%, and
+93.62/93.62% across ascending ceilings. Their configs, source and shared
+initializers match the revision. The three-seed aggregation awaits seed 2;
+single-seed differences are not a completed cross-seed comparison.
+
+All three revised Conv2 BPTT seed-2 ceilings are now collected and validated
+at 85.24/85.24%, 92.22/92.22% and 93.50/93.40% best/final validation.
+This completes all nine revised Conv2 BPTT runs. Across three seeds, best
+validation mean ± sample SD is 85.39±.14%, 92.04±.46% and 93.55±.06% for
+ascending ceilings; final means are 85.13%, 91.95% and 93.46%. These remain
+ordinary-MNIST validation observations. All initializer, source and canonical
+checks pass; no official test has been read. [Three-seed values](../paper_ready_results/baseline_tk_revision/conv2_bptt_three_seed_summary.json).
+
+The first revised Conv3 baseline BPTT reference (seed 0, Gmax=1e-4,
+T=24/K=8) is also collected and validated. Best/final validation is
+77.68/77.68%, versus 77.66/77.66% at native T=K=8. Its new-reference beta .1
+check passes all eight replays and 32 layer comparisons: minimum cosine
+.9970958, maximum symmetric norm difference .0473293, with every residual
+gate passing. This is 1/3 Conv3 ceilings and remains single-seed validation
+evidence. The middle reference is now collected at 87.12/87.12% best/final
+validation, versus 87.44/87.44% at native T/K (a single-seed -.32 pp
+difference). Its full beta .1 recheck also passes all eight replays and
+32 layer comparisons: minimum cosine .9970958, maximum symmetric norm
+difference .0473293, every residual check passing. Conv3 is qualified at
+two of three ceilings; the largest reference and full EqProp pilots remain
+outstanding. Both full CPU replays leave source bytes unchanged and apply
+no optimizer updates or official-test reads.
+
+The three Conv3 ours EqProp seed-2 cases are now locally collected and
+validated after all 30 epochs. Best validation across ascending ceilings is
+85.60/95.04/95.88%; these remain validation evidence. Three-seed aggregation
+waits for the remaining seed-1 cases on Loulou. The tight seed-1 case is
+now collected at 85.18/85.18% best/final validation, with finite float64
+checkpoints, zero biases, projection bounds and exact local/remote checksums
+passing. The tight-ceiling three-seed condition is complete; the two larger
+ceilings still lack seed 1.
+
+Earlier completion evidence follows; its 190/216 counts and native-T/K
+baseline qualifications describe the original inventory before this revision.
+
+Study `paper-training-completion-20260911-v1` remains active. This is partial
+ordinary-MNIST validation evidence; no official-test result is included.
+The [continuing manifest](paper_ready_results_manifest.md) tracks coverage
+and operational state under the [approved plan](paper_training_completion_launch_plan_20260911.md).
+As of September 13 at 22:09 CEST, **190/216** training bundles are collected
+and validated. This includes all 108 BPTT cases, all 27 wide EqProp cases,
+all 27 bounded Conv1 EqProp cases, and all nine cases in each of bounded
+Conv2 ours and legacy. The middle Conv3 ours pilot is now collected and
+passes the complete 30-epoch gate at beta .003: 94.68/94.50% best/final
+validation, decline .18 pp, finite float64 checkpoints/histories and zero
+biases. Its exact copied bytes and shared initializer validate. The final
+ceiling also passes at 95.72/95.72% best/final, zero decline, with all thirty
+epochs, finite float64 checkpoints, zero biases, bounds and initializer
+checks validated locally. All three Conv3 ours ceilings therefore pass the
+full-training gate at injected beta .003. This completes all 21 qualified
+seed-0 pilots and permits the remaining six ours repetitions, subject to
+resource and budget admission. Eighteen baseline cells remain held after
+their declared numerical ladders failed to qualify a common beta.
+The [complete Conv2 ours comparison](../paper_ready_results/bounded_conv2_ours_three_seed_validation.md)
+uses frozen injected beta .001. Mean best-validation EqProp minus BPTT
+differences from tight to largest ceiling are -.007, -.033 and +.027 pp.
+All nine initializer/cohort/order pairs match; over 270 matched epochs the
+maximum accuracy difference is .46 pp, maximum paired best difference .08 pp,
+and maximum EqProp final decline .34 pp. All three seeds are retained.
+This supports consistency under the declared selection-split contract;
+it does not establish equivalence or official-test performance.
+
+Conv3 legacy's tight ceiling now has all three EqProp seeds: best/final
+93.54/93.54% (seed 0), 94.84/94.72% (seed 1), and 93.20/93.20% (seed 2).
+Both repetitions are stable and fully validated against their frozen
+30-epoch contracts and shared initializers, with exact remote/local
+checksums. The middle seed-2 repetition is also collected and stable at
+98.00/97.88%, decline .12 pp, and its largest seed-2 repetition is complete
+at 98.06/98.06%. All seed-2 ceilings are stable. Middle/largest ceilings still lack their
+complete three-seed coverage. The
+[global validation tables](../paper_ready_results/validation_tables.md)
+have 61/72 complete three-seed conditions.
+
+The corrected wide Conv1 legacy centered-float64 EP pilot at injected beta 3
+passes its numerical gate (minimum cosine .9998157; maximum symmetric norm
+difference .0022935) and ten-epoch stability rule: best/final validation
+96.48/96.44%. With the eight retained pilots, the nine-condition wide pilot
+block is locally validated and its replications are released.
+
+The full wide Conv1 comparison now has all three seeds for both algorithms.
+EqProp minus BPTT mean best-validation differences are +.013, -.040, and
+-.007 percentage points for baseline, ours, and legacy; the largest paired
+seed difference is .06 points. This supports consistency of the frozen
+settings across these seeds, without establishing statistical equivalence
+or test performance. See the [three-seed table](../paper_ready_results/wide_conv1_validation.md).
+
+The wide Conv2 comparison is also complete for all three seeds and both
+algorithms. Mean EqProp minus BPTT best-validation differences are -.047,
+-.033, and +.040 percentage points for baseline, ours, and legacy; the largest
+paired-seed difference is .14 points. All nine algorithm/seed pairs have
+identical recorded training/validation cohorts and all 30 epoch minibatch
+orders. This supports consistency on the selection split, with the same
+equivalence and official-test limitations. See the
+[Conv2 table and pairing audit](../paper_ready_results/wide_conv2_validation.md).
+
+The wide Conv3 comparison is now complete: mean EqProp minus BPTT
+best-validation differences are -.073, +.040 and +.020 pp for baseline,
+ours and legacy, with a maximum paired-seed difference of .14 pp. All nine
+pairs share recorded cohorts and all 30 minibatch orders. All six repeated
+seed pairs have verified shared initializer assets and numerical BPTT
+initial-state records. The retained baseline/ours seed-0 BPTT bundles lack
+initial-state hashes, so exact initializer reuse remains an audit limitation.
+The known wide Conv3 gradient/residual caveats also remain. This reports
+training consistency on the selection split, not official-test eligibility.
+See the [wide Conv3 table and pairing audit](../paper_ready_results/wide_conv3_validation.md).
+
+For bounded Conv1 baseline and ours, injected betas .1 and .03 respectively
+pass the gradient and residual gates at the shared initializer and matched
+BPTT best checkpoints for all three ceilings. All six ten-epoch seed-0 pilots
+are collected and finite with exact-zero biases. The maximum best-to-final
+drop is 2.44 percentage points, below the declared strict 5-point limit.
+Across the 60 matched epoch pairs, EP and BPTT validation accuracies differ by
+at most .06 percentage points. The tight-ceiling decline appears in both
+algorithms, supporting the selected beta settings for these pilots. This
+does not establish three-seed equivalence. See the
+[pilot report and curves](../paper_ready_results/bounded_ep_pilot_validation.md).
+
+Bounded Conv1 legacy also passes numerical qualification at injected beta
+.03. Its three full seed-0 pilots are now collected and stable, with a maximum
+best-to-final drop of .74 percentage points. All nine Conv1 seed-0 pilots
+therefore pass, releasing the three qualified groups for seeds 1/2 under
+the September 12 authorization and the remaining budget. Across all nine
+Conv1 pairs (90 matched epochs), the maximum absolute EP–BPTT validation
+difference is .08 percentage points. This supports training consistency at
+the qualified beta values for seed 0. All eighteen seed-1/2 repetitions are
+now collected and stable; maximum drops are .86/.40 pp. The complete
+54-run bounded Conv1 comparison verifies 27 paired initializer assets,
+cohorts and all minibatch orders. Across all three seeds, the maximum paired
+best-validation difference is .06 pp and the maximum over 270 epoch pairs
+is .10 pp. Mean best-validation differences range from -.013 to +.020 pp
+across the nine scheme/ceiling groups. This supports consistency of the
+frozen BPTT and EqProp trajectories across these seeds, without establishing
+statistical equivalence or official-test performance. See the
+[complete three-seed table and curves](../paper_ready_results/bounded_conv1_three_seed_validation.md).
+Conv2 ours qualifies at .001. All three full pilots are now collected and
+stable: best/final validation is 90.34/90.34%, 96.58/96.58%, and
+97.20/97.08%; the maximum decline is .12 pp. Conv3 legacy also qualifies
+at .001, and all three full pilots are collected and stable at
+93.54/93.54%, 97.68/97.68%, and 97.72/97.72%, with no final decline.
+The same betas are released for seeds 1/2 under the approved group gate.
+Conv2 ours repetitions run on Main/Nom; Conv3 legacy runs seed 1 on Trex
+and seed 2 on JZ. This establishes full seed-0 stability across ceilings;
+three-seed conclusions still require those repetitions. Conv3 legacy's worst scored cosine is .9974632 and
+maximum symmetric norm difference is .0516333 across the three ceilings.
+Conv3 ours also qualifies at beta .003, with worst cosine .9969936 and
+maximum norm difference .0850763. Its tight-ceiling full pilot is now collected and stable: 85.20/84.64%
+best/final validation, decline .56 pp, finite float64 and zero biases. The
+paired BPTT reference is 84.54/84.30%; all initializer/cohort/order/control
+checks match, with maximum epoch difference 1.20 pp. This is seed-0
+stability evidence, without a three-seed or official-test claim. The middle
+pilot is running on Loulou and the largest follows; all six repetitions stay
+gated until the complete three-ceiling proof passes.
+After collecting all corrected Conv2 legacy references, that group qualifies
+at injected beta .003: worst cosine .9979283 and maximum norm difference
+.0283384, with passing residuals across all three ceilings. The initial .03
+point fails the cosine threshold at .9841046. All three full 30-epoch pilots are collected and stable: best/final
+validation is 95.68/95.68%, 97.60/97.60%, and 97.86/97.76%, with maximum
+drop .10 pp. All three pairs have identical recorded initializers, cohorts
+and minibatch orders; the maximum absolute difference over 90 EP–BPTT
+epoch pairs is .24 pp. This supports seed-0 stability across all ceilings
+and released seeds 1/2 at the same beta. All six repetitions are now
+collected, finite and stable, with maximum best-to-final decline .12 pp.
+All nine Conv2 legacy EqProp runs therefore pass the stability rule across
+three seeds. Their complete 18-run comparison verifies all nine shared
+initializer assets, cohorts and thirty minibatch orders. Mean best-validation
+EP minus BPTT differences at increasing ceilings are -.013, +.013 and -.013
+pp; the maximum paired best difference is .10 pp, and the maximum over 270
+matched epochs is .24 pp. This supports consistency across the three seeds
+under the frozen contract, without establishing statistical equivalence or
+official-test performance. See the [three-seed table and curves](../paper_ready_results/bounded_conv2_legacy_three_seed_validation.md) and the
+[complete group proof](../results/paper-training-completion-20260911-v1/source-v6/guards/bounded_pilots.json)
+and [three-ceiling pairing audit](../results/paper-training-completion-20260911-v1/checks/conv2_legacy_seed0_pairing.json).
 
 ## Published Learning-Rate Handoffs
 

@@ -1,0 +1,105 @@
+{
+  "source_run": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1",
+  "new_replay_or_optimizer_steps": 0,
+  "canonical_run_validation_errors": [],
+  "raw_conv3_rows": 17712,
+  "summary_cells": 72,
+  "parameter_shapes": {
+    "ConvWeight_0": [
+      64,
+      2,
+      3,
+      3
+    ],
+    "ConvWeight_1": [
+      128,
+      64,
+      3,
+      3
+    ],
+    "ConvWeight_2": [
+      256,
+      128,
+      3,
+      3
+    ],
+    "DenseWeight_0": [
+      256,
+      7,
+      7,
+      20
+    ]
+  },
+  "checkpoints": {
+    "baseline": {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_dir": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/bundles/baseline_read_noise_20260916/conv3/beta_10/sigma_0/seed0",
+      "best_epoch": "30",
+      "T": "8",
+      "K": "8",
+      "base_beta": "10.0",
+      "injected_beta": "10.0",
+      "seed": "0",
+      "checkpoint_selection": "maximum_validation_accuracy",
+      "runtime_dtype": "float64",
+      "best_model_sha256": "57074f5e91bd1035d64062b47ed0fbf34fe504a960441f09bc5ded4453501beb",
+      "weights_best_npz_sha256": "e46493f41be27a168d3af94b1abfc3c48eb8a40e1427a5a6c5156df79f1a28ac",
+      "qualification_source": "{\"iteration_decision\": \"paper_ready_results/eqprop_drift_gradient_report_20260916.md\", \"known_seed1_gradient_failure\": true, \"known_trained_free_state_residual_failure\": true, \"launch_basis\": \"user_directed_single_seed_read_noise_diagnostic\", \"learning_rate_policy\": \"exact inherited baseline BPTT/EP Adam vector; biases fixed at zero\", \"paper_ready\": false, \"seed0_gradient_check_passed\": true, \"selection_evidence\": \"paper_ready_results/conv3_baseline_beta_tk8_20260916.md\", \"three_seed_beta_confirmed\": false}"
+    },
+    "ours": {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_dir": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/bundles/table2_wide_ep/conv3/ours/seed0",
+      "best_epoch": "23",
+      "T": "8",
+      "K": "8",
+      "base_beta": "0.046875",
+      "injected_beta": "3.0",
+      "seed": "0",
+      "checkpoint_selection": "maximum_validation_accuracy",
+      "runtime_dtype": "float64",
+      "best_model_sha256": "ffed73fcc56bd68a1a53625dd0f24f7dc8d8c6c83366837aadf51fe0c2ed4007",
+      "weights_best_npz_sha256": "d270c2dd1803e9b1acdbeaf3ddb7fb3c6b567633612f5d9933b739606ca3e37b",
+      "qualification_source": "{\"conv3_t8_residual_deviation\": null, \"gradient_gate_override\": \"user_directed_exploratory_launch\", \"gradient_gate_passed_rows\": 213, \"gradient_gate_total_rows\": 216, \"learning_rate_policy\": \"exact inherited BPTT Adam vector; all Bias_* rates remain zero\", \"paper_ready\": false, \"source_config\": \"configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/03_ours_adam_bias_zero_seed0.json\", \"source_config_sha256\": \"4d28abeabe50f9ef595bafc94c0e676ca6676668149956588a7d82a0be74a831\", \"study_config\": \"configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json\"}"
+    },
+    "legacy": {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_dir": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/bundles/table2_wide_ep/conv3/legacy/seed0",
+      "best_epoch": "23",
+      "T": "8",
+      "K": "8",
+      "base_beta": "2.44140625e-07",
+      "injected_beta": "0.001",
+      "seed": "0",
+      "checkpoint_selection": "maximum_validation_accuracy",
+      "runtime_dtype": "float64",
+      "best_model_sha256": "8b56f4581b644171160123ac322ddb3ca4933164c22c9c5e02b226a7afb768ec",
+      "weights_best_npz_sha256": "1304ca0fbfa32e8858b0e71616506f22f14673a5c0605a6d45c57768b0202c4e",
+      "qualification_source": "{\"conv3_t8_residual_deviation\": null, \"gradient_gate_override\": \"user_directed_exploratory_launch\", \"gradient_gate_passed_rows\": 213, \"gradient_gate_total_rows\": 216, \"learning_rate_policy\": \"exact inherited BPTT Adam vector; all Bias_* rates remain zero\", \"paper_ready\": false, \"source_config\": \"configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json\", \"source_config_sha256\": \"06f658e108463da0612ca9322c7c6e6bd92c18640ff0f12c37259a96b79e9784\", \"study_config\": \"configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json\"}"
+    }
+  },
+  "cohort_sha256": "3e21a3cc8fcdbf1a897caaf888027364e71daca49e4f7ef3d029a164e1783075",
+  "sources": {
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/gradients.csv": "d1dc94af4b56c93f54220e73fac40a22c16f956ed38b790514fe9b68b01e49cf",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/result.json": "7bed310c7e1da61a4035d16147e652e85b128f14d62bf6fa5fc990af1e749452",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/config.used.json": "dffcf73f6a1401254391bef8c8cb3310f2517161fd512a97e3436007a6d3c51b",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/section43_gradient_cosine_summary.csv": "2330177b50b3da6c63c9f9367853c0cb700c1d74336936d6ce5bfca89a699edd",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/section43_checkpoint_sources.csv": "5e2cafb8724e6fd761f355729dc7eb7fa69bcf808444e1770d1f1660f6a877fd"
+  },
+  "statistic": "Mean, median, p10, p90 and sample std of individual batch/draw norms; RMS = L2/sqrt(parameter_count).",
+  "ratio_statistic": "Aggregate of individual paired noisy-EP / clean-EP norm ratios, not ratio of aggregate means.",
+  "spread": "Within-checkpoint minibatch/draw variation, not training-seed uncertainty.",
+  "clean_reference": "Noiseless finite-K BPTT and centered frozen-current EqProp; T=K=8, batch size 16, float64.",
+  "limitations": "One seed; different weights, betas and operating points; raw gradients are not Adam updates. Baseline post-T residual caveat remains; see section43_mechanism.md.",
+  "generator_sha256": "2bacb1620222f36339282301c6c9303cbd8cf43343c7c7cb66fc889724190316",
+  "matplotlib_version": "3.10.6",
+  "artifacts": {
+    "section43_conv3_gradient_magnitudes.csv": "315bc221e3e88586497bd1e3250c1151be4e477919b57ebf9d2411f2b7b971fd",
+    "figures/section43_conv3_gradient_magnitudes.jpg": "b8d084f423e95ac1cf533a94a2ed2f41a627c6a638d178c07e734fbea9e05b0e",
+    "figures/section43_conv3_gradient_magnitudes.pdf": "63bf3e1c4f09ded605c7ade2f3681718d4e1a8960b236d993b5ba1b3e54f7f7d",
+    "figures/section43_conv3_gradient_magnitudes.png": "998a41828efe7c194d9689f1f6f13f9fcf47354aaa66f81d1f4fdbadcb5c75a5",
+    "figures/section43_conv3_gradient_magnitudes.svg": "856905aacb4b2017bdb7edf5b187bf0f524d3652cb1e1b4e1d532ddbf7533123"
+  }
+}

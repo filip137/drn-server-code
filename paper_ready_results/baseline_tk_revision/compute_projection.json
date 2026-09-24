@@ -1,0 +1,54 @@
+{
+  "at_utc": "2026-09-14T12:26:00+00:00",
+  "settled_gpu_hours": 262.418304305791,
+  "reserved_gpu_hours": 9,
+  "committed_gpu_hours": 271.418304305791,
+  "current_contract_collected": 201,
+  "current_contract_remaining": 15,
+  "unfinished_work": [
+    {
+      "work": "Conv3 baseline BPTT repetitions",
+      "runs": 3,
+      "hours": 6.9,
+      "method": "Three unstarted seed-2 cases; 2.3 hours/case is conservative against completed repeats."
+    },
+    {
+      "work": "Conv2 baseline EqProp repetitions",
+      "runs": 3,
+      "hours": 6.72,
+      "method": "Three unstarted Conv2 EqProp repetitions; recent cases consumed 2.243056 and 2.12 GPU-hours."
+    },
+    {
+      "work": "Conv3 baseline EqProp pilots and repetitions",
+      "runs": 9,
+      "hours": 59.5618125,
+      "method": "One running and eight unstarted; first two complete Loulou epochs project 6.617979 hours/case. Preliminary, not a completed-case measurement."
+    }
+  ],
+  "projected_total_gpu_hours": 335.600116805791,
+  "projection_excludes_future_smokes_checks_retries_and_official_test": true,
+  "counts_whole_unsettled_active_cases": true,
+  "current_hard_cap": 300,
+  "proposed_cap": 375,
+  "proposal_not_authorized": true,
+  "scientific_scope_unchanged": true,
+  "scientific_per_case_maximum_hours": 8,
+  "shorter_operational_ceiling_for_some_bptt_cases_hours": 3,
+  "weekday_5090_limit_unchanged": 1,
+  "official_test_read": false,
+  "initial_forecast": "compute_projection_initial_20260913.json",
+  "previous_forecast": "compute_projection_20260914T0909Z.json",
+  "jean_zay_concurrent_gpu_limit": 4,
+  "jean_zay_current_access": "SSH timeout; maintenance last scheduled through September 16, 18:00 CEST. No new Jean Zay allocation.",
+  "proposal": "docs/paper_training_parallel_acceleration_proposal_20260914.md",
+  "faster_parallel_plan_estimated_total_gpu_hours": 348.28083579832435,
+  "faster_plan_requires_nom_12h_case_cap_and_split_pilot_group_approval": true,
+  "loulou_runtime_measurement": {
+    "completed_epochs": 2,
+    "elapsed_seconds": 1588.315,
+    "full_case_projection_hours": 6.617979166666667,
+    "source_receipt": "../provenance/completion_launches/watchdog_20260914T1027Z.json"
+  },
+  "nom_full_case_projection_hours": 9.7881589148,
+  "admissions_paused_for_user_review": true
+}

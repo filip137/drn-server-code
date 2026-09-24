@@ -1,0 +1,27 @@
+{
+  "source_run": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1",
+  "config_sha256": "dffcf73f6a1401254391bef8c8cb3310f2517161fd512a97e3436007a6d3c51b",
+  "result_sha256": "7bed310c7e1da61a4035d16147e652e85b128f14d62bf6fa5fc990af1e749452",
+  "plot_script_sha256": "2418c5c9f786301350579ce8786c1ee2d4f0349f322dfbb664d0df8f6d5e7252",
+  "matplotlib_version": "3.10.6",
+  "gradient_rows": 39852,
+  "cosine_cells": 162,
+  "aggregation": "mean of individual minibatch/draw cosines; pooled per-coordinate RMS displacement",
+  "spread": "percentiles describe minibatch/noise variation, not uncertainty across training seeds",
+  "artifacts": {
+    "figures/section43_gradient_cosine.pdf": "b016f5599c5ca341ada3f38380eb5886977b2d24aed24a748155135359c15bc4",
+    "figures/section43_gradient_cosine.jpg": "8d572f8b4a74f823001d9ed01fcae74cbcbaa91f051820003654a2cb6535548b",
+    "figures/section43_gradient_cosine.png": "36346a1de58fb62fe67711abb2fba185e74512cf29fa0d1515b86e651ee41ff7",
+    "figures/section43_gradient_cosine.svg": "8ffef3142f87bee40781a8861b5f16c361cbb673ce052b2188a8a91f1adbdb40",
+    "figures/section43_phase_displacement.pdf": "f03a2bfc8077e8595c899634e73145443e56c4858730780a25184fb404ac3f09",
+    "figures/section43_phase_displacement.jpg": "8d9c48e1d65016a1264ee611d71bfea527d0e8938016c783a63715a0a1926bfd",
+    "figures/section43_phase_displacement.png": "6e20344ca086bb77162ac322f80c139f373047daf1f35bb5917446333779b40b",
+    "figures/section43_phase_displacement.svg": "6871cb2862506cef620a21e4c17c46bb744c06864866037228bd22a65f268683",
+    "section43_gradient_cosine_summary.csv": "2330177b50b3da6c63c9f9367853c0cb700c1d74336936d6ce5bfca89a699edd",
+    "section43_phase_displacement_summary.csv": "7601534552b81d47f734c52174a0ad0a1c15b2b78efc3ba5b6cfdb9797e4d597",
+    "section43_checkpoint_sources.csv": "5e2cafb8724e6fd761f355729dc7eb7fa69bcf808444e1770d1f1660f6a877fd",
+    "section43_mechanism_captions.tex": "8ea5650f9e691fe583eaeed2244b943ba244a28fad2c57b927933ca0e20f2617",
+    "section43_mechanism_verification.json": "09971ce4ef15ea6654ab9629c7792a1124c899596cadd445f3a0aa82480c776b",
+    "section43_mechanism.md": "618128e1d4d5f93aed121a7eaa9321eff4884daf857bb303d04c0b6b7cbb9c6b"
+  }
+}

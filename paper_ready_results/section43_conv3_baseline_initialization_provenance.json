@@ -1,0 +1,26 @@
+{
+  "study": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-baseline-initialization-20260918-v1",
+  "trained_noise_source": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1",
+  "matplotlib_version": "3.10.6",
+  "cosine_cells": 48,
+  "batches_per_checkpoint": 36,
+  "official_test_read": false,
+  "artifacts": {
+    "section43_conv3_baseline_initialization_cosine.csv": "04cf390b0ce1a7434d7b2c637111f5c09e3ae8d92a2547be091a52fc2c9b9921",
+    "section43_conv3_baseline_initialization_displacement.csv": "e9b7f3331b07476be348d8a722b98c8ab513f99a6a97c45965373b6dc728f05a",
+    "section43_conv3_baseline_initialization_gradients.csv": "0e9d6b707737a448d1f3cbac387ef2ccb9cb547d9be3da7d76fddcf562861489",
+    "section43_conv3_baseline_initialization_voltages.csv": "65903c380f5bfafe8c4e60932fc4dd3b51c3d7e24a0ec44654ba2965e3ac317e",
+    "figures/section43_conv3_baseline_initialization_cosine.pdf": "0cc6dcf2f9c8e9aa945374fb73bce549eb3cebcf96f1571a4f2245a654fc0d3b",
+    "figures/section43_conv3_baseline_initialization_cosine.jpg": "10cff24e0a822b2a60f7a02dad67b9241881ad78f1b62d0285eb62f821b456b1",
+    "figures/section43_conv3_baseline_initialization_cosine.png": "257fafb304f22dd43132107a8d711d4169dd44c995d220fffe4ba43e06e92eac",
+    "figures/section43_conv3_baseline_initialization_cosine.svg": "acb17a12803d3b77024bc2c269bf91bdadf34f09321351c6309b7a081c0b6e62",
+    "figures/section43_conv3_baseline_initialization_signal.pdf": "382c8218605cdb672a261348662a3590fb76810f017cbc185d14632be62afce7",
+    "figures/section43_conv3_baseline_initialization_signal.jpg": "cf6885f58bf16f29ae47fd23a20dd06f1f378cffe5f2343b674d4876617f5288",
+    "figures/section43_conv3_baseline_initialization_signal.png": "0767ae785067429150cf963c534dc196387fa5cdb938e5eed320665ee8c2e7d6",
+    "figures/section43_conv3_baseline_initialization_signal.svg": "feaa7f17cd8dec9ef7c388aa486f33bb159fde283a96136eaa05ce24f6b62827",
+    "figures/section43_conv3_baseline_initialization_voltages.pdf": "b04f5feb544490b056605b3fa88563c462de290b5dabb34cda32b73f32e178bd",
+    "figures/section43_conv3_baseline_initialization_voltages.jpg": "a406b5ee35ac02543531a3782dbf0443d660ebdc7f352996ed5e7cac5a29ccaa",
+    "figures/section43_conv3_baseline_initialization_voltages.png": "8016a65dccb7222605419fda4ae13a9ae509dcc41b04c10b4f82a9af3d925365",
+    "figures/section43_conv3_baseline_initialization_voltages.svg": "fafa76734d05054bf8271dea1393ce8899d9a10aed492037c6845cf2f9619f26"
+  }
+}

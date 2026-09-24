@@ -1,0 +1,59 @@
+{
+  "at_utc": "2026-09-13T22:33:27.192714+00:00",
+  "settled_gpu_hours": 182.22534536924627,
+  "existing_unsettled_waves": [
+    {
+      "work": "Existing Loulou Conv3 ours seed-1 wave",
+      "runs": 3,
+      "hours": 12.365349625,
+      "method": "Measured first-case epoch rate; whole wave from launch"
+    },
+    {
+      "work": "Existing Nom Conv3 legacy seed-1 wave",
+      "runs": 2,
+      "hours": 12.414607820833334,
+      "method": "Measured first-case epoch rate; whole wave from launch"
+    },
+    {
+      "work": "Existing Jean Zay Conv3 ours seed-2 array",
+      "runs": 3,
+      "hours": 13.008591391071429,
+      "method": "Measured epoch rate for each allocated task; whole array"
+    }
+  ],
+  "revised_baselines": [
+    {
+      "work": "All revised Conv2 baseline BPTT",
+      "runs": 9,
+      "hours": 7.324243411764706,
+      "method": "Measured new Akib epoch rate"
+    },
+    {
+      "work": "All revised Conv3 baseline BPTT",
+      "runs": 9,
+      "hours": 19.5728053,
+      "method": "Measured new local epoch rate"
+    },
+    {
+      "work": "All revised Conv2 baseline EqProp",
+      "runs": 9,
+      "hours": 21.45111111111111,
+      "method": "Unmeasured forecast: prior full Conv2 EqProp cost times (T+2K) ratio 24/18"
+    },
+    {
+      "work": "All revised Conv3 baseline EqProp",
+      "runs": 9,
+      "hours": 62.13472222222222,
+      "method": "Unmeasured forecast: prior full Conv3 EqProp cost times (T+2K) ratio 40/24"
+    }
+  ],
+  "projected_total_gpu_hours": 330.49677625124906,
+  "projection_excludes_future_smokes_checks_retries_and_official_test": true,
+  "current_hard_cap": 300,
+  "proposed_cap": 350,
+  "proposal_not_authorized": true,
+  "scientific_scope_unchanged": true,
+  "per_case_wall_limit_hours_unchanged": 8,
+  "weekday_5090_limit_unchanged": 1,
+  "official_test_read": false
+}

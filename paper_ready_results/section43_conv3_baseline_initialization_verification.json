@@ -1,0 +1,83 @@
+{
+  "canonical_bundles_validated": 4,
+  "initialization_batches": 36,
+  "initialization_comparison_rows": 5904,
+  "trained_clean_batches_exactly_reproduced": 36,
+  "smoke_comparisons_identical_to_full": 164,
+  "checkpoint_gradient_stat_rows": 576,
+  "voltage_stat_rows": 1152,
+  "initial_file_sha256_verified": true,
+  "float32_training_fingerprint_verified": true,
+  "float64_training_fingerprint_verified": true,
+  "paired_noise_identical_to_previous_trained_replay": true,
+  "checkpoint_files_unchanged": true,
+  "gpu_seconds_including_smoke": 208.7068076133728,
+  "gpu_hours_including_smoke": 0.05797411322593689,
+  "official_test_read": false,
+  "optimizer_steps": 0,
+  "regression_test": "1 passed in 3.71s",
+  "preflight_failure": {
+    "log": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-baseline-initialization-20260918-v1/smoke.log",
+    "reason": "Compared differently prefixed training and diagnostic hash schemas; corrected and regression-tested before GPU work",
+    "gpu_work": false
+  },
+  "excluded_cases": [],
+  "residuals": [
+    {
+      "epoch": 0,
+      "phase": "post_T_free",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 6.971410375588693e-06
+    },
+    {
+      "epoch": 0,
+      "phase": "zero",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 2.417651517351571e-11
+    },
+    {
+      "epoch": 0,
+      "phase": "negative",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 5.439134899583569e-10
+    },
+    {
+      "epoch": 0,
+      "phase": "positive",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 5.350885510504652e-10
+    },
+    {
+      "epoch": 30,
+      "phase": "post_T_free",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 72,
+      "max_batch_layer_p90": 0.2680779476818316
+    },
+    {
+      "epoch": 30,
+      "phase": "zero",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 1.0686868790799053e-05
+    },
+    {
+      "epoch": 30,
+      "phase": "negative",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 1.0664279784577957e-05
+    },
+    {
+      "epoch": 30,
+      "phase": "positive",
+      "batch_layer_rows": 144,
+      "failed_p90_001": 0,
+      "max_batch_layer_p90": 1.0709455750657071e-05
+    }
+  ]
+}

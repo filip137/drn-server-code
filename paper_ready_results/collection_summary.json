@@ -1,0 +1,48 @@
+{
+  "updated": "2026-09-14T09:56:15.595093+00:00",
+  "study_state": "partial",
+  "scope": "2026-09-11 clean Adam three-table plan",
+  "required_training_runs": 216,
+  "collected_validated_training_runs": 198,
+  "remaining_training_runs": 18,
+  "remaining_training_epochs": 540,
+  "official_test_results_collected": 0,
+  "official_test_evaluations_after_seal": 216,
+  "blocks": {
+    "T1_BPTT": {
+      "required": 27,
+      "collected": 27,
+      "training_remaining": 0
+    },
+    "T2_EP": {
+      "required": 27,
+      "collected": 27,
+      "training_remaining": 0
+    },
+    "T3_BPTT": {
+      "required": 81,
+      "collected": 81,
+      "training_remaining": 0
+    },
+    "T3_EP": {
+      "required": 81,
+      "collected": 63,
+      "training_remaining": 18
+    }
+  },
+  "remaining_by_architecture": {
+    "conv1": 0,
+    "conv2": 9,
+    "conv3": 9
+  },
+  "training_launched_by_collection": false,
+  "source_initializers_preserved": 3,
+  "training_launched_by_completion_campaign": true,
+  "original_collection_20260911": {
+    "bundle_regular_files": 1578,
+    "bundle_symlinks": 550,
+    "bundle_bytes": 2408530205,
+    "checkpoint_tensor_audits_passed": 76
+  },
+  "new_campaign_bundles_collected": 160
+}

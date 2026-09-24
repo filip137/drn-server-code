@@ -1,0 +1,108 @@
+{
+  "all_bundles_validated": true,
+  "confirmation_cases": 6,
+  "decisions": {
+    "conv1": {
+      "architecture": "conv1",
+      "confirmation_equilibrium_passed": true,
+      "confirmation_gradient_passed": false,
+      "selected_before_confirmation": true,
+      "selected_beta": 300,
+      "selection_equilibrium_passed": true,
+      "selection_results": [
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta100/result.json",
+          "sha256": "b5e84cb96871726a22b58a7519ebb2319e936284f08daea4c26ce68d9a3196c3"
+        },
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta200/result.json",
+          "sha256": "1b54c1646882ed6c0270926998804264b8f12440a049d06afcd1cab5d233ef74"
+        },
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta300/result.json",
+          "sha256": "8f6267b5fae9fc71496e5a76dcf9ff4f592a854841f1392718c9442dc48e2bd7"
+        }
+      ],
+      "state": "confirmation_failed"
+    },
+    "conv2": {
+      "architecture": "conv2",
+      "confirmation_equilibrium_passed": true,
+      "confirmation_gradient_passed": true,
+      "selected_before_confirmation": true,
+      "selected_beta": 100,
+      "selection_equilibrium_passed": true,
+      "selection_results": [
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta100/result.json",
+          "sha256": "88f7798b70e984d01ea74a04b0681556ab67a863ccf94713836ca18c4aceb8f8"
+        },
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta200/result.json",
+          "sha256": "b60f2a94a60eb52e34a467872f54577af76ef20c678b9bb4de5ca101e06fa853"
+        },
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta300/result.json",
+          "sha256": "378a046aeacf8b6a33664e958d5d58bb776f239d67ae1856a65b0f21893f3cc7"
+        }
+      ],
+      "state": "confirmed"
+    },
+    "conv3": {
+      "architecture": "conv3",
+      "selected_before_confirmation": true,
+      "selected_beta": null,
+      "selection_equilibrium_passed": false,
+      "selection_results": [
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta100/result.json",
+          "sha256": "b2f4841e741df20769e66eaf69390faa8723f23d8b8a7a6bdb0e69df3cf47f09"
+        },
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta200/result.json",
+          "sha256": "de25bcc4035146ee6de5956f714e0d1656dc97f3e5a7f4a0e323d385659cde7b"
+        },
+        {
+          "path": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta300/result.json",
+          "sha256": "2e7241d1badc3e0f2f0e9783ad0a44fddda31ef3099a9a78d241ecbbc530cee3"
+        }
+      ],
+      "state": "no_passing_tested_beta"
+    }
+  },
+  "failed_comparisons": 65,
+  "historical_examples": 64,
+  "historical_regression": {
+    "all_payloads_identical": true,
+    "matched_rows": 72,
+    "max_cosine_abs_delta": 0.0,
+    "max_norm_delta_abs_delta": 0.0,
+    "source": "results/perfectdiode-conv123-zero-bias-adam-centered-float64-eqprop-bptt-gradient-gate-tk4-6-8-seed0-20260816-v1/production/layer_metrics.csv"
+  },
+  "layer_comparison_count": 3024,
+  "new_confirmation_examples": 512,
+  "new_selection_examples": 512,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "replay_count": 1080,
+  "selection_cases": 9,
+  "source_bytes_unchanged": true,
+  "source_result_sha256": {
+    "results/eqprop-beta-selection-audit-20260914-v1/confirmation/confirmation_conv1_baseline_seed0_beta300/result.json": "a14d0437772a9bd87f271e236ed903e3fb9a205da3d194075d565b2845290261",
+    "results/eqprop-beta-selection-audit-20260914-v1/confirmation/confirmation_conv1_baseline_seed1_beta300/result.json": "49fb0f3dbb73f70dd7b5a97004bb59d1e8d4eabfd35ff23906a9afe91d7e623b",
+    "results/eqprop-beta-selection-audit-20260914-v1/confirmation/confirmation_conv1_baseline_seed2_beta300/result.json": "b9af7b6a5aeb0a6a16e78c0edf450fe904479c3cff5c5f9b5f514f9faafae69e",
+    "results/eqprop-beta-selection-audit-20260914-v1/confirmation/confirmation_conv2_baseline_seed0_beta100/result.json": "e9dc7c50055cd9f4372607cad0eae148210a33716808ee16557bea5ced5c0fa9",
+    "results/eqprop-beta-selection-audit-20260914-v1/confirmation/confirmation_conv2_baseline_seed1_beta100/result.json": "0f032cf40a8c92bb612b4fce4db3509752a00b52bfc50cb7415b42acc9b06efe",
+    "results/eqprop-beta-selection-audit-20260914-v1/confirmation/confirmation_conv2_baseline_seed2_beta100/result.json": "ff4affef48c28bae19d800038b7ebe44257b86f25a377393ea5c0bba4fef1e82",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta100/result.json": "b5e84cb96871726a22b58a7519ebb2319e936284f08daea4c26ce68d9a3196c3",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta200/result.json": "1b54c1646882ed6c0270926998804264b8f12440a049d06afcd1cab5d233ef74",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta300/result.json": "8f6267b5fae9fc71496e5a76dcf9ff4f592a854841f1392718c9442dc48e2bd7",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta100/result.json": "88f7798b70e984d01ea74a04b0681556ab67a863ccf94713836ca18c4aceb8f8",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta200/result.json": "b60f2a94a60eb52e34a467872f54577af76ef20c678b9bb4de5ca101e06fa853",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta300/result.json": "378a046aeacf8b6a33664e958d5d58bb776f239d67ae1856a65b0f21893f3cc7",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta100/result.json": "b2f4841e741df20769e66eaf69390faa8723f23d8b8a7a6bdb0e69df3cf47f09",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta200/result.json": "de25bcc4035146ee6de5956f714e0d1656dc97f3e5a7f4a0e323d385659cde7b",
+    "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta300/result.json": "2e7241d1badc3e0f2f0e9783ad0a44fddda31ef3099a9a78d241ecbbc530cee3"
+  },
+  "study_id": "eqprop-beta-selection-audit-20260914-v1"
+}

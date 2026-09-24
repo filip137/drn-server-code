@@ -1,0 +1,43 @@
+% Figure files are generated with plot_section43_mechanism.py (matplotlib).
+% Paste into Section 4.3 after reviewing section43_mechanism.md.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/section43_gradient_cosine.pdf}
+  \caption{Layerwise gradient alignment under endpoint read noise at trained
+  checkpoints. Columns show Conv1--Conv3 and rows show the baseline, balanced,
+  and legacy amplification schemes. Each cell is the mean cosine similarity
+  between the centered EqProp weight-gradient estimate and a noiseless BPTT
+  reference, computed separately for each minibatch and noise realization.
+  Both estimators start from the same state after $T$ free iterations; BPTT
+  differentiates through the following $K$ iterations. We replay the clean
+  seed-0 EqProp best-validation checkpoint on the same 36 validation minibatches
+  of 16 examples, with $T=K=4,6,8$ for Conv1--Conv3. Nonzero noise levels use eight
+  draws per minibatch, paired across schemes and noise levels, with independent
+  Gaussian noise at the positive and negative endpoints. Noise-axis labels
+  use a common multiplier of $10^{-5}$. The zero-noise column
+  uses one clean estimate per minibatch. All calculations preserve float64
+  precision, and weights remain fixed across noise levels. Undefined cosines
+  would be shown as dashes. These are validation-set mechanism measurements,
+  not test accuracy or averages over training seeds.}
+  \label{fig:eqprop-read-noise-gradient-cosine}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/section43_phase_displacement.pdf}
+  \caption{Clean phase contrast from the input side to the output. For the same
+  checkpoints and validation cohort as Fig.~\ref{fig:eqprop-read-noise-gradient-cosine},
+  each curve shows the RMS centered voltage contrast $(v^+-v^-)/2$, pooled over
+  all examples and state coordinates in each layer. H1 is the first hidden layer;
+  the clamped input is excluded. Voltages are shown in absolute simulator units
+  on a shared logarithmic scale. The gray band spans $\sigma/\sqrt{2}$ for the five
+  nonzero read-noise levels, the standard deviation of the centered voltage
+  contrast when positive and negative endpoint noises are independent. This
+  band is a voltage-noise reference, not an exact gradient signal-to-noise ratio
+  or a training-failure threshold. Centered contrast isolates the difference
+  between the nudged phases; raw free-to-nudged displacement and matched
+  zero-nudge drift are retained in the supporting data. Injected nudge strengths
+  for baseline/balanced/legacy are $100/30/3$ for Conv1, $100/10/0.03$ for Conv2,
+  and $10/3/0.001$ for Conv3, matching the source training configurations.}
+  \label{fig:eqprop-layerwise-phase-contrast}
+\end{figure}

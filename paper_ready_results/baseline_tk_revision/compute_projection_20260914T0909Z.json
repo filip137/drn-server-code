@@ -1,0 +1,55 @@
+{
+  "at_utc": "2026-09-14T09:09:09.618950+00:00",
+  "settled_gpu_hours": 228.84171720029707,
+  "unfinished_work": [
+    {
+      "work": "Loulou existing three-case original EqProp wave",
+      "runs": 3,
+      "hours": 12.437,
+      "method": "Whole unsettled wave; measured first case about4.15h. Two cases are already collected."
+    },
+    {
+      "work": "Nom existing two-case original EqProp wave",
+      "runs": 2,
+      "hours": 12.386,
+      "method": "Whole unsettled wave; first case about6.19h and already collected."
+    },
+    {
+      "work": "Remaining Main revised Conv3 BPTT repeats",
+      "runs": 4,
+      "hours": 9.2,
+      "method": "Current case plus seed2 across three ceilings;2.3h/case, recent completed case2.2725h."
+    },
+    {
+      "work": "All revised Conv2 EqProp repetitions",
+      "runs": 6,
+      "hours": 13.382777777777779,
+      "method": "Current Akib case plus five unstarted; mean of three complete pilots2.230463h/case."
+    },
+    {
+      "work": "All revised Conv3 EqProp trainings",
+      "runs": 9,
+      "hours": 62.13472222222222,
+      "method": "UNMEASURED estimate from native Conv3 EP cost times (T+2K) ratio40/24; includes3pilots and6repetitions."
+    }
+  ],
+  "projected_total_gpu_hours": 338.3822172002971,
+  "projection_excludes_future_smokes_checks_retries_and_official_test": true,
+  "current_hard_cap": 300,
+  "proposed_cap": 375,
+  "proposal_not_authorized": true,
+  "scientific_scope_unchanged": true,
+  "scientific_per_case_maximum_hours": 8,
+  "shorter_operational_ceiling_for_some_bptt_cases_hours": 3,
+  "weekday_5090_limit_unchanged": 1,
+  "official_test_read": false,
+  "initial_forecast": "compute_projection_initial_20260913.json",
+  "current_contract_collected": 195,
+  "current_contract_remaining": 21,
+  "previous_forecast": "compute_projection_20260914T0354Z.json",
+  "jean_zay_concurrent_gpu_limit": 4,
+  "jean_zay_current_access": "SSH timeout; maintenance last scheduled through September16 18:00CEST. No new Jean Zay allocation.",
+  "proposal": "docs/paper_training_parallel_acceleration_proposal_20260914.md",
+  "faster_parallel_plan_estimated_total_gpu_hours": 350,
+  "faster_plan_requires_nom_12h_case_cap_and_split_pilot_group_approval": true
+}

@@ -1,8 +1,215 @@
 # EqProp Beta Study for Conv1, Conv2, and Conv3
 
-Updated: 2026-08-18
+Updated: 2026-09-23
 
-## Decision Still Needed
+## Conv3 beta selection: higher T improves replay gradients but not accuracy
+
+Recorded September 23, 2026. **Increasing T should give ours a better gradient**
+was the working expectation from the trained-checkpoint cosine measurements.
+However, the subsequent higher-T training repeat showed **no improvement in
+validation accuracy**. It remains unclear why the latest legacy run on Jean
+Zay performs so well. These observations leave the Conv3 beta choice open.
+
+At the ours p90 epoch-30 checkpoint, with injected beta `5.26875648112`,
+read-noise sigma `5e-4`, and fixed `K=8`, increasing `T` strongly improved
+readout EP–BPTT alignment: median cosine was `-0.29315` at `T=8`, `0.61105`
+at `T=12`, `0.68455` at `T=16`, and `0.88544` at `T=64`. This motivated
+trying more free-phase iterations in training. The improvement is not uniform
+across layers: the first two convolutional layers remain poorly aligned under
+read noise, and the third layer is non-monotonic in T. See the
+[T-sweep report](../results/eqprop-conv3-cosine-t-transition-20260922-v1/analysis/report.md)
+and [three-scheme T/K replay](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/report.md).
+
+We then repeated **ours** for ten epochs at the selected p99 injected beta
+`0.987333678708`, sigma `5e-4`, `T=16`, and `K=8`, keeping the initialization,
+data split, minibatch order, and Adam learning rates matched to the existing
+`T=8/K=8` reference. Here p99 denotes the `.99` calibration cosine threshold.
+
+| Ours, p99 | Epoch-10 validation | Best validation in epochs 1–10 |
+|---|---:|---:|
+| T=8, K=8 | 95.44% | 95.64% |
+| T=16, K=8 | 95.38% | 95.58% |
+
+The trajectories nearly overlap: the largest absolute epochwise accuracy
+difference is `0.12` percentage points, and epoch-10 accuracy changes by
+`-0.06` points. All ten epochs remain finite. Thus doubling T did not improve
+accuracy in this repeat. See the
+[training comparison and curves](../results/eqprop-conv3-ours-p99-t16k8-10ep-20260922-v1/analysis/report.md).
+The striking gradient replay used a different, larger beta and a p90-trained
+checkpoint; it does not establish the same gradient gain at the p99 training
+point. This ten-epoch result also does not establish whether higher T prevents
+the instability previously seen at larger beta.
+
+Follow-up check at the smaller beta: the completed p99-trained checkpoint
+replay **does not show a meaningful cosine improvement from T=8 to T=16**
+at injected beta `0.987333678708`, `K=8`, and sigma `5e-4`. At epoch 30,
+the noisy layer medians are unchanged to six decimal places:
+
+| Layer | T=8 median cosine | T=16 median cosine |
+|---|---:|---:|
+| Conv1 | -0.005645 | -0.005645 |
+| Conv2 | 0.008845 | 0.008845 |
+| Conv3 | 0.631672 | 0.631672 |
+| Readout | 0.999948 | 0.999948 |
+
+Across both the final epoch-30 and best epoch-27 checkpoints, the largest
+absolute change in a noisy layer median is below `4e-7`; the largest clean
+change is about `1.01e-6`. These are matched measurements on 36 batches of
+16 examples, with four matched noise draws per noisy batch. The absence of
+a gradient gain at these p99 checkpoints is consistent with the unchanged
+training accuracy. It does not isolate beta as the cause of the difference
+from the earlier p90 replay, because the trained weights differ too. See the
+[completed p99 replay](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/analysis/report.md)
+and its [layer measurements](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/analysis/layer_summary.csv).
+
+Meanwhile, the latest completed Jean Zay p99 comparison (job `52725`,
+`T=K=8`, sigma `5e-4`, 30 epochs) reached **96.86% best/final validation for
+legacy** at injected beta `0.1`, versus **96.32% best / 96.04% final for ours**
+at beta `0.987333678708`. Both completed with finite training and passed the
+declared stability screen. This is a comparison at the same 30-epoch horizon,
+separate from the ten-epoch T comparison above; see the
+[locally validated Jean Zay summary](../results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/production-02-summary.md).
+**Why legacy achieves this accuracy remains unresolved.** The earlier gradient
+diagnostics do not explain its advantage, and better replay cosine alone has
+not established a better beta or higher training accuracy. These are one-seed
+validation observations; the official test set was not evaluated.
+
+## Initialization check at the same replay betas
+
+Completed September 23, 2026: **there is no meaningful T/K dependence at
+initialization in this tested grid**, for baseline, ours, or legacy. All use
+the exact shared seed-0 initializer from the training runs, injected beta
+`0.987333678708` or `5.26875648112`, T=`8,16,32`, and K=`8,32`.
+The 36 cases cover the same 576 validation examples, with clean endpoints
+and four matched read-noise draws at sigma `5e-4`.
+
+For ours, the noisy median readout cosines at K=8 are:
+
+| Replay beta | T=8 | T=16 | T=32 |
+|---:|---:|---:|---:|
+| 0.987333678708 | 0.999978 | 0.999978 | 0.999978 |
+| 5.26875648112 | 0.999923 | 0.999923 | 0.999923 |
+
+K=32 gives the same displayed values. Across **all schemes, betas, and
+layers**, the largest absolute noisy layer-median change is `5.87e-8` for T
+and `6.41e-6` for K. The largest clean change is `2.49e-6`. The fixed K32
+BPTT reference confirms the negligible K effect. After averaging noise draws
+within each batch, the largest absolute paired-batch change is `2.35e-5`;
+no batch changes by more than `.01` in any clean or noisy comparison.
+
+This contrasts with the earlier p90-trained ours checkpoint at the **same
+replay beta 5.26875648112**: its noisy readout cosine changes from `-0.293154`
+at T8 to `0.820463` at T32, K8. The paired improvement appears on 35/36
+batches at T16 and 36/36 at T32. Thus that large sensitivity is absent from
+the initial weights and develops later in the training trajectory; the
+epoch at which it appears is still unknown. The historical and new replays
+use identical batches but different replay environments, retained as a
+limitation of the comparison across studies.
+
+Beta still changes noisy gradient quality at initialization. For ours at
+T8/K8, Conv3 cosine increases from `.571775` to `.960893` between the two
+betas, while the first two convolutions remain poorly aligned under read
+noise. This is distinct from sensitivity to iteration counts. The two common
+betas are diagnostic probes, not a selected training beta for every scheme.
+One initializer and a finite grid do not establish a universal T/K rule.
+
+All 25,920 gradient comparisons and 54 production/smoke bundles validate
+locally. The worker exited successfully and released the GPU; there were no
+scientific failures or exclusions. See the
+[initialization report](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/report.md),
+[initialization-versus-trained figure](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/ours_initialization_vs_trained.png),
+and [paired-batch measurements](../results/eqprop-conv3-init-beta-tk-20260923-v1/analysis/paired_batch_changes.csv).
+
+## Where gradient cosine depends on T, K, and beta
+
+September 23 synthesis of the completed replays. **The dependence is strongly
+checkpoint-specific; the evidence does not establish a universal beta cutoff.**
+Training beta describes how the saved weights were obtained; replay beta is
+the nudge used to measure gradients at those unchanged weights. All beta
+values below are actual injected values. Only listed points were tested.
+
+### T sensitivity across replay betas
+
+The earlier ours checkpoint trained with p90 beta `5.26875648112` and
+sigma `5e-4` is strongly T-sensitive across the entire five-point replay grid,
+including a beta below the p99 training value. At fixed `K=8`, the noisy
+readout medians are:
+
+| Replay beta | T=8 | T=64 |
+|---:|---:|---:|
+| 0.526875648112 | -0.109278 | 0.927681 |
+| 1.580626944336 | -0.264761 | 0.899436 |
+| 5.26875648112 | -0.293154 | 0.885443 |
+| 15.80626944336 | -0.254826 | 0.881124 |
+| 52.6875648112 | -0.256639 | 0.879580 |
+
+These rows use sigma `5e-4` endpoint reads. Clean readout cosines show nearly
+the same T effect. At the much smaller replay beta `0.000526875648112`, a
+separate clean check also shows a strong effect: readout cosine rises from
+`0.00705` at T8 to `0.99972` at T32, with all four layer medians above `.995`
+at T32. Thus small replay beta alone does not remove this checkpoint's T
+sensitivity. The beta `0.987333678708` itself was not measured on this older
+checkpoint in these studies.
+
+Other measured cases behave differently:
+
+| Saved checkpoint | Replay betas tested for T | T comparison, K=8 | Largest absolute noisy layer-median change |
+|---|---|---|---:|
+| Earlier ours p90, training/read sigma 3e-4 | 0.526876, 1.580627, 5.268756, 15.806269, 52.687565 | 8 to 64 | 3.21e-6 |
+| Earlier baseline p90, training/read sigma 3e-4 or 5e-4 | 40.414111, 121.242332, 404.141106, 1212.423317, 4041.411057 | 8 to 64 | 1.62e-4 |
+| Earlier legacy p90, training/read sigma 3e-4 or 5e-4 | 0.442250, 1.326750, 4.422501, 13.267503, 44.225011 | 8 to 64 | 3.48e-8 |
+| Current p99 ours epochs 27/30 and legacy epoch 30, training/read sigma 5e-4 | 0.001, 0.01, 0.1, 0.3, 0.987333678708, 3, 10 | 8 to 16 | 8.57e-7 |
+
+All of these changes are negligible compared with the order-one readout
+change at the earlier ours/sigma5e-4 checkpoint. Changing the training noise
+also changes the learned checkpoint, so the two older ours cases do not
+isolate an instantaneous noise effect. In particular, the current p99 weights
+remain T-insensitive when replay beta is raised to `10`; the earlier p90
+weights remain sensitive when replay beta is reduced to `0.526876`.
+
+Sources: [five-beta T8/T64 comparison](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/report.md),
+[paired measurements](../results/eqprop-conv3-trained-beta-noise-t64-20260922-v1/analysis/cosine_change_with_T.csv),
+[tiny-beta clean check](../results/eqprop-conv3-trained-minimum-t-20260922-v1/analysis/report.md),
+and [p99 T8/T16 replay](../results/eqprop-conv3-p99-trained-beta-replay-20260923-v1/analysis/report.md).
+
+### K sensitivity and its interaction with T
+
+At the earlier ours/sigma5e-4 checkpoint and replay beta `5.26875648112`,
+increasing K can help or hurt the readout depending on T:
+
+| T | K=8 | K=16 | K=32 |
+|---:|---:|---:|---:|
+| 8 | -0.29315 | -0.48089 | -0.67259 |
+| 16 | 0.68455 | 0.73575 | 0.80633 |
+| 32 | 0.82046 | 0.83396 | 0.85758 |
+
+These are noisy readout medians; clean readout results are almost identical.
+The effect is not uniformly beneficial across layers: at T32, clean Conv1
+cosine falls from `.96967` at K8 to `.47268` at K32. The baseline and legacy
+checkpoints at their p90 training betas (`404.141105702` and `4.42250110273`)
+are essentially unchanged across the same T/K grid. This study varied K at
+only one beta per checkpoint, so it does not locate a beta boundary for the
+older ours checkpoint's K dependence.
+
+At the current p99 checkpoints, increasing K from `8` through `16,32,64`
+at fixed T16 and replay beta `0.987333678708`, `3`, or `10` changes every
+noisy layer median by less than `9.62e-7` and every clean median by less than
+`1.34e-5`. A fixed K64 BPTT reference confirms this negligible effect.
+K sensitivity below beta `0.987333678708` was not tested in that sweep.
+See the [older three-scheme T/K grid](../results/eqprop-conv3-cosine-tk-schemes-20260922-v1/analysis/report.md)
+and [current p99 K sweep](../results/eqprop-conv3-p99-beta-k-replay-20260923-v1/analysis/report.md).
+
+In this runner, T advances the free phase before beta is applied, whereas K
+sets the nudged-phase length and the BPTT unroll used for comparison. The older
+K grid therefore changes the reference gradient as well as EqProp; it has no
+fixed-reference control. These results support treating checkpoint, beta,
+T, K, layer, and read noise as separate factors. They do not identify when
+during training T/K sensitivity appears, a universal optimal T/K pair, or a
+training-stability boundary. All comparisons are read-only, use the same
+576-example validation cohort, and retain the original studies' one-seed and
+replay-environment limitations. No new run was needed for this synthesis.
+
+## Earlier decision context (August 18, 2026)
 
 We need to decide what beta to pick for the EqProp runs. It is clear that
 different betas have to be used for the baseline, ours, and legacy

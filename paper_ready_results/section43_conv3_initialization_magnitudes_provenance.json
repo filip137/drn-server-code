@@ -1,0 +1,51 @@
+{
+  "new_run": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-initialization-magnitudes-20260918-v1/full",
+  "baseline_run": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-baseline-initialization-20260918-v1/full",
+  "trained_run": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1",
+  "initializer": {
+    "checkpoint_path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/paper-training-completion-20260911-v1/assets/wide_kaiming/conv3/seed0.pt",
+    "checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+    "ep_conversion": "load float32 then cast every runtime variable to float64",
+    "epoch": 0,
+    "float32_parameter_state_sha256": "bd63b7fec6f576db968bb977029ca450206cc4373ba4dd10f4d3c2fd47f045ef",
+    "optimizer_state": "fresh; no optimizer state loaded",
+    "recipe": "wide_kaiming",
+    "seed": 0
+  },
+  "canonical_runs_validated": 4,
+  "baseline_smoke_comparisons_identical": 4,
+  "new_smoke_full_comparisons_identical": 8,
+  "initialization_batches_total": 108,
+  "new_initialization_batches": 72,
+  "summary_cells": 48,
+  "guard_flags_passed": [
+    "parameter_tensors_unchanged_after_cast",
+    "iteration_contract_passed",
+    "zero_noise_readout_matches_clean_bitwise",
+    "checkpoint_unchanged_after_noise"
+  ],
+  "new_gpu_seconds_including_smoke": 154.20320105552673,
+  "official_test_read": false,
+  "optimizer_steps": 0,
+  "matplotlib_version": "3.10.6",
+  "statistic": "Mean of individual batch gradient magnitudes; RMS=L2/sqrt(N). Ratios are computed within each paired batch, then summarized.",
+  "near_zero": "Measured for all initialization cases and trained baseline; trained balanced/legacy unavailable from archived norms.",
+  "spread": "p10/p90 across 36 minibatches; one training seed, not a seed confidence interval.",
+  "sources": {
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-initialization-magnitudes-20260918-v1/full/gradients.csv": "7a0e2e958b56ef6155b44e151764463a830de96cf7d7377fdb36e9e769c47029",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-initialization-magnitudes-20260918-v1/full/checkpoint_gradients.csv": "8c6106e3a2e034ad307adf536b9235c41cdbfab2a2c29514a4e300dda7ca80a4",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-initialization-magnitudes-20260918-v1/full/config.used.json": "7274643906bd2548b1f8fdb9696d6b606bcf3aeae4f30a8b857fed094ace46b3",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-baseline-initialization-20260918-v1/full/gradients.csv": "4e49c067e80e285d7780174fa1066069dd65bf6c64c1b731eeca322b83a61d52",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-baseline-initialization-20260918-v1/full/checkpoint_gradients.csv": "b3639e6526cf6a315fbecea7b44c293b3f34086560bd2916286167f53c8e1201",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/gradients.csv": "d1dc94af4b56c93f54220e73fac40a22c16f956ed38b790514fe9b68b01e49cf",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-conv3-initialization-magnitudes-20260918-v1/full/cohort.json": "3e21a3cc8fcdbf1a897caaf888027364e71daca49e4f7ef3d029a164e1783075",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/plot_section43_conv3_initialization_magnitudes.py": "6a7e4b8bfc2888a3dd28215d5e41871c4c54f134e0a5a188bc8b8b1211e0d9a5"
+  },
+  "artifacts": {
+    "section43_conv3_initialization_magnitudes.csv": "e0bf0bebc2cbc1fceb8131e2a2f34b9e1393c530bf132558c974d097e2e66457",
+    "figures/section43_conv3_initialization_magnitudes.jpg": "533f6f4a13f50653302c7074c7082683fa4ae951f526637ecc15a0267031b136",
+    "figures/section43_conv3_initialization_magnitudes.pdf": "00f1c7391115cf9e0a5756ec9db18b09254e7c55f1b5d3b7c4db91d0e33c616c",
+    "figures/section43_conv3_initialization_magnitudes.png": "5c6b97b07e937aacc9e1a8b94d30267ae910fbb61479ec5c50ecd004adcf4940",
+    "figures/section43_conv3_initialization_magnitudes.svg": "2c2b8582acf6bbebcd9cc3db3595364f0c7b6c4130584379d4f49d84255af13b"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "at_utc": "2026-09-14T06:15:49.483863+00:00",
+  "T": 12,
+  "K": 6,
+  "epochs": 30,
+  "official_test_evaluations": 0,
+  "standard_deviation": "sample, ddof1",
+  "conditions": [
+    {
+      "Gmax": "0.0001",
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "best_mean_percent": 85.39333333333333,
+      "best_sample_sd_pp": 0.14189197769194523,
+      "final_mean_percent": 85.12666666666667,
+      "final_sample_sd_pp": 0.0986576572463298,
+      "bundles": [
+        "bundles/T3_BPTT_conv2_baseline_gmax0.0001_seed0/result.json",
+        "bundles/T3_BPTT_conv2_baseline_gmax0.0001_seed1/result.json",
+        "bundles/T3_BPTT_conv2_baseline_gmax0.0001_seed2/result.json"
+      ]
+    },
+    {
+      "Gmax": "0.0005",
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "best_mean_percent": 92.03999999999999,
+      "best_sample_sd_pp": 0.45738386504117123,
+      "final_mean_percent": 91.94666666666666,
+      "final_sample_sd_pp": 0.42253205006642436,
+      "bundles": [
+        "bundles/T3_BPTT_conv2_baseline_gmax0.0005_seed0/result.json",
+        "bundles/T3_BPTT_conv2_baseline_gmax0.0005_seed1/result.json",
+        "bundles/T3_BPTT_conv2_baseline_gmax0.0005_seed2/result.json"
+      ]
+    },
+    {
+      "Gmax": "0.001",
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "best_mean_percent": 93.55333333333334,
+      "best_sample_sd_pp": 0.06110100926607966,
+      "final_mean_percent": 93.46000000000001,
+      "final_sample_sd_pp": 0.1400000000000016,
+      "bundles": [
+        "bundles/T3_BPTT_conv2_baseline_gmax0.001_seed0/result.json",
+        "bundles/T3_BPTT_conv2_baseline_gmax0.001_seed1/result.json",
+        "bundles/T3_BPTT_conv2_baseline_gmax0.001_seed2/result.json"
+      ]
+    }
+  ]
+}

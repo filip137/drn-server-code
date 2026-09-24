@@ -1,0 +1,30 @@
+{
+  "base_commit": "c88e3600ff161abd6aece90cc67deef052ab81c2",
+  "pushed_commit": "d93e975db06ba0f0571f9e8a1fd6ce3b4e14711a",
+  "target": "Overleaf origin/main",
+  "overleaf_project": "https://www.overleaf.com/project/6a12c51c382eafd7ee825f3c",
+  "figure_number": 3,
+  "section": "4.2",
+  "isolated_checkout": "/tmp/bidir-bound-occupancy-overleaf-h5mnp3n8",
+  "remote_head_verified": true,
+  "original_local_paper_edits_preserved": true,
+  "changed_remote_files": [
+    "bidir_paper_theory_revised.tex",
+    "figures/bounded_conductance_occupancy.tex",
+    "figures/bounded_conductance_occupancy_best.pdf",
+    "figures/bounded_conductance_occupancy_best.jpg"
+  ],
+  "compile": {
+    "compiler": "Tectonic 0.16.9",
+    "success": true,
+    "new_latex_warnings": false,
+    "rendered_figure_page": 10,
+    "local_pdf": "figures/bidir_paper_theory_revised_with_occupancy.pdf",
+    "sha256": "f5783fa3162f06ce1c0d9626de300ea95962a0e061a7efa0254b820cba8e82e8"
+  },
+  "display_changes": [
+    "Removed best-validation-checkpoints label",
+    "Removed a-f panel labels",
+    "Used Balanced label for the (4,1) scheme to match latest manuscript"
+  ]
+}

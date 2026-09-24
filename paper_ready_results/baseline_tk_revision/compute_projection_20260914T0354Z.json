@@ -1,0 +1,65 @@
+{
+  "at_utc": "2026-09-14T03:54:27.560409+00:00",
+  "settled_gpu_hours": 206.51284536924626,
+  "unfinished_work": [
+    {
+      "work": "Loulou existing three-case original EqProp wave",
+      "runs": 3,
+      "hours": 12.437,
+      "method": "Whole wave; measured first case about 4.15 hours"
+    },
+    {
+      "work": "Nom existing two-case original EqProp wave",
+      "runs": 2,
+      "hours": 12.386,
+      "method": "Whole wave; measured first case about 6.19 hours"
+    },
+    {
+      "work": "Main revised Conv3 BPTT seed-0 references",
+      "runs": 3,
+      "hours": 6.4,
+      "method": "Whole wave; first two cases measured about 2.13 hours each"
+    },
+    {
+      "work": "Jean Zay revised Conv2 BPTT seed-2 array",
+      "runs": 3,
+      "hours": 6.6930555555555555,
+      "method": "Measured seed-1 three-task array cost"
+    },
+    {
+      "work": "Akib current Conv2 EqProp middle pilot",
+      "runs": 1,
+      "hours": 2.225,
+      "method": "Measured first revised pilot cost"
+    },
+    {
+      "work": "Remaining Main Conv3 BPTT seeds 1/2",
+      "runs": 6,
+      "hours": 12.8,
+      "method": "Measured reference rate, serial placement"
+    },
+    {
+      "work": "Other revised Conv2 EqProp trainings",
+      "runs": 7,
+      "hours": 15.575,
+      "method": "Seven cases times first full revised pilot cost 2.225 hours"
+    },
+    {
+      "work": "All revised Conv3 EqProp trainings",
+      "runs": 9,
+      "hours": 62.13472222222222,
+      "method": "UNMEASURED forecast: prior Conv3 EqProp cost times (T+2K) ratio 40/24"
+    }
+  ],
+  "projected_total_gpu_hours": 337.16362314702405,
+  "projection_excludes_future_smokes_checks_retries_and_official_test": true,
+  "current_hard_cap": 300,
+  "proposed_cap": 350,
+  "proposal_not_authorized": true,
+  "scientific_scope_unchanged": true,
+  "scientific_per_case_maximum_hours": 8,
+  "shorter_operational_ceiling_for_some_bptt_cases_hours": 3,
+  "weekday_5090_limit_unchanged": 1,
+  "official_test_read": false,
+  "initial_forecast": "compute_projection_initial_20260913.json"
+}

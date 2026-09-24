@@ -1,0 +1,29 @@
+{
+  "reviewed_at_utc": "2026-09-14T21:19:03.816177+00:00",
+  "review_scope": "clean Adam three-table campaign; all metrics remain validation",
+  "current_contract_ledger_sha256": "5cd0ab27c31e644f06fa42210158af1b3b52410776c8e3b9496608f03a777230",
+  "required_training_cells": 216,
+  "collected_training_cells": 202,
+  "remaining_training_cells": 14,
+  "by_block": {
+    "T1_BPTT": 27,
+    "T2_EP": 27,
+    "T3_BPTT": 78,
+    "T3_EP": 70
+  },
+  "complete_three_seed_conditions": 64,
+  "paired_runs": 97,
+  "complete_three_seed_pairs": 31,
+  "maximum_absolute_pair_best_validation_difference_pp": 0.6599999999999966,
+  "maximum_absolute_three_seed_mean_difference_pp": 0.19333333333332803,
+  "canonical_validation": "201 existing bundles with indexed artifact hashes rechecked, plus new Loulou bundle canonical and full semantic validation",
+  "all_collected_result_hashes_match_current_ledger": true,
+  "all_complete_pairs_exact_lr_parameter_order_and_T_K_equal": true,
+  "all_complete_pairs_recorded_full_dataset_and_epoch_order_provenance_equal": true,
+  "new_pilot_collection_receipt": "../results/paper-training-completion-20260911-v1/launch/loulou_pilot_review_collection_20260914.json",
+  "new_pilot_pair_receipt": "baseline_tk_revision/conv3_seed0_tight_pair_check_20260914.json",
+  "errors": [],
+  "official_test_evaluations": 0,
+  "paper_reuse_and_checkpoint_seal": "pending",
+  "initial_201_bundle_check_ledger_sha256": "a302eda680ebe4facb9f4b4a0c7feb046b1ba24148c96fe58e57edba651adc3e"
+}

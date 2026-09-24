@@ -1,0 +1,11 @@
+{
+  "updated_at": "2026-09-14T21:13:31.795841+00:00",
+  "required": 216,
+  "original_collected_retained": 198,
+  "revised_baseline_required": 36,
+  "revised_baseline_collected": 22,
+  "current_contract_collected": 202,
+  "current_contract_remaining": 14,
+  "official_test_evaluations": 0,
+  "native_tk_baseline_bptt_runs_preserved_as_earlier_evidence": 18
+}

@@ -1,0 +1,96 @@
+{
+  "checked_at_utc": "2026-09-14T07:55:22.456515+00:00",
+  "full_pilot_pairs": [
+    {
+      "ceiling": "0.0001",
+      "seed": 0,
+      "full_30_epoch_training_order_and_split_match": true,
+      "bptt_metrics_sha256": "03d55b8c2e5c1367eb46f903742ad32760e7b04f05b1c0f70f92263c703d28b8",
+      "eqprop_metrics_sha256": "c1296226b5feb060cf35b4832816d779a8e638fa1b2317649fd15869b025bdd9"
+    },
+    {
+      "ceiling": "0.0005",
+      "seed": 0,
+      "full_30_epoch_training_order_and_split_match": true,
+      "bptt_metrics_sha256": "4516315cf21440d4b2064bfec64beca72b64e8641d1669982cd20dcdfb390c70",
+      "eqprop_metrics_sha256": "d86e91ccfcaf97044655513a16886bf0d0f2a875473014f740152a25eab53ec2"
+    },
+    {
+      "ceiling": "0.001",
+      "seed": 0,
+      "full_30_epoch_training_order_and_split_match": true,
+      "bptt_metrics_sha256": "a41ccaab68bf1882fb5af413ab6c8fb59fe45b65960fb3e546901d994177fb21",
+      "eqprop_metrics_sha256": "3b92cb42af16276c5356e50e75fa990bfb31eba928d4d00a33b7e58ff8bf4e1a"
+    }
+  ],
+  "repetition_smokes": [
+    {
+      "smoke_folder": "conv2_ep_seed1_2_v11_cpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.0001_seed1",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "conv2_ep_seed1_2_v11_cpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.0005_seed1",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "conv2_ep_seed1_2_v11_cpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.001_seed1",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "conv2_ep_seed1_2_v11_cpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.0001_seed2",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "conv2_ep_seed1_2_v11_cpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.0005_seed2",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "conv2_ep_seed1_2_v11_cpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.001_seed2",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "akib_conv2_ep_seed1_v11_gpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.0001_seed1",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "akib_conv2_ep_seed1_v11_gpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.0005_seed1",
+      "first_epoch_order_and_full_split_match": true
+    },
+    {
+      "smoke_folder": "akib_conv2_ep_seed1_v11_gpu_smokes_20260914",
+      "cell": "T3_EP_conv2_baseline_gmax0.001_seed1",
+      "first_epoch_order_and_full_split_match": true
+    }
+  ],
+  "official_test_read": false,
+  "interpretation": "All three full seed0 BPTT/EqProp pairs have identical split and all30 epoch-order fingerprints. Six CPU and three Akib GPU repetition smokes match the corresponding BPTT seed first-epoch ordering. Completed repetitions still require full30-epoch matching.",
+  "full_replication_pairs": [
+    {
+      "cell": "T3_EP_conv2_baseline_gmax0.0001_seed1",
+      "full_30_epoch_training_order_and_split_match": true,
+      "eqprop_metrics_sha256": "7f17518200259ce009f0575b086e66cf60d7d22537538701756c004aa581a597",
+      "bptt_metrics_sha256": "ca77fe63979474c22e51d26d2741e34f9e173912b128e2f8aae704cf0c14ac26"
+    },
+    {
+      "cell": "T3_EP_conv2_baseline_gmax0.0005_seed1",
+      "full_30_epoch_training_order_and_split_match": true,
+      "eqprop_metrics_sha256": "2e0ab86d7d8bc863b01abd1b48c40d6b01441d3124640ce751e7c9215030ebd5",
+      "bptt_metrics_sha256": "cc62c402a1674c21a20dc8fe9f3956e453e3b296560caa7b017552c271b8dd5c"
+    },
+    {
+      "cell": "T3_EP_conv2_baseline_gmax0.0001_seed2",
+      "full_30_epoch_training_order_and_split_match": true,
+      "eqprop_metrics_sha256": "cba5c0e9335d196478a1125d3d82ed8a7535c68f001df806d372b5f12fe51647",
+      "bptt_metrics_sha256": "b43cb5e2151c18a8f830b52bdbf5249498239954453f01d274bf4423a0d83ba4"
+    }
+  ],
+  "full_replication_checked_at_utc": "2026-09-14T12:26:44.650059+00:00"
+}

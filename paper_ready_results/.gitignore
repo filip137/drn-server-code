@@ -1,0 +1,14 @@
+# Full result bundles and generated integrity inventories stay out of Git.
+/bundles/
+/assets/
+/provenance/
+/figures/
+/baseline_tk_revision/bundles/
+/baseline_tk_revision/collection_validation.json
+
+# Keep small collection summaries visible despite the repository CSV default.
+!*.csv
+
+# Large per-replay measurements remain local alongside the result artifacts.
+/beta_rule_comparison_20260918_layer_metrics.csv
+/beta_rule_comparison_20260918_whole_gradient_metrics.csv

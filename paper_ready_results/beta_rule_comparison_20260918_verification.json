@@ -1,0 +1,798 @@
+{
+  "bptt_norm_maximum_absolute_difference": 0.0,
+  "bptt_norm_repeat_comparisons": 31104,
+  "checkpoint_selections": 324,
+  "completed_cases": 153,
+  "expected_cases": 153,
+  "global_larger": [
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 3000.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "whole_gradient_beta": 10000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 3000.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "whole_gradient_beta": 10000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 1000.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "whole_gradient_beta": 10000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 1000.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "whole_gradient_beta": 10000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.99,
+      "whole_gradient_beta": 5000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.99,
+      "whole_gradient_beta": 5000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 2250.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.9,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 2250.0,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.9,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 1500.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.95,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 1500.0,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.95,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.99,
+      "whole_gradient_beta": 1500.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.99,
+      "whole_gradient_beta": 1500.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 900.0,
+      "norm_gate": false,
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": false,
+      "scheme": "legacy",
+      "threshold": 0.95,
+      "whole_gradient_beta": 900.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 300.0,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.95,
+      "whole_gradient_beta": 900.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 60.0,
+      "norm_gate": false,
+      "scheme": "legacy",
+      "threshold": 0.99,
+      "whole_gradient_beta": 900.0
+    },
+    {
+      "architecture": "conv1",
+      "layerwise_beta": 60.0,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.99,
+      "whole_gradient_beta": 900.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 500.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "whole_gradient_beta": 3000.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 300.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "whole_gradient_beta": 2000.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 500.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "whole_gradient_beta": 2000.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 300.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "whole_gradient_beta": 2000.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 100.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.99,
+      "whole_gradient_beta": 1000.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 100.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.99,
+      "whole_gradient_beta": 1000.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 50.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.9,
+      "whole_gradient_beta": 200.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 20.0,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.9,
+      "whole_gradient_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 30.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.95,
+      "whole_gradient_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 20.0,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.95,
+      "whole_gradient_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 10.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.99,
+      "whole_gradient_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 10.0,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.99,
+      "whole_gradient_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 3.0,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 3.0,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.95,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 3.0,
+      "norm_gate": false,
+      "scheme": "legacy",
+      "threshold": 0.99,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv2",
+      "layerwise_beta": 3.0,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.99,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 300.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "whole_gradient_beta": 1000.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 50.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "whole_gradient_beta": 1000.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 100.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "whole_gradient_beta": 1000.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 50.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "whole_gradient_beta": 1000.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 10.0,
+      "norm_gate": false,
+      "scheme": "baseline",
+      "threshold": 0.99,
+      "whole_gradient_beta": 750.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 10.0,
+      "norm_gate": true,
+      "scheme": "baseline",
+      "threshold": 0.99,
+      "whole_gradient_beta": 750.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 3.0,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.9,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.3,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.9,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.9,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.95,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.3,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.95,
+      "whole_gradient_beta": 30.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.9,
+      "norm_gate": false,
+      "scheme": "ours",
+      "threshold": 0.99,
+      "whole_gradient_beta": 22.5
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.3,
+      "norm_gate": true,
+      "scheme": "ours",
+      "threshold": 0.99,
+      "whole_gradient_beta": 22.5
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.3,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "whole_gradient_beta": 1.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.3,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.95,
+      "whole_gradient_beta": 1.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.1,
+      "norm_gate": false,
+      "scheme": "legacy",
+      "threshold": 0.99,
+      "whole_gradient_beta": 1.0
+    },
+    {
+      "architecture": "conv3",
+      "layerwise_beta": 0.1,
+      "norm_gate": true,
+      "scheme": "legacy",
+      "threshold": 0.99,
+      "whole_gradient_beta": 1.0
+    }
+  ],
+  "historical_regressions": [
+    {
+      "case": "conv3_baseline_beta10",
+      "comparisons": 288,
+      "maximum_absolute_difference": 9.103828801926284e-15,
+      "passed": true,
+      "source": "results/eqprop-conv3-baseline-beta-tk8-20260916-v1/selection/selection_conv3_baseline_seed0_T8_K8_beta10/layer_metrics.csv"
+    },
+    {
+      "case": "conv3_baseline_beta30",
+      "comparisons": 288,
+      "maximum_absolute_difference": 9.880984919163893e-15,
+      "passed": true,
+      "source": "results/eqprop-conv3-baseline-beta-tk8-20260916-v1/selection/selection_conv3_baseline_seed0_T8_K8_beta30/layer_metrics.csv"
+    },
+    {
+      "case": "conv3_baseline_beta50",
+      "comparisons": 288,
+      "maximum_absolute_difference": 6.106226635438361e-15,
+      "passed": true,
+      "source": "results/eqprop-conv3-baseline-beta-tk8-20260916-v1/selection/selection_conv3_baseline_seed0_T8_K8_beta50/layer_metrics.csv"
+    },
+    {
+      "case": "conv3_baseline_beta75",
+      "comparisons": 288,
+      "maximum_absolute_difference": 8.43769498715119e-15,
+      "passed": true,
+      "source": "results/eqprop-conv3-baseline-beta-tk8-20260916-v1/selection/selection_conv3_baseline_seed0_T8_K8_beta75/layer_metrics.csv"
+    },
+    {
+      "case": "conv3_baseline_beta100",
+      "comparisons": 288,
+      "maximum_absolute_difference": 1.099120794378905e-14,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta100/layer_metrics.csv"
+    },
+    {
+      "case": "conv3_baseline_beta200",
+      "comparisons": 288,
+      "maximum_absolute_difference": 6.328271240363392e-15,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta200/layer_metrics.csv"
+    },
+    {
+      "case": "conv3_baseline_beta300",
+      "comparisons": 288,
+      "maximum_absolute_difference": 6.106226635438361e-15,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv3_baseline_seed0_beta300/layer_metrics.csv"
+    },
+    {
+      "case": "conv2_baseline_beta100",
+      "comparisons": 216,
+      "maximum_absolute_difference": 0.0,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta100/layer_metrics.csv"
+    },
+    {
+      "case": "conv2_baseline_beta200",
+      "comparisons": 216,
+      "maximum_absolute_difference": 0.0,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta200/layer_metrics.csv"
+    },
+    {
+      "case": "conv2_baseline_beta300",
+      "comparisons": 216,
+      "maximum_absolute_difference": 0.0,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv2_baseline_seed0_beta300/layer_metrics.csv"
+    },
+    {
+      "case": "conv1_baseline_beta100",
+      "comparisons": 144,
+      "maximum_absolute_difference": 0.0,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta100/layer_metrics.csv"
+    },
+    {
+      "case": "conv1_baseline_beta200",
+      "comparisons": 144,
+      "maximum_absolute_difference": 0.0,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta200/layer_metrics.csv"
+    },
+    {
+      "case": "conv1_baseline_beta300",
+      "comparisons": 144,
+      "maximum_absolute_difference": 0.0,
+      "passed": true,
+      "source": "results/eqprop-beta-selection-audit-20260914-v1/selection/selection_conv1_baseline_seed0_beta300/layer_metrics.csv"
+    }
+  ],
+  "joint_selections": 108,
+  "maximum_historical_difference": 1.099120794378905e-14,
+  "measured_layer_rows": 33048,
+  "measured_replays": 11016,
+  "norm_changed": [
+    {
+      "architecture": "conv1",
+      "cosine_only_beta": 900.0,
+      "grouping": "layerwise",
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "with_norm_beta": 300.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 500.0,
+      "grouping": "layerwise",
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "with_norm_beta": 300.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 3000.0,
+      "grouping": "whole_gradient",
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "with_norm_beta": 2000.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 500.0,
+      "grouping": "layerwise",
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "with_norm_beta": 300.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 50.0,
+      "grouping": "layerwise",
+      "scheme": "ours",
+      "threshold": 0.9,
+      "with_norm_beta": 20.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 200.0,
+      "grouping": "whole_gradient",
+      "scheme": "ours",
+      "threshold": 0.9,
+      "with_norm_beta": 100.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 30.0,
+      "grouping": "layerwise",
+      "scheme": "ours",
+      "threshold": 0.95,
+      "with_norm_beta": 20.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 30.0,
+      "grouping": "layerwise",
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "with_norm_beta": 3.0
+    },
+    {
+      "architecture": "conv2",
+      "cosine_only_beta": 30.0,
+      "grouping": "layerwise",
+      "scheme": "legacy",
+      "threshold": 0.95,
+      "with_norm_beta": 3.0
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 300.0,
+      "grouping": "layerwise",
+      "scheme": "baseline",
+      "threshold": 0.9,
+      "with_norm_beta": 50.0
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 100.0,
+      "grouping": "layerwise",
+      "scheme": "baseline",
+      "threshold": 0.95,
+      "with_norm_beta": 50.0
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 3.0,
+      "grouping": "layerwise",
+      "scheme": "ours",
+      "threshold": 0.9,
+      "with_norm_beta": 0.3
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 0.9,
+      "grouping": "layerwise",
+      "scheme": "ours",
+      "threshold": 0.95,
+      "with_norm_beta": 0.3
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 0.9,
+      "grouping": "layerwise",
+      "scheme": "ours",
+      "threshold": 0.99,
+      "with_norm_beta": 0.3
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 1.0,
+      "grouping": "layerwise",
+      "scheme": "legacy",
+      "threshold": 0.9,
+      "with_norm_beta": 0.3
+    },
+    {
+      "architecture": "conv3",
+      "cosine_only_beta": 1.0,
+      "grouping": "layerwise",
+      "scheme": "legacy",
+      "threshold": 0.95,
+      "with_norm_beta": 0.3
+    }
+  ],
+  "numerical_failures": [],
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "physical_gpu_hours": 2.749862366004978,
+  "source_checkpoints_unchanged": true,
+  "source_results": {
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta1": "d2f710bb689822d7f1604fe5dfc08d9bad7931e34f876989948e0c5d124ff27e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta10": "bb79f0febf76a674f42a044f7e15a8fdc10125c0569ec8fb7eed923359b86e85",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta100": "6d4fa98729a42ed36655af26cdfcf232186ebce81697ddcd0d2c588ad0a57d16",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta1000": "6469f8e47caebebc476dcbd063a1ea39bd78fe6e836d11d6cf44e0c0ed330748",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta10000": "e080ad1643d42f0bf0628599046887e39030abaaa99624749f33751e7deb5e51",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta100000": "9c646471a1beb0020ee61f98791ad867f870e0be47d1b596794892f3819a4261",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta200": "291f3d13e581a69ca816f064864aac98657f64e75ba3b4ccda083f17cf6d53e4",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta2000": "34713f7a42d011aebac36a4bab1839991b0c78967439640e5cbb9765e6f80c15",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta3": "40b9a579144136ce017d406d3851debe30d0b239328f831bc10209e175753b0d",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta30": "6565c7531fd671946698ce788f25903101cdc115fee446a1e8c774c199595a87",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta300": "26fb2be5bd3285e32f70e3211657a4aa4be9ac5a68975770aaf542c9a39ca8ca",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta3000": "94ea20fb06dcce5c84518100f3b6e4c0f06ac80748ad96d2d2cb64055e288cd2",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta30000": "b740d4ecabcb848af8aee73061bca7d5a8d086df48e1be235272bc633dfb3c3c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta500": "3d610ba803e0fd1a0d3b0311c1680a533c193efc416e6a989790e471b8a81c72",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta5000": "47007af16f2be05fd4b2a204b748b43d47523c4ff9429369aeedf175e2eb9dae",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta750": "0bbde336f9a34e6beadf40f4837ae8dc0dbbe283d6376e93232771dc1b9d1cfe",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_baseline_beta7500": "71e85e7ee23c4725eb8fff3391914b01fa16526fa886925a077370816af14e8e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta0p03": "40e80da22d5eb1e41a29df9561874966a34ed31c166abf9c7c4df9bf04a83f5e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta0p09": "5cba0f2d8a694b8b44fabc9a5cde44c3646a48dad71ecc1f096c81334a64775c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta0p3": "8f08583c336b27480eeac4bafb960f2a0a3c80adce67ad0f952be198707ce633",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta0p9": "461fe842a101e1a44d2379515aaead48fcec72ed4c5ddcce9d11ea0a7f7af562",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta15": "d0489f987d31d5c57c02a5a981dc582ff196aeeda04d7487c117bf02bd6aeb32",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta150": "f709c6b7fd5b34902cda38493e3b651b0110b8839ff47dafe3f4c0143df91aa5",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta225": "602e9dc059d53002bb5c2f4cb9f86e17055b3d3a4f25ef1c45541e243a9e50c0",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta22p5": "6997f3e0d7f8c9f40b9f82c8a0ac827bdf5e93337484412e7bbcef438478b7cd",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta3": "d19a070a22a3a76e5669e9b1830f3730d5991edab3cf80a988efddbecab55ba8",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta30": "1cc6a2e0eefbf67a9a6d78459da42842ca5fca337975425946a24688a20fab9d",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta300": "a166e7cc824741fb4f99f149e00dddf7aeac1532fcb5930f1a06414adf548449",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta3000": "1e48e3288c0fdb83bb8783421249a878b0323d45442ae0e74cfd4bd0d63e62df",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta6": "d552773b0639a59ca7c71003258e82dfa5377e17694e27be74db5807f92ec9e8",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta60": "fde099ae02291a968a325729f5deb4984a6e71eb183feda4194074973d5bb067",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta9": "1585e23f5d903cf26ca72842a7bf10c9da80651ce663c17194a2c8c95beda450",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta90": "43ec88fb74c3a85bbbfb8e3a3d80de7f6f3595757d306906ca3ca5150ce89752",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_legacy_beta900": "b6cba4d88e59af386414ec73580bfda3e6a775b891fb9be9b4c6eb4b9ddab218",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta0p3": "9d04cf8dd71fba4331a39d85a2a35e3b691220d724584255d3f9e35e703e1f34",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta0p9": "57b2248a7cacae07b0282a42d566a4ce263c7ff950167de2a70e57bfd0b148db",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta150": "e241c1d38a61bb851c7aab02d1cc9781bd1a57013919958cf361e91a282ddb9f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta1500": "f478bf01f5eff9fdd8ff53d349c2dd7650b1a76d05d8d7e4fe9b78e4b80840b1",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta225": "301a0a74cf75bcfa7bcc18a6abb4685a8f2dda23f198e2774f6d7ff4c2051672",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta2250": "d27c2890e2946a9e4e44d6eca3101b2b3acb8dbc229d0a9a444db14d0667d473",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta3": "6a68937fe0ff57619ab947a3282e8b61abfd4b9c268d53ee9cad0ef75c79c645",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta30": "b0d351eef4e8367471a196c0dcf93b003bbd0ee3de3b44e31a5df693370499c7",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta300": "7c6f2b1b964c04f21261488053b86c9c6a6dedf05b4a641882435f076d459cd0",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta3000": "cb5fab8b70db6ee2b32e38578d5985524c62d54355ca1689a0e9919b7a35f480",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta30000": "a01804b560f41b0ab157a3f6ea27fe7b254014ade3e197e7b62c85d31049ee29",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta60": "a6b5910bab0975325741e90d7dc70649ce64bf734e1b6e671fa579290013738b",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta600": "3918291bc62a5caae6e7e7007b515a5c72da92e0fe40acae602d2aeaf23c93e9",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta9": "ae2f5397b3c7695cd0aeacb94000110b6f2ef3f723bcf0e28241518f48eee790",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta90": "6c1c7261a86f129e05cea3a5b1c1c86374a038cf3ab6dbff63e56b83e5a51d50",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta900": "1c512a7af2a69755c947fbaa82a28e560a742e8c2a755ebceec37257058856bc",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv1_ours_beta9000": "d521a688e62d9c4092ccd23de3082a545b273589fa5c580d2f587bdf21518acb",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta1": "ccc4261bd7b9370865aabaa319f6513d3f54767922500f3dcb0e7a7df04dfe11",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta10": "6c3b6ac76a8846423cc12162051eff509d02972f88d9e0a1d5f1e2c6c7714d5c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta100": "7c1ae213b61d4ae8cd02df4721df42ffc3bddf1a5abd646b82de82d8d4aef0e5",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta1000": "4a79a41a8040b3ea0c25548ba431332d78ec532ddf7a23ae32d6f8b868c7f45b",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta10000": "79cf6841c92d38adae23c2edbfbae53adaca7679c870e4a9f373f6fe25e1d722",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta100000": "63c9af7b161033d3774d9a6221ffad46a80998101d5bf95127c272de9d0199f8",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta200": "93d748e380aeac7964f558a54af1e7c04d6c5a2d51b79fc9ae32a6a205400c81",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta2000": "2670f623100f4521f79f97a4bd56e6660b7eb11dc5630c694ec1cf40efd9ca7d",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta3": "8cd513d8dc63a84896ef0f7cadd908ac826f528f028b3a0a4d568fff78c02c98",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta30": "5628cc5a3554ece5392e3c13dad81cd5605455c48266f28aae03491c1a7aca81",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta300": "d6ba967389ace24506d346c94913e3a7cb008bb2a730d801f787b655afac3f2a",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta3000": "4042c3327c5b8218213ab1e7ca8acd9d2015220e0a7520c441e22c64863c9e20",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta30000": "8b18b213813137ecc9f212ad13f6f4ef2b5c4e72efcce5188a31f75893da405e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta500": "ff8269e858839cae0868934834d1819a5e4b0345d0e6ca3fcd491c3e6b977a33",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta5000": "89c71c2a50fbaae1e79172802a400ad2c8be0d1a5928d2989c0b25f6dfdbd5bd",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta750": "4ed0e2291672d7f3f70a3bc41ccb28493d99f8d097b1e5783703dc6cedc2240f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_baseline_beta7500": "6406e8006c23fed703d1d28e14b66162a5e4dd6f56ae847e5ec98d3d3b7c4b9f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p0003": "9404f1aa1ea2e61b434c7c011603702382e266ebef5c0df35f3b6c137363f51c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p0009": "b6f386da3b9b08a82036190b82122b0a26b8439438123a17ef39bbd273d02280",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p003": "ed45e6c871684c760471981509206c709fa99d2355ac55c2061317e16646f637",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p009": "e270844e93443cd13cc2f84cc76447dc3092ac2b9fcc4273b1c71a4d0c739e9b",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p03": "a6083874b617f3bc01b64f10d1aa36bea83c40319c2124970460a2e0c9e6e92f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p06": "273e1a45c4c4108a281a6d28b99fad5aee1417d5cb2c2ea831d233bf53e30f85",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p09": "36902639af49be2ee8680f07ce478444580e54616c039497865c73a4a249ded1",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p15": "37d3063c44895cbaecece8ffad844b7e92b2e5a56786fcab31d48a1469dc18cb",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p225": "3cfe177f3d53d17a5665f37484885e79bfeac54f1abf2e787e19a2db28fb062c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p3": "3d1978c0e51cf69222cec0a821947601e34a38fd0940693fcc566e25f5188636",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p6": "8bf0524a4132345d13f41c5aa8f574320f69209de465ddfe47486de26839c9fb",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta0p9": "21af4e58b41f62a6f54c219157de9fc8475f67e5d3bdcfdd2874dd3e13883ef7",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta1p5": "9df081d76fba02951cdd519326ed4bd08131b307e5fca28ab8be6572f23d0675",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta2p25": "4dff21281fed4a0c87ed21bdbd63503ef3311bd7b1f619bf9938af91dbce6466",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta3": "b6096a8ab2f83fc44084eba3e2d3709265f0ddf4a7388cc56799e42714028d75",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta30": "c8f456bc3ca6fcd4ad465938c8e71dea925c7d3c7f8944cd5fdcfd3344df7bb5",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_legacy_beta9": "1bfbd11ed85e22db0721809c10ddd6f108d5ea2e36d33b8d46b8c906aab9de51",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta0p1": "1f751fdbc7f2d78c19145433eba0f1fe878a1bf302c7c833324bea0cfbf79ab8",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta0p3": "3116e9cef43caf59a38f1c5d7a6e484ea1fdf3f595a877fddc08f637ffba1602",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta1": "bf5a0dcbe9d077ea08a0a677f5b2da8f95b6dbe336b34071afcce2cb3d14582d",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta10": "15851a6863d9df51569364c8d0180b2ba3622c128f9cf835be6a2506bfac5559",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta100": "1cdecee41d968f30d4d5dba171184847c4de1a6927d9f3bedc5003f799a3c640",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta1000": "24c9a88dab7a769c26184cb75e098411b048a5a148ce77a0b68ad8a30850cfd5",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta10000": "9cc5aeb89936053116e486928c88d54a552adec375d3feb1cda1fa452473fe4d",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta20": "ff7ca4c2c18799a3011822911dfefec400bb0bd190aea065ca094b6d87dbb184",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta200": "4a9a383015da0852ceac5734673fdaec46c073cfe671569d641daa62fc0aa001",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta3": "536b3f2b1e2f90b147cd1e2ef15b5ca9a1bf6f4571e1d4747232202fcee42253",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta30": "f9cab6c706b481076f01fb9ab9e331a2631be8fffe44589509fbe2032ae8e2a2",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta300": "a1907e03da8063df8d4b1bd44063171518b195e936b7d198fc1d656dadc9b951",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta3000": "b4c6541ddb358fbef9ebdcdd06e5ffab60db5fed7913d429b6237ed376fbc1f7",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta50": "de60796e9ace78a9b5d3ee97b899cb8500fce5028b2aedfd548cedaef1f633d0",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta500": "0c7b3ee70381ccd02b9b5cdb74d70513fc3799e02b6d34742b87105e400f4554",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta75": "09c608d48e455176c15cb1f566e07a51ebc6b8200915c2c0980b95ac7dce70fa",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv2_ours_beta750": "a1e2a3837360a87a4591e480cb4753aa30e46ca6c6bb6ab40933f79862eab050",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta0p1": "e65bdee7f25024e6ffda2f77e2bfee455cbe72661acbd686462be077e5b98f27",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta0p3": "8e55797f1dcd7010ffccaffd5715e87ea7c228a1ed7f3cb2ca95215af7b1606b",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta1": "2a0d5313d0cd56a7eb8c490c8ae4c319778945c9f89f7b0553103f99f20674a0",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta10": "e009c11f3f7f71fc491b31ff562b67e78336394d4c9abac098ab9a2e17b8b4bd",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta100": "a657017fe509adff0b626f863ff7360403f67d888078a5e5d41d266099c9f2b7",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta1000": "5a0dee75a9a0337359cabb01aee9c0a6d1347d9388d1f5821c3c718138722adc",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta10000": "b46b591c1281c734d155195911fb035f056a1fd890b8500640a4de747f76e5cd",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta20": "4f52e2662cb6fe304072e712677219a160defe95d8bdfb36ea44071409a682d6",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta200": "c2ac5f250842650b711c4509742175cf88ae8486def2097160ecf061e40ab1b1",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta3": "3e9889432c620f36835c87b47fe511ddf47bc391b8c1702cd1f140070bec0bcb",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta30": "9faf3f55fbda840da5350b6b0fb72d6c596cd65d8aa4e31b0f2e7e91a4f7fd05",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta300": "59727baf54e99de8bc5bd54ceb92a82cf4df4f3b4e856197c3147673c430f31f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta3000": "57837a4a051d80bdcde10c253bb6991edcb3a29a2c6573347fb71d802a5b3aac",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta50": "ca8ba117f2ea0bc39b8019e52907e847c2d2c4ac2990fa25ea8752d44293ebca",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta500": "846cd90611deeacb22deb821ae33fefef90d55a01c541acfa9ed21f97f29f3f4",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta75": "04188c91af1aaca7eb8fe8257c6cb2e69f6d9b83ff95ae19840d692ddf776f45",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta750": "2704f095de89fd8c9953852a0cecd14ef100f86e8a95251ceb22723ceed85132",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p0001": "75c91e7d6758396c29731aab198d43617aa8bd1fae8a826588f409217ec5ef4f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p0003": "4065b08f70fd021c975b72ed94f351efd8c20a7dea1133df21c8058602838ef2",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p001": "c28613f430098a939de48bf9d8eb499728633fe0e3e10ef7967792a2379c86f3",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p002": "d2b88d20d2063dc958c6e1278b9ff9943851feede810256f73987cba5104379b",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p003": "cce944c7d02c6a0939c2819f33993bb1facc5f308aa38fa6e4a33e8a20ab4794",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p005": "4661038517e86ff8302ce2dd52b0938a9f9ec5ea4bfff5d2aa89433a57d8f20e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p0075": "c896b3fba90f5af262ce8d5f4a08d893dac0041d34accda7bc524cc837e7d39e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p01": "24bbdbdb60e609317368e76ae3d9fc626a7cf38124cedf95834ccdfe0ccc4e0d",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p02": "3b2695ab3c2496db9cc7db8b6d6d32cfbb27c7c14b96123067ce39a6db8acb70",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p03": "d87244593920378facf31abe50503db83d9018258043a72f40c406c53e45a7d3",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p05": "816d98e9d85184f701d142a424c7ba16e90822217d5ae0cd9a3fc33b2dcaa3e9",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p075": "4b9ca7b012400388292f6b2371d99477108184e9227146ef0844b256a81c9303",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p1": "aef6f3c16444e1d6793cb4771157477e5c5837dc66fffa28986e598f5e379568",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p3": "0a476728902b527b5920662452d2a2ea9cc747de3f361e9785256ebb8244d2d8",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta1": "a97530a00f874616fe1a699dd2e5b4eb3be95ec2abf90efd1fd26fd328d6281a",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta1e-05": "e1037e7ff4c97c47baa05da7a7bd89e936b2e4826d06c58c9943d05484bf5e25",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta3e-05": "ae0570dfb295ad4296fe1fc1f8fdf0137541826799b00ca3184bfbde3fe6690a",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta0p03": "43a6f3a3b4cc93880ac94db9cec8997a65cf22bf05313bb8fbb7daf7dee24603",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta0p09": "b5af36ed03b55fe2884cbadd4335b3a146d8101bbca52587965ddfa2254b588f",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta0p3": "fea02c00055ac7038d94a26ee3f9c41265bd94381fd5420da7420f3beddd0e45",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta0p9": "a8f2fedbf76e3d5ef707651b28f25fb175bd4e0abb7422157ba55884a1922894",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta15": "ac6e18bbb5adef9f3ab554b4423806039acd64ba9d5597df2847e29eb9e5ac37",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta150": "ca29db82974a0afa0965d81936fbee3a3d13f01851eb1378a5fbb231aadd3fca",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta225": "7089b23d33673c65545863030ccc0a940ffd162e655521111b493657296d0f89",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta22p5": "1b3e02fe9907e08965574d3f6ebb3515117838e7e846677e856ddfa100d46285",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta3": "9e4978d05a33bcd460edf84d340eb74f5368e451b91a0ca7c1b4b6c2c47411d8",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta30": "e861e395a70fdc3a7163ec438768b6cef489b949bcd6b1222ec1a9f968467410",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta300": "c1420a5f820c8b4e4a128827b6a43a09db63befea9e1c14ab372c46f52482a06",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta3000": "591b0905fb88d86b4a512b5f10d4d5151ec15f818017d68e67159d762e7c844e",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta6": "e605b79f740a0928e6f6d9e76facfb5828fa822e42f691860bdc1373e5a14b43",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta60": "31798077a3d16a5207b1cedcfd5a36d9468588baba0aea8f3a9f64f5a44f48af",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta9": "a4326f8045e6cced8407a28512d0667cef6e6d43632f8f4548fa095c3beeee2c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta90": "5b2f83d25c47a0841c4b32c90ebe620e406f3740be115d1bb12b7401f1eb709c",
+    "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_ours_beta900": "1faef3c336737686d5ce56f6002ddbc8371005501a1cd9f7f3d2b84b1adffdca"
+  },
+  "state": "validated",
+  "whole_gradient_all_batch_requirement": true
+}

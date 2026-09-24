@@ -1,0 +1,72 @@
+{
+  "source_run": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1",
+  "new_simulations": 0,
+  "raw_rows_verified": 2592,
+  "summary_cells": 72,
+  "checkpoint_sources": {
+    "baseline": {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "run_dir": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/bundles/baseline_read_noise_20260916/conv3/beta_10/sigma_0/seed0",
+      "best_epoch": "30",
+      "T": "8",
+      "K": "8",
+      "base_beta": "10.0",
+      "injected_beta": "10.0",
+      "seed": "0",
+      "checkpoint_selection": "maximum_validation_accuracy",
+      "runtime_dtype": "float64",
+      "best_model_sha256": "57074f5e91bd1035d64062b47ed0fbf34fe504a960441f09bc5ded4453501beb",
+      "weights_best_npz_sha256": "e46493f41be27a168d3af94b1abfc3c48eb8a40e1427a5a6c5156df79f1a28ac",
+      "qualification_source": "{\"iteration_decision\": \"paper_ready_results/eqprop_drift_gradient_report_20260916.md\", \"known_seed1_gradient_failure\": true, \"known_trained_free_state_residual_failure\": true, \"launch_basis\": \"user_directed_single_seed_read_noise_diagnostic\", \"learning_rate_policy\": \"exact inherited baseline BPTT/EP Adam vector; biases fixed at zero\", \"paper_ready\": false, \"seed0_gradient_check_passed\": true, \"selection_evidence\": \"paper_ready_results/conv3_baseline_beta_tk8_20260916.md\", \"three_seed_beta_confirmed\": false}"
+    },
+    "ours": {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "run_dir": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/bundles/table2_wide_ep/conv3/ours/seed0",
+      "best_epoch": "23",
+      "T": "8",
+      "K": "8",
+      "base_beta": "0.046875",
+      "injected_beta": "3.0",
+      "seed": "0",
+      "checkpoint_selection": "maximum_validation_accuracy",
+      "runtime_dtype": "float64",
+      "best_model_sha256": "ffed73fcc56bd68a1a53625dd0f24f7dc8d8c6c83366837aadf51fe0c2ed4007",
+      "weights_best_npz_sha256": "d270c2dd1803e9b1acdbeaf3ddb7fb3c6b567633612f5d9933b739606ca3e37b",
+      "qualification_source": "{\"conv3_t8_residual_deviation\": null, \"gradient_gate_override\": \"user_directed_exploratory_launch\", \"gradient_gate_passed_rows\": 213, \"gradient_gate_total_rows\": 216, \"learning_rate_policy\": \"exact inherited BPTT Adam vector; all Bias_* rates remain zero\", \"paper_ready\": false, \"source_config\": \"configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/03_ours_adam_bias_zero_seed0.json\", \"source_config_sha256\": \"4d28abeabe50f9ef595bafc94c0e676ca6676668149956588a7d82a0be74a831\", \"study_config\": \"configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json\"}"
+    },
+    "legacy": {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "run_dir": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/bundles/table2_wide_ep/conv3/legacy/seed0",
+      "best_epoch": "23",
+      "T": "8",
+      "K": "8",
+      "base_beta": "2.44140625e-07",
+      "injected_beta": "0.001",
+      "seed": "0",
+      "checkpoint_selection": "maximum_validation_accuracy",
+      "runtime_dtype": "float64",
+      "best_model_sha256": "8b56f4581b644171160123ac322ddb3ca4933164c22c9c5e02b226a7afb768ec",
+      "weights_best_npz_sha256": "1304ca0fbfa32e8858b0e71616506f22f14673a5c0605a6d45c57768b0202c4e",
+      "qualification_source": "{\"conv3_t8_residual_deviation\": null, \"gradient_gate_override\": \"user_directed_exploratory_launch\", \"gradient_gate_passed_rows\": 213, \"gradient_gate_total_rows\": 216, \"learning_rate_policy\": \"exact inherited BPTT Adam vector; all Bias_* rates remain zero\", \"paper_ready\": false, \"source_config\": \"configs/conv/perfectdiode_conv123_zero_bias_ordinary_mnist_seed0_20260805_v1/conv3/05_legacy_adam_bias_zero_seed0.json\", \"source_config_sha256\": \"06f658e108463da0612ca9322c7c6e6bd92c18640ff0f12c37259a96b79e9784\", \"study_config\": \"configs/conv/perfectdiode_conv123_zero_bias_adam_eqprop_one_decade_ordinary_mnist_10_30_30ep_seed0_20260816_v1.json\"}"
+    }
+  },
+  "definition": "sqrt(sum(delta_v**2)/number_of_state_coordinates), pooled over samples, channels and spatial positions",
+  "source_hashes": {
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/displacement.csv": "4701f9e05b23c2fe803ce25f579be531128e6f53f7730221b9679b2d96da9dd9",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/cohort.json": "3e21a3cc8fcdbf1a897caaf888027364e71daca49e4f7ef3d029a164e1783075",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/config.used.json": "dffcf73f6a1401254391bef8c8cb3310f2517161fd512a97e3436007a6d3c51b",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/section43-eqprop-mechanism-20260918-v1/full-1/result.json": "7bed310c7e1da61a4035d16147e652e85b128f14d62bf6fa5fc990af1e749452",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/section43_phase_displacement_summary.csv": "7601534552b81d47f734c52174a0ad0a1c15b2b78efc3ba5b6cfdb9797e4d597",
+    "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/plot_section43_conv3_trained_displacement.py": "e2c8ec822f44c47d67e664c347a16189c7337c2a24c874b553350c822ef51b5d"
+  },
+  "artifacts": {
+    "section43_conv3_trained_displacement.csv": "b40976ae2b1a26d906a8dd9631d112c8a89b0b82ba5e142294a211dfc3d6b756",
+    "figures/section43_conv3_trained_displacement.jpg": "acc2652de9da39a04d9a901daebecc15747373019db86792a37ab3ba64fd573c",
+    "figures/section43_conv3_trained_displacement.pdf": "c3882db647972c551e1e3078f8e74909fe9d59df8fd6f7589c901f11a133a2f9",
+    "figures/section43_conv3_trained_displacement.png": "924688b241401c2208b0d70ded934fbb22bf21fed9b52440ab21157427ebde06",
+    "figures/section43_conv3_trained_displacement.svg": "b949531bee9ae599b198e4b5ef100d64e62f50e22c1a45137a98b33ac1c39f54"
+  }
+}

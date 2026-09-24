@@ -1,0 +1,13 @@
+grouping,threshold,norm_gate,accepted,accepted_stable,accepted_failed,rejected_stable
+matrix,0.9,False,18,15,3,2
+matrix,0.9,True,8,7,1,10
+matrix,0.95,False,14,12,2,5
+matrix,0.95,True,8,7,1,10
+matrix,0.99,False,8,8,0,9
+matrix,0.99,True,7,7,0,10
+whole,0.9,False,23,17,6,0
+whole,0.9,True,23,17,6,0
+whole,0.95,False,23,17,6,0
+whole,0.95,True,23,17,6,0
+whole,0.99,False,23,17,6,0
+whole,0.99,True,23,17,6,0

@@ -1,0 +1,374 @@
+{
+  "new_simulations": 0,
+  "selections": [
+    {
+      "threshold": 0.9,
+      "scheme": "baseline",
+      "beta": 404.141105702,
+      "origin": "refined_grid",
+      "minimum_cosine": 0.9019773965148342
+    },
+    {
+      "threshold": 0.9,
+      "scheme": "legacy",
+      "beta": 4.42250110273,
+      "origin": "refined_grid",
+      "minimum_cosine": 0.9026334779561918
+    },
+    {
+      "threshold": 0.9,
+      "scheme": "ours",
+      "beta": 5.26875648112,
+      "origin": "refined_grid",
+      "minimum_cosine": 0.9003483459817969
+    },
+    {
+      "threshold": 0.99,
+      "scheme": "baseline",
+      "beta": 10.0,
+      "origin": "original_grid",
+      "minimum_cosine": 0.9948864048327192
+    },
+    {
+      "threshold": 0.99,
+      "scheme": "legacy",
+      "beta": 0.1,
+      "origin": "original_grid",
+      "minimum_cosine": 0.9911607140179312
+    },
+    {
+      "threshold": 0.99,
+      "scheme": "ours",
+      "beta": 0.987333678708,
+      "origin": "refined_grid",
+      "minimum_cosine": 0.9911233173217202
+    }
+  ],
+  "initialization_cohort": [
+    [
+      0,
+      "5e6e9148fdcb6eec4b64b411cd4fa6a067dbc64ee7271422f3d9f22d3c86bf11",
+      "ee5832582e375085ffa5a638206bab00a5d250d166731acc548b3b466b826010"
+    ],
+    [
+      1,
+      "0568e4501f7fe477bce026aeef8a516914e0d623b679bfc8d597928067f09b2b",
+      "62199f32b30361a5c645abcb3cb7b4854e0de382cb450c3896cf1580bbd6c8b1"
+    ],
+    [
+      2,
+      "5235bd2cfcf0f4a775c629b0f37a94517218ff4dab447c0ed617d32c8b0aafc6",
+      "97ff1acbaa2419d6218e55752bc9745d07cca8818a4378bd4c511973ed22bc02"
+    ],
+    [
+      3,
+      "e0b8fc20cecfd748d04b2bed794f72167bdb7663522823620f374b4b11b1d095",
+      "12740560eb236b3c6c227fa9d8267a9f1d3dab382401fe4a9a2152191c0b3d38"
+    ],
+    [
+      4,
+      "45a687bb68a033e374f252227eb06a0d53cdf66186dd2ad096b76b408ca64204",
+      "1d29f82cb9f40850f146a6a4b28240e6e6981253cd17ca9679668e8c275f8f96"
+    ],
+    [
+      5,
+      "8a2db0580e3c91316330cbaefbf6e2b23c191040c616185525090689698f5cfb",
+      "011bbec475b44e303a12abda35eb75163bfb02d30bee8ea07fea24f8aeecc460"
+    ],
+    [
+      6,
+      "9d9111c43cadad8a12d432132e8852e951d9cbf9b12c63ef15516b35d5621c33",
+      "3b5b7cca1a0098f98544f988f7072200b0ac4ec8e46a649824c96fe98a3b6323"
+    ],
+    [
+      7,
+      "8ffb9f6f73a72c28afab18ed2ef918df57c63087c49a922db30b777f49c84b23",
+      "e9035877c3957f39c415ae96d81233c6ddb7473789f47db34dedb8e5d9b230bd"
+    ],
+    [
+      8,
+      "3abf888029ab8719ff08a725326be670dfa6c5ae1761feba3683484187a6a705",
+      "9aa9838c66d793f7021c4096d71eef8dedaa773e1a071e62dd2dba2b93969c9e"
+    ],
+    [
+      9,
+      "bc09bc4663ff042dc54b7776ad0248291ed50705e1eddae191ed8176a7467bca",
+      "f1bb0f0305122369737d85864bb6ead072476a574ba690170bb3ead995b00503"
+    ],
+    [
+      10,
+      "ca27d14bdf17c1e4708e9654bd72c44daba74664ec539b0f0cbf2873e34f60b7",
+      "cc1a828ab416c3ec459837c56d9c297761e866d1ac3d3d1200e25fdda8ddd60d"
+    ],
+    [
+      11,
+      "b9e2cb0b50e454c6700a673c46ab6a95581a4e9913423ef88e66937bae424819",
+      "8e24caffacfa001de4e1f0de01a73c0f8e0f6dac3f1945606fc4fe415e35c5ca"
+    ],
+    [
+      12,
+      "fb602201a77ad96fb09f5090dd0e40d3005f8dfd59921beff80627435d662856",
+      "2fd5fbbec0cf096cb8b90f9a68c04615615f17dc36e5d2b9f1a98150afa4a25a"
+    ],
+    [
+      13,
+      "71ad63973f3431e1934190caa108f22ec47029525a8ecfbbe715c3ffc7588c44",
+      "1df14db99e38b231a5b1bdeec3902a70d2ace5b076f078d84bf652a9d9eacbc2"
+    ],
+    [
+      14,
+      "402134862179134bdbacc16696d993dc2d3488c1fca8344ac10f7c0b4491e938",
+      "9a9dfc9ca88b4018d6d2a5ddb0ed1cecc3c20597099a327dc0a2c712b90a220d"
+    ],
+    [
+      15,
+      "7514d9d82e8b45acf45ba3c4b729fb19e77779ddf6a95ae487e60b4ad0b1bb1e",
+      "3087f9fecb9fe437d068a0b8b1a253be4371f51c49ec3ef39308162f434dfe4b"
+    ],
+    [
+      16,
+      "b7ecee7fa27f25580f8865a38fd34d19751cd7a741d09ab4d62ea1c94ca2d3ad",
+      "32a192f854b6e93371d01bce0d6f5b642a53ae455e73ea2390c7132846a12a70"
+    ],
+    [
+      17,
+      "c9dbdd01a3435e623c1dd165c572bfae37c66987638b56d97f921866dbd0c044",
+      "6189b7db12a02e7071174caaf81adf66c67da016fc863a26aa888b6bc081952f"
+    ],
+    [
+      18,
+      "065a3eede601b248f74d61afa050fbae0029e9aee94061b3b3f10234b4a2e5ca",
+      "e28bac7ccf423a16a4c11fdcd6c5588b1c7781c356545c35e37ea677b7b3573a"
+    ],
+    [
+      19,
+      "77bec4bc63c259f040bab4eacb57f79eb4cbb917c68eb89c790bf111ea039c22",
+      "7fc227c5cfa6dad4c7679a1856728834c6730394b9315a136a98c5433a2d840a"
+    ],
+    [
+      20,
+      "fdccd69317b25bd98e9c303e26816dbce8fc72511d600ee92a6abac477ec4153",
+      "4b1a98af444f10a6d5af2240292015da5a58f1541b9841016e4a30e7f0d5b6c4"
+    ],
+    [
+      21,
+      "c3bb16aa534ebfbc7dd4d94bc51a51d3585661dec7ee073799a65e2c467c43d3",
+      "742f164632a181bc694ee96e0e98b709b61027a27b5dceb6e132ad91b2751f70"
+    ],
+    [
+      22,
+      "5ce8889ca781810e4760b28eb5c2568852ddc2106cd90d0764b61af8b780dd37",
+      "549a53d656149147ea5cf8d39290da73b03e5308fa5eaf25c5c3b7e2b05a3fbe"
+    ],
+    [
+      23,
+      "ffdbc6ee500f1ae524cda9bf3c7230af9372e9bf866290369966027b32ec4d85",
+      "a39fb75aa999dc19bc6b5033817ceee603f5ef7b83e28d59497fa66d2338ec22"
+    ],
+    [
+      24,
+      "e323e1fdaa847933fd154ab0b1e711ca5b9a4b51b2c3426e791eddcb6b2a95bc",
+      "ee5c7ce3538d75406fbcb597159b3dab4eef5ca88591849200a2a4f7ef47e715"
+    ],
+    [
+      25,
+      "f571aaa309a6225d27a0ac4ca5fb7bfef49d68eacd281cc882c6591e8045ad3e",
+      "784114dff0fd1cae52ffb566fb8c1839710d9f08bff39c84c6d4317659b3d1c3"
+    ],
+    [
+      26,
+      "a8dfd886ed6d09a6bb4bfbb255442b119c762ad1df74ef1751c77280981da52f",
+      "1702f8fbece87ff94a43c2689124b6ecdf334304f5bf916a1c233eed7e769454"
+    ],
+    [
+      27,
+      "0a8d55816f5275da8760398f10b86a2be2e9950a94c88964a27ac8aa1e28f116",
+      "b185a249133a58a8475c188b34f0fe39aaeecced04a973d319e29a07632fd437"
+    ],
+    [
+      28,
+      "5eade3f616d594207e5f9f1ee9479c86510da4f47af42e132709f4086328df52",
+      "fa67744b81631486be1b7cb48c8ccef97abac6a7e819788316dbfd22a27be3c8"
+    ],
+    [
+      29,
+      "2762008eb64e86a254dc5e86a41fec525074a213ee0d441ad479d91d48ba63df",
+      "a056b86e02d43031de7f57a38582619bb1ededb505fae3cee3803bb0ec4c1dee"
+    ],
+    [
+      30,
+      "67fa690446c9bba27b4e73508302289164003b4fa346cae6aca5cd641391cc88",
+      "fe443534689f9826b68a4a6485cb721ef1d006e50e4425f479c2d7b0ce6e7484"
+    ],
+    [
+      31,
+      "e8fe071e42a654cd1f0051a8b5a09debb02e2fde80aded9653101cfc8d01e8ac",
+      "7f8377d2a32cb53f9fa59dbbbe7b958f1ad3e924169596b00b376d83a5d7fa42"
+    ],
+    [
+      32,
+      "9fd490c76c476ea3c494492a9a800c9dcc24226042f861bf4905ffaa8ca3c4d8",
+      "1f31855d8966b2a0810e7e3f5820156a0e9829b5ade4ce46074efa4de6b3b885"
+    ],
+    [
+      33,
+      "125ea85cb0fe7032f919ff36de42fe73f909a90de85502b2d3d731a45e0f7d4d",
+      "7915eacb66b4126eff0b2ede70722d01438a1bc025ae694936904014d81c61b9"
+    ],
+    [
+      34,
+      "7a633e1dc69952915918ae627317d994ec19a35c8934b9984939f6430ec26063",
+      "5fc6a26451ec1a19ac229c067b3a136e9860104808d97c7081c2d06ffbbe4391"
+    ],
+    [
+      35,
+      "aba9d4719c37dc0c1ee450b08c2bfa133b83ba2cd1d2fe23a02c963b0439eb33",
+      "9e1eadb01c9ba3a51160b91daa75a551edd7e69c3b1a719a55aba6cc249dd925"
+    ]
+  ],
+  "calibration_bundles": [
+    {
+      "bundle": "results/eqprop-beta-refinement-20260919-v1/local_conv3/production/conv3_baseline_beta404p141105702",
+      "validated": true,
+      "hashes": {
+        "result.json": "fbd8f14e8d056aeded669c3a679b5af1f504525d3174f4b90f6958b8134d32cb",
+        "layer_metrics.csv": "a7b708bd25c93f1a420f1e6904e9f7847367cc5e7e1917f866d23298d3c7dcd6",
+        "state_displacement.csv": "59192d13d484a65f875ad19681646f2a7832bcd6be8d62803f0001eb4171db43"
+      }
+    },
+    {
+      "bundle": "results/eqprop-beta-refinement-20260919-v1/local_conv3/production/conv3_legacy_beta4p42250110273",
+      "validated": true,
+      "hashes": {
+        "result.json": "0c527e85b3798730b58eada88cca7ef56b803196c0ee1eb98f00d53c3fc87d08",
+        "layer_metrics.csv": "1f89787e36cd9ab136cb80182f32a748448d88746c318fb2c9f7fc13147c0c20",
+        "state_displacement.csv": "51f859ab15ec6e030b773a8e5edf3bb5616294a6798b7fefe33cd6027326ad16"
+      }
+    },
+    {
+      "bundle": "results/eqprop-beta-refinement-20260919-v1/local_conv3/production/conv3_ours_beta5p26875648112",
+      "validated": true,
+      "hashes": {
+        "result.json": "9b5071cb295af791f6d2c34cff574237dbb32a406d37c4bb3cbd94ec313007fd",
+        "layer_metrics.csv": "529d1e5d06a425790faf428113f3a35b1d3e3eb6b255c9a452b01100424de544",
+        "state_displacement.csv": "0473cbde3950126bd8131f3b2a9c9367d93db821f90cb5918075b104c9c30983"
+      }
+    },
+    {
+      "bundle": "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_baseline_beta10",
+      "validated": true,
+      "hashes": {
+        "result.json": "e009c11f3f7f71fc491b31ff562b67e78336394d4c9abac098ab9a2e17b8b4bd",
+        "layer_metrics.csv": "7f093bbcfe1cebf441b3a6ddb498b661c2964854b19bbd5a0c13856c076dd3f2",
+        "state_displacement.csv": "12713f53bf812e0e9cf902fe5cb24ca6acb93cc053ad9a644be5e356e8631a57"
+      }
+    },
+    {
+      "bundle": "results/eqprop-beta-rule-comparison-20260918-v1/production/conv3_legacy_beta0p1",
+      "validated": true,
+      "hashes": {
+        "result.json": "aef6f3c16444e1d6793cb4771157477e5c5837dc66fffa28986e598f5e379568",
+        "layer_metrics.csv": "9e612fcc480a4efb8ac1f3377bda22e69029c8ee27c75bf3e94f34423c2d474e",
+        "state_displacement.csv": "2adb5e3b95cf2da0d996d8f60ffaf355b41f4f46a2f4c8c9f4dee69c3ea31e54"
+      }
+    },
+    {
+      "bundle": "results/eqprop-beta-refinement-20260919-v1/local_conv3/production/conv3_ours_beta0p987333678708",
+      "validated": true,
+      "hashes": {
+        "result.json": "a630191f60179f0d767f5a8646f86fceb08032b0eb01b98cb6955c7e9b4b0f1f",
+        "layer_metrics.csv": "740b9e10b9b7770ecc01145ce7dc91aedce7790d54376ff8ad73b181fd1de1d6",
+        "state_displacement.csv": "1b3d9d8cb123d475dea4e2aa6aaed1244fef58f3baacedcea9a940a78786ddda"
+      }
+    }
+  ],
+  "accuracy": [
+    {
+      "threshold": 0.9,
+      "scheme": "baseline",
+      "beta": 404.141105702,
+      "clean_epochs": 30,
+      "clean_validation_pct": 97.72,
+      "noisy_epochs_completed": 30,
+      "noisy_final_validation_pct": 97.16,
+      "noisy_last_validation_pct": null,
+      "noisy_state": "complete",
+      "failure_detail": "",
+      "clean_bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/fifi/production/runs/000_conv3_baseline_p90_sigma0_seed0_e6d37398",
+      "noisy_bundle": "results/eqprop-conv3-p90-read-noise-1em3-20260920-v1/fifi/production/runs/000_conv3_baseline_p90_sigma1em3_seed0_8fba84f1"
+    },
+    {
+      "threshold": 0.9,
+      "scheme": "legacy",
+      "beta": 4.42250110273,
+      "clean_epochs": 30,
+      "clean_validation_pct": 98.7,
+      "noisy_epochs_completed": 7,
+      "noisy_final_validation_pct": null,
+      "noisy_last_validation_pct": 94.76,
+      "noisy_state": "failed",
+      "failure_detail": "NonFiniteTrainingError: Expected inference layer 'Layer_1' to contain only finite values at epoch=8, batch=2791. Provided value: tensor with 200704 non-finite element(s).",
+      "clean_bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/riri/production/runs/000_conv3_legacy_p90_sigma0_seed0_085d27dc",
+      "noisy_bundle": "results/eqprop-conv3-p90-read-noise-1em3-20260920-v1/fifi/production/runs/000_conv3_legacy_p90_sigma1em3_seed0_e6d35f8e"
+    },
+    {
+      "threshold": 0.9,
+      "scheme": "ours",
+      "beta": 5.26875648112,
+      "clean_epochs": 30,
+      "clean_validation_pct": 98.52,
+      "noisy_epochs_completed": 17,
+      "noisy_final_validation_pct": null,
+      "noisy_last_validation_pct": 95.14,
+      "noisy_state": "failed",
+      "failure_detail": "NonFiniteTrainingError: Expected inference layer 'Layer_1' to contain only finite values at epoch=18, batch=1638. Provided value: tensor with 200704 non-finite element(s).",
+      "clean_bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/local-acceleration/loulou/production/runs/000_conv3_ours_p90_sigma0_seed0_7c8fbb04",
+      "noisy_bundle": "results/eqprop-conv3-p90-read-noise-1em3-20260920-v1/fifi/production/runs/000_conv3_ours_p90_sigma1em3_seed0_407ed4ef"
+    },
+    {
+      "threshold": 0.99,
+      "scheme": "baseline",
+      "beta": 10.0,
+      "clean_epochs": 30,
+      "clean_validation_pct": 97.64,
+      "noisy_epochs_completed": null,
+      "noisy_final_validation_pct": null,
+      "noisy_last_validation_pct": null,
+      "noisy_state": "not measured",
+      "failure_detail": "",
+      "clean_bundle": "paper_ready_results/bundles/baseline_read_noise_20260916/conv3/beta_10/sigma_0/seed0",
+      "noisy_bundle": ""
+    },
+    {
+      "threshold": 0.99,
+      "scheme": "legacy",
+      "beta": 0.1,
+      "clean_epochs": null,
+      "clean_validation_pct": null,
+      "noisy_epochs_completed": null,
+      "noisy_final_validation_pct": null,
+      "noisy_last_validation_pct": null,
+      "noisy_state": "not measured",
+      "failure_detail": "",
+      "clean_bundle": "",
+      "noisy_bundle": ""
+    },
+    {
+      "threshold": 0.99,
+      "scheme": "ours",
+      "beta": 0.987333678708,
+      "clean_epochs": null,
+      "clean_validation_pct": null,
+      "noisy_epochs_completed": null,
+      "noisy_final_validation_pct": null,
+      "noisy_last_validation_pct": null,
+      "noisy_state": "not measured",
+      "failure_detail": "",
+      "clean_bundle": "",
+      "noisy_bundle": ""
+    }
+  ],
+  "missing_noisy_initial_cosines": true,
+  "official_test_read": false,
+  "script_sha256": "385d905b136c9d712b279185ae82780a9550e9e8a1d44d13e19acf9a4b500d85"
+}

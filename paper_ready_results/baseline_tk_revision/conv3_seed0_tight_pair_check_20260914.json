@@ -1,0 +1,24 @@
+{
+  "checked_at_utc": "2026-09-14T21:15:40.944124+00:00",
+  "pilot": {
+    "path": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/paper_ready_results/baseline_tk_revision/bundles/T3_EP_conv3_baseline_gmax0.0001_seed0",
+    "result_sha256": "f678b962b1c99e0ea55fc3b93eb05cf0ff8ad5f5d262c4a4e546e2c2ab00b3eb",
+    "epochs": 30,
+    "best_validation_accuracy": 0.7768,
+    "final_validation_accuracy": 0.7768,
+    "drop_percentage_points": 0.0,
+    "stable": true,
+    "architecture": "conv3",
+    "voltage_amp": 1.0,
+    "current_amp": 1.0,
+    "weight_max": 0.0001,
+    "base_beta": 0.1,
+    "T": 24,
+    "K": 8
+  },
+  "full_30_epoch_training_order_and_split_match": true,
+  "initialization_dtype_conversion_validated_by_collector": true,
+  "eqprop_metrics_sha256": "77005dbe628c069a6d29e04766b11ff87efd9082c2972f4383d847dc7529dae6",
+  "bptt_metrics_sha256": "e8891c4dd68f2ff9c93e5f13a2358f8146060fe044e3b846734287385454fa20",
+  "official_test_read": false
+}

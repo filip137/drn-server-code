@@ -1,0 +1,30 @@
+{
+  "checked_at_utc": "2026-09-14T08:16:16.642311+00:00",
+  "scope": "Three existing CPU one-batch EqProp smokes versus collected full BPTT references; training and validation membership and first-epoch order only. Full EqProp pilot order remains to be checked after training.",
+  "checks": [
+    {
+      "cell": "T3_EP_conv3_baseline_gmax0.0001_seed0",
+      "smoke": "results/paper-training-completion-20260911-v1/checks/conv3_ep_seed0_v11_cpu_smokes_20260914/smoke/000_T3_EP_conv3_baseline_gmax0.0001_seed0_f42e7c28",
+      "bptt_reference": "paper_ready_results/baseline_tk_revision/bundles/T3_BPTT_conv3_baseline_gmax0.0001_seed0",
+      "full_split_and_first_epoch_order_match": true,
+      "eqprop_metrics_sha256": "e382ae0ca2bd38f16e36c7764c17fc882519cdd17165d1ef47c1e6fea102e936",
+      "bptt_metrics_sha256": "e8891c4dd68f2ff9c93e5f13a2358f8146060fe044e3b846734287385454fa20"
+    },
+    {
+      "cell": "T3_EP_conv3_baseline_gmax0.0005_seed0",
+      "smoke": "results/paper-training-completion-20260911-v1/checks/conv3_ep_seed0_v11_cpu_smokes_20260914/smoke/000_T3_EP_conv3_baseline_gmax0.0005_seed0_9c5a4fd1",
+      "bptt_reference": "paper_ready_results/baseline_tk_revision/bundles/T3_BPTT_conv3_baseline_gmax0.0005_seed0",
+      "full_split_and_first_epoch_order_match": true,
+      "eqprop_metrics_sha256": "2b22b5775d783311975a0fb90eaef0a6b31ca0d235727b171beb9f2d4456cfc8",
+      "bptt_metrics_sha256": "917d8852a6d63568747798a88968f823ad271ec85543d8a6d7fd3057a9b4d64a"
+    },
+    {
+      "cell": "T3_EP_conv3_baseline_gmax0.001_seed0",
+      "smoke": "results/paper-training-completion-20260911-v1/checks/conv3_ep_seed0_v11_cpu_smokes_20260914/smoke/000_T3_EP_conv3_baseline_gmax0.001_seed0_e10af335",
+      "bptt_reference": "paper_ready_results/baseline_tk_revision/bundles/T3_BPTT_conv3_baseline_gmax0.001_seed0",
+      "full_split_and_first_epoch_order_match": true,
+      "eqprop_metrics_sha256": "b93a8121af667ea4e5ba8143b2b1c98e675044e88291a7ff1bbae954b61c21ed",
+      "bptt_metrics_sha256": "2e181b26592f780bd626e741067f8f493c2449116cf53c274284aa50eddff90d"
+    }
+  ]
+}

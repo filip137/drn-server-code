@@ -1,0 +1,17 @@
+# Bounded Conv1 BPTT: completed three-seed validation results
+
+All 27 cells are collected and validated. Values below are validation accuracy percentages at each run's best validation epoch and its final epoch. Mean and sample standard deviation use seeds 0, 1, and 2. The official MNIST test split remains unread.
+
+| Scheme | Gmax | Best: mean ± SD | Final: mean ± SD | Best by seed 0 / 1 / 2 |
+|---|---:|---:|---:|---|
+| baseline | 0.0001 | 89.847 ± 0.160 | 88.660 ± 1.240 | [89.68](bundles/table3_bounded_bptt/conv1/baseline/gmax_1em4/seed0/result.json) / [89.86](bundles/table3_bounded_bptt/conv1/baseline/gmax_1em4/seed1/result.json) / [90.00](bundles/table3_bounded_bptt/conv1/baseline/gmax_1em4/seed2/result.json) |
+| baseline | 0.0005 | 94.580 ± 0.122 | 94.293 ± 0.439 | [94.44](bundles/table3_bounded_bptt/conv1/baseline/gmax_5em4/seed0/result.json) / [94.64](bundles/table3_bounded_bptt/conv1/baseline/gmax_5em4/seed1/result.json) / [94.66](bundles/table3_bounded_bptt/conv1/baseline/gmax_5em4/seed2/result.json) |
+| baseline | 0.001 | 94.953 ± 0.232 | 94.767 ± 0.494 | [94.80](bundles/table3_bounded_bptt/conv1/baseline/gmax_1em3/seed0/result.json) / [95.22](bundles/table3_bounded_bptt/conv1/baseline/gmax_1em3/seed1/result.json) / [94.84](bundles/table3_bounded_bptt/conv1/baseline/gmax_1em3/seed2/result.json) |
+| ours | 0.0001 | 93.040 ± 0.317 | 92.573 ± 0.960 | [92.92](bundles/table3_bounded_bptt/conv1/ours/gmax_1em4/seed0/result.json) / [92.80](bundles/table3_bounded_bptt/conv1/ours/gmax_1em4/seed1/result.json) / [93.40](bundles/table3_bounded_bptt/conv1/ours/gmax_1em4/seed2/result.json) |
+| ours | 0.0005 | 95.167 ± 0.223 | 94.980 ± 0.413 | [95.00](bundles/table3_bounded_bptt/conv1/ours/gmax_5em4/seed0/result.json) / [95.42](bundles/table3_bounded_bptt/conv1/ours/gmax_5em4/seed1/result.json) / [95.08](bundles/table3_bounded_bptt/conv1/ours/gmax_5em4/seed2/result.json) |
+| ours | 0.001 | 95.167 ± 0.204 | 95.027 ± 0.361 | [95.02](bundles/table3_bounded_bptt/conv1/ours/gmax_1em3/seed0/result.json) / [95.40](bundles/table3_bounded_bptt/conv1/ours/gmax_1em3/seed1/result.json) / [95.08](bundles/table3_bounded_bptt/conv1/ours/gmax_1em3/seed2/result.json) |
+| legacy | 0.0001 | 94.940 ± 0.087 | 94.600 ± 0.333 | [94.98](bundles/table3_bounded_bptt/conv1/legacy/gmax_1em4/seed0/result.json) / [94.84](bundles/table3_bounded_bptt/conv1/legacy/gmax_1em4/seed1/result.json) / [95.00](bundles/table3_bounded_bptt/conv1/legacy/gmax_1em4/seed2/result.json) |
+| legacy | 0.0005 | 96.360 ± 0.100 | 96.267 ± 0.110 | [96.26](bundles/table3_bounded_bptt/conv1/legacy/gmax_5em4/seed0/result.json) / [96.46](bundles/table3_bounded_bptt/conv1/legacy/gmax_5em4/seed1/result.json) / [96.36](bundles/table3_bounded_bptt/conv1/legacy/gmax_5em4/seed2/result.json) |
+| legacy | 0.001 | 96.420 ± 0.080 | 96.327 ± 0.155 | [96.34](bundles/table3_bounded_bptt/conv1/legacy/gmax_1em3/seed0/result.json) / [96.50](bundles/table3_bounded_bptt/conv1/legacy/gmax_1em3/seed1/result.json) / [96.42](bundles/table3_bounded_bptt/conv1/legacy/gmax_1em3/seed2/result.json) |
+
+The projection ceilings share the same Uniform[1e-5,1e-4) initializer within each seed. Learning-rate vectors, ten-epoch budgets, T=K=4, float32 BPTT, and exact-zero biases remain fixed. These completed selection-split measurements do not satisfy the later checkpoint-sealing and official-test gates. The corresponding EP block is now complete; see the [full 54-run paired three-seed comparison](bounded_conv1_three_seed_validation.md).
