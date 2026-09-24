@@ -29,6 +29,8 @@ Pause only when a missing scientific choice would materially change the
 question, required access is unavailable, or an action would affect unrelated
 work, data, jobs, or people. Repository scientific gates protect evidential
 quality; they are not human approval gates.
+Normal contention from the authorized RTX 5090 sharing policy below does not
+require another approval; changing or stopping another person's jobs does.
 
 ## Repository Rules
 
@@ -97,9 +99,10 @@ Follow `docs/experiment_workflow.md`.
   link. If no directory can be linked yet, record the launch name, config or
   wrapper, and expected remote output root or pattern; immediately after
   `sbatch`, add the Slurm job ID and resolve the result link when possible.
-- Check the configured `main`, `akib`, `trex`, and `jean-zay` targets before
-  allocating work. Never replace or interfere with an occupied lane or
-  unrelated Slurm job.
+- Check the simulation GPU hosts listed below and the configured `jean-zay`
+  target before allocating work. An RTX 5090 being used by Ben remains an
+  authorized shared target under the policy below. Never replace, terminate,
+  suspend, or reconfigure unrelated jobs or take over their launcher lanes.
 - Run a short end-to-end smoke through the same scientific runner and config.
   For Jean Zay, the default operational gate is a synchronous local smoke
   followed immediately by one production submission; do not submit a separate
@@ -137,9 +140,92 @@ Follow `docs/experiment_workflow.md`.
   uncertainty or protocol deviations instead of withholding a supported
   conclusion for another approval step.
 
-Prefer Conv1 on `main` or `akib`, Conv2 on `akib` or `trex`, and Conv3 on
-`trex` or `jean-zay`. Jean Zay defaults to `fmu@v100`; put outputs under
+Prefer placement by model size and GPU capacity:
+
+- Conv1: prefer the smaller GPUs—Akib's RTX 3080 or the RTX 3090s on local
+  (`local`/`main`) and `nom-cool-1`.
+- Conv2: placement is flexible; choose an available GPU according to the
+  run's memory needs and expected duration.
+- Conv3: prefer the RTX 5090 machines (`trex`, `fifi`, `loulou`, or another
+  host once verified to have an RTX 5090) or `jean-zay`.
+
+These are placement preferences; preserve the scientific config and matched
+comparison requirements when choosing a host.
+Jean Zay defaults to `fmu@v100`; put outputs under
 `/lustre/fsn1/projects/rech/fmu/$USER/server_code/results`.
+
+## Sharing RTX 5090 GPUs With Ben
+
+RTX 5090 GPUs may always be considered for our simulations while Ben is using
+them, during both daytime and nighttime. His presence or high GPU utilization
+alone is not a reason to reject the host or wait for it to become idle. This
+is standing permission to share; do not ask again for each launch.
+
+- Verify the GPU model, free memory, process owners and existing launchers.
+  Identify Ben's workload from process ownership or known launcher metadata;
+  do not assume that every occupied GPU belongs to him.
+- Admit our job when its measured peak memory plus headroom fits alongside
+  the existing workload. Preserve its scientific batch size, precision and
+  config. If it does not fit, choose another target or wait for memory.
+- Use our own launcher/session and result path. Leave Ben's processes, queues,
+  priorities, MPS service and GPU-wide settings intact. Other users' occupied
+  lanes retain their existing protection unless separately authorized.
+- Measure our throughput under actual sharing and use that rate for duration
+  estimates and deadlines. Record shared use in the run's environment notes;
+  do not report shared-GPU timings as exclusive-GPU benchmarks.
+
+## Overnight Simulations
+
+Proactively use **22:00–08:00 Europe/Paris** for authorized long simulations.
+Prepare configs, inputs, smoke checks and the run queue during the day, then
+arm a detached, dated launcher for the next night window. Do not require Filip
+to return at 22:00 or approve each night of an already assigned experiment.
+This schedules work within its existing scientific scope, budget and deadline;
+it does not authorize an open-ended search or invented follow-up experiments.
+
+Default to completing or safely checkpointing and pausing overnight workers
+by 08:00, unless the recorded run plan permits daytime continuation. A pause
+must preserve the full state needed for scientifically equivalent resumption.
+If the runner cannot do that, admit only runs expected to finish within the
+window with a margin. Do not truncate epochs or change scientific configs to
+fit the night. Pending work may use a later night within the original budget.
+
+Nighttime is an opportunity, not evidence that a GPU is idle. Recheck live
+memory, users and queues at actual launch; the Ben/RTX 5090 sharing permission
+still applies. Keep jobs observable and monitored, and collect a morning
+summary of completed, paused, failed and unstarted cases. Follow the concrete
+[overnight queue workflow](docs/experiment_workflow.md#overnight-runs).
+
+## Simulation GPU Inventory
+
+The following machines are authorized simulation resources. This is a hardware
+and access inventory, not a statement that their GPUs are idle. Check live GPU
+memory, utilization, and running jobs immediately before allocating work.
+
+| Machine | Access / launcher target | GPU inventory | Verification |
+|---|---|---|---|
+| Local (`nom-cool-2`) | `local` foreground or `main` tmux | 1 × NVIDIA GeForce RTX 3090, 24 GiB | Queried 2026-09-11 |
+| `akibscomputer` (Akib) | SSH `akibscomputer` → `filiposana@172.24.6.229` (hostname `integnano-akib`); launcher `akib` still uses SSH `akib` | 1 × NVIDIA GeForce RTX 3080, 10 GiB | Queried via `akibscomputer` on 2026-09-11 |
+| `nom-cool-1` | SSH `filip@nom-cool-1` | 1 × NVIDIA GeForce RTX 3090, 24 GiB | Queried 2026-09-11 |
+| `trex` | SSH `filip@trex`; launcher `trex` | 1 × NVIDIA GeForce RTX 5090, 32 GiB | Queried 2026-09-11 |
+| `riri` | SSH `filip@riri` | Model, count, and memory unverified | SSH authentication failed on 2026-09-11 |
+| `fifi` | SSH `filip@fifi` | 1 × NVIDIA GeForce RTX 5090, 32 GiB | Queried 2026-09-11 |
+| `loulou` | SSH `filip@loulou` | 1 × NVIDIA GeForce RTX 5090, 32 GiB | Queried 2026-09-11 |
+
+Memory above is nominal capacity; `nvidia-smi` reported 10,240 MiB for the
+RTX 3080, 24,576 MiB for the RTX 3090s, and 32,607 MiB for the RTX 5090s.
+Re-query unverified hardware before choosing a workload for it.
+
+`local` and `main` share one physical GPU host. `akibscomputer` is both the
+historical tmux name and a working SSH alias for Akib, not an additional
+machine. Prefer SSH `akibscomputer`: SSH `akib` was unreachable during the
+earlier check on 2026-09-11. The configured launcher target `akib` still uses
+SSH `akib`; verify that route or update its host before using the launcher.
+`nom-cool-1`, `riri`, `fifi`, and `loulou` are not currently named targets in
+`configs/experiment_targets.json`; use a direct SSH runner or configure the
+target before using `experiments.launch`, and verify the remote checkout and
+Python environment. Jean Zay remains available through the existing Slurm
+target and its allocation-specific GPU resources.
 
 ## Environment
 

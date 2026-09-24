@@ -1229,6 +1229,7 @@ def _train_image_task(
     dataset_root_override=None,
     gradient_trace_samples_per_epoch=0,
     checkpoint_every_epoch=False,
+    epoch_chunk_size=None,
 ):
     config_path = Path(config_path).expanduser().resolve()
     config = load_config(config_path)
@@ -1302,6 +1303,9 @@ def _train_image_task(
             raise RuntimeError(f"Requested CUDA device {requested_device!r}, but CUDA is not available.")
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
 
     if sanity_check:
         grad_before, grad_after = _single_conv_gradient_check(device)
@@ -1440,6 +1444,14 @@ def _train_image_task(
             raise FileNotFoundError(
                 f"Expected init_checkpoint_path to exist, got {init_checkpoint_path}."
             )
+        for expected_hash in (
+            config.get("initialization", {}).get("checkpoint_sha256"),
+            config.get("weight_ceiling_sweep", {}).get("initializer_checkpoint_sha256"),
+        ):
+            if expected_hash is not None:
+                observed_hash = hashlib.sha256(init_checkpoint_path.read_bytes()).hexdigest()
+                if observed_hash != expected_hash:
+                    raise ValueError("Initialization checkpoint SHA256 mismatch.")
         energy_fn.load(init_checkpoint_path)
         print(f"[mnist_train] Initialized model from checkpoint {init_checkpoint_path}")
     else:
@@ -1633,6 +1645,7 @@ def _train_image_task(
             effective_batches_per_epoch=effective_batches_per_epoch,
             samples_per_epoch=gradient_trace_samples_per_epoch,
             dataset_provenance=dataset_provenance,
+            resume=bool(epoch_chunk_size and (run_dir / "continuation.pt").exists()),
         )
         optimizer_step_callback = gradient_trace_recorder
 
@@ -1752,6 +1765,26 @@ def _train_image_task(
     best_model_path = run_dir / "best_model.pt"
     stop_training = False
     epoch_checkpoint_records = []
+    continuation = None
+    first_epoch = 0
+    if epoch_chunk_size is not None:
+        if checkpoint_every_epoch:
+            raise ValueError("Use continuation checkpoints without diagnostic epoch checkpoints")
+        from experiments.epoch_continuation import EpochContinuation, continuation_contract
+        continuation = EpochContinuation(
+            run_dir=run_dir, config=config, epochs=epochs, chunk_epochs=epoch_chunk_size,
+            parameters=params, optimizer=optimizer, estimator=estimator,
+            loaders=loader_result, recorder=gradient_trace_recorder,
+            contract=continuation_contract(
+                config, epochs=epochs, max_batches=max_batches, max_test_batches=max_test_batches,
+                device=device, gradient_trace_samples_per_epoch=gradient_trace_samples_per_epoch),
+        )
+        restored = continuation.restore()
+        if restored is not None:
+            first_epoch = restored["epoch"]
+            history = restored["history"]
+            best_test_accuracy, best_epoch = restored["best_accuracy"], restored["best_epoch"]
+            print(f"[mnist_train] Continued exact state after epoch {first_epoch}", flush=True)
     if checkpoint_every_epoch:
         epoch_checkpoint_records.append(
             _save_epoch_diagnostic_checkpoint(
@@ -1762,7 +1795,7 @@ def _train_image_task(
                 parameters=params,
             )
         )
-    for epoch in range(epochs):
+    for epoch in range(first_epoch, epochs):
         running_loss = 0.0
         running_correct = 0
         seen = 0
@@ -2031,6 +2064,14 @@ def _train_image_task(
             for group in optimizer.param_groups:
                 group["lr"] *= lr_decay_value
 
+        if continuation is not None and continuation.pause_after(
+            epoch + 1, history=history, best_accuracy=best_test_accuracy, best_epoch=best_epoch
+        ):
+            if writer is not None:
+                writer.close()
+            print(f"[mnist_train] Checkpointed planned pause after epoch {epoch + 1}/{epochs}", flush=True)
+            raise SystemExit(75)
+
     if stop_training:
         print("Epoch callback requested early stop; summarizing current history.")
 
@@ -2137,6 +2178,8 @@ def _train_image_task(
 
     metrics = {
         "run_dir": str(run_dir),
+        "cuda_peak_allocated_bytes": torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None,
+        "cuda_peak_reserved_bytes": torch.cuda.max_memory_reserved(device) if device.type == "cuda" else None,
         "training_algorithm": training_algorithm,
         "runtime_dtype": runtime_dtype_name,
         "initial_parameter_state_sha256": initial_parameter_state_sha256,
@@ -2323,6 +2366,7 @@ def train_mnist_conv(
     dataset_root_override=None,
     gradient_trace_samples_per_epoch=0,
     checkpoint_every_epoch=False,
+    epoch_chunk_size=None,
 ):
     return _train_image_task(
         config_path=config_path,
@@ -2355,6 +2399,7 @@ def train_mnist_conv(
         dataset_root_override=dataset_root_override,
         gradient_trace_samples_per_epoch=gradient_trace_samples_per_epoch,
         checkpoint_every_epoch=checkpoint_every_epoch,
+        epoch_chunk_size=epoch_chunk_size,
     )
 
 
@@ -2521,6 +2566,8 @@ def main(argv=None):
         help="Save model and optimizer diagnostic checkpoints at epoch 0 and every epoch.",
     )
 
+    parser.add_argument("--epoch-chunk-size", type=int, default=None,
+                        help="Pause with complete optimizer/RNG state after this many epochs per invocation.")
     args = parser.parse_args(argv)
     config_path = Path(args.config).expanduser().resolve()
     config = load_config(config_path)
@@ -2619,6 +2666,7 @@ def main(argv=None):
             args.gradient_trace_samples_per_epoch
         )
         train_kwargs["checkpoint_every_epoch"] = args.checkpoint_every_epoch
+        train_kwargs["epoch_chunk_size"] = args.epoch_chunk_size
 
     history = train_fn(**train_kwargs)
     print("Training history:", history)

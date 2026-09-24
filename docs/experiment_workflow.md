@@ -72,6 +72,55 @@ not the current target name.
 
 Check live GPU/lane/scheduler availability immediately before launch. Keep one
 scientific surface on one target and record that target in its artifacts.
+Apply the [RTX 5090 sharing policy](../AGENTS.md#sharing-rtx-5090-gpus-with-ben):
+Ben's workload or high utilization alone does not block admission when our
+measured memory requirement plus headroom fits. Preserve his processes and
+launcher lanes; measure expected runtime under sharing.
+
+## Overnight Runs
+
+Use **22:00–08:00 in Europe/Paris** for long runs within an assigned experiment.
+Prepare during the day and arm the queue before the window begins; no new
+human approval is needed for already authorized cases. The default is to
+release overnight GPU workers by 08:00. Record any permitted daytime
+continuation explicitly in the run plan.
+
+1. List the exact pending configs/commands, target, priority, total budget,
+   expected duration and result paths. Add the persistent `planned` directory
+   row before creating outputs or arming the queue. Complete the applicable
+   smoke and scientific gates and verify staged inputs. Retain the stricter
+   immediate-smoke/submission rule for Jean Zay jobs.
+2. Use one readable, study-local queue script launched through tmux or
+   SSH/nohup, with a unique session, log, PID/handle and exit record. Record
+   concrete start/end dates with the Europe/Paris offset; account for the
+   midnight crossing and daylight-saving changes. If already inside the
+   window, use the remaining time. An expired window advances to the next
+   night within the study deadline; it must not trigger an immediate daytime
+   launch. Existing dated experiment schedulers are examples, not reusable
+   standing services with valid dates or cases.
+3. At actual admission, recheck access, GPU memory, process owners and existing
+   queues. Permit Ben/RTX 5090 sharing under the standing policy. Start only
+   one copy of each intended run and use a lock to prevent duplicate queue
+   controllers. Default to one of our training workers per physical GPU;
+   this can coexist with Ben. Preserve matched-pair placement requirements.
+4. Base admission on measured throughput, including contention, and reserve
+   time for checkpointing and shutdown. Admit a complete run, or a verified
+   resumable segment, that fits the remaining window. Resume with model,
+   optimizer, scheduler, RNG/data-order and any BN/gain state intact. Retain
+   the original training horizon. Do not assume a weights-only checkpoint,
+   SIGSTOP, or a forced kill provides a scientific continuation or frees GPU
+   memory. If exact resumption is unavailable, select a shorter authorized
+   case that fits; leave other cases explicitly unstarted.
+5. Keep the detached launcher and worker runtime limits effective after an
+   SSH disconnect. Monitor processes and actual artifact/epoch progress at
+   least every 30 minutes under the normal watchdog workflow. Preserve exit
+   status and distinguish planned pauses, numerical divergence and operational
+   failure. A passive queue script is not a substitute for agent monitoring.
+6. By 08:00, finish or checkpoint/pause our overnight workers unless daytime
+   continuation was recorded. Stop admitting new night jobs. Collect and
+   validate results, update `current_simulations.md`, and provide the morning
+   coverage summary. Carry remaining authorized cases to a later night only
+   within the original budget/deadline; never mark partial work complete.
 
 ## Before A Long Run
 

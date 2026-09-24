@@ -20,9 +20,10 @@ try:
         fail_run,
         runtime_context,
         start_run,
+        update_status_progress,
     )
 except ModuleNotFoundError:  # Support direct execution from the repository root.
-    from reporting import complete_run, fail_run, runtime_context, start_run
+    from reporting import complete_run, fail_run, runtime_context, start_run, update_status_progress
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -176,6 +177,7 @@ def build_train_command(
     gradient_trace_samples_per_epoch: int = 0,
     checkpoint_every_epoch: bool = False,
     skip_terminal_official_test: bool = False,
+    epoch_chunk_size: int | None = None,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -202,13 +204,15 @@ def build_train_command(
         )
     if checkpoint_every_epoch:
         command.append("--checkpoint-every-epoch")
+    if epoch_chunk_size is not None:
+        command.extend(["--epoch-chunk-size", str(epoch_chunk_size)])
     if smoke:
         command.extend(
             [
                 "--epochs",
-                "1",
+                "3" if epoch_chunk_size is not None else "1",
                 "--max-batches",
-                "1",
+                "2" if epoch_chunk_size is not None else "1",
                 "--max-test-batches",
                 "1",
                 "--skip-terminal-official-test",
@@ -400,11 +404,14 @@ def run(
     checkpoint_every_epoch: bool = False,
     skip_terminal_official_test: bool = False,
     environ: Mapping[str, str] | None = None,
+    epoch_chunk_size: int | None = None,
 ) -> dict[str, Any]:
     chosen = selected_configs(configs, index, environ=environ)
     output_root = Path(output_root).expanduser().resolve()
     results = []
     git_state = _git_state()
+    if epoch_chunk_size is not None and (epoch_chunk_size <= 0 or epoch_override is not None):
+        raise ValueError("Epoch continuation requires a positive chunk and the unchanged full epoch budget")
     if epoch_override is not None and int(epoch_override) <= 0:
         raise ValueError(
             f"Expected epoch_override to be positive. Provided value: {epoch_override!r}."
@@ -425,7 +432,7 @@ def run(
                 f"override={epoch_override}, configured={configured_epochs}."
             )
         resolved_epochs = (
-            1
+            (3 if epoch_chunk_size is not None else 1)
             if smoke
             else int(epoch_override)
             if epoch_override is not None
@@ -446,6 +453,7 @@ def run(
             gradient_trace_samples_per_epoch=gradient_trace_samples_per_epoch,
             checkpoint_every_epoch=checkpoint_every_epoch,
             skip_terminal_official_test=skip_terminal_official_test,
+            epoch_chunk_size=epoch_chunk_size,
         )
         reporting = config.get("reporting", {})
         arm_id = (
@@ -498,9 +506,20 @@ def run(
             results.append(record)
             continue
         if case_dir.exists() and any(case_dir.iterdir()):
-            raise FileExistsError(
-                f"Expected a new or empty output directory. Provided value: {case_dir}."
-            )
+            if epoch_chunk_size is None or not (case_dir / "continuation.json").is_file():
+                raise FileExistsError(
+                    f"Expected a new or empty output directory. Provided value: {case_dir}."
+                )
+            prior = json.loads((case_dir / "manifest.json").read_text())
+            status = json.loads((case_dir / "status.json").read_text())
+            if (case_dir / "result.json").exists() or status["state"] != "running" or status["progress"].get("stage") != "checkpointed_pause":
+                raise ValueError("Only an intact planned pause can be continued")
+            if (prior["configuration"]["sha256"] != config_sha256 or prior["command"] != command
+                    or prior["runtime"]["target"] != target
+                    or prior["git"].get("source_archive_sha256") != git_state.get("source_archive_sha256")
+                    or prior["git"].get("commit") != git_state.get("commit")):
+                raise ValueError("Continuation launch/source/configuration identity changed")
+            record["continued_from"] = json.loads((case_dir / "continuation.json").read_text())
 
         dataset_contract = _dataset_contract(config)
         if smoke or skip_terminal_official_test:
@@ -540,8 +559,16 @@ def run(
                 }
             ],
         }
-        start_run(case_dir, manifest)
+        if "continued_from" not in record:
+            start_run(case_dir, manifest)
         record_path = case_dir / "exact_run.json"
+        invocation_path = None
+        if epoch_chunk_size is not None:
+            start_epoch = record.get("continued_from", {}).get("completed_epochs", 0)
+            invocation_path = case_dir / "invocations" / f"after_epoch_{start_epoch:03}.json"
+            if invocation_path.exists():
+                raise FileExistsError(f"Duplicate continuation invocation: {invocation_path}")
+            _write_json(invocation_path, record)
         _write_json(record_path, record)
         try:
             completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
@@ -552,8 +579,22 @@ def run(
             fail_run(case_dir, error=error)
             raise
         record["returncode"] = completed.returncode
+        if completed.returncode == 75 and epoch_chunk_size is not None:
+            checkpoint = json.loads((case_dir / "continuation.json").read_text())
+            if not 0 < checkpoint["completed_epochs"] < configured_epochs or (case_dir / "result.json").exists():
+                raise ValueError("Invalid planned-pause checkpoint")
+            record["status"] = "paused"
+            record["completed_epochs"] = checkpoint["completed_epochs"]
+            _write_json(record_path, record)
+            _write_json(invocation_path, record)
+            update_status_progress(case_dir, dict(stage="checkpointed_pause", epoch=checkpoint["completed_epochs"],
+                                                 epochs=configured_epochs, checkpoint_sha256=checkpoint["checkpoint_sha256"]))
+            results.append(record)
+            continue
         record["status"] = "complete" if completed.returncode == 0 else "failed"
         _write_json(record_path, record)
+        if invocation_path is not None:
+            _write_json(invocation_path, record)
         if completed.returncode:
             fail_run(
                 case_dir,
@@ -600,6 +641,8 @@ def run(
             if dry_run
             else "complete"
             if results and all(item["status"] == "complete" for item in results)
+            else "paused"
+            if results and all(item["status"] in {"complete", "paused"} for item in results)
             else "failed"
         ),
         "runs": results,
@@ -608,6 +651,8 @@ def run(
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--epoch-chunk-size", type=int, default=None,
+                        help="Continue one full-budget run across planned epoch-boundary allocations.")
     parser.add_argument("configs", type=Path, nargs="+")
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--device")
@@ -671,11 +716,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         gradient_trace_samples_per_epoch=args.gradient_trace_samples_per_epoch,
         checkpoint_every_epoch=args.checkpoint_every_epoch,
         skip_terminal_official_test=args.skip_terminal_official_test,
+        epoch_chunk_size=args.epoch_chunk_size,
     )
     if args.summary_json is not None:
         _write_json(args.summary_json.expanduser().resolve(), result["runs"])
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
-    return 0 if result["status"] in {"complete", "planned"} else 1
+    return 75 if result["status"] == "paused" else 0 if result["status"] in {"complete", "planned"} else 1
 
 
 if __name__ == "__main__":

@@ -265,12 +265,13 @@ class GradientTraceRecorder:
         effective_batches_per_epoch: int,
         samples_per_epoch: int,
         dataset_provenance: Mapping[str, Any],
+        resume: bool = False,
     ) -> None:
         self.output_path = Path(output_path).expanduser().resolve()
         self.metadata_path = Path(metadata_path).expanduser().resolve()
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.output_path.exists():
+        if self.output_path.exists() and not resume:
             raise FileExistsError(
                 f"Expected a new gradient trace path. Provided value: {self.output_path}."
             )
