@@ -1,11 +1,21 @@
 # Current Perfect-Diode Conv State
 
-Updated: 2026-08-17
+Updated: 2026-09-24
 
 This is a dashboard, not a second protocol. Selection rules remain in the
 [active protocol index](conv_paper_hyperparameter_protocol.md). Live running
 state is generated separately in
 [`current_simulations.md`](current_simulations.md).
+
+## CIFAR-10 Evidence Review, September 24
+
+The [consolidated CIFAR evidence summary](cifar_experiment_review_20260924.md)
+covers the digital references, architecture, batch-size and LR searches,
+fifty-epoch continuations, amplification/KCL checks, BN and epsilon controls,
+gradient/Adam diagnostics, learned gains and late-training stagnation. It
+includes measured results, failed and excluded cases, conclusions, limitations,
+and links to the underlying reports and curves. The cause of legacy's final
+disadvantage remains unresolved in this single-seed evidence.
 
 ## Findings From 2026-08-17
 
