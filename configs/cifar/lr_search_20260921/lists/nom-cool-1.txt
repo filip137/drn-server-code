@@ -1,0 +1,3 @@
+configs/cifar/lr_search_20260921/baseline_c0_d0.json
+configs/cifar/lr_search_20260921/ours_c0_d0.json
+configs/cifar/lr_search_20260921/legacy_c0_d0.json

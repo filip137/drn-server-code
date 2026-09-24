@@ -1,0 +1,2 @@
+configs/cifar/legacy_lr_refinement_20260922/legacy_head_half.json
+configs/cifar/legacy_lr_refinement_20260922/legacy_head_double.json

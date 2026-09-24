@@ -1,0 +1,105 @@
+{
+  "study_id": "cifar10-digital-l8-wide-affinebn-adam-seed0-20260921-v1",
+  "evidence_class": "cifar10_digital_bp_exploratory",
+  "seed": 0,
+  "blocks": [
+    [
+      128,
+      128,
+      128
+    ],
+    [
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      512
+    ]
+  ],
+  "pool_after_blocks": [
+    0,
+    1,
+    2
+  ],
+  "batchnorm_after_blocks": [
+    0,
+    1,
+    2
+  ],
+  "batchnorm_affine": true,
+  "conv_bias": false,
+  "activation": "relu",
+  "kernel_size": 3,
+  "stride": 1,
+  "padding": 1,
+  "input_shape": [
+    3,
+    32,
+    32
+  ],
+  "readout_features": 8192,
+  "num_classes": 10,
+  "input_gain": 1,
+  "amplification": null,
+  "weight_bounds": null,
+  "initialization": "torch_default_kaiming_uniform_a_sqrt5",
+  "quadratic_diode_param": {},
+  "exponential_diode_param": {},
+  "optimizer": {
+    "name": "Adam",
+    "lr": 0.001,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "eps": 1e-08,
+    "weight_decay": 0.0003,
+    "exclude_batchnorm_from_weight_decay": true
+  },
+  "scheduler": {
+    "name": "CosineAnnealingLR",
+    "horizon_epochs": 50,
+    "final_lr_ratio": 0.02
+  },
+  "epochs": 50,
+  "batch_size": 512,
+  "evaluation_batch_size": 512,
+  "num_workers": 4,
+  "loss": "cross_entropy",
+  "dataset": {
+    "name": "CIFAR10",
+    "train_size": 50000,
+    "test_size": 10000,
+    "mean": [
+      0.4914,
+      0.4822,
+      0.4465
+    ],
+    "std": [
+      0.6069,
+      0.5982,
+      0.603
+    ],
+    "train_transform": [
+      "RandomHorizontalFlip(p=0.5)",
+      "RandomCrop(32,padding=4,padding_mode=edge)",
+      "ToTensor",
+      "Normalize"
+    ],
+    "test_transform": [
+      "ToTensor",
+      "Normalize"
+    ],
+    "evaluation_split": "official_test",
+    "evaluation_frequency": "every_epoch",
+    "download": false
+  },
+  "checkpoint_rule": "maximum_test_accuracy_then_minimum_test_loss_earliest_tie",
+  "dtype": "float32",
+  "tf32": false,
+  "deterministic_algorithms": true,
+  "maximum_runtime_hours": 1,
+  "arm_id": "digital-l8-wide-affinebn"
+}

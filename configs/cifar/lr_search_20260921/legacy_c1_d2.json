@@ -1,0 +1,177 @@
+{
+  "study_id": "cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1",
+  "evidence_class": "cifar10_lr_selection_exploratory",
+  "seed": 0,
+  "blocks": [
+    [
+      128,
+      128,
+      128
+    ],
+    [
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      512
+    ]
+  ],
+  "num_classes": 10,
+  "input_size": 32,
+  "input_gain_init": 100.0,
+  "weight_gain": 1.0,
+  "weight_init_mode": "kaiming_uniform",
+  "weight_min": 1e-07,
+  "weight_max": 10.0,
+  "epochs": 5,
+  "batch_size": 32,
+  "evaluation_batch_size": 16,
+  "num_workers": 2,
+  "iterations": [
+    6,
+    6,
+    4
+  ],
+  "alternative_iterations": [
+    12,
+    12,
+    8
+  ],
+  "reference_iterations": [
+    24,
+    24,
+    16
+  ],
+  "reference_check_iterations": [
+    48,
+    48,
+    32
+  ],
+  "maximum_runtime_hours": 5,
+  "official_test_read": false,
+  "augmentation": {
+    "flip_probability": 0.5,
+    "crop_padding": 4,
+    "padding_mode": "edge"
+  },
+  "normalization": {
+    "mean": [
+      0.4914,
+      0.4822,
+      0.4465
+    ],
+    "std": [
+      0.6069,
+      0.5982,
+      0.603
+    ]
+  },
+  "optimizer": {
+    "name": "Adam",
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "eps": 1e-08,
+    "weight_decay": 0.0,
+    "conv_learning_rates": [
+      [
+        0.0045,
+        0.00069,
+        0.00069
+      ],
+      [
+        0.00069,
+        0.00049,
+        0.00049
+      ],
+      [
+        0.00049,
+        0.000345
+      ]
+    ],
+    "head_learning_rate": 0.00048000000000000007,
+    "gain_learning_rate": 5e-05,
+    "bn_learning_rate": 0.001
+  },
+  "scheduler": {
+    "horizon_epochs": 50,
+    "final_lr_ratio": 0.02
+  },
+  "loss": "cross_entropy",
+  "label_smoothing": 0.0,
+  "split": {
+    "kind": "stratified_train_validation",
+    "seed": 0,
+    "validation_per_class": 500
+  },
+  "gate": {
+    "cohort_size": 8,
+    "microbatch_size": 2,
+    "minimum_cosine": 0.9,
+    "maximum_relative_norm_delta": 0.1,
+    "maximum_zero_fraction_delta": 0.02,
+    "zero_epsilon": 1e-12,
+    "maximum_reference_zero_q90": 0.99,
+    "minimum_reference_gradient_rms": 1e-12,
+    "maximum_logit_relative_l2": 0.01
+  },
+  "solver": {
+    "mode": "asynchronous",
+    "non_linearity": "perfect_diode",
+    "voltage_amp": 4.0,
+    "current_amp": 0.25,
+    "quadratic_diode_param": {},
+    "exponential_diode_param": {},
+    "hard_sigmoid_param": {},
+    "minimizer": {
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      }
+    }
+  },
+  "scheme": "legacy",
+  "arm_id": "legacy_c1_d2",
+  "lr_search": {
+    "conv_multiplier": 1.0,
+    "head_multiplier": 3.0,
+    "prior": {
+      "conv_ratio": 1.0,
+      "dense_ratio": 1.0,
+      "mnist_adam": {
+        "conv1": {
+          "ConvWeight_0": 0.000288917,
+          "Bias_0": 0.000288917,
+          "DenseWeight_0": 3.64618e-05
+        },
+        "conv2": {
+          "ConvWeight_0": 0.00086675,
+          "Bias_0": 0.00086675,
+          "ConvWeight_1": 0.000152841,
+          "Bias_1": 0.000152841,
+          "DenseWeight_0": 5.16982e-05
+        }
+      }
+    },
+    "source": "perfectdiode_conv12_unbounded_fixed_lr_handoff_20260729_v1.json",
+    "legacy_cifar_reference": "cifar10-l8-analog-conv-and-head-adam-bs16-32-64-seed0-v1",
+    "stage": "five_epoch_grid"
+  }
+}

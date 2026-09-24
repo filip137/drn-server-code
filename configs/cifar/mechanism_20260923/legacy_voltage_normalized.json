@@ -1,0 +1,153 @@
+{
+  "alternative_iterations": [
+    12,
+    12,
+    8
+  ],
+  "arm_id": "legacy_voltage_normalized",
+  "augmentation": {
+    "crop_padding": 4,
+    "flip_probability": 0.5,
+    "padding_mode": "edge"
+  },
+  "batch_size": 32,
+  "blocks": [
+    [
+      128,
+      128,
+      128
+    ],
+    [
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      512
+    ]
+  ],
+  "epochs": 10,
+  "evaluation_batch_size": 16,
+  "evidence_class": "cifar10_amplification_mechanism_exploratory",
+  "gate": {
+    "cohort_size": 8,
+    "maximum_logit_relative_l2": 0.01,
+    "maximum_reference_zero_q90": 0.99,
+    "maximum_relative_norm_delta": 0.1,
+    "maximum_zero_fraction_delta": 0.02,
+    "microbatch_size": 2,
+    "minimum_cosine": 0.9,
+    "minimum_reference_gradient_rms": 1e-12,
+    "zero_epsilon": 1e-12
+  },
+  "input_gain_init": 100.0,
+  "input_size": 32,
+  "iterations": [
+    6,
+    6,
+    4
+  ],
+  "label_smoothing": 0.0,
+  "loss": "cross_entropy",
+  "maximum_runtime_hours": 2.6,
+  "normalization": {
+    "mean": [
+      0.4914,
+      0.4822,
+      0.4465
+    ],
+    "std": [
+      0.6069,
+      0.5982,
+      0.603
+    ]
+  },
+  "num_classes": 10,
+  "num_workers": 2,
+  "official_test_read": false,
+  "optimizer": {
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "bn_learning_rate": 0.001,
+    "conv_learning_rates": [
+      [
+        0.0045,
+        0.00069,
+        0.00069
+      ],
+      [
+        0.00069,
+        0.00049,
+        0.00049
+      ],
+      [
+        0.00049,
+        0.000345
+      ]
+    ],
+    "eps": 1e-08,
+    "gain_learning_rate": 5e-05,
+    "head_learning_rate": 0.00016,
+    "name": "Adam",
+    "weight_decay": 0.0
+  },
+  "reference_check_iterations": [
+    48,
+    48,
+    32
+  ],
+  "reference_iterations": [
+    24,
+    24,
+    16
+  ],
+  "scheduler": {
+    "final_lr_ratio": 0.02,
+    "horizon_epochs": 50
+  },
+  "scheme": "legacy",
+  "seed": 0,
+  "solver": {
+    "current_amp": 0.25,
+    "exponential_diode_param": {},
+    "hard_sigmoid_param": {},
+    "minimizer": {
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      }
+    },
+    "mode": "asynchronous",
+    "non_linearity": "perfect_diode",
+    "quadratic_diode_param": {},
+    "voltage_amp": 4.0
+  },
+  "split": {
+    "kind": "stratified_train_validation",
+    "seed": 0,
+    "validation_per_class": 500
+  },
+  "study_id": "cifar10-l8-amplification-mechanism-seed0-20260923-v1",
+  "weight_gain": 1.0,
+  "weight_init_mode": "kaiming_uniform",
+  "weight_max": 10.0,
+  "weight_min": 1e-07,
+  "block_output_normalization": "voltage"
+}

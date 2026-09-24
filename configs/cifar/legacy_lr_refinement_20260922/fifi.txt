@@ -1,0 +1,3 @@
+configs/cifar/legacy_lr_refinement_20260922/legacy_center.json
+configs/cifar/legacy_lr_refinement_20260922/legacy_conv_half.json
+configs/cifar/legacy_lr_refinement_20260922/legacy_conv_double.json

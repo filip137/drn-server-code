@@ -1,0 +1,1 @@
+configs/cifar/lr_search_20260921/legacy_c2_d2.json

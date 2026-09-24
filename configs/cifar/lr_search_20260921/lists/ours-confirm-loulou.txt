@@ -1,0 +1,1 @@
+/home/filip/server_code/results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/stage-configs/confirmation/ours_edge_head_down_e10.json
