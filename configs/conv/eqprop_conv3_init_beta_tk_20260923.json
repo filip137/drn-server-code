@@ -1,0 +1,108 @@
+{
+  "study_id": "eqprop-conv3-init-beta-tk-20260923-v1",
+  "output_root": "results/eqprop-conv3-init-beta-tk-20260923-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "evidence_tier": "exploratory",
+  "target": "fifi:RTX5090",
+  "source_commit": "022098cfe6eb151dff3f7403d3f4b358709152b9",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "cohort_config_sha256": "a48815aeb8954cdfce284a771bed27f0bd4c976054bfc04c01f649dfcdfdad79",
+  "cases": [
+    {
+      "name": "baseline_epoch0",
+      "scheme": "baseline",
+      "gpu": null,
+      "sigma": 0.0005,
+      "beta": 404.141105702,
+      "bundle": "results/eqprop-conv3-init-beta-tk-20260923-v1/inputs/baseline",
+      "checkpoint_role": "reconstructed_initialization",
+      "checkpoint_epoch": 0,
+      "source_config_origin": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_11/runs/000_conv3_baseline_p90_sigma5em4_seed0_c5078abf/config.used.json",
+      "source_hashes": {
+        "config.used.json": "146ec55f606b686cc22a0a0dc2b1657d81c35620f3044f11870f49a4a60ccbad"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "ours_epoch0",
+      "scheme": "ours",
+      "gpu": null,
+      "sigma": 0.0005,
+      "beta": 0.987333678708,
+      "bundle": "results/eqprop-conv3-init-beta-tk-20260923-v1/inputs/ours",
+      "checkpoint_role": "reconstructed_initialization",
+      "checkpoint_epoch": 0,
+      "source_config_origin": "results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/.incoming/production-02/shards/jean-zay/task_1/runs/000_conv3_ours_p99_sigma5em4_seed0_97ef974e/config.used.json",
+      "source_hashes": {
+        "config.used.json": "69356ffbb23cf0a2590202aba9e310790115c9a5a867e7f6423488a00ceef0d5"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "legacy_epoch0",
+      "scheme": "legacy",
+      "gpu": null,
+      "sigma": 0.0005,
+      "beta": 0.1,
+      "bundle": "results/eqprop-conv3-init-beta-tk-20260923-v1/inputs/legacy",
+      "checkpoint_role": "reconstructed_initialization",
+      "checkpoint_epoch": 0,
+      "source_config_origin": "results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/.incoming/production-02/shards/jean-zay/task_0/runs/000_conv3_legacy_p99_sigma5em4_seed0_694af5d7/config.used.json",
+      "source_hashes": {
+        "config.used.json": "10317896afe2d101d318cb4234fd935ade6a4bcb70b3ef273a9ac23d066fc242"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    }
+  ],
+  "read_noise_seeds": [
+    2026092101,
+    2026092111,
+    2026092121,
+    2026092131
+  ],
+  "draws_per_noisy_batch": 4,
+  "expected_checkpoints": 3,
+  "expected_batches": 36,
+  "expected_production_cells": 36,
+  "expected_layer_comparisons": 25920,
+  "budget_seconds": 3600,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "analysis_objective": "initialization_T_K_sensitivity_at_two_matched_replay_betas",
+  "source_bundles_validated_locally": true,
+  "data_root": "/home/filip/datasets/mnist",
+  "injected_betas": [
+    0.987333678708,
+    5.26875648112
+  ],
+  "smoke_injected_betas": [
+    5.26875648112
+  ],
+  "T_values": [
+    8,
+    16,
+    32
+  ],
+  "prior_attempt_seconds": 0,
+  "K_values": [
+    8,
+    32
+  ],
+  "expected_duration_minutes": [
+    25,
+    40
+  ],
+  "initializer_checkpoint_path": "results/eqprop-conv3-init-beta-tk-20260923-v1/inputs/initialization.pt",
+  "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f"
+}

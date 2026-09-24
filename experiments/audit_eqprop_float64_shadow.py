@@ -765,6 +765,37 @@ def _checkpoint_runtime(
     gradient_iterations: int,
     nudging_mode: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    # A trained native-float64 checkpoint must never pass through float32.
+    # This explicit path leaves the historical initialization replay unchanged.
+    if case.get("native_checkpoint_dtype") == "float64":
+        if role not in {"best_validation", "final"}:
+            raise ValueError("Native float64 checkpoint loading requires best_validation or final.")
+        checkpoint_path = case["final_checkpoint_path"] if role == "final" else case["best_checkpoint_path"]
+        weights_path = case["weights_final_path"] if role == "final" else case["weights_best_path"]
+        checkpoint_sha256 = case["final_checkpoint_sha256"] if role == "final" else case["best_checkpoint_sha256"]
+        source_config = dict(case["source_config"])
+        source_config.pop("init_checkpoint_path", None)
+        runtime = base._build_runtime(
+            source_config, device=device, gradient_iterations=int(gradient_iterations),
+            nudging_mode=nudging_mode, current_scale="auto",
+        )
+        _convert_runtime_dtype(runtime, torch.float64)
+        runtime["energy_fn"].load(checkpoint_path)
+        base._verify_npz_checkpoint(runtime, Path(weights_path))
+        if any(p.state.dtype != torch.float64 for p in runtime["parameters"]):
+            raise RuntimeError("Native float64 checkpoint dtype was not preserved.")
+        return runtime, {
+            "native_checkpoint_dtype": "float64",
+            "native_parameter_state_sha256_before_cast": base._parameter_state_sha256(runtime["parameters"]),
+            "native_parameter_numeric_sha256_before_cast": _numeric_parameter_sha256(runtime["parameters"]),
+            "checkpoint_role": role,
+            "checkpoint_path": str(checkpoint_path),
+            "checkpoint_sha256": checkpoint_sha256,
+            **({"best_checkpoint_path": str(checkpoint_path),
+                "best_checkpoint_sha256": checkpoint_sha256} if role == "best_validation" else {}),
+            "loaded_checkpoint_exactly_matches_npz": True,
+            "initialization_reconstruction_required": False,
+        }
     runtime = base._build_runtime(
         case["source_config"],
         device=device,
@@ -874,6 +905,7 @@ def _run_precision(
     nudging_mode: str,
     eqprop_variant: str,
     capture_endpoint_states: bool = False,
+    record_zero_nudge_displacement: bool = False,
 ) -> dict[str, Any]:
     dtype = {"float32": torch.float32, "float64": torch.float64}[precision]
     runtime, guard = _checkpoint_runtime(
@@ -928,12 +960,14 @@ def _run_precision(
     post_cast_numeric_hash = _numeric_parameter_sha256(runtime["parameters"])
     conversion_preserved_values = bool(
         post_cast_numeric_hash
-        == guard["native_float32_parameter_numeric_sha256_before_cast"]
+        == guard.get("native_parameter_numeric_sha256_before_cast",
+                     guard.get("native_float32_parameter_numeric_sha256_before_cast"))
     )
     native_bytes_preserved = bool(
-        precision != "float32"
+        precision != guard.get("native_checkpoint_dtype", "float32")
         or post_cast_hash
-        == guard["native_float32_parameter_state_sha256_before_cast"]
+        == guard.get("native_parameter_state_sha256_before_cast",
+                     guard.get("native_float32_parameter_state_sha256_before_cast"))
     )
     if not conversion_preserved_values or not native_bytes_preserved:
         raise RuntimeError("Runtime dtype conversion changed checkpoint parameter values.")
@@ -1182,6 +1216,17 @@ def _run_precision(
     )
     residual_archive_records = residuals.archive_records(context=context)
     displacement_rows: list[dict[str, Any]] = []
+    if record_zero_nudge_displacement:
+        for row in extended._state_displacement_rows(
+            runtime["free_layers"],
+            zero_states,
+            post_t_states,
+            reference_kind="post_T_free",
+            reference_norm_epsilon=1.0e-30,
+        ):
+            displacement_rows.append(
+                {**context, "phase": "zero", "actual_beta": 0.0, **row}
+            )
     for phase, states in phase_states.items():
         for reference_kind, reference in (
             ("post_T_free", post_t_states),
@@ -1248,6 +1293,7 @@ def _run_precision(
             "parameter_numeric_sha256_after_cast": post_cast_numeric_hash,
             "dtype_conversion_preserved_parameter_values": conversion_preserved_values,
             "float32_conversion_preserved_native_parameter_bytes": native_bytes_preserved,
+            "dtype_conversion_preserved_native_parameter_bytes": native_bytes_preserved,
             "parameter_state_sha256_after_phases": final_hash,
             "parameter_numeric_sha256_after_phases": final_numeric_hash,
             "parameter_tensors_unchanged_after_cast": final_hash == post_cast_hash,

@@ -174,6 +174,19 @@ def _runtime_source_proof(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"Bootstrapped runtime source {base.RUNTIME_SOURCE_ROOT} differs from {root}."
         )
+    expected_files = contract.get("runtime_code_sha256")
+    if expected_files is not None:
+        if set(expected_files) != set(contract["runtime_code_files"]):
+            raise ValueError("Frozen runtime file coverage mismatch.")
+        observed = {name: base.sha256_file(root / name) for name in expected_files}
+        if observed != expected_files:
+            raise ValueError("Frozen runtime source hash mismatch.")
+        return {
+            "root": str(root),
+            "head": contract["runtime_source_expected_head"],
+            "frozen_runtime_hashes_verified": True,
+            "relevant_code_sha256": observed,
+        }
     head = _git(root, "rev-parse", "HEAD")
     if head != contract["runtime_source_expected_head"]:
         raise ValueError(f"Runtime source HEAD mismatch: {head}.")
@@ -253,7 +266,9 @@ def _inventory(config: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[st
     for declared in config["cases"]:
         architecture = str(declared["architecture"])
         scheme = str(declared["scheme"])
-        run_dir = source_root / "runs" / str(declared["run_id"])
+        run_dir = Path(declared.get("run_dir", source_root / "runs" / str(declared["run_id"])))
+        if not run_dir.is_absolute():
+            run_dir = REPOSITORY_ROOT / run_dir
         validation_errors = base.validate_run(run_dir)
         if validation_errors:
             raise ValueError(
@@ -267,15 +282,31 @@ def _inventory(config: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[st
         if status.get("state") != "complete" or bool(manifest.get("smoke")):
             raise ValueError(f"Source run is not a completed production bundle: {run_dir}.")
         source_git = manifest.get("git", {})
-        if source_git.get("commit") != source_contract["production_source_commit"]:
+        expected_commit = declared.get("production_source_commit", source_contract.get("production_source_commit"))
+        if source_git.get("commit") != expected_commit:
             raise ValueError(f"Source commit mismatch for {run_dir.name}.")
         if (
             source_git.get("source_archive_sha256")
-            != source_contract["production_source_archive_sha256"]
+            != declared.get("production_source_archive_sha256", source_contract.get("production_source_archive_sha256"))
         ):
             raise ValueError(f"Source archive mismatch for {run_dir.name}.")
-        if source_config.get("training_algorithm") != "BP" or int(source_config["seed"]) != 0:
+        expected_seed = declared.get("model_seed", 0)
+        if isinstance(expected_seed, bool) or not isinstance(expected_seed, int) or expected_seed < 0:
+            raise ValueError("Expected a nonnegative integer model seed.")
+        if source_config.get("training_algorithm") != "BP" or int(source_config["seed"]) != expected_seed:
             raise ValueError(f"Source algorithm/seed mismatch for {run_dir.name}.")
+        if "source_file_sha256" in declared:
+            if _source_file_hashes(run_dir, required_files) != declared["source_file_sha256"]:
+                raise ValueError(f"Pinned source files changed for {run_dir}.")
+        if declared.get("initializer_checkpoint_path"):
+            # A recorded, hash-checked transport override; source bytes stay intact.
+            path = Path(declared["initializer_checkpoint_path"]).expanduser().resolve()
+            if base.sha256_file(path) != declared["initializer_checkpoint_sha256"]:
+                raise ValueError("Replay initializer transport hash mismatch.")
+            original_hash = source_config.get("weight_ceiling_sweep", {}).get("initializer_checkpoint_sha256")
+            if original_hash is not None and original_hash != declared["initializer_checkpoint_sha256"]:
+                raise ValueError("Replay initializer differs from training initializer.")
+            source_config["init_checkpoint_path"] = str(path)
         model = base._model_config(source_config)
         if (
             int(model["num_iterations_inference"]) != int(declared["T"])
@@ -335,6 +366,8 @@ def _inventory(config: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[st
         )
         hashes = _source_file_hashes(run_dir, required_files)
         key = f"{architecture}/{scheme}"
+        if key in source_hashes:
+            raise ValueError("Use separate replay configs for distinct ceilings of a scheme.")
         source_hashes[key] = hashes
 
         runtime = base._build_runtime(
@@ -357,6 +390,7 @@ def _inventory(config: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[st
                 **dict(declared),
                 "native_T": int(declared["T"]),
                 "native_K": int(declared["K"]),
+                **_replay_iterations(declared),
                 "voltage_amp": observed_amp[0],
                 "current_amp": observed_amp[1],
                 "voltage_amplification": observed_amp[0],
@@ -390,7 +424,7 @@ def _inventory(config: Mapping[str, Any]) -> tuple[list[dict[str, Any]], dict[st
             scheme for candidate_architecture, scheme in expected_pairs
             if candidate_architecture == architecture
         }
-        if schemes != {"baseline", "ours", "legacy"}:
+        if not source_contract.get("allow_partial_schemes", False) and schemes != {"baseline", "ours", "legacy"}:
             raise ValueError(
                 f"Declared architecture {architecture} does not cover all schemes."
             )
@@ -418,6 +452,8 @@ def _build_cohort(
         data_root=Path(dataset["root"]).expanduser().resolve(),
         batch_size=int(dataset["batch_size"]),
         example_count=int(dataset["example_count"]),
+        source_indices=dataset.get("source_indices"),
+        excluded_source_indices=dataset.get("excluded_source_indices", ()),
     )
     observed = [
         {
@@ -434,7 +470,18 @@ def _build_cohort(
     return batches, cohort
 
 
+def _replay_iterations(declared: Mapping[str, Any]) -> dict[str, int]:
+    """Separate an explicit diagnostic T/K from the validated checkpoint contract."""
+    if ("replay_T" in declared) != ("replay_K" in declared):
+        raise ValueError("A diagnostic replay must specify both replay_T and replay_K.")
+    values = {name: declared.get("replay_" + name, declared[name]) for name in ("T", "K")}
+    if any(type(value) is not int or value <= 0 for value in values.values()):
+        raise ValueError("Replay T/K must be positive integers.")
+    return values
+
+
 def _selected(case: Mapping[str, Any], role: str) -> dict[str, Any]:
+    native = int(case["T"]) == int(case["native_T"]) and int(case["K"]) == int(case["native_K"])
     return {
         "architecture": case["architecture"],
         "scheme": case["scheme"],
@@ -443,8 +490,8 @@ def _selected(case: Mapping[str, Any], role: str) -> dict[str, Any]:
         "K": int(case["K"]),
         "source_native_T": int(case["native_T"]),
         "source_native_K": int(case["native_K"]),
-        "native_context": True,
-        "tk_source": "paper_shared_contract",
+        "native_context": native,
+        "tk_source": "paper_shared_contract" if native else "explicit_diagnostic_replay_override",
         "actual_beta": float(case["base_beta"]),
         "base_beta": float(case["base_beta"]),
         "injected_beta": float(case["injected_beta"]),
@@ -749,6 +796,9 @@ def _layer_row(
         ),
         "bptt_l2": float(metrics["bptt_l2"]),
         "eqprop_l2": float(metrics["eqprop_l2"]),
+        "element_count": int(metrics["element_count"]),
+        "dot_product": float(metrics["dot_product"]),
+        "difference_l2": float(metrics["difference_l2"]),
         "eqprop_over_bptt_norm_ratio": metrics["eqprop_over_bptt_norm_ratio"],
         "cosine": cosine,
         "symmetric_norm_delta": norm_delta,
@@ -783,6 +833,32 @@ def _layer_row(
         "read_noise_usable_gate_passed": bool(acquisition_passed and gradient_passed),
         "all_endpoint_residual_gates_passed": residual_passed,
         "unqualified_launch_gate_passed": bool(gradient_passed and residual_passed),
+    }
+
+
+def _whole_gradient_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Raw concatenation metrics from unrounded weight-layer sufficient statistics."""
+    names = [str(row["parameter_name"]) for row in rows]
+    if not rows or len(names) != len(set(names)):
+        raise ValueError("Expected one row per weight matrix.")
+    if any(not name.startswith(("ConvWeight_", "DenseWeight_")) for name in names):
+        raise ValueError("Whole-gradient comparisons include weights only.")
+    for row in rows:
+        if any(not math.isfinite(float(row[key])) for key in
+               ("bptt_l2", "eqprop_l2", "dot_product", "difference_l2")):
+            raise ValueError("Non-finite whole-gradient sufficient statistic.")
+    ep = math.sqrt(math.fsum(float(row["eqprop_l2"]) ** 2 for row in rows))
+    bp = math.sqrt(math.fsum(float(row["bptt_l2"]) ** 2 for row in rows))
+    dot = math.fsum(float(row["dot_product"]) for row in rows)
+    diff = math.sqrt(math.fsum(float(row["difference_l2"]) ** 2 for row in rows))
+    return {
+        "parameter_count": len(rows),
+        "element_count": sum(int(row["element_count"]) for row in rows),
+        "eqprop_l2": ep, "bptt_l2": bp, "dot_product": dot,
+        "difference_l2": diff,
+        "cosine": dot / (ep * bp) if ep * bp > NORM_EPSILON else None,
+        "symmetric_norm_delta": 2 * abs(ep - bp) / max(ep + bp, NORM_EPSILON),
+        "relative_l2_difference_over_bptt": diff / bp if bp > NORM_EPSILON else None,
     }
 
 
@@ -932,7 +1008,7 @@ def _write_report(
         "",
         "This is a read-only ordinary-MNIST diagnostic, not paper-facing accuracy evidence.",
         "It uses centered frozen-current EqProp in true float64, identical post-T states,",
-        "the shared paper T/K, exact-zero biases, and no optimizer step or official-test read.",
+        "the replay T/K shared by both algorithms, exact-zero biases, and no optimizer step or official-test read.",
         "",
         f"Run tier: `{'smoke' if smoke else 'production'}`.",
         f"Endpoint read-noise sigma: `{noise_contract['endpoint_read_noise_std']}`; seed: `{noise_contract['endpoint_read_noise_seed']}`.",
@@ -996,7 +1072,9 @@ def _write_report(
             f"- Gradient cosine minimum: `{config['gradient_contract']['cosine_minimum']}`.",
             f"- Symmetric norm delta maximum: `{config['gradient_contract']['symmetric_norm_delta_maximum']}`.",
             f"- Projected residual p90 threshold: `{config['gradient_contract']['equilibrium_residual_p90_threshold']}`.",
-            "- Cohort: first 64 examples of the fixed validation order, in four batches of 16.",
+            f"- Cohort: {config['dataset']['example_count']} validation examples in "
+            f"{config['dataset']['batch_count']} batches of {config['dataset']['batch_size']}; "
+            "exact source indices and order are retained in cohort.json.",
             "- Checkpoints: reconstructed initialization and best validation (production only).",
             "- Parameters: ConvWeight and DenseWeight only; all Bias tensors are proven exact zero but excluded from scoring.",
             "- Read noise: independent Gaussian samples on every negative/positive free-layer endpoint voltage after equilibrium; the input and BPTT reference remain exact.",
@@ -1046,11 +1124,11 @@ def run(args: argparse.Namespace) -> dict[str, Any] | None:
 
     if args.smoke:
         selected_cases = [
-            next(
+            next((
                 case
                 for case in inventory
                 if case["architecture"] == "conv3" and case["scheme"] == "legacy"
-            )
+            ), inventory[-1])
         ]
         roles = ["best_validation"]
         selected_batches = batches[:1]
@@ -1153,6 +1231,7 @@ def run(args: argparse.Namespace) -> dict[str, Any] | None:
     )
 
     layer_rows: list[dict[str, Any]] = []
+    whole_gradient_rows: list[dict[str, Any]] = []
     residual_rows: list[dict[str, Any]] = []
     displacement_rows: list[dict[str, Any]] = []
     phase_rows: list[dict[str, Any]] = []
@@ -1187,6 +1266,9 @@ def run(args: argparse.Namespace) -> dict[str, Any] | None:
                         eqprop_variant="centered",
                         capture_endpoint_states=bool(
                             noise_contract["endpoint_read_noise_std"] > 0.0
+                        ),
+                        record_zero_nudge_displacement=bool(
+                            config.get("record_zero_nudge_displacement", False)
                         ),
                     )
                     (
@@ -1251,6 +1333,15 @@ def run(args: argparse.Namespace) -> dict[str, Any] | None:
                         and row["checkpoint_role"] == role
                         and int(row["batch_index"]) == int(batch["batch_index"])
                     ]
+                    if config.get("record_whole_gradient", False):
+                        whole_gradient_rows.append({
+                            **{key: current_rows[0][key] for key in (
+                                "architecture", "scheme", "checkpoint_role", "batch_index",
+                                "batch_payload_sha256", "batch_source_indices_sha256",
+                                "base_beta", "injected_beta", "T", "K")},
+                            **_whole_gradient_metrics(current_rows),
+                            "all_endpoint_residual_gates_passed": residual_passed,
+                        })
                     base.append_metric(
                         run_dir / "metrics.jsonl",
                         {
@@ -1418,6 +1509,10 @@ def run(args: argparse.Namespace) -> dict[str, Any] | None:
             raise RuntimeError(f"Operational completion criteria failed: {completion}")
 
         base._write_csv(run_dir / "layer_metrics.csv", layer_rows)
+        if config.get("record_whole_gradient", False):
+            if len(whole_gradient_rows) != expected_replays:
+                raise RuntimeError("Incomplete whole-gradient measurements.")
+            base._write_csv(run_dir / "whole_gradient_metrics.csv", whole_gradient_rows)
         base._write_csv(run_dir / "case_summary.csv", summaries)
         base._write_csv(run_dir / "equilibrium_residuals.csv", residual_rows)
         base._write_csv(run_dir / "state_displacement.csv", displacement_rows)

@@ -1,0 +1,173 @@
+{
+  "study_id": "eqprop-conv3-trained-beta-noise-t64-20260922-v1",
+  "output_root": "results/eqprop-conv3-trained-beta-noise-t64-20260922-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "evidence_tier": "exploratory",
+  "target": "parallel:trex,loulou,akib",
+  "source_commit": "022098cfe6eb151dff3f7403d3f4b358709152b9",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "cohort_config_sha256": "a48815aeb8954cdfce284a771bed27f0bd4c976054bfc04c01f649dfcdfdad79",
+  "cases": [
+    {
+      "name": "A100_baseline_sigma0.0003",
+      "scheme": "baseline",
+      "gpu": "A100",
+      "sigma": 0.0003,
+      "beta": 404.141105702,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_10/runs/000_conv3_baseline_p90_sigma3em4_seed0_02c1c964",
+      "source_hashes": {
+        "final_model.pt": "ee73394ebc69e67e79213adc6dc4bba7dc61a43a9623a9f57e724b1302733334",
+        "weights_final.npz": "5c7f11cee1e75e01853e5bca3f50b096c637aa542cdac49460c7b05e1e4c0933",
+        "config.used.json": "f509a67e13a572923439179721d332790b78b91ccb26221289a739062cf051c0",
+        "result.json": "6d61cf8c2a78acfd74207a556e2c3c6466f720b17b725349bdbe18a3cdc6d9be"
+      }
+    },
+    {
+      "name": "A100_ours_sigma0.0003",
+      "scheme": "ours",
+      "gpu": "A100",
+      "sigma": 0.0003,
+      "beta": 5.26875648112,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_16/runs/000_conv3_ours_p90_sigma3em4_seed0_6ac4e8f2",
+      "source_hashes": {
+        "final_model.pt": "f8687e97ed79c82d931a78ce04051b2d383e546d7e808d7bf82998903fd048a6",
+        "weights_final.npz": "b050a1135dffcc85097d78a72e5698bcfc55aae7a7b8cc2b372494c1e6d60855",
+        "config.used.json": "6dabff3877e9aefac80a5ec8065ce00b6b6445369f901eb8e635c04b580b5245",
+        "result.json": "8c9eef4866e01b33bc7257d5f8d99e480a0be352beeb8a1f4d948b1f16a56783"
+      }
+    },
+    {
+      "name": "A100_legacy_sigma0.0003",
+      "scheme": "legacy",
+      "gpu": "A100",
+      "sigma": 0.0003,
+      "beta": 4.42250110273,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_13/runs/000_conv3_legacy_p90_sigma3em4_seed0_c337c160",
+      "source_hashes": {
+        "final_model.pt": "4bc72c879bded1f1fad526198c3965d3fae04c7e4c887b5e510976e3a1eeb670",
+        "weights_final.npz": "ad7c37f70f151858a251b2c665bf6844cc2a8162ef5178ef82b11a208d6c78f0",
+        "config.used.json": "d73c941603c6477f40e7ceab39b6e9b68e3e154d1a0128d071aa7fb9dacb9732",
+        "result.json": "c43d1ccb9019eace126c4b89dd191d910901b7a9a459d4d41babac7748a5980f"
+      }
+    },
+    {
+      "name": "A100_baseline_sigma0.0005",
+      "scheme": "baseline",
+      "gpu": "A100",
+      "sigma": 0.0005,
+      "beta": 404.141105702,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_11/runs/000_conv3_baseline_p90_sigma5em4_seed0_c5078abf",
+      "source_hashes": {
+        "final_model.pt": "f1a0511c970492e82d64fce86709a2a2847d17d5bda106bb7f49b6314f696833",
+        "weights_final.npz": "1be0a7fb2fb94aa4bd322e0edf751a3a2c5a73d07861c62fa48c40da0d4ea159",
+        "config.used.json": "146ec55f606b686cc22a0a0dc2b1657d81c35620f3044f11870f49a4a60ccbad",
+        "result.json": "e1cc1bfc7682a9bbd8008713eeb687ccb2fe45febbf205b5cc4d685c934bece0"
+      }
+    },
+    {
+      "name": "A100_ours_sigma0.0005",
+      "scheme": "ours",
+      "gpu": "A100",
+      "sigma": 0.0005,
+      "beta": 5.26875648112,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_17/runs/000_conv3_ours_p90_sigma5em4_seed0_19b5049f",
+      "source_hashes": {
+        "final_model.pt": "a43341e2dee8b9a93adae12b5e765dcec7a09d998fd8d65c577235d8abf81d62",
+        "weights_final.npz": "f2a919f2a937fff2c61ac3b6502ceb4f1b48a45803d12f6a645051c4c527c0a6",
+        "config.used.json": "39f4cc6ab71a353b213790169b4f04566603f7c4cb10f0ad1555fa55ac3735ec",
+        "result.json": "f77496a06b34614d998dec98959e03e183b8530ba91c89c8e0321a9f3c745fae"
+      }
+    },
+    {
+      "name": "A100_legacy_sigma0.0005",
+      "scheme": "legacy",
+      "gpu": "A100",
+      "sigma": 0.0005,
+      "beta": 4.42250110273,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_14/runs/000_conv3_legacy_p90_sigma5em4_seed0_8499672a",
+      "source_hashes": {
+        "final_model.pt": "8c9483c24089b087e58ecb194f2148e33788dd6bde3e650604542a481af2e26b",
+        "weights_final.npz": "25ccdd4e2b10c4be95941d7bb60df5a4dd1c621dde0db9a6c23bedb8aa828973",
+        "config.used.json": "7465f93b2cfa6b684fdab12aa7d0eb913260c86641054459b2aee31ed2b4d46d",
+        "result.json": "585f02a5af4e9ba3229332f564fb4f4038bd5b5760f6a3abdebb1b07d4c82bbc"
+      }
+    }
+  ],
+  "beta_factors": [
+    0.1,
+    0.3,
+    1,
+    3,
+    10
+  ],
+  "smoke_beta_factors": [
+    0.1,
+    1,
+    10
+  ],
+  "read_noise_seeds": [
+    2026092101,
+    2026092111,
+    2026092121,
+    2026092131
+  ],
+  "draws_per_noisy_batch": 4,
+  "expected_checkpoints": 6,
+  "expected_batches": 36,
+  "expected_production_cells": 30,
+  "expected_layer_comparisons": 21600,
+  "T": 64,
+  "K": 8,
+  "budget_seconds": 1800,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "analysis_objective": "maximize_over_tested_beta_the_minimum_across_layers_of_median_noisy_cosine",
+  "source_bundles_validated_locally": true,
+  "prior_attempt_seconds": 0,
+  "data_root": "/home/filip/datasets/mnist",
+  "source_T8_study": "results/eqprop-conv3-trained-beta-noise-20260922-v1",
+  "parallel_shards": [
+    {
+      "index": 0,
+      "count": 3,
+      "target": "trex:RTX5090",
+      "beta_factors": [
+        0.1,
+        3
+      ]
+    },
+    {
+      "index": 1,
+      "count": 3,
+      "target": "loulou:RTX5090",
+      "beta_factors": [
+        0.3,
+        10
+      ]
+    },
+    {
+      "index": 2,
+      "count": 3,
+      "target": "akib:RTX3080",
+      "beta_factors": [
+        1
+      ]
+    }
+  ],
+  "cross_host_smoke_parity": {
+    "beta_factor": 1,
+    "maximum_absolute_cosine_difference": 1e-07,
+    "maximum_relative_gradient_norm_difference": 1e-06
+  }
+}

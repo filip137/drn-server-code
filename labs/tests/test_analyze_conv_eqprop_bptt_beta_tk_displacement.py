@@ -585,6 +585,16 @@ assert len(post_rows) == len(matched_rows) == 3
 assert {row['reference_kind'] for row in post_rows} == {'post_T_free'}
 assert {row['reference_kind'] for row in matched_rows} == {'matched_zero_K'}
 
+# Signed cancellation must not erase the free state's nonzero RMS.
+hidden = next(row for row in post_rows if row['state_layer_name'] == 'hidden')
+assert hidden['reference_sum'] == 0.0
+assert hidden['reference_squared_sum'] == 2.0
+assert hidden['reference_rms'] == 1.0
+assert hidden['reference_min'] == -1.0 and hidden['reference_max'] == 1.0
+output = next(row for row in post_rows if row['state_layer_name'] == 'output')
+assert output['current_sum'] == 4.0 and output['reference_sum'] == 3.0
+assert output['delta_sum'] == 1.0 and output['current_squared_sum'] == 16.0
+
 post_aggregate = next(row for row in post_rows if row['state_layer_name'] == '__all__')
 matched_aggregate = next(row for row in matched_rows if row['state_layer_name'] == '__all__')
 assert math.isclose(post_aggregate['delta_squared_sum'], 3.0)

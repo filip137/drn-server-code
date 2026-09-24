@@ -1,0 +1,36 @@
+{
+  "study_id": "eqprop-conv3-p99-noise-rms-analysis-20260923-v1",
+  "output_root": "results/eqprop-conv3-p99-noise-rms-analysis-20260923-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "evidence_tier": "exploratory",
+  "target": "local:CPU",
+  "budget_seconds": 300,
+  "T": 16,
+  "main_K": 8,
+  "control_K": 64,
+  "sigma": 0.0005,
+  "expected_batches": 36,
+  "noise_draws": 4,
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0"
+  ],
+  "state_layer_order": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "source_configs": [
+    "configs/conv/eqprop_conv3_p99_trained_beta_replay_20260923.json",
+    "configs/conv/eqprop_conv3_p99_beta_k_replay_20260923.json"
+  ],
+  "gradient_noise_dominance": "RMS(g_noisy-g_clean)/RMS(g_clean)>=1; report median and fraction across matched batch/draw pairs",
+  "signal_rms": "RMS((v_positive-v_negative)/2), plus both RMS(v_nudged-v_free)",
+  "threshold_method": "log-linear interpolation between observed adjacent beta points where median noise/clean-gradient ratio crosses1; no unbracketed extrapolation",
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "new_model_replay": false
+}

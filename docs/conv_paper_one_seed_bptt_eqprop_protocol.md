@@ -88,10 +88,14 @@ retain the original Conv1 legacy weight rates.
 
 ## Shared T/K Rule
 
+Here `T` is the free/inference relaxation length
+(`num_iterations_inference`), and `K` is the additional BPTT unroll length or
+the length of each EqProp nudged phase (`num_iterations_training`).
+
 Use the existing accepted BPTT operating point for both algorithms, shared
 across all amplification schemes and both optimizers within an architecture:
 
-| Architecture | `num_iterations_training` (`T`) | `num_iterations_inference` (`K`) |
+| Architecture | `num_iterations_inference` (`T`) | `num_iterations_training` (`K`) |
 |---|---:|---:|
 | Conv1 | `4` | `4` |
 | Conv2 | `6` | `6` |

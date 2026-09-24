@@ -1,0 +1,98 @@
+{
+  "study_id": "eqprop-conv3-output-rms1-init-20260922-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "paper_facing": false,
+  "scientific_question": "Does actual initialized Conv3 output RMS(v_plus-v_free) reach approximately one at injected beta baseline88.7,ours1.385,legacy0.02173?",
+  "output_root": "output",
+  "cases": [
+    {
+      "name": "baseline_beta88p7",
+      "scheme": "baseline",
+      "injected_beta": 88.7,
+      "source_config": "inputs/baseline_source_config.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "source_config_origin": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "ours_beta1p385",
+      "scheme": "ours",
+      "injected_beta": 1.385,
+      "source_config": "inputs/ours_source_config.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "source_config_origin": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "legacy_beta0p02173",
+      "scheme": "legacy",
+      "injected_beta": 0.02173,
+      "source_config": "inputs/legacy_source_config.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "source_config_origin": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    }
+  ],
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "initializer_checkpoint_path": "inputs/initialization.pt",
+  "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+  "initializer_origin": "/home/filip/server_code_conv_learning_rate_protocol/.codex/worktrees/lean-experiment-workflow/results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+  "cohort_config": "inputs/cohort_reference.json",
+  "cohort_config_sha256": "44458fca8d13ef0e4c7fcb1d9da9f065f8cefaf33dc4aaadd15c1c1bc1b2a7d7",
+  "source_contract": {
+    "runtime_source_root": "/home/filiposana/server_code/results/eqprop-conv3-output-rms1-init-20260922-v1/workspace/runtime"
+  },
+  "analyzer_source_root": "experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "runtime_hashes_source": "cohort_config.runtime_sha256",
+  "T": 8,
+  "K": 8,
+  "beta_convention": "injected_B; base_beta=B/(voltage_amp/current_amp)^3",
+  "noise_sigmas": [
+    0.0
+  ],
+  "read_noise_seed": 2026092101,
+  "draws_per_batch_per_sigma": 1,
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization_and_best_checkpoint",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "report_separately_from_gradient_fidelity_and_require_both_for_an_unqualified_launch_gate",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "budget_seconds": 900,
+  "expected_case_count": 3,
+  "expected_batches": 36,
+  "expected_layer_comparisons": 432,
+  "target": "akib:RTX3080",
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "source_commit": "022098cfe6eb151dff3f7403d3f4b358709152b9",
+  "target_output_rms": 1.0,
+  "output_rms_definition": "pooled RMS(v_plus-v_post_T_free); also negative and centered half-difference",
+  "evidence_tier": "exploratory initialization diagnostic",
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd"
+}

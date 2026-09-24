@@ -286,12 +286,30 @@ def _dataset_signature(
     }
 
 
+def _checked_replay_indices(validation_indices, source_indices, example_count, excluded_source_indices=()):
+    """Resolve an ordered cohort without admitting training/test examples or reuse."""
+    selected = tuple(validation_indices[:example_count] if source_indices is None else source_indices)
+    if len(selected) != example_count or example_count <= 0:
+        raise ValueError("Explicit replay indices must match the declared example count.")
+    if any(isinstance(v, bool) or not isinstance(v, int) for v in selected):
+        raise ValueError("Replay source indices must be integers.")
+    if len(set(selected)) != len(selected):
+        raise ValueError("Duplicate replay source indices.")
+    if not set(selected).issubset(set(validation_indices)):
+        raise ValueError("Replay source indices must belong to the validation partition.")
+    if set(selected).intersection(excluded_source_indices):
+        raise ValueError("Replay cohort overlaps the explicitly excluded selection cohort.")
+    return selected
+
+
 def _build_validation_cohort(
     source_config: Mapping[str, Any],
     *,
     data_root: Path,
     batch_size: int,
     example_count: int,
+    source_indices: Sequence[int] | None = None,
+    excluded_source_indices: Sequence[int] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if example_count <= 0 or example_count % batch_size:
         raise ValueError("Cohort size must be a positive multiple of batch size.")
@@ -304,18 +322,31 @@ def _build_validation_cohort(
     validation_indices = tuple(int(v) for v in loader_result.validation_indices)
     if example_count > len(validation_indices):
         raise ValueError("Requested cohort exceeds deterministic validation split.")
+    selected_indices = _checked_replay_indices(
+        validation_indices, source_indices, example_count, excluded_source_indices
+    )
+    replay_loader = loader_result.validation_loader
+    if source_indices is not None:
+        if len(replay_loader.dataset) != len(validation_indices):
+            raise ValueError("Validation dataset and source-index map differ in length.")
+        positions = {index: position for position, index in enumerate(validation_indices)}
+        replay_loader = torch.utils.data.DataLoader(
+            torch.utils.data.Subset(replay_loader.dataset, [positions[i] for i in selected_indices]),
+            batch_size=batch_size, shuffle=False, num_workers=0,
+            collate_fn=replay_loader.collate_fn,
+        )
     batches: list[dict[str, Any]] = []
     needed_batches = example_count // batch_size
     class_counts = np.zeros(10, dtype=np.int64)
-    for batch_index, (images, labels) in enumerate(loader_result.validation_loader):
+    for batch_index, (images, labels) in enumerate(replay_loader):
         if batch_index >= needed_batches:
             break
         start = batch_index * batch_size
         stop = start + int(images.shape[0])
-        source_indices = validation_indices[start:stop]
+        batch_source_indices = selected_indices[start:stop]
         images = images.detach().cpu().contiguous()
         labels = labels.detach().cpu().contiguous()
-        if len(source_indices) != batch_size or images.shape[0] != batch_size:
+        if len(batch_source_indices) != batch_size or images.shape[0] != batch_size:
             raise RuntimeError("Unexpected partial batch in fixed replay cohort.")
         class_counts += np.bincount(labels.numpy(), minlength=10)
         batches.append(
@@ -323,10 +354,10 @@ def _build_validation_cohort(
                 "batch_index": batch_index,
                 "images": images,
                 "labels": labels,
-                "source_indices": source_indices,
-                "source_indices_sha256": stable_index_sequence_hash(source_indices),
+                "source_indices": batch_source_indices,
+                "source_indices_sha256": stable_index_sequence_hash(batch_source_indices),
                 "payload_sha256": _batch_payload_sha256(
-                    images, labels, source_indices
+                    images, labels, batch_source_indices
                 ),
             }
         )
@@ -341,7 +372,8 @@ def _build_validation_cohort(
         "split_seed": int(loader_result.split_seed),
         "validation_size": len(validation_indices),
         "validation_indices_sha256": loader_result.validation_indices_hash,
-        "cohort_policy": "first examples in stored validation order",
+        "cohort_policy": ("explicit ordered validation source indices" if source_indices is not None
+                          else "first examples in stored validation order"),
         "cohort_sha256": stable_batch_order_hash(
             batch["source_indices"] for batch in batches
         ),
@@ -505,6 +537,18 @@ def _build_runtime(
         amplification_max=model.get("amplification_max"),
     )
     energy_fn.set_device(device)
+    # Match mnist_train: explicit saved initialization supersedes the model's
+    # random draw, including when training ceilings differ from its support.
+    if source_config.get("init_checkpoint_path"):
+        initializer = Path(source_config["init_checkpoint_path"]).expanduser().resolve()
+        expected = source_config.get("initialization", {}).get("checkpoint_sha256")
+        sweep_expected = source_config.get("weight_ceiling_sweep", {}).get(
+            "initializer_checkpoint_sha256"
+        )
+        for digest in (expected, sweep_expected):
+            if digest is not None and sha256_file(initializer) != digest:
+                raise ValueError(f"Initializer checkpoint hash mismatch: {initializer}.")
+        energy_fn.load(initializer)
     network = Network(energy_fn)
     free_layers = network.free_layers()
     output_layer = energy_fn.layers()[-1]

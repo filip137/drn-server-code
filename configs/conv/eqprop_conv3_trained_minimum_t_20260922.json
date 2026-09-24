@@ -1,0 +1,23 @@
+{
+  "study_id": "eqprop-conv3-trained-minimum-t-20260922-v1",
+  "output_root": "results/eqprop-conv3-trained-minimum-t-20260922-v1",
+  "replay_config": "configs/conv/eqprop_conv3_trained_beta_noise_20260922.json",
+  "replay_config_sha256": "b28f54090e8abcc06efba2bd8bf936421bcd69a21b60fdf9c5042284d5ec2077",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "checkpoint": "A100_ours_sigma0.0005",
+  "T_max": 64,
+  "K": 8,
+  "beta_factor": 0.0001,
+  "reference_T": [32, 64],
+  "expected_batches": 36,
+  "batch_size": 16,
+  "p90_threshold": 0.01,
+  "hard_maximum_threshold": 0.1,
+  "budget_seconds": 1200,
+  "target": "akib:RTX3080",
+  "evidence_tier": "exploratory",
+  "official_test_read": false,
+  "optimizer_steps_applied": false
+}
