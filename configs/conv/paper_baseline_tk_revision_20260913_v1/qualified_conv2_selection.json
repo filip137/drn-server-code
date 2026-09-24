@@ -1,0 +1,30 @@
+{
+  "architecture": "conv2",
+  "common_beta_across_three_ceilings": true,
+  "references": [
+    {
+      "ceiling": "1em4",
+      "maximum_symmetric_norm_delta": 0.01950654414120866,
+      "minimum_cosine": 0.9976736441020584,
+      "result_sha256": "3f27409e45f6861d4915de4b672d533f106b647ec337b8f105cbac98b63ad3f5",
+      "run": "results/paper-training-completion-20260911-v1/checks/baseline_tk_revision_best_gate/runs/conv2_1em4_beta0.1"
+    },
+    {
+      "ceiling": "5em4",
+      "maximum_symmetric_norm_delta": 0.01950654414120866,
+      "minimum_cosine": 0.9976736441020584,
+      "result_sha256": "2b1dc9ea553fa55798fbbb67aaae3f5297035578ed9a75bcb51a013499ade586",
+      "run": "results/paper-training-completion-20260911-v1/checks/baseline_tk_revision_best_gate/runs/conv2_5em4_beta0.1"
+    },
+    {
+      "ceiling": "1em3",
+      "maximum_symmetric_norm_delta": 0.01950654414120866,
+      "minimum_cosine": 0.9976736441020584,
+      "result_sha256": "b089fcc69e7cbdedf28225eb46fc861922df7823fbd5333c485a12f800b4ec5f",
+      "run": "results/paper-training-completion-20260911-v1/checks/baseline_tk_revision_best_gate/runs/conv2_1em3_beta0.1"
+    }
+  ],
+  "runtime_dtype": "float64",
+  "selected_injected_beta": 0.1,
+  "selection_rule": "recheck selected .1 on new references; .01 only after .1 fails"
+}

@@ -1,0 +1,1 @@
+configs/conv/paper_training_completion_20260911_v1/training/T2_EP_conv1_legacy_gmax100_seed0.json

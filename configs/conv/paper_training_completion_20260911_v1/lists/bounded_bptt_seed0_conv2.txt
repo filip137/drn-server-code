@@ -1,0 +1,3 @@
+configs/conv/paper_training_completion_20260911_v1/training/T3_BPTT_conv2_legacy_gmax0.0001_seed0.json
+configs/conv/paper_training_completion_20260911_v1/training/T3_BPTT_conv2_legacy_gmax0.0005_seed0.json
+configs/conv/paper_training_completion_20260911_v1/training/T3_BPTT_conv2_legacy_gmax0.001_seed0.json

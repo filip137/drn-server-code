@@ -1,0 +1,38 @@
+{
+  "schema_version": "experiment-catalog/v1",
+  "entries": [
+    {
+      "experiment_id": "eqprop-conv3-p99-read-noise-5em4-20260922-v1",
+      "title": "Conv3 p99 legacy and ours read noise 5e-4",
+      "summary": "User-approved p99 derivative of p95 sigma5e-4, exact legacy and ours configs.",
+      "lifecycle": "current",
+      "aliases": [
+        "conv3 p99 read noise 5e-4 legacy ours"
+      ],
+      "scope": {
+        "architectures": [
+          "conv3"
+        ],
+        "nonlinearities": [
+          "perfect_diode"
+        ],
+        "datasets": [
+          "ordinary_mnist"
+        ],
+        "tasks": [
+          "read_noise"
+        ]
+      },
+      "authority": {
+        "protocols": [
+          "docs/conv_paper_one_seed_bptt_eqprop_protocol.md"
+        ],
+        "config": "results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/cases.json",
+        "plan": "docs/experiment_plans/eqprop-conv3-p99-read-noise-5em4-20260922-v1.md"
+      },
+      "execution": {
+        "launcher": "results/eqprop-conv3-p99-read-noise-5em4-20260922-v1/run_pair.sh"
+      }
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+configs/conv/paper_baseline_tk_revision_20260913_v1/training/T3_BPTT_conv3_baseline_gmax0.0001_seed2.json
+configs/conv/paper_baseline_tk_revision_20260913_v1/training/T3_BPTT_conv3_baseline_gmax0.0005_seed2.json
+configs/conv/paper_baseline_tk_revision_20260913_v1/training/T3_BPTT_conv3_baseline_gmax0.001_seed2.json

@@ -1,0 +1,3 @@
+configs/conv/paper_baseline_tk_revision_20260913_v1/training/T3_EP_conv2_baseline_gmax0.0001_seed0.json
+configs/conv/paper_baseline_tk_revision_20260913_v1/training/T3_EP_conv2_baseline_gmax0.0005_seed0.json
+configs/conv/paper_baseline_tk_revision_20260913_v1/training/T3_EP_conv2_baseline_gmax0.001_seed0.json

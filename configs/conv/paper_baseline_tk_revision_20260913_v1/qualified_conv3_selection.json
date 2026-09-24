@@ -1,0 +1,30 @@
+{
+  "architecture": "conv3",
+  "common_beta_across_three_ceilings": true,
+  "references": [
+    {
+      "ceiling": "1em4",
+      "maximum_symmetric_norm_delta": 0.04732924994089114,
+      "minimum_cosine": 0.9970957674065698,
+      "result_sha256": "321f866272ff8439fa7fec8a37145c88ec6e86009c1f46b8c610eec783ee70dd",
+      "run": "results/paper-training-completion-20260911-v1/checks/baseline_tk_revision_best_gate/runs/conv3_1em4_beta0.1"
+    },
+    {
+      "ceiling": "5em4",
+      "maximum_symmetric_norm_delta": 0.04732924994089114,
+      "minimum_cosine": 0.9970957674065698,
+      "result_sha256": "af49b98c2b0f315bb424e7e88bea513b84b6985d2349a94b88e3f8dfde37060c",
+      "run": "results/paper-training-completion-20260911-v1/checks/baseline_tk_revision_best_gate/runs/conv3_5em4_beta0.1"
+    },
+    {
+      "ceiling": "1em3",
+      "maximum_symmetric_norm_delta": 0.06871672438288907,
+      "minimum_cosine": 0.9970957674065698,
+      "result_sha256": "1a4219084b04557dcb68951fe748b59b94f0831f4d1221a41fd011a73c9a1658",
+      "run": "results/paper-training-completion-20260911-v1/checks/baseline_tk_revision_best_gate/runs/conv3_1em3_beta0.1"
+    }
+  ],
+  "runtime_dtype": "float64",
+  "selected_injected_beta": 0.1,
+  "selection_rule": "recheck selected .1 on new references; .01 only after .1 fails"
+}
