@@ -102,3 +102,31 @@ three layers, while baseline and legacy nearly overlap in D/P. This supports
 distinguishing absolute voltage response from fractional signal under relative
 read noise. It does not establish gradient alignment or explain trained
 accuracy on its own; those require the separate gradient and training evidence.
+
+## Gradient-quality companion figures — September 28
+
+[Cosine to BPTT across layers](figures/exp013-gradient-quality/cosine_to_bptt_across_layers.jpg)
+uses the same initial output D/F targets 1/4/6 as the displacement figure, at
+eta=1e-5, 1e-4 and 1e-3. The
+[clean-EqProp reference](figures/exp013-gradient-quality/cosine_to_clean_ep_across_layers.jpg)
+separates noise-induced direction changes from clean EqProp/BPTT disagreement.
+[Conv1](figures/exp013-gradient-quality/conv1_gradient_quality_vs_noise.jpg),
+[Conv2](figures/exp013-gradient-quality/conv2_gradient_quality_vs_noise.jpg) and
+[Conv3](figures/exp013-gradient-quality/conv3_gradient_quality_vs_noise.jpg)
+noise sweeps show every layer's BPTT cosine and
+`||g_noisy_EP - g_clean_EP|| / ||g_clean_EP||` over all 14 nonzero noise levels.
+
+These plots reuse 405 stage-A summary cells, including 27 unplotted zero-noise
+controls. Noisy measurements use 192 examples and three acquisition draws;
+shading spans draw means, not model-seed confidence intervals. The clean
+controls and the displacement figure use 576 examples and are not pooled with
+the noisy cohort. No new simulation was run. A
+[small source CSV and reproduction command](figures/exp013-gradient-quality/README.md)
+are retained with the JPGs.
+
+The Conv3 noise sweep exposes a large separation between layers: the first two
+convolutions lose useful alignment at much lower eta than the third convolution,
+while readout alignment stays near one. Ours delays the third-convolution
+degradation relative to legacy, but this initialization advantage cannot by
+itself establish better gradients throughout training or explain the final
+accuracy ranking. Existing seed/cohort and finite-K reference limitations apply.
