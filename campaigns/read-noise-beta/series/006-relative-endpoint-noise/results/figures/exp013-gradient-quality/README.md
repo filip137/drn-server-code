@@ -1,6 +1,6 @@
 # Initialization gradient quality
 
-[Conv3: cosine to BPTT only](conv3_cosine_to_bptt_vs_noise.jpg)
+Cosine to BPTT only: [Conv1](conv1_cosine_to_bptt_vs_noise.jpg) · [Conv2](conv2_cosine_to_bptt_vs_noise.jpg) · [Conv3](conv3_cosine_to_bptt_vs_noise.jpg)
 
 [Cosine to BPTT across layers](cosine_to_bptt_across_layers.jpg) · [Cosine to clean EqProp across layers](cosine_to_clean_ep_across_layers.jpg)
 

@@ -105,7 +105,7 @@ def main():
 
     for arch, target in CASES:
         plot_noise_sweep(arch, target, ("cosine", "noise_over_clean_norm"))
-    plot_noise_sweep("conv3", 6.0, ("cosine",))
+        plot_noise_sweep(arch, target, ("cosine",))
 
     profile_etas = (1e-6, 1e-5, 1e-4, 3e-4)
     for metric, name, title in (
@@ -148,7 +148,9 @@ def main():
 
     (out / "README.md").write_text(
         "# Initialization gradient quality\n\n"
-        "[Conv3: cosine to BPTT only](conv3_cosine_to_bptt_vs_noise.jpg)\n\n"
+        "Cosine to BPTT only: [Conv1](conv1_cosine_to_bptt_vs_noise.jpg) · "
+        "[Conv2](conv2_cosine_to_bptt_vs_noise.jpg) · "
+        "[Conv3](conv3_cosine_to_bptt_vs_noise.jpg)\n\n"
         "[Cosine to BPTT across layers](cosine_to_bptt_across_layers.jpg) · "
         "[Cosine to clean EqProp across layers](cosine_to_clean_ep_across_layers.jpg)\n\n"
         "The four layer-profile columns use eta=1e-6, 1e-5, 1e-4 and 3e-4.\n\n"
@@ -179,7 +181,7 @@ def main():
         f"Reproduce: `python -m experiments.plot_layer_gradient_quality --source-csv "
         f"{out}/plotted_values.csv --output-dir {out}`.\n"
     )
-    print(f"Verified {len(rows)} cells and wrote six JPGs to {out}")
+    print(f"Verified {len(rows)} cells and wrote eight JPGs to {out}")
 
 
 if __name__ == "__main__":

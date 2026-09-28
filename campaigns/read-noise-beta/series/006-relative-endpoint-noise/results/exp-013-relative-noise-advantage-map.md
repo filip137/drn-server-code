@@ -115,8 +115,11 @@ separates noise-induced direction changes from clean EqProp/BPTT disagreement.
 [Conv3](figures/exp013-gradient-quality/conv3_gradient_quality_vs_noise.jpg)
 noise sweeps show every layer's BPTT cosine and
 `||g_noisy_EP - g_clean_EP|| / ||g_clean_EP||` over all 14 nonzero noise levels.
-A [Conv3 cosine-only version](figures/exp013-gradient-quality/conv3_cosine_to_bptt_vs_noise.jpg)
-shows the four BPTT-alignment panels without the gradient-error row.
+Cosine-only versions for
+[Conv1](figures/exp013-gradient-quality/conv1_cosine_to_bptt_vs_noise.jpg),
+[Conv2](figures/exp013-gradient-quality/conv2_cosine_to_bptt_vs_noise.jpg) and
+[Conv3](figures/exp013-gradient-quality/conv3_cosine_to_bptt_vs_noise.jpg)
+show each architecture's BPTT-alignment panels without the gradient-error row.
 
 These plots reuse 405 stage-A summary cells, including 27 unplotted zero-noise
 controls. Noisy measurements use 192 examples and three acquisition draws;
