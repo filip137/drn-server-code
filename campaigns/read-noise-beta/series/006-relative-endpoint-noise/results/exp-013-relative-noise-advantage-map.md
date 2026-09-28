@@ -84,3 +84,21 @@ Decision: close the authorized two-stage study after this scoped review; no addi
 [Final report and maps](../../../../../results/conv123-relative-noise-advantage-map-20260925-v1/analysis/stage_b/report.md) · [Coverage validation](../../../../../results/conv123-relative-noise-advantage-map-20260925-v1/monitor/completion-validation.json) · [Physical state controls](../../../../../results/conv123-relative-noise-advantage-map-20260925-v1/analysis/stage_b/physical_state_controls.csv) · [Noise scale controls](../../../../../results/conv123-relative-noise-advantage-map-20260925-v1/analysis/stage_b/noise_scale_controls.csv). All layers, clean/noisy reference comparisons, gradient errors, draw ranges and near-peak tables are retained in the linked analysis directory.
 
 [Cosine-versus-displacement curves](../../../../../results/conv123-relative-noise-advantage-map-20260925-v1/analysis/displacement_curves/README.md) show every sampled noise level and layer for all three schemes, with screen and refinement distinguished. Available x-axes are measured output D/F, absolute output RMS displacement, and each layer's RMS displacement. Three-draw ranges are descriptive; stages are not pooled. Reproduce with `python -m experiments.plot_relative_noise_displacement_curves --study-root results/conv123-relative-noise-advantage-map-20260925-v1`.
+
+## Layerwise absolute and fractional displacement — September 28
+
+[JPG comparison](figures/exp013-layer-displacement/conv123_absolute_and_fractional_displacement.jpg)
+shows absolute D and fractional D/P against layer depth for all three schemes.
+Conv1/2/3 use matched initial output D/F targets 1/4/6, respectively. The 27
+physical-state rows come from stage A's 576-example clean-state cohort, with no
+new simulation or pooling with stage B. Both axes are logarithmic. The
+[figure bundle](figures/exp013-layer-displacement/README.md) contains individual
+architecture JPGs, plotted measurements and a reproducible command.
+
+At these initialization settings, ours has larger D/P in every convolutional
+layer than legacy. For Conv3, the ratios are approximately 2.06, 5.18 and 4.03
+for convolutions 1, 2 and 3. Legacy has larger absolute D than ours in those
+three layers, while baseline and legacy nearly overlap in D/P. This supports
+distinguishing absolute voltage response from fractional signal under relative
+read noise. It does not establish gradient alignment or explain trained
+accuracy on its own; those require the separate gradient and training evidence.
