@@ -98,13 +98,13 @@ def main():
                     facecolor="white", pil_kwargs={"quality": 95})
         plt.close(fig)
 
-    profile_etas = (1e-5, 1e-4, 1e-3)
+    profile_etas = (1e-6, 1e-5, 1e-4, 3e-4)
     for metric, name, title in (
         ("cosine", "cosine_to_bptt_across_layers", "Gradient cosine to BPTT across layers"),
         ("noisy_clean_eqprop_cosine", "cosine_to_clean_ep_across_layers",
          "Gradient cosine to clean EqProp across layers"),
     ):
-        fig, axes = plt.subplots(3, 3, figsize=(13, 9.7), sharey=True)
+        fig, axes = plt.subplots(3, len(profile_etas), figsize=(16.5, 9.7), sharey=True)
         for row_index, (arch, target) in enumerate(CASES):
             params = parameters(arch)
             x = list(range(len(params)))
@@ -122,7 +122,10 @@ def main():
                 ax.axhline(0, color="gray", linewidth=.6)
                 ax.spines[["top", "right"]].set_visible(False)
                 if row_index == 0:
-                    ax.set_title(rf"$\eta = 10^{{{round(math.log10(eta))}}}$")
+                    exponent = math.floor(math.log10(eta))
+                    mantissa = eta / 10 ** exponent
+                    prefix = "" if math.isclose(mantissa, 1) else rf"{mantissa:g}\times "
+                    ax.set_title(rf"$\eta = {prefix}10^{{{exponent}}}$")
                 if col == 0:
                     ax.set_ylabel(f"{arch.capitalize()} · output D/F={target:g}\nGradient cosine")
         fig.suptitle(title + " at initialization", fontsize=15, y=.99)
@@ -138,6 +141,7 @@ def main():
         "# Initialization gradient quality\n\n"
         "[Cosine to BPTT across layers](cosine_to_bptt_across_layers.jpg) · "
         "[Cosine to clean EqProp across layers](cosine_to_clean_ep_across_layers.jpg)\n\n"
+        "The four layer-profile columns use eta=1e-6, 1e-5, 1e-4 and 3e-4.\n\n"
         "Noise sweeps, with cosine and relative noise-error norm: "
         "[Conv1](conv1_gradient_quality_vs_noise.jpg) · "
         "[Conv2](conv2_gradient_quality_vs_noise.jpg) · "

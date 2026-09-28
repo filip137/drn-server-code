@@ -2,6 +2,8 @@
 
 [Cosine to BPTT across layers](cosine_to_bptt_across_layers.jpg) · [Cosine to clean EqProp across layers](cosine_to_clean_ep_across_layers.jpg)
 
+The four layer-profile columns use eta=1e-6, 1e-5, 1e-4 and 3e-4.
+
 Noise sweeps, with cosine and relative noise-error norm: [Conv1](conv1_gradient_quality_vs_noise.jpg) · [Conv2](conv2_gradient_quality_vs_noise.jpg) · [Conv3](conv3_gradient_quality_vs_noise.jpg).
 
 Saved exp013 stage-A summaries, at matched initial output D/F=1/4/6 for Conv1/2/3. The 14 nonzero noise levels use 192 examples (12 batches of 16), three acquisition draws and one model initializer. Every noninput layer uses the same relative coefficient eta. No training or new replay. Stages are not pooled, and uncertainty over model seeds is unavailable. Curves are means of per-batch metrics; bands span the three draw means, not confidence intervals. Finite-K BPTT is the reference, not a claimed exact equilibrium gradient.

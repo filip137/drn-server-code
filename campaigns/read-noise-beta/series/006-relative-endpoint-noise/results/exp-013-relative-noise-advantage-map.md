@@ -107,7 +107,7 @@ accuracy on its own; those require the separate gradient and training evidence.
 
 [Cosine to BPTT across layers](figures/exp013-gradient-quality/cosine_to_bptt_across_layers.jpg)
 uses the same initial output D/F targets 1/4/6 as the displacement figure, at
-eta=1e-5, 1e-4 and 1e-3. The
+eta=1e-6, 1e-5, 1e-4 and 3e-4, as requested for the revised figure. The
 [clean-EqProp reference](figures/exp013-gradient-quality/cosine_to_clean_ep_across_layers.jpg)
 separates noise-induced direction changes from clean EqProp/BPTT disagreement.
 [Conv1](figures/exp013-gradient-quality/conv1_gradient_quality_vs_noise.jpg),
