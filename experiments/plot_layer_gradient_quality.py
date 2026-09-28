@@ -59,11 +59,13 @@ def main():
     handles = [Line2D([], [], label=s.capitalize(), linewidth=1.8, **style)
                for s, style in STYLES.items()]
 
-    for arch, target in CASES:
+    def plot_noise_sweep(arch, target, metrics):
         params = parameters(arch)
-        fig, axes = plt.subplots(2, len(params), figsize=(4 * len(params), 7.2), squeeze=False)
+        cosine_only = len(metrics) == 1
+        fig, axes = plt.subplots(len(metrics), len(params),
+                                 figsize=(4 * len(params), 4.5 if cosine_only else 7.2), squeeze=False)
         for col, (param, label) in enumerate(zip(params, labels(arch))):
-            for metric_index, metric in enumerate(("cosine", "noise_over_clean_norm")):
+            for metric_index, metric in enumerate(metrics):
                 ax = axes[metric_index, col]
                 for scheme, style in STYLES.items():
                     cells = [lookup[(arch, scheme, param, eta)] for eta in etas]
@@ -82,21 +84,28 @@ def main():
                 else:
                     ax.set_yscale("log")
                     ax.axhline(1, color="gray", linewidth=.8, linestyle="--")
+                if metric_index == len(metrics) - 1:
                     ax.set_xlabel(r"Relative read noise $\eta$")
                 if col == 0:
                     ax.set_ylabel("Cosine to BPTT\n(higher is better)" if metric_index == 0 else
                                   "Noise error / clean EqProp norm\n(lower is better)")
         fig.suptitle(f"{arch.capitalize()} initialization · output D/F = {target:g}", fontsize=15, y=.99)
         fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(.5, .947), ncol=3, frameon=False)
-        fig.text(.5, .025,
+        footer = "Bands: range of three noise-draw means · 192 examples · one initializer" if cosine_only else (
                  "One relative-noise coefficient for every noninput layer. Bands: range of three noise-draw means.\n"
-                 "192 examples · one initializer · finite-K BPTT · noise error = ‖g(noisy EP) − g(clean EP)‖ / ‖g(clean EP)‖",
-                 ha="center", fontsize=9)
+                 "192 examples · one initializer · finite-K BPTT · noise error = ‖g(noisy EP) − g(clean EP)‖ / ‖g(clean EP)‖")
+        fig.text(.5, .025, footer, ha="center", fontsize=9)
         fig.subplots_adjust(left=.10 if len(params)==2 else .07, right=.985,
-                            bottom=.15, top=.85, hspace=.34, wspace=.30)
-        fig.savefig(out / f"{arch}_gradient_quality_vs_noise.jpg", dpi=180,
+                            bottom=.20 if cosine_only else .15,
+                            top=.77 if cosine_only else .85, hspace=.34, wspace=.30)
+        suffix = "cosine_to_bptt_vs_noise" if cosine_only else "gradient_quality_vs_noise"
+        fig.savefig(out / f"{arch}_{suffix}.jpg", dpi=180,
                     facecolor="white", pil_kwargs={"quality": 95})
         plt.close(fig)
+
+    for arch, target in CASES:
+        plot_noise_sweep(arch, target, ("cosine", "noise_over_clean_norm"))
+    plot_noise_sweep("conv3", 6.0, ("cosine",))
 
     profile_etas = (1e-6, 1e-5, 1e-4, 3e-4)
     for metric, name, title in (
@@ -139,6 +148,7 @@ def main():
 
     (out / "README.md").write_text(
         "# Initialization gradient quality\n\n"
+        "[Conv3: cosine to BPTT only](conv3_cosine_to_bptt_vs_noise.jpg)\n\n"
         "[Cosine to BPTT across layers](cosine_to_bptt_across_layers.jpg) · "
         "[Cosine to clean EqProp across layers](cosine_to_clean_ep_across_layers.jpg)\n\n"
         "The four layer-profile columns use eta=1e-6, 1e-5, 1e-4 and 3e-4.\n\n"
@@ -169,7 +179,7 @@ def main():
         f"Reproduce: `python -m experiments.plot_layer_gradient_quality --source-csv "
         f"{out}/plotted_values.csv --output-dir {out}`.\n"
     )
-    print(f"Verified {len(rows)} cells and wrote five JPGs to {out}")
+    print(f"Verified {len(rows)} cells and wrote six JPGs to {out}")
 
 
 if __name__ == "__main__":

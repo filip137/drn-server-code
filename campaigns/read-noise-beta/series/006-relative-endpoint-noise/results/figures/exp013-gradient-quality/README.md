@@ -1,5 +1,7 @@
 # Initialization gradient quality
 
+[Conv3: cosine to BPTT only](conv3_cosine_to_bptt_vs_noise.jpg)
+
 [Cosine to BPTT across layers](cosine_to_bptt_across_layers.jpg) · [Cosine to clean EqProp across layers](cosine_to_clean_ep_across_layers.jpg)
 
 The four layer-profile columns use eta=1e-6, 1e-5, 1e-4 and 3e-4.
