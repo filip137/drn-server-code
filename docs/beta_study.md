@@ -1,5 +1,9 @@
 # EqProp Beta Study for Conv1, Conv2, and Conv3
 
+> Current planning: [read-noise beta campaign](../campaigns/read-noise-beta/README.md).
+> New ideas, hypotheses and tests go there. The synthesis below remains historical
+> evidence with its original dates, conditions and result links.
+
 Updated: 2026-09-23
 
 ## Conv3 beta selection: higher T improves replay gradients but not accuracy
