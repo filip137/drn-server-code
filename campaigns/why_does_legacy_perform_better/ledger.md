@@ -4,7 +4,7 @@
 
 Sources: campaign experiment metadata and reviewer-written result notes. No raw evidence or live job state is inferred.
 
-Counts: imported=2.
+Counts: complete=1, imported=2.
 
 ## Experiments
 
@@ -12,6 +12,7 @@ Counts: imported=2.
 |---|---|---|---|
 | [exp-001 — Import the completed clean Conv2 target-encoding intervention](series/001-clean-voltage-and-encoding/experiments/exp-001-conv2-target-encoding.md) | imported | [H-001](hypotheses/H-001-encoding-sensitive-ranking.md), [H-002](hypotheses/H-002-voltage-encoding-explanation.md) | [imported-summary](series/001-clean-voltage-and-encoding/results/exp-001-conv2-target-encoding.md): Conv2 target amplitude reverses the small ours/legacy ranking; voltage/encoding is a plausible explanation, with causal magnitude unresolved. |
 | [exp-002 — Import clean EqProp initialization and trained layerwise voltages](series/001-clean-voltage-and-encoding/experiments/exp-002-layerwise-voltage.md) | imported | [H-002](hypotheses/H-002-voltage-encoding-explanation.md) | [imported-summary](series/001-clean-voltage-and-encoding/results/exp-002-layerwise-voltage.md): After clean EqProp training, baseline has the largest hidden RMS and legacy the largest readout RMS; voltage profiles alone do not establish the cause of accuracy differences. |
+| [exp-003 — Measure trained Conv2 BPTT voltages at target encodings 1/16 and 1/4](series/001-clean-voltage-and-encoding/experiments/exp-003-trained-bptt-encoding-voltage.md) | complete | [H-002](hypotheses/H-002-voltage-encoding-explanation.md) | [validated-local](series/001-clean-voltage-and-encoding/results/exp-003-trained-bptt-encoding-voltage.md): At both Conv2 BPTT encodings, trained hidden RMS ranks baseline > legacy > ours; reducing the target lowers every layer, and readout magnitudes nearly coincide at 1/16. |
 
 ## Hypothesis evidence
 
@@ -20,7 +21,7 @@ Verdicts below are scoped judgments from individual notes, not a generated globa
 | Hypothesis | Result-note judgments |
 |---|---|
 | [H-001 — The clean amplification ranking depends on the target encoding](hypotheses/H-001-encoding-sensitive-ranking.md) | [exp-001](series/001-clean-voltage-and-encoding/results/exp-001-conv2-target-encoding.md): supports (imported-summary) |
-| [H-002 — Voltage magnitude and target encoding explain much of legacy's clean advantage](hypotheses/H-002-voltage-encoding-explanation.md) | [exp-001](series/001-clean-voltage-and-encoding/results/exp-001-conv2-target-encoding.md): inconclusive (imported-summary)<br>[exp-002](series/001-clean-voltage-and-encoding/results/exp-002-layerwise-voltage.md): inconclusive (imported-summary) |
+| [H-002 — Voltage magnitude and target encoding explain much of legacy's clean advantage](hypotheses/H-002-voltage-encoding-explanation.md) | [exp-001](series/001-clean-voltage-and-encoding/results/exp-001-conv2-target-encoding.md): inconclusive (imported-summary)<br>[exp-002](series/001-clean-voltage-and-encoding/results/exp-002-layerwise-voltage.md): inconclusive (imported-summary)<br>[exp-003](series/001-clean-voltage-and-encoding/results/exp-003-trained-bptt-encoding-voltage.md): inconclusive (validated-local) |
 
 ## Refresh
 

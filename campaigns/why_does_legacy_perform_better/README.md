@@ -27,6 +27,16 @@ The broader causal explanation is the campaign's working hypothesis.
 
 - [Clean Conv2 encoding intervention: best and final accuracy](series/001-clean-voltage-and-encoding/results/exp-001-conv2-target-encoding.md).
 - [Voltage magnitude over layers: initialization and clean trained checkpoints](series/001-clean-voltage-and-encoding/results/exp-002-layerwise-voltage.md).
+- [Trained Conv2 BPTT voltage magnitudes at 1/16 and 1/4](series/001-clean-voltage-and-encoding/results/exp-003-trained-bptt-encoding-voltage.md).
+
+![Trained BPTT Conv2 voltage magnitudes at both encodings](series/001-clean-voltage-and-encoding/results/figures/conv2_encoding_rms_trained.jpg)
+
+In the actual **BPTT encoding networks**, final epoch-30 hidden RMS ranks
+**baseline > legacy > ours** at both encodings. Reducing the target lowers
+voltage magnitudes throughout the trained networks. Readout RMS nearly
+coincides at 1/16 (0.01728–0.01786 V), while legacy has the largest readout
+at 1/4 (0.08743 V). These measurements support encoding-sensitive operating
+points; they do not establish voltage as the cause of the accuracy ranking.
 
 ![Free-state RMS voltage over layers after clean EqProp training](series/001-clean-voltage-and-encoding/results/figures/free_rms_trained.jpg)
 

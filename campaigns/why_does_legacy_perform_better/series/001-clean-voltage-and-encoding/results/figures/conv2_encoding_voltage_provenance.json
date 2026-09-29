@@ -1,0 +1,113 @@
+{
+  "date": "2026-09-29",
+  "evidence": "validated-local",
+  "source_root": "results/conv2-target-scale-voltage-20260929-v1",
+  "config_path": "configs/conv/conv2_target_scale_voltage_20260929.json",
+  "config_sha256": "2e8f15b2311b561d86eb78f740b65a171e4644d56df4b5916efaf194d5230660",
+  "cases": [
+    {
+      "name": "conv2_baseline_target_1over16_seed0_final",
+      "scheme": "baseline",
+      "seed": 0,
+      "target_scale": 0.0625,
+      "weight_min": 0,
+      "weight_max": 100,
+      "checkpoint_epoch": 30,
+      "source_config": "results/conv2-target-scale-20260928-v1/runs/000_00_conv2_baseline_target_1over16_seed0_d0685257/config.used.json",
+      "source_config_sha256": "e9e4a2298be8a8421ecd4316e951aaa8b015849fd6625a36f6fa090fb24a90b7",
+      "checkpoint_path": "results/conv2-target-scale-20260928-v1/runs/000_00_conv2_baseline_target_1over16_seed0_d0685257/final_model.pt",
+      "checkpoint_sha256": "293bbb3eb1c9d3320d4a52eaa20ca4a7bcdd17717f8dde5286260d6296e8fb18"
+    },
+    {
+      "name": "conv2_baseline_target_1over4_seed0_final",
+      "scheme": "baseline",
+      "seed": 0,
+      "target_scale": 0.25,
+      "weight_min": 0,
+      "weight_max": 100,
+      "checkpoint_epoch": 30,
+      "source_config": "results/conv2-target-scale-20260928-v1/runs/001_01_conv2_baseline_target_1over4_seed0_b9b0ed3e/config.used.json",
+      "source_config_sha256": "f5c66d395ffffc05538f689f06dc9d1396748b3bca4612dfba6a50bd45fcae00",
+      "checkpoint_path": "results/conv2-target-scale-20260928-v1/runs/001_01_conv2_baseline_target_1over4_seed0_b9b0ed3e/final_model.pt",
+      "checkpoint_sha256": "0194d9e768c2344c0b1dd586f2e1955eedd4b179746ffb0849b14a2bf9f45e15"
+    },
+    {
+      "name": "conv2_ours_target_1over16_seed0_final",
+      "scheme": "ours",
+      "seed": 0,
+      "target_scale": 0.0625,
+      "weight_min": 0,
+      "weight_max": 100,
+      "checkpoint_epoch": 30,
+      "source_config": "results/conv2-target-scale-20260928-v1/runs/002_02_conv2_ours_target_1over16_seed0_203a7fe5/config.used.json",
+      "source_config_sha256": "eb60a1374a5679eb3d58db2a9368c64ecfc9a77bb7dc19d8f69af305eedd5724",
+      "checkpoint_path": "results/conv2-target-scale-20260928-v1/runs/002_02_conv2_ours_target_1over16_seed0_203a7fe5/final_model.pt",
+      "checkpoint_sha256": "1657b432d17cf275a786a99e79ee5b9bc219f6716bfbbb2cea4b29449e4ef29f"
+    },
+    {
+      "name": "conv2_ours_target_1over4_seed0_final",
+      "scheme": "ours",
+      "seed": 0,
+      "target_scale": 0.25,
+      "weight_min": 0,
+      "weight_max": 100,
+      "checkpoint_epoch": 30,
+      "source_config": "results/conv2-target-scale-20260928-v1/runs/003_03_conv2_ours_target_1over4_seed0_969417e9/config.used.json",
+      "source_config_sha256": "6c3e12c1a3530e67d214741a2cbe06a1179814be4d7ebe75f3face360a052a1e",
+      "checkpoint_path": "results/conv2-target-scale-20260928-v1/runs/003_03_conv2_ours_target_1over4_seed0_969417e9/final_model.pt",
+      "checkpoint_sha256": "b183653d69907d33eefecc3634fee2c0acd2109711ed52e90fd0645809e217a2"
+    },
+    {
+      "name": "conv2_legacy_target_1over16_seed0_final",
+      "scheme": "legacy",
+      "seed": 0,
+      "target_scale": 0.0625,
+      "weight_min": 0,
+      "weight_max": 100,
+      "checkpoint_epoch": 30,
+      "source_config": "results/conv2-target-scale-20260928-v1/runs/004_04_conv2_legacy_target_1over16_seed0_0a9aa73d/config.used.json",
+      "source_config_sha256": "75747d361425a3fcad786c7f189a68249ed64467997cbc17f13a83db9c4025b6",
+      "checkpoint_path": "results/conv2-target-scale-20260928-v1/runs/004_04_conv2_legacy_target_1over16_seed0_0a9aa73d/final_model.pt",
+      "checkpoint_sha256": "1d2e3478a4c92002c63d090268cdd5d8f9ef178816bc90e39c390150fadb622e"
+    },
+    {
+      "name": "conv2_legacy_target_1over4_seed0_final",
+      "scheme": "legacy",
+      "seed": 0,
+      "target_scale": 0.25,
+      "weight_min": 0,
+      "weight_max": 100,
+      "checkpoint_epoch": 30,
+      "source_config": "results/conv2-target-scale-20260928-v1/runs/005_05_conv2_legacy_target_1over4_seed0_f55f09b5/config.used.json",
+      "source_config_sha256": "ff77d1e80c7940399c0e0c9e6d397959184f198148ce99328d8080d889ab1d3f",
+      "checkpoint_path": "results/conv2-target-scale-20260928-v1/runs/005_05_conv2_legacy_target_1over4_seed0_f55f09b5/final_model.pt",
+      "checkpoint_sha256": "f57a002f3755112390b76ca4ae4a6ead6d4e472c874684fb547fcaaed212db92"
+    }
+  ],
+  "files": [
+    {
+      "file": "conv2_encoding_rms_trained.jpg",
+      "source": "results/conv2-target-scale-voltage-20260929-v1/analysis/rms_trained.jpg",
+      "sha256": "f4b62a2b04a83edfbd9fa84f48af2a600ebb9b9a169a745a27e108084d46e08a",
+      "bytes": 113772
+    },
+    {
+      "file": "conv2_encoding_signed_mean_trained.jpg",
+      "source": "results/conv2-target-scale-voltage-20260929-v1/analysis/signed_mean_trained.jpg",
+      "sha256": "aa78c86f84c168b5864dd9e3c84f46d89e977374733e7f383734cb7846f19b91",
+      "bytes": 115744
+    },
+    {
+      "file": "conv2_encoding_voltage_profiles.csv",
+      "source": "results/conv2-target-scale-voltage-20260929-v1/analysis/voltage_epoch_comparison.csv",
+      "sha256": "d456283b02376914f804564beb8b878de5b448f25bc7c4a636778a374849ae90",
+      "bytes": 6096
+    },
+    {
+      "file": "conv2_encoding_voltage_validation.json",
+      "source": "results/conv2-target-scale-voltage-20260929-v1/analysis/validation.json",
+      "sha256": "3da6266df67ef43aab12eede635fbab2ba8855fcf212c7adb0d862d930763b02",
+      "bytes": 259
+    }
+  ]
+}

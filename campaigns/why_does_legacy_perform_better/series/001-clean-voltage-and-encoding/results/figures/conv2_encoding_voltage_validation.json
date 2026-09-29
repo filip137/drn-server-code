@@ -1,0 +1,10 @@
+{
+  "complete": true,
+  "cases": 6,
+  "layer_rows": 18,
+  "examples_per_case": 576,
+  "checkpoint_role": "final",
+  "checkpoint_epoch": 30,
+  "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "official_test_read": false
+}
