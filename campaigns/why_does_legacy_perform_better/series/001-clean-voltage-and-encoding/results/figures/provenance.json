@@ -1,0 +1,59 @@
+{
+  "import_date": "2026-09-29",
+  "evidence": "imported-summary",
+  "note": "Unmodified small figures/measurements from existing validated pilots; original reviews retained locally. No new training, replay or canonical validation.",
+  "files": [
+    {
+      "file": "accuracy_vs_target.jpg",
+      "source": "results/conv2-target-scale-20260928-v1/analysis/accuracy_vs_target.jpg",
+      "sha256": "660d1a924caec5571e6bae34b6f757aa1b8d5a58dc7702995e58c45a75b82cfd",
+      "bytes": 86350
+    },
+    {
+      "file": "target_encoding_accuracy.csv",
+      "source": "results/conv2-target-scale-20260928-v1/analysis/accuracy.csv",
+      "sha256": "3c053c05d9fdc337cbe3a779e192435635ffa32d51e10927842b42d4e13e4e6d",
+      "bytes": 2178
+    },
+    {
+      "file": "free_rms_trained.jpg",
+      "source": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/analysis/free_rms_trained.jpg",
+      "sha256": "4553e84506e7636675494ee06029184828ae684a57d9eb6b14933dd719b554a9",
+      "bytes": 145563
+    },
+    {
+      "file": "free_rms_initial_vs_trained.jpg",
+      "source": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/analysis/free_rms_initial_vs_trained.jpg",
+      "sha256": "58feade05f3d1b20aacce49e508875c1d86a7fbd21e5273ada25bd617f4ad2d1",
+      "bytes": 252211
+    },
+    {
+      "file": "voltage_profiles.csv",
+      "source": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/analysis/voltage_profiles.csv",
+      "sha256": "2876609b830f79ca44d9f8f978faa85fea2c8f28dfe2251ab8d692574c921b61",
+      "bytes": 42184
+    }
+  ],
+  "source_reviews": [
+    {
+      "source": "campaigns/pilots/conv-output-scale-evidence-20260928.md",
+      "sha256": "19b43792c883d8719143361b6b57b35cf55c2ee0dce760c2ed6bf57fb141635f"
+    },
+    {
+      "source": "campaigns/pilots/clean-eqprop-trained-voltage-20260928.md",
+      "sha256": "e486d94fc1471c0b07af1335ba71ac0b2a6b5ff7c515a23463526eec2bd93282"
+    },
+    {
+      "source": "results/conv2-target-scale-20260928-v1/analysis/summary.json",
+      "sha256": "a6fff53d42038c5aff3ccb8159b012881b859076aa770a9196d414a1fd85b1b9"
+    },
+    {
+      "source": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/analysis/validation.json",
+      "sha256": "d547d596f9050fe23c34bb8958c07b82a64e9457b82c92888982c433eeb36909"
+    }
+  ],
+  "reproduction_commands": [
+    "python -m experiments.analyze_conv2_target_scale",
+    "python -m experiments.analyze_clean_eqprop_voltages"
+  ]
+}
