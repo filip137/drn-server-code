@@ -70,6 +70,16 @@ as Codex writes them. The queue owns placement, monitoring and the completion ho
 `run_cifar_trained_output_replay collect CASE`. The coordinator's session limit is
 2h (until about 15:10); it must be restarted for legacy e10 (expected about 16:25).
 
+**User-directed interruption, October 2 about 13:50 Paris:** Filip requested
+freeing fifi for the linear-output BPTT continuation. Queue job
+`cifar-trained-output-transplant-bptt-baseline-e50-20261002`, attempt
+`c30900124e5d4cd3a9230064ed62b171` (PID 2043553), was cancelled through its verified
+supervisor; the queue confirmed cancellation. Preserve its partial output and
+receipts as an interrupted case, not a scientific failure. The user accepted
+the already-sent cancellation and reaffirmed the 40-epoch training continuation.
+Other replay jobs remain unchanged; do not automatically restart this cancelled
+case onto fifi ahead of `cifar-linear-bptt-ours-e10-e50-20261002` (priority 10).
+
 **Placement restricted to riri (Filip, October2 13:50).** By then the smoke had
 validated (13:26) and released jobs had completed on trex/fifi/riri: baseline
 e1/e5/e10/e30 and ours e1/e5 transplants. `transplant-bptt-baseline-e50` was
