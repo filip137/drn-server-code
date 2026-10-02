@@ -181,8 +181,9 @@ class VoltageClampedConvBlock(nn.Module):
         output_activation: str = 'perfect_diode',
     ) -> None:
         super().__init__()
-        if output_activation not in ('perfect_diode', 'linear'):
-            raise ValueError('block_output_activation must be perfect_diode or linear')
+        if output_activation not in ('perfect_diode', 'linear', 'digital_relu'):
+            raise ValueError("Expected block_output_activation in ('perfect_diode', 'linear', "
+                             f"'digital_relu'); got {output_activation!r}.")
         self.output_activation = output_activation
         self.logical_input_channels = _require_positive_int(
             logical_input_channels, "logical_input_channels"
@@ -224,8 +225,9 @@ class VoltageClampedConvBlock(nn.Module):
                 (channels, self.spatial_size, self.spatial_size),
                 batch_size=1,
                 device=target_device,
-                non_linearity=(output_activation if index == len(self.analog_channels) - 1
-                               else "perfect_diode"),
+                # 'digital_relu' keeps the analog output linear; decode_output rectifies it.
+                non_linearity=("perfect_diode" if index < len(self.analog_channels) - 1
+                               or output_activation == "perfect_diode" else "linear"),
             )
             for index, channels in enumerate(self.analog_channels)
         ]
@@ -407,7 +409,20 @@ class VoltageClampedConvBlock(nn.Module):
         self.set_input_voltage(values)
         self.minimizer.num_iterations = iterations
         self.minimizer.compute_equilibrium()
-        return self.differential_decode(self._free_layers[-1].state)
+        return self.decode_output(self._free_layers[-1].state)
+
+    def decode_output(self, state: torch.Tensor) -> torch.Tensor:
+        """Digital readout of the block's output layer.
+
+        With 'digital_relu' the excitatory half is rectified to >=0 and the
+        inhibitory half to <=0 before decoding, the same function the analog
+        perfect diode applies. Autograd then gates the injected force by the
+        rectifier derivative, so units that are off receive none.
+        """
+        if self.output_activation == 'digital_relu':
+            positive, negative = state.chunk(2, dim=1)
+            state = torch.cat((F.relu(positive), -F.relu(-negative)), dim=1)
+        return self.differential_decode(state)
 
     def project_weights_(self) -> None:
         with torch.no_grad():
