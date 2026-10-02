@@ -1,7 +1,7 @@
 ---
 id: "exp-032"
 title: "Initialization replay with diode, digital-ReLU and linear block outputs"
-status: "planned"
+status: "running"
 hypotheses: ["H-027"]
 ---
 # How wide is the beta window when block outputs are linear?
@@ -66,3 +66,23 @@ failures that are unrelated and also fail at commit `2b400943` without this chan
 `test_cifar_l8_amplification::test_legacy_block_scaling_and_bn_boundary_cancellation`
 (BatchNorm eps=0). On a tiny model at small beta, all three activations match local
 BPTT (cosine 1.000000 at beta ≤1e-6 in float64).
+
+**Staged October2 11:40.** Frozen source `results/cifar-block-output-init-replay-20261002-v1/source/`
+at commit `b26388b1`; input roots `cases/{perfect_diode,digital_relu,linear}/inputs/`
+(checkpoint hard-linked from exp-025, model configs differ only in
+`block_output_activation`). Pushed to trex/fifi/loulou/riri with all 13 hashes
+verified remotely. Queue jobs `cifar-block-output-init-{activation}-{precision}-20261002`
+(specs in `launch/`); the queue owns placement, monitoring and the completion hook
+`run_cifar_block_output_replay collect CASE`. Float32 jobs queued at 11:47; float64
+jobs submitted held. A background watcher releases float64 when the first float32
+bundle validates and leaves it held on any float32 failure (deadline 22:00).
+At submission no approved GPU had room: Codex's linear-output BPTT jobs hold the local
+3090 and fifi until about 16:15 (expected), and the other 5090s carry other users'
+jobs not covered by sharing permission.
+
+**Scope reduced (October2 13:00, Filip).** Finish only `digital_relu-float32`
+(running on trex since 12:54, shared with Ben and another user's job). The other
+five jobs are held, not cancelled; the float64 auto-release watcher is stopped.
+Filip expects the important features to appear only after training, so the next
+step will be chosen after this case. H-027's frozen rule cannot be applied without
+the control and float64 cases; this case is descriptive only.
