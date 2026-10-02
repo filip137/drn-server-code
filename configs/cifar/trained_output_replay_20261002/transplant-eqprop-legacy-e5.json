@@ -1,0 +1,70 @@
+{
+  "base_betas": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "batch_size": 32,
+  "block_output_activation": "digital_relu",
+  "budget_seconds": 1500,
+  "case_id": "transplant-eqprop-legacy-e5",
+  "checkpoint_epoch": 5,
+  "checkpoint_file": "inputs/checkpoint.pt",
+  "displacement_calibration": {
+    "initial_beta_guesses": [
+      3.106146926766086,
+      1088.4183296433416,
+      1355.378034699263
+    ],
+    "initial_guess_relative_rms": 1.0,
+    "max_evaluations": 24,
+    "relative_tolerance": 0.03
+  },
+  "energy_difference": "factored_centered_voltage_products",
+  "expected_environment": {
+    "cuda": "12.8",
+    "torch": "2.11.0+cu128"
+  },
+  "input_sha256": {
+    "inputs/checkpoint.pt": "2a3a66ca9ba6bc513c296d697babb357ed2fc9724d7038a1956703531f9ff861",
+    "inputs/checkpoint_provenance.json": "16a50d917d73e8adb81dade4c70432851d455eb00f38acf84491e9325980c984",
+    "inputs/cohort.json": "8e27e65e45582d502f14d04d32e06647800f4cee57963a79b1fbe8ac7e203d2d",
+    "inputs/model_config.json": "445339c7519dff16981ec99ac873dc55e3522f1bb5a50dcfab6f57adef7050b6"
+  },
+  "measure_layer_displacement": true,
+  "noise": 0,
+  "parameters_and_bn_read_only": true,
+  "precision": "float32",
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "relative_rms_targets": [
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05,
+    0.0001,
+    0.00025,
+    0.0005,
+    0.001,
+    0.0025,
+    0.005,
+    0.01,
+    0.02,
+    0.035,
+    0.05,
+    0.065,
+    0.075,
+    0.085,
+    0.1,
+    0.125,
+    0.2,
+    0.4,
+    0.7,
+    1.0
+  ],
+  "scheme": "legacy",
+  "study_id": "cifar-trained-output-replay-20261002-v1",
+  "trajectory": "eqprop"
+}

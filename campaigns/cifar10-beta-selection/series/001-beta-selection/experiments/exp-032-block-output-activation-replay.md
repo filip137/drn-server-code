@@ -1,7 +1,7 @@
 ---
 id: "exp-032"
 title: "Initialization replay with diode, digital-ReLU and linear block outputs"
-status: "running"
+status: "complete"
 hypotheses: ["H-027"]
 ---
 # How wide is the beta window when block outputs are linear?

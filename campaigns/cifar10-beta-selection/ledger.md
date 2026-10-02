@@ -4,7 +4,7 @@
 
 Sources: campaign experiment metadata and reviewer-written result notes. No raw evidence or live job state is inferred.
 
-Counts: cancelled=2, complete=25, planned=2, running=4.
+Counts: cancelled=2, complete=26, planned=1, running=4.
 
 ## Experiments
 
@@ -41,8 +41,8 @@ Counts: cancelled=2, complete=25, planned=2, running=4.
 | [exp-029 — Block3 local-gradient failure: switching, linearity and settling](series/001-beta-selection/experiments/exp-029-block3-diode-switching.md) | complete | [H-024](hypotheses/H-024-block3-diode-switching.md) | [validated-local](series/001-beta-selection/results/exp-029-block3-diode-switching.md): Fixing diode decisions restores block3's first failing local EP gradient at ours epoch1 |
 | [exp-030 — Float32 replay of all18 checkpoints with the inactive-channel force mask](series/001-beta-selection/experiments/exp-030-float32-force-mask-replay.md) | complete | [H-025](hypotheses/H-025-inactive-channel-force-mask.md) | [validated-local](series/001-beta-selection/results/exp-030-float32-force-mask-replay.md): Masking inactive-channel force is exact and restores block3 where those channels carry most of the force (ours e1/e5, legacy e1, BPTT legacy e10), but not in baseline e1 or legacy e5; no common float32 target exists in any block |
 | [exp-031 — Five-epoch float32 hybrid EqProp with versus without the force mask](series/001-beta-selection/experiments/exp-031-float32-masked-training.md) | complete | [H-026](hypotheses/H-026-float32-masked-training.md) | [validated-local](series/001-beta-selection/results/exp-031-float32-masked-training.md): Mask and unmasked float32 hybrid EqProp finish epoch5 level: 60.88%/CE1.098 versus 60.68%/CE1.089 (+0.20 points, higher CE); H-026 contradicted. Both arms exceed earlier fixed-beta float32 ours (54.12%) but remain 5.8 points below native BPTT (66.68%) |
-| [exp-032 — Initialization replay with diode, digital-ReLU and linear block outputs](series/001-beta-selection/experiments/exp-032-block-output-activation-replay.md) | running | [H-027](hypotheses/H-027-linear-block-outputs.md) | No result recorded. |
-| [exp-033 — Float32 trained-checkpoint replays with linear block outputs](series/001-beta-selection/experiments/exp-033-trained-linear-output-replay.md) | planned | [H-028](hypotheses/H-028-trained-linear-outputs.md) | No result recorded. |
+| [exp-032 — Initialization replay with diode, digital-ReLU and linear block outputs](series/001-beta-selection/experiments/exp-032-block-output-activation-replay.md) | complete | [H-027](hypotheses/H-027-linear-block-outputs.md) | [validated-local](series/001-beta-selection/results/exp-032-block-output-activation-replay.md): Initialization, float32, single case: linear analog outputs plus digital ReLU pass every layer at cosine ≥0.99 from 0.0025/0.035/0.0005 up to the top of the grid (1.0) in blocks1/2/3, versus diode windows of 0.005–0.1 / none / 0.001–0.125. Descriptive only; H-027 not graded |
+| [exp-033 — Float32 trained-checkpoint replays with linear block outputs](series/001-beta-selection/experiments/exp-033-trained-linear-output-replay.md) | running | [H-028](hypotheses/H-028-trained-linear-outputs.md) | No result recorded. |
 
 ## Hypothesis evidence
 
@@ -76,7 +76,7 @@ Verdicts below are scoped judgments from individual notes, not a generated globa
 | [H-024 — Diode switching limits block3's useful output displacement](hypotheses/H-024-block3-diode-switching.md) | [exp-029](series/001-beta-selection/results/exp-029-block3-diode-switching.md): supports (validated-local) |
 | [H-025 — Masking force on inactive output channels restores block3's float32 window](hypotheses/H-025-inactive-channel-force-mask.md) | [exp-030](series/001-beta-selection/results/exp-030-float32-force-mask-replay.md): contradicts (validated-local) |
 | [H-026 — The inactive-channel force mask improves float32 hybrid EqProp learning](hypotheses/H-026-float32-masked-training.md) | [exp-031](series/001-beta-selection/results/exp-031-float32-masked-training.md): contradicts (validated-local) |
-| [H-027 — Linear analog block outputs widen the usable beta window](hypotheses/H-027-linear-block-outputs.md) | No result-note judgment recorded. |
+| [H-027 — Linear analog block outputs widen the usable beta window](hypotheses/H-027-linear-block-outputs.md) | [exp-032](series/001-beta-selection/results/exp-032-block-output-activation-replay.md): inconclusive (validated-local) |
 | [H-028 — Digital rectification after a linear analog output restores trained block3 float32 windows](hypotheses/H-028-trained-linear-outputs.md) | No result-note judgment recorded. |
 
 ## Refresh

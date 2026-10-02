@@ -1,7 +1,7 @@
 ---
 id: "exp-033"
 title: "Float32 trained-checkpoint replays with linear block outputs"
-status: "planned"
+status: "running"
 hypotheses: ["H-028"]
 ---
 # Does the beta window stay open after training when block outputs are linear?
@@ -55,4 +55,17 @@ Root `results/cifar-trained-output-replay-20261002-v1/`; configs
 
 ## Execution and monitoring handoff
 
-Not yet staged.
+**Staged October2 13:05** at commit `65db8aa0`: frozen code in `source/`, 18 input
+roots in `cases/` (15 transplants; `linear-ours-e1/e5`, `linear-legacy-e1`), each
+config identified by SHA256 in `cases.json`. CPU check: transplanted and linear
+checkpoints restore into their architectures with finite logits. Pushed to
+trex/fifi/loulou/riri with all 91 hashes verified on each (trex after one transient
+SSH failure during its reboot). Queue jobs `cifar-trained-output-<case>-20261002`;
+smoke `transplant-eqprop-ours-e1` admitted on trex at 13:12, the other 17 held.
+
+Coordinator (session background task, scratchpad `exp033_watch.py`): releases the
+held jobs once the smoke bundle validates, keeps them held on a smoke failure, and
+stages/pushes/submits `linear-ours-e10`, `linear-legacy-e5` and `linear-legacy-e10`
+as Codex writes them. The queue owns placement, monitoring and the completion hook
+`run_cifar_trained_output_replay collect CASE`. The coordinator's session limit is
+2h (until about 15:10); it must be restarted for legacy e10 (expected about 16:25).
