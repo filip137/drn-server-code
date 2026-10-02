@@ -1,7 +1,7 @@
 ---
 id: "exp-034"
 title: "Digital-ReLU ours BPTT trajectory and per-block beta across epochs"
-status: "planned"
+status: "running"
 hypotheses: ["H-029"]
 ---
 # Which beta works for each block across the digital-ReLU training trajectory?
@@ -41,4 +41,22 @@ reported beside the Codex linear-output arm, descriptively.
 
 ## Execution and monitoring handoff
 
-Not yet staged.
+**Staged October2 15:15.** Frozen source `results/cifar10-l8-digital-relu-bptt-20261002-v1/source/`
+(commit `69b03fee` plus the study-script prepare fix), initializer prepared on CPU:
+`assets/ours/checkpoints/initial_model.pt`, tensors identical to the Codex linear-output
+ours initializer (only embedded config fields differ). Pushed to riri, 3 hashes verified.
+Queue smoke `cifar-digital-relu-bptt-ours-smoke-20261002` (priority 7) submitted 15:17;
+production `cifar-digital-relu-bptt-ours-20261002` (priority 6, riri only) is submitted
+by the coordinator after the smoke completes. Production completion hook:
+`run_cifar_digital_relu_bptt collect` → `analysis/ours-collection.json`.
+
+Stage 2 root `results/cifar-digital-relu-trajectory-replay-20261002-v1/`, configs
+`configs/cifar/digital_relu_trajectory_replay_20261002/`, script
+`experiments/run_cifar_trained_output_replay.py --trajectory` (stage-trajectory/push/
+submit --only riri/collect/analyze), jobs `cifar-relu-trajectory-relu-ours-e<epoch>-riri-20261002`.
+
+Coordinator: session background task (scratchpad `coordinator.py`), stateless and
+restartable, 2h session window. It submits production after the smoke, stages/pushes/
+submits the seven replays after production is collected, and runs the analysis. It also
+stages exp-033's `linear-legacy-e10`. Training has priority over the remaining exp-033
+replays on riri.

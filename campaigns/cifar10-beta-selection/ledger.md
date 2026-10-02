@@ -4,7 +4,7 @@
 
 Sources: campaign experiment metadata and reviewer-written result notes. No raw evidence or live job state is inferred.
 
-Counts: cancelled=2, complete=26, planned=2, running=4.
+Counts: cancelled=2, complete=26, planned=1, running=5.
 
 ## Experiments
 
@@ -43,7 +43,7 @@ Counts: cancelled=2, complete=26, planned=2, running=4.
 | [exp-031 — Five-epoch float32 hybrid EqProp with versus without the force mask](series/001-beta-selection/experiments/exp-031-float32-masked-training.md) | complete | [H-026](hypotheses/H-026-float32-masked-training.md) | [validated-local](series/001-beta-selection/results/exp-031-float32-masked-training.md): Mask and unmasked float32 hybrid EqProp finish epoch5 level: 60.88%/CE1.098 versus 60.68%/CE1.089 (+0.20 points, higher CE); H-026 contradicted. Both arms exceed earlier fixed-beta float32 ours (54.12%) but remain 5.8 points below native BPTT (66.68%) |
 | [exp-032 — Initialization replay with diode, digital-ReLU and linear block outputs](series/001-beta-selection/experiments/exp-032-block-output-activation-replay.md) | complete | [H-027](hypotheses/H-027-linear-block-outputs.md) | [validated-local](series/001-beta-selection/results/exp-032-block-output-activation-replay.md): Initialization, float32, single case: linear analog outputs plus digital ReLU pass every layer at cosine ≥0.99 from 0.0025/0.035/0.0005 up to the top of the grid (1.0) in blocks1/2/3, versus diode windows of 0.005–0.1 / none / 0.001–0.125. Descriptive only; H-027 not graded |
 | [exp-033 — Float32 trained-checkpoint replays with linear block outputs](series/001-beta-selection/experiments/exp-033-trained-linear-output-replay.md) | running | [H-028](hypotheses/H-028-trained-linear-outputs.md) | No result recorded. |
-| [exp-034 — Digital-ReLU ours BPTT trajectory and per-block beta across epochs](series/001-beta-selection/experiments/exp-034-digital-relu-bptt-trajectory.md) | planned | [H-029](hypotheses/H-029-digital-relu-beta-across-epochs.md) | No result recorded. |
+| [exp-034 — Digital-ReLU ours BPTT trajectory and per-block beta across epochs](series/001-beta-selection/experiments/exp-034-digital-relu-bptt-trajectory.md) | running | [H-029](hypotheses/H-029-digital-relu-beta-across-epochs.md) | No result recorded. |
 
 ## Hypothesis evidence
 
