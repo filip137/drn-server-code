@@ -73,7 +73,7 @@ def stage():
     reporting.atomic_write_json(source / 'source_identity.json', dict(commit=commit, dirty=dirty, study_id=STUDY,
         note='Ours analog L8, linear analog block outputs with digital ReLU, BPTT, zero decay, seed 0.',
         source_sha256={str(r): reporting.sha256_file(source / r) for r in files}))
-    subprocess.run([str(LOCAL_PYTHON), str(source / 'experiments/train_cifar_l8_analog.py'), str(CONFIG),
+    subprocess.run([str(LOCAL_PYTHON), '-m', 'experiments.train_cifar_l8_analog', str(CONFIG),
                     '--mode', 'prepare', '--output-dir', '../assets/ours', '--device', 'cpu',
                     '--target', 'local-preparation', '--dataset-root', str(REPO / DATASET),
                     '--source-identity', str(source / 'source_identity.json')],

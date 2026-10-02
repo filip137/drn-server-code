@@ -62,8 +62,23 @@ def save_rows(table):
     reporting.atomic_write_json(ROOT / 'cases.json', table)
 
 
+JOB_PREFIX = 'cifar-trained-output'
+STUDY_FLAG = []
+TRAJECTORY = REPO / 'results/cifar10-l8-digital-relu-bptt-20261002-v1/cells/ours/checkpoints'
+
+
+def use_trajectory_study():
+    """exp-034 stage 2: the same replay procedure, in its own study root, for the digital-ReLU trajectory."""
+    global STUDY, ROOT, CONFIGS, HANDOFF, JOB_PREFIX, STUDY_FLAG
+    STUDY = 'cifar-digital-relu-trajectory-replay-20261002-v1'
+    ROOT = REPO / 'results' / STUDY
+    CONFIGS = Path('configs/cifar/digital_relu_trajectory_replay_20261002')
+    HANDOFF = REPO / 'campaigns/cifar10-beta-selection/series/001-beta-selection/experiments/exp-034-digital-relu-bptt-trajectory.md'
+    JOB_PREFIX, STUDY_FLAG = 'cifar-relu-trajectory', ['--trajectory']
+
+
 def job_id(case, tag=None):
-    return f'cifar-trained-output-{case}-{tag}-20261002' if tag else f'cifar-trained-output-{case}-20261002'
+    return f'{JOB_PREFIX}-{case}-{tag}-20261002' if tag else f'{JOB_PREFIX}-{case}-20261002'
 
 
 def source_files():
@@ -174,6 +189,32 @@ def stage_linear(scheme, epoch):
     print(json.dumps(dict(staged=case)))
 
 
+def stage_trajectory(epoch):
+    """Stage one checkpoint of the exp-034 digital-ReLU BPTT run (collected locally)."""
+    import torch
+    epoch = int(epoch)
+    case = f'relu-ours-e{epoch}'
+    assert case not in {r['id'] for r in rows()}, case
+    if not (ROOT / 'source').exists():
+        freeze_source()
+    source = TRAJECTORY / ('initial_model.pt' if epoch == 0 else f'epoch_{epoch:03d}.pt')
+    checkpoint = torch.load(source, map_location='cpu', weights_only=False)
+    assert checkpoint['epoch'] == epoch and checkpoint['config']['block_output_activation'] == 'digital_relu'
+    model_config = checkpoint['config']
+    del checkpoint
+    from experiments import reporting
+    base = json.loads((PARENT_CONFIGS / ('init-ours-e0.json' if epoch == 0 else 'bptt-ours-e10.json')).read_text())
+    base.update(checkpoint_epoch=epoch, scheme='ours', trajectory='bptt-digital-relu')
+    provenance = dict(source_study='cifar10-l8-digital-relu-bptt-20261002-v1', source_checkpoint=str(source.relative_to(REPO)),
+                      source_sha256=reporting.sha256_file(source), epoch=epoch, scheme='ours',
+                      block_output_activation='digital_relu', trainer='experiments.train_cifar_l8_analog (BPTT)')
+    row = write_case(case, model_config, source, base, 'digital_relu', {}, provenance)
+    row.update(group='relu', scheme='ours', epoch=epoch, trajectory='bptt-digital-relu', control_case=None,
+               source_checkpoint=str(source.relative_to(REPO)))
+    save_rows([*rows(), row])
+    print(json.dumps(dict(staged=case)))
+
+
 def push(target):
     """Copy frozen source and every staged input root to a remote host, then verify hashes there."""
     from experiments import reporting
@@ -224,8 +265,8 @@ def queue_spec(row, targets=PLACEMENTS, tag=None):
         expected_seconds=EXPECTED_SECONDS, budget_seconds=QUEUE_SECONDS, deadline='2026-10-03T08:00:00+02:00',
         retry_safe=False, recovery=False, stale_seconds=900,
         placements={target: placement(row, target, tag) for target in targets},
-        completion=dict(argv=[sys.executable, '-m', 'experiments.run_cifar_trained_output_replay', 'collect',
-                              row['id']], workdir=str(REPO), timeout_seconds=900, retry_safe=True))
+        completion=dict(argv=[sys.executable, '-m', 'experiments.run_cifar_trained_output_replay', *STUDY_FLAG,
+                              'collect', row['id']], workdir=str(REPO), timeout_seconds=900, retry_safe=True))
 
 
 def submit(*cases):
@@ -279,7 +320,7 @@ def validate_cell(row, out):
 def collect(case):
     from experiments import reporting
     row, = [r for r in rows() if r['id'] == case]
-    job = os.environ.get('RUN_WATCH_JOB_ID', row['job_id'])
+    job = os.environ.get('RUN_WATCH_JOB_ID', job_id(row['id']))
     state = json.loads(subprocess.check_output([sys.executable, QUEUE, 'status', job], text=True))
     target = state['attempts'][-1]['target']
     assert target in PLACEMENTS, target
@@ -362,12 +403,12 @@ def analyze():
                        pooled_run=r['pooled_run'], strict_run=r['strict_run'],
                        control_pooled_run=r.get('control', {}).get('pooled_run')) for r in results},
                    rows=results)
-    groups = [g for g in ('transplant', 'linear') if any(r['group'] == g for r in results)]
+    groups = [g for g in ('transplant', 'linear', 'relu') if any(r['group'] == g for r in results)]
     if groups:
         fig, axes = plt.subplots(len(groups), 3, figsize=(15, 4.4 * len(groups)), sharex=True, sharey=True,
                                  squeeze=False)
         colors = dict(baseline='tab:blue', ours='tab:orange', legacy='tab:green')
-        markers = {1: 'o', 5: 's', 10: '^', 30: 'v', 50: 'D'}
+        markers = {0: 'x', 1: 'o', 2: '<', 3: '>', 5: 's', 7: 'p', 10: '^', 30: 'v', 50: 'D'}
         for gi, group in enumerate(groups):
             for block in (1, 2, 3):
                 ax = axes[gi, block - 1]
@@ -375,14 +416,16 @@ def analyze():
                     if r['group'] != group or r['block'] != block:
                         continue
                     label = f"{r['scheme']} {r['trajectory'].split('-')[0]} e{r['epoch']}"
+                    color = plt.cm.viridis(r['epoch'] / 10) if group == 'relu' else colors[r['scheme']]
                     ax.plot(r['grid'], r['worst_pooled'], marker=markers.get(r['epoch'], 'o'), markersize=3,
-                            color=colors[r['scheme']], alpha=.9, label=label)
+                            color=color, alpha=.9, label=label)
                     if 'control' in r:
                         ax.plot(r['control']['grid'], r['control']['worst_pooled'], ls=':', lw=.9,
                                 color=colors[r['scheme']], alpha=.5)
                 ax.axhline(.99, color='k', lw=.6, ls='--')
-                title = ('diode-trained weights, digital ReLU outputs (dotted: diode outputs, exp-030)'
-                         if group == 'transplant' else 'linear-output BPTT checkpoints (Codex)')
+                title = {'transplant': 'diode-trained weights, digital ReLU outputs (dotted: diode outputs, exp-030)',
+                         'linear': 'linear-output BPTT checkpoints (Codex)',
+                         'relu': 'digital-ReLU BPTT trajectory (exp-034)'}[group]
                 ax.set(xscale='log', ylim=(-.05, 1.02), title=f'block {block}: {title}' if block == 1 else f'block {block}')
                 ax.grid(alpha=.2)
                 if gi == len(groups) - 1:
@@ -401,6 +444,10 @@ def analyze():
 
 
 if __name__ == '__main__':
-    mode, *args = sys.argv[1:]
-    {'stage-transplant': stage_transplant, 'stage-linear': stage_linear, 'push': push, 'submit': submit,
+    argv = sys.argv[1:]
+    if argv and argv[0] == '--trajectory':
+        use_trajectory_study()
+        argv = argv[1:]
+    mode, *args = argv
+    {'stage-trajectory': stage_trajectory, 'stage-transplant': stage_transplant, 'stage-linear': stage_linear, 'push': push, 'submit': submit,
      'collect': collect, 'analyze': analyze}[mode](*args)
