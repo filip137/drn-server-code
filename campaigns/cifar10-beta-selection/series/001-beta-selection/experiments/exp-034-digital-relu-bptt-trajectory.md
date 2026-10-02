@@ -60,3 +60,8 @@ restartable, 2h session window. It submits production after the smoke, stages/pu
 submits the seven replays after production is collected, and runs the analysis. It also
 stages exp-033's `linear-legacy-e10`. Training has priority over the remaining exp-033
 replays on riri.
+
+**Smoke passed (15:24, riri):** four updates through the exact trainer/config/assets,
+bundle validated by the queue, 3.1s, peak reserved 10.4GiB (16-image validation CE
+71.8 after four updates, as in earlier smokes of this recipe). Production admitted on
+riri at about 15:31.
