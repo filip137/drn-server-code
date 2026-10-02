@@ -1,0 +1,541 @@
+{
+  "study_id": "conv123-initial-displacement-noise-map-20260925-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "paper_facing": false,
+  "scientific_question": "Initialization layerwise cosine at matched clean physical output D/F and absolute endpoint read noise",
+  "output_root": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv1",
+  "cases": [
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/baseline/seed0/config.used.json",
+      "source_config_sha256": "631bcb3b12ccf936bdbbc074de3190593eea5d251c0787f26b8a2fa3ee731f2f",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_baseline_relative0p2",
+      "relative_target": 0.2,
+      "injected_beta": 0.8038894171685608,
+      "calibration": {
+        "centered_rms": 0.00913007177673711,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04565036051815013,
+        "injected_beta": 0.8038894171685608,
+        "relative_output_rms": 0.1999999928392041,
+        "relative_target_error": 3.580397944791258e-08
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/baseline/seed0/config.used.json",
+      "source_config_sha256": "631bcb3b12ccf936bdbbc074de3190593eea5d251c0787f26b8a2fa3ee731f2f",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_baseline_relative0p8",
+      "relative_target": 0.8,
+      "injected_beta": 3.215553826927197,
+      "calibration": {
+        "centered_rms": 0.036520244782365256,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04565036051815013,
+        "injected_beta": 3.215553826927197,
+        "relative_output_rms": 0.7999990442100707,
+        "relative_target_error": 1.194737411669422e-06
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/baseline/seed0/config.used.json",
+      "source_config_sha256": "631bcb3b12ccf936bdbbc074de3190593eea5d251c0787f26b8a2fa3ee731f2f",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_baseline_relative2",
+      "relative_target": 2.0,
+      "injected_beta": 8.038884567317993,
+      "calibration": {
+        "centered_rms": 0.09130063571382713,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04565036051815013,
+        "injected_beta": 8.038884567317993,
+        "relative_output_rms": 1.999998130957299,
+        "relative_target_error": 9.345213505262961e-07
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/baseline/seed0/config.used.json",
+      "source_config_sha256": "631bcb3b12ccf936bdbbc074de3190593eea5d251c0787f26b8a2fa3ee731f2f",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_baseline_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 24.116653701953975,
+      "calibration": {
+        "centered_rms": 0.27390220126435477,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04565036051815013,
+        "injected_beta": 24.116653701953975,
+        "relative_output_rms": 6.0000008358193355,
+        "relative_target_error": 1.393032225127655e-07
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/baseline/seed0/config.used.json",
+      "source_config_sha256": "631bcb3b12ccf936bdbbc074de3190593eea5d251c0787f26b8a2fa3ee731f2f",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_baseline_relative10",
+      "relative_target": 10.0,
+      "injected_beta": 40.19441723737811,
+      "calibration": {
+        "centered_rms": 0.45650379906597316,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04565036051815013,
+        "injected_beta": 40.19441723737811,
+        "relative_output_rms": 10.000004247161899,
+        "relative_target_error": 4.247161897730223e-07
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/ours/seed0/config.used.json",
+      "source_config_sha256": "41de9e7208abdf7cf9d39243bf1db7cdb6d4d91af31f4e037ee1d812a89d7e4e",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_ours_relative0p2",
+      "relative_target": 0.2,
+      "injected_beta": 0.6461228143593313,
+      "calibration": {
+        "centered_rms": 0.031441103311271236,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.15720556239109712,
+        "injected_beta": 0.6461228143593313,
+        "relative_output_rms": 0.19999994168814353,
+        "relative_target_error": 2.915592823837798e-07
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/ours/seed0/config.used.json",
+      "source_config_sha256": "41de9e7208abdf7cf9d39243bf1db7cdb6d4d91af31f4e037ee1d812a89d7e4e",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_ours_relative0p8",
+      "relative_target": 0.8,
+      "injected_beta": 2.584480801805927,
+      "calibration": {
+        "centered_rms": 0.1257639411292912,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.15720556239109715,
+        "injected_beta": 2.584480801805927,
+        "relative_output_rms": 0.7999967635777083,
+        "relative_target_error": 4.045527864593446e-06
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/ours/seed0/config.used.json",
+      "source_config_sha256": "41de9e7208abdf7cf9d39243bf1db7cdb6d4d91af31f4e037ee1d812a89d7e4e",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_ours_relative2",
+      "relative_target": 2.0,
+      "injected_beta": 6.461202004514818,
+      "calibration": {
+        "centered_rms": 0.31441019067106873,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.15720556239109715,
+        "injected_beta": 6.461202004514818,
+        "relative_output_rms": 1.999994058027519,
+        "relative_target_error": 2.970986240469209e-06
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/ours/seed0/config.used.json",
+      "source_config_sha256": "41de9e7208abdf7cf9d39243bf1db7cdb6d4d91af31f4e037ee1d812a89d7e4e",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_ours_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 19.383606013544448,
+      "calibration": {
+        "centered_rms": 0.9432317066453867,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.15720556239109712,
+        "injected_beta": 19.383606013544448,
+        "relative_output_rms": 5.999989391589135,
+        "relative_target_error": 1.7680684775145394e-06
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/ours/seed0/config.used.json",
+      "source_config_sha256": "41de9e7208abdf7cf9d39243bf1db7cdb6d4d91af31f4e037ee1d812a89d7e4e",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_ours_relative10",
+      "relative_target": 10.0,
+      "injected_beta": 32.306067141913026,
+      "calibration": {
+        "centered_rms": 1.5720599755943507,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.15720556239109712,
+        "injected_beta": 32.306067141913026,
+        "relative_output_rms": 10.00002768148476,
+        "relative_target_error": 2.768148475995602e-06
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/legacy/seed0/config.used.json",
+      "source_config_sha256": "c4549c21112073dd23c076e816df7572e5666c537f4b88bedd583610696301a0",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_legacy_relative0p2",
+      "relative_target": 0.2,
+      "injected_beta": 0.18438586336103563,
+      "calibration": {
+        "centered_rms": 0.03652028701306909,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.1826014420726005,
+        "injected_beta": 0.18438586336103563,
+        "relative_output_rms": 0.19999999232508248,
+        "relative_target_error": 3.837458761868362e-08
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/legacy/seed0/config.used.json",
+      "source_config_sha256": "c4549c21112073dd23c076e816df7572e5666c537f4b88bedd583610696301a0",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_legacy_relative0p8",
+      "relative_target": 0.8,
+      "injected_beta": 0.7375429219288173,
+      "calibration": {
+        "centered_rms": 0.1460810483837789,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.1826014420726005,
+        "injected_beta": 0.7375429219288173,
+        "relative_output_rms": 0.799999423474972,
+        "relative_target_error": 7.206562850914366e-07
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/legacy/seed0/config.used.json",
+      "source_config_sha256": "c4549c21112073dd23c076e816df7572e5666c537f4b88bedd583610696301a0",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_legacy_relative2",
+      "relative_target": 2.0,
+      "injected_beta": 1.843857304822043,
+      "calibration": {
+        "centered_rms": 0.3652027271330379,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.1826014420726005,
+        "injected_beta": 1.843857304822043,
+        "relative_output_rms": 1.9999991401373323,
+        "relative_target_error": 4.299313338673727e-07
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/legacy/seed0/config.used.json",
+      "source_config_sha256": "c4549c21112073dd23c076e816df7572e5666c537f4b88bedd583610696301a0",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_legacy_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 5.531571914466131,
+      "calibration": {
+        "centered_rms": 1.0956093462710916,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.1826014420726005,
+        "injected_beta": 5.531571914466131,
+        "relative_output_rms": 6.000003799726228,
+        "relative_target_error": 6.332877047210417e-07
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/legacy/seed0/config.used.json",
+      "source_config_sha256": "c4549c21112073dd23c076e816df7572e5666c537f4b88bedd583610696301a0",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_legacy_relative10",
+      "relative_target": 10.0,
+      "injected_beta": 9.219280685653114,
+      "calibration": {
+        "centered_rms": 1.8260151721809679,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.1826014420726005,
+        "injected_beta": 9.219280685653114,
+        "relative_output_rms": 10.000004115273978,
+        "relative_target_error": 4.115273977145506e-07
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ]
+    }
+  ],
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "cohort_config_sha256": "a48815aeb8954cdfce284a771bed27f0bd4c976054bfc04c01f649dfcdfdad79",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "runtime_hashes_source": "cohort_config.runtime_sha256",
+  "beta_convention": "injected_B; base_beta=B/(voltage_amp/current_amp)^convolution_depth",
+  "noise_sigmas": [
+    0.0,
+    0.0001,
+    0.0005,
+    0.001,
+    0.002,
+    0.005
+  ],
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "report residual flags at accepted T/K; no additional solver tests",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "budget_seconds": 1800,
+  "expected_case_count": 15,
+  "expected_batches": 36,
+  "expected_layer_comparisons": 17280,
+  "target": "akib:RTX3080",
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "source_commit": "6be7d41038018b225cef7d1771fdb905084b0db7",
+  "read_noise_seeds": [
+    91000000,
+    92000000,
+    93000000
+  ],
+  "draws_per_noisy_batch": 3,
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "parameter_order": [
+    "ConvWeight_0",
+    "DenseWeight_0"
+  ]
+}

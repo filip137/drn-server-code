@@ -197,7 +197,7 @@ python -m experiments.evaluate_conv_weight_write_noise \
 
 Omitting the explicit noise grid and seeds uses the proposed validation grid
 and 30 programming seeds above. A production invocation still requires its
-study row and frozen source/inclusion contract.
+experiment/pilot handoff and frozen source/inclusion contract.
 
 The active paper checkpoint and bounded-initializer handoffs are incomplete,
 so a write-noise run now is an ordinary-MNIST validation diagnostic, not
@@ -206,8 +206,8 @@ paper-facing accuracy evidence. Before a production run:
 1. Freeze a readable config containing the formula/version, bounds,
    persistence, RNG key, source checkpoint/result hashes, `eta` grid, seeds,
    inclusion rule, and `official_test_read=false`.
-2. Add the top-level result directory to `current_simulations.md` as
-   `planned` before creating it.
+2. Record the planned top-level result directory in the owning experiment/pilot
+   note before creating it.
 3. Run a same-runner smoke that loads a real checkpoint and validation batch,
    evaluates both zero and nonzero noise, and writes canonical artifacts.
 4. Give every source-checkpoint x `eta` x programming-seed arm the canonical

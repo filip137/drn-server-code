@@ -553,10 +553,15 @@ def _build_runtime(
     free_layers = network.free_layers()
     output_layer = energy_fn.layers()[-1]
     output_dim = int(output_layer.shape[0])
+    target_scale = float(source_config.get("target_scale", 1.0))
     if output_dim == 10:
+        if target_scale != 1.0:
+            raise ValueError("Nondefault target_scale requires paired outputs.")
         cost_fn = SquaredError(output_layer)
     elif output_dim == 20:
-        cost_fn = SquaredErrorPairedOutputs(output_layer, num_classes=10)
+        cost_fn = SquaredErrorPairedOutputs(
+            output_layer, num_classes=10, target_scale=target_scale
+        )
     else:
         raise ValueError(f"Unsupported output dimension {output_dim}.")
     mode = source_config["energy_minimizer"]["mode"]

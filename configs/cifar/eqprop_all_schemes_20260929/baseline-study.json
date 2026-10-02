@@ -1,0 +1,19 @@
+{
+  "final_stage": "50",
+  "expected_environment": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8"
+  },
+  "scheme": "baseline",
+  "base_betas": [
+    0.036275525677786254,
+    1.2233372946899868,
+    0.9409883141768355
+  ],
+  "anchor_rms": [
+    0.01,
+    0.02,
+    0.0025
+  ],
+  "anchor_epoch": 10
+}

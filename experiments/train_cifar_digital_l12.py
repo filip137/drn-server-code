@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 from pathlib import Path
+from PIL import Image
 import random
 import shlex
 import shutil
@@ -16,7 +18,7 @@ import time
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Dataset, Subset
 import torchvision
 from torchvision import datasets, transforms
 
@@ -28,13 +30,17 @@ class DigitalL12(nn.Module):
         super().__init__()
         layers = []
         channels = config["input_shape"][0]
+        output_activation = config.get("block_output_activation", "relu")
+        if output_activation not in ("relu", "linear"):
+            raise ValueError("block_output_activation must be relu or linear")
         for index, block in enumerate(config["blocks"]):
-            for output_channels in block:
+            for position, output_channels in enumerate(block):
                 layers.extend([
                     nn.Conv2d(channels, output_channels, config["kernel_size"],
                               stride=config["stride"], padding=config["padding"],
                               bias=config["conv_bias"]),
-                    nn.ReLU(inplace=False),
+                    (nn.Identity() if output_activation == "linear" and position == len(block) - 1
+                     else nn.ReLU(inplace=False)),
                 ])
                 channels = output_channels
             if index in config["pool_after_blocks"]:
@@ -54,7 +60,28 @@ def seed_worker(_worker_id):
     np.random.seed(seed)
 
 
-def build_loaders(config, dataset_root, smoke, device):
+class TrainingImages(Dataset):
+    """A subset of training-file images, with an independent transform."""
+
+    def __init__(self, images, labels, indices, transform):
+        self.images, self.labels, self.indices, self.transform = images, labels, indices, transform
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, position):
+        index = self.indices[position]
+        return self.transform(Image.fromarray(self.images[index])), int(self.labels[index])
+
+
+def evaluation_split(config):
+    split = config["dataset"]["evaluation_split"]
+    if split not in ("official_test", "validation"):
+        raise ValueError("evaluation_split must be official_test or validation")
+    return split
+
+
+def build_loaders(config, dataset_root, smoke, device, artifacts_dir=None):
     norm = transforms.Normalize(config["dataset"]["mean"], config["dataset"]["std"])
     train_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(0.5),
@@ -62,9 +89,33 @@ def build_loaders(config, dataset_root, smoke, device):
         transforms.ToTensor(), norm,
     ])
     test_transform = transforms.Compose([transforms.ToTensor(), norm])
-    train = datasets.CIFAR10(dataset_root, train=True, transform=train_transform, download=False)
-    test = datasets.CIFAR10(dataset_root, train=False, transform=test_transform, download=False)
-    if len(train) != config["dataset"]["train_size"] or len(test) != config["dataset"]["test_size"]:
+    validation = evaluation_split(config) == "validation"
+    if validation:
+        # Reuse the campaign contract; torchvision's CIFAR10 integrity check also
+        # opens the official test file even with train=True.
+        from experiments.train_cifar_l8_analog import read_training_data, make_split
+        data_root = Path(dataset_root)
+        if not (data_root / "data_batch_1").is_file():
+            data_root = data_root / "cifar-10-batches-py"
+        images, labels = read_training_data(data_root)
+        split = make_split(labels, config["dataset"]["split_seed"])
+        train = TrainingImages(images, labels, split["train"], train_transform)
+        test = TrainingImages(images, labels, split["validation"], test_transform)
+        if artifacts_dir is not None:
+            provenance = {"source_split": "training", "split_seed": config["dataset"]["split_seed"],
+                          "official_test_read": False, **split}
+            for name, indices in split.items():
+                provenance[f"{name}_indices_sha256"] = hashlib.sha256(
+                    np.asarray(indices, dtype="<i8").tobytes()).hexdigest()
+            provenance["training_files_sha256"] = {
+                f"data_batch_{i}": reporting.sha256_file(data_root / f"data_batch_{i}")
+                for i in range(1, 6)}
+            reporting.atomic_write_json(Path(artifacts_dir) / "split.json", provenance)
+    else:
+        train = datasets.CIFAR10(dataset_root, train=True, transform=train_transform, download=False)
+        test = datasets.CIFAR10(dataset_root, train=False, transform=test_transform, download=False)
+    evaluation_size = config["dataset"]["validation_size" if validation else "test_size"]
+    if len(train) != config["dataset"]["train_size"] or len(test) != evaluation_size:
         raise ValueError("Unexpected CIFAR-10 split sizes")
     if smoke:
         train = Subset(train, range(3 * config["batch_size"]))
@@ -95,17 +146,35 @@ def evaluate(model, loader, device, deadline):
             count += len(labels)
     loss, accuracy = (totals / count).cpu().tolist()
     if not math.isfinite(loss):
-        raise FloatingPointError("Nonfinite test loss")
+        raise FloatingPointError("Nonfinite evaluation loss")
     return {"loss": loss, "accuracy": accuracy, "examples": count}
 
 
 def save_checkpoint(path, model, optimizer, scheduler, epoch, config):
+    if not all(torch.isfinite(tensor).all() for tensor in model.state_dict().values()):
+        raise FloatingPointError("Nonfinite model state")
     temporary = path.with_suffix(".tmp")
     torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(), "epoch": epoch, "config": config,
                 "torch_rng": torch.get_rng_state(), "numpy_rng": np.random.get_state(),
                 "python_rng": random.getstate()}, temporary)
     os.replace(temporary, path)
+
+
+def make_optimizer(model, config):
+    opt = config["optimizer"]
+    optimizer_parameters = model.parameters()
+    if opt.get("exclude_batchnorm_from_weight_decay", False):
+        bn_parameters = [p for m in model.modules() if isinstance(m, nn.BatchNorm2d)
+                         for p in m.parameters(recurse=False)]
+        bn_ids = {id(p) for p in bn_parameters}
+        optimizer_parameters = [
+            {"params": [p for p in model.parameters() if id(p) not in bn_ids]},
+            {"params": bn_parameters, "weight_decay": 0.0},
+        ]
+    return torch.optim.Adam(optimizer_parameters, lr=opt["lr"], betas=tuple(opt["betas"]),
+                            eps=opt["eps"], weight_decay=opt["weight_decay"],
+                            foreach=False, fused=False)
 
 
 def main():
@@ -117,12 +186,22 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--target", default="akibscomputer")
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--maximum-runtime-seconds", type=float,
+                        help="Operational cap within the config's runtime allowance")
     args = parser.parse_args()
     config = json.loads(args.config.read_text())
-    run_dir = args.output_root / ("smoke" if args.smoke else "production-seed0")
+    run_dir = args.output_root / ("smoke" if args.smoke else f"production-seed{config['seed']}")
     if run_dir.exists():
         raise FileExistsError(f"Refusing to overwrite {run_dir}")
     seed = config["seed"]
+    split_name = evaluation_split(config)
+    metric_prefix = "validation" if split_name == "validation" else "test"
+    official_test_read = split_name == "official_test"
+    runtime_seconds = config["maximum_runtime_hours"] * 3600
+    if args.maximum_runtime_seconds is not None:
+        if not math.isfinite(args.maximum_runtime_seconds) or args.maximum_runtime_seconds <= 0:
+            raise ValueError("maximum-runtime-seconds must be finite and positive")
+        runtime_seconds = min(runtime_seconds, args.maximum_runtime_seconds)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -137,18 +216,7 @@ def main():
         raise ValueError("Convolution count differs from configured blocks")
     parameters = sum(p.numel() for p in model.parameters())
     opt = config["optimizer"]
-    optimizer_parameters = model.parameters()
-    if opt.get("exclude_batchnorm_from_weight_decay", False):
-        bn_parameters = [p for m in model.modules() if isinstance(m, nn.BatchNorm2d)
-                         for p in m.parameters(recurse=False)]
-        bn_ids = {id(p) for p in bn_parameters}
-        optimizer_parameters = [
-            {"params": [p for p in model.parameters() if id(p) not in bn_ids]},
-            {"params": bn_parameters, "weight_decay": 0.0},
-        ]
-    optimizer = torch.optim.Adam(optimizer_parameters, lr=opt["lr"], betas=tuple(opt["betas"]),
-                                 eps=opt["eps"], weight_decay=opt["weight_decay"],
-                                 foreach=False, fused=False)
+    optimizer = make_optimizer(model, config)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=config["scheduler"]["horizon_epochs"],
         eta_min=opt["lr"] * config["scheduler"]["final_lr_ratio"])
@@ -163,7 +231,8 @@ def main():
         "arm_id": config.get("arm_id", "digital-l12-logical-width"),
         "seed": seed, "smoke": args.smoke, "evidence_class": config["evidence_class"],
         "resolved_config": config, "effective_epochs": epochs,
-        "dataset": dict(config["dataset"], root=str(args.dataset_root), official_test_read=True),
+        "dataset": dict(config["dataset"], root=str(args.dataset_root), official_test_read=official_test_read),
+        "maximum_runtime_seconds": runtime_seconds,
         "command": shlex.join([sys.executable, *sys.argv]), "source_identity": source_identity,
         "config_sha256": reporting.sha256_file(args.config), "parameter_count": parameters,
         "runtime": dict(reporting.runtime_context(target=args.target), pid=os.getpid()),
@@ -172,7 +241,7 @@ def main():
                         "device": str(device), "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None},
     })
     start = time.monotonic()
-    deadline = start + config["maximum_runtime_hours"] * 3600
+    deadline = start + runtime_seconds
     try:
         reporting.atomic_write_json(run_dir / "artifacts/resolved_config.json", config)
         shutil.copyfile(args.source_identity, run_dir / "artifacts/source_identity.json")
@@ -180,8 +249,8 @@ def main():
             destination = run_dir / "artifacts/source" / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(root / name, destination)
-        train, test = build_loaders(config, args.dataset_root, args.smoke, device)
-        print(f"START parameters={parameters} train={len(train.dataset)} test={len(test.dataset)} batch={config['batch_size']} epochs={epochs}", flush=True)
+        train, test = build_loaders(config, args.dataset_root, args.smoke, device, run_dir / "artifacts")
+        print(f"START parameters={parameters} train={len(train.dataset)} {metric_prefix}={len(test.dataset)} batch={config['batch_size']} epochs={epochs}", flush=True)
         save_checkpoint(run_dir / "checkpoints/initial_model.pt", model, optimizer, scheduler, 0, config)
         best_key = (-1.0, -float("inf"))
         best_epoch, steps, epoch_seconds = 0, 0, []
@@ -201,6 +270,9 @@ def main():
                 if not torch.isfinite(loss):
                     raise FloatingPointError("Nonfinite train loss")
                 loss.backward()
+                if not torch.stack([torch.isfinite(p.grad).all() for p in model.parameters()
+                                    if p.grad is not None]).all():
+                    raise FloatingPointError("Nonfinite parameter gradient")
                 if batch == 1:
                     norms = {n: float(p.grad.norm()) for n, p in model.named_parameters() if p.grad is not None}
                     if len(norms) != len(list(model.parameters())) or not all(math.isfinite(v) and v > 0 for v in norms.values()):
@@ -214,15 +286,15 @@ def main():
                     reporting.update_status_progress(run_dir, {"stage": "training", "epoch": epoch,
                         "epochs": epochs, "batch": batch, "batches": len(train), "optimizer_steps": steps})
                     print(f"epoch={epoch}/{epochs} batch={batch}/{len(train)} loss={float(loss):.5f}", flush=True)
-            reporting.update_status_progress(run_dir, {"stage": "test", "epoch": epoch, "epochs": epochs})
+            reporting.update_status_progress(run_dir, {"stage": metric_prefix, "epoch": epoch, "epochs": epochs})
             measured = evaluate(model, test, device, deadline)
             train_loss, train_accuracy = (totals / count).cpu().tolist()
             elapsed = time.monotonic() - epoch_start
             epoch_seconds.append(elapsed)
-            metric = {"stage": "training", "epoch": epoch, "evaluation_split": "official_test",
+            metric = {"stage": "training", "epoch": epoch, "evaluation_split": split_name,
                       "train_loss": train_loss, "train_accuracy": train_accuracy, "train_examples": count,
-                      "test_loss": measured["loss"], "test_accuracy": measured["accuracy"],
-                      "test_examples": measured["examples"], "lr": lr, "optimizer_steps": steps,
+                      f"{metric_prefix}_loss": measured["loss"], f"{metric_prefix}_accuracy": measured["accuracy"],
+                      f"{metric_prefix}_examples": measured["examples"], "lr": lr, "optimizer_steps": steps,
                       "epoch_seconds": elapsed, "first_batch_gradient_norms": norms,
                       "peak_memory_reserved_bytes": torch.cuda.max_memory_reserved(device) if device.type == "cuda" else 0}
             reporting.append_metric(run_dir / "metrics.jsonl", metric)
@@ -232,16 +304,17 @@ def main():
                 best_key, best_epoch = key, epoch
                 save_checkpoint(run_dir / "checkpoints/best_model.pt", model, optimizer, scheduler, epoch, config)
             save_checkpoint(run_dir / "checkpoints/last_model.pt", model, optimizer, scheduler, epoch, config)
-            print(f"EPOCH {epoch}/{epochs} train={train_accuracy:.6f} test={measured['accuracy']:.6f} best={best_key[0]:.6f} seconds={elapsed:.2f}", flush=True)
+            print(f"EPOCH {epoch}/{epochs} train={train_accuracy:.6f} {metric_prefix}={measured['accuracy']:.6f} best={best_key[0]:.6f} seconds={elapsed:.2f}", flush=True)
         os.replace(run_dir / "checkpoints/last_model.pt", run_dir / "checkpoints/final_model.pt")
         reporting.complete_run(run_dir, terminal_metrics={
-            "epochs_completed": epochs, "best_test_accuracy": best_key[0], "best_epoch": best_epoch,
-            "final_test_accuracy": measured["accuracy"], "final_test_loss": measured["loss"],
+            "epochs_completed": epochs, f"best_{metric_prefix}_accuracy": best_key[0], "best_epoch": best_epoch,
+            f"best_{metric_prefix}_loss": -best_key[1],
+            f"final_{metric_prefix}_accuracy": measured["accuracy"], f"final_{metric_prefix}_loss": measured["loss"],
             "final_train_accuracy": train_accuracy, "optimizer_steps": steps,
             "elapsed_seconds": time.monotonic() - start, "mean_epoch_seconds": float(np.mean(epoch_seconds)),
             "parameter_count": parameters,
         }, completion={"criteria_met": epochs == (1 if args.smoke else config["epochs"]),
-                       "official_test_read": True, "paper_facing": False})
+                       "official_test_read": official_test_read, "paper_facing": False})
         errors = reporting.validate_run(run_dir)
         if errors:
             raise RuntimeError(errors)

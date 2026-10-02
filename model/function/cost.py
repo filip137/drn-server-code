@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import math
 import numpy
 import torch
 import torch.nn.functional as F
@@ -183,12 +184,15 @@ class SquaredErrorPairedOutputs(CostFunction, QFunction):
     MSE on pairwise differences:
       score_k = y_{2k} - y_{2k+1}
       loss = 0.5 * || score - target ||^2
-    Targets can be one-hot (B, K) or float scores.
+    Class-index labels are encoded as target_scale * one_hot(label).
     """
 
-    def __init__(self, layer: 'Layer', num_classes: int):
+    def __init__(self, layer: 'Layer', num_classes: int, target_scale: float = 1.0):
         self._layer = layer
         self._num_classes = int(num_classes)
+        self._target_scale = float(target_scale)
+        if not math.isfinite(self._target_scale) or self._target_scale <= 0.0:
+            raise ValueError("target_scale must be finite and strictly positive.")
         self._label = None        # (B,)
         self._target = None       # (B, K)
         # Initialize as a (cost) Function of just the output layer
@@ -202,12 +206,12 @@ class SquaredErrorPairedOutputs(CostFunction, QFunction):
     # --- targets ---
     def set_target(self, label):
         """
-        Provide either label (B,) with class indices or target (B, K) scores.
+        Provide label (B,) with class indices.
         """
         output = self._get_output()  # the output layer's state
         device = output.device  # device on which the output layer Tensor is, and on which we put the layer and target Tensors
         self._label = label.to(device)
-        self._target = F.one_hot(self._label, num_classes=self._num_classes).type(torch.float32)  # convert the label into its one-hot code
+        self._target = self._target_vec(device, torch.float32)
 
     def _scores(self, y: torch.Tensor) -> torch.Tensor:
         B, N = y.shape
@@ -224,7 +228,7 @@ class SquaredErrorPairedOutputs(CostFunction, QFunction):
             )
 
         labels = self._label.to(device=device, dtype=torch.long).view(-1)
-        return F.one_hot(labels, num_classes=self._num_classes).to(dtype=dtype)
+        return self._target_scale * F.one_hot(labels, num_classes=self._num_classes).to(dtype=dtype)
 
 
     # --- loss value ---

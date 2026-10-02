@@ -6,7 +6,25 @@ import torch
 
 from experiments.replay_conv3_trained_beta_noise import (
     beta_points, cell_identity, check_noise_record, replay_contexts, vector_comparison,
+    endpoint_draws, recoverable_numerical_failure,
 )
+
+
+def test_clean_only_draw_coverage_and_historical_noisy_draws():
+    assert endpoint_draws(dict(read_noise_seeds=[], draws_per_noisy_batch=0), .0005) == [(0., None)]
+    cfg = dict(read_noise_seeds=[1, 2, 3, 4], draws_per_noisy_batch=4)
+    assert endpoint_draws(cfg, .0005) == [(0., None), (.0005, 1), (.0005, 2), (.0005, 3), (.0005, 4)]
+    with pytest.raises(AssertionError):
+        endpoint_draws(dict(read_noise_seeds=[1, 1], draws_per_noisy_batch=2), .0005)
+
+
+def test_numerical_continuation_does_not_swallow_contract_or_operational_failure():
+    cfg = dict(continue_numerical_failures=True)
+    assert recoverable_numerical_failure(cfg, FloatingPointError('Non-finite phase'))
+    assert not recoverable_numerical_failure(cfg, FloatingPointError(), smoke=True)
+    assert not recoverable_numerical_failure({}, FloatingPointError())
+    for exc in [AssertionError('hash mismatch'), RuntimeError('CUDA OOM'), ValueError('bad checkpoint'), TimeoutError()]:
+        assert not recoverable_numerical_failure(cfg, exc)
 
 
 def test_explicit_beta_and_t_grid_preserves_checkpoint_role_and_epoch():

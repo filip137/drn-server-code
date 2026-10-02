@@ -46,8 +46,6 @@ def write(path, value, *, frozen=False):
 
 
 def prepare():
-    if STUDY not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise ValueError('Register the persistent study row before preparation.')
     frozen = read(PRIOR / 'source_identity.json')
     for name, expected in frozen.items():
         source, dest = PRIOR / 'source' / name, OUT / 'source' / name

@@ -1,0 +1,8 @@
+{
+  "kind": "cosine_renewal",
+  "from_epoch": 50,
+  "first_epoch": 51,
+  "last_epoch": 70,
+  "start_lr_ratio": 0.1,
+  "end_lr_ratio": 0.02
+}

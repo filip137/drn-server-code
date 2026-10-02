@@ -1,0 +1,48 @@
+{
+  "study_id": "cifar-ours-epoch-beta-gradients-20260930-v1",
+  "checkpoint_file": "inputs/e0.pt",
+  "checkpoint_epoch": 0,
+  "batch_size": 32,
+  "budget_seconds": 1650,
+  "input_sha256": {
+    "inputs/model_config.json": "69405307957d4e3508149bd4f0788f8caed36cde3fb2484e155bdbfd88ebf545",
+    "inputs/cohort.json": "315b7a64a4775a994e7689d68f5dab27863f12304e0ec4cffad9ba3e7d3987f0",
+    "inputs/e0.pt": "c4d98ef636949fed044ce4d2e94544be8c69eb816dc279338d7a067018fa6c37"
+  },
+  "base_betas": [
+    0.028356966006427994,
+    1.1189959117137818,
+    0.35085590124458804
+  ],
+  "beta_multipliers": [
+    0.0001,
+    0.0003,
+    0.001,
+    0.003,
+    0.01,
+    0.03,
+    0.1,
+    0.3,
+    1,
+    3,
+    10,
+    30,
+    100,
+    300,
+    1000,
+    3000,
+    10000
+  ],
+  "measure_layer_displacement": true,
+  "expected_environment": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8"
+  },
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "parameters_and_bn_read_only": true,
+  "noise": 0,
+  "energy_difference": "factored_centered_voltage_products"
+}

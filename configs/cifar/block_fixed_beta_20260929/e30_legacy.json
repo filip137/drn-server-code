@@ -1,0 +1,47 @@
+{
+  "study_id": "cifar-block-fixed-beta-20260929-v1",
+  "scheme": "legacy",
+  "batch_size": 32,
+  "budget_seconds": 260,
+  "base_betas": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "parameters_and_bn_read_only": true,
+  "noise": 0,
+  "energy_difference": "factored_centered_voltage_products",
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "optimizer_settings_ignored": true,
+  "high_cosine_threshold": 0.95,
+  "strict_cosine_threshold": 0.99,
+  "input_sha256": {
+    "inputs/model_config.json": "bd49abda3a51415b19143f3da645c90093c64d616cedf67a8b341d9fe3846e83",
+    "inputs/checkpoint_e30.pt": "0ca7857e586a3f603cd91d8185a92c36f4555359ed818f3005c2ee7d05ec31e6",
+    "inputs/cohort.json": "8e27e65e45582d502f14d04d32e06647800f4cee57963a79b1fbe8ac7e203d2d",
+    "inputs/checkpoint_provenance.json": "79cb55d7164b13159d767533078fc4b7c49aa7a76136d68772cf7cd6e7200478",
+    "inputs/initialization_beta_provenance.json": "a33f568f0ebb5c954d36a3c9a8e453cee119422d950c0f6fbd8bdab65124700b"
+  },
+  "checkpoint_file": "inputs/checkpoint_e30.pt",
+  "checkpoint_epoch": 30,
+  "beta_multiplier_vectors": [
+    [
+      0.008477142441628182,
+      0.0008593293343598722,
+      0.013388767802676498
+    ],
+    [
+      0.02625066628651462,
+      0.0026394402435168485,
+      0.041013761119491586
+    ]
+  ],
+  "initial_rms_targets": [
+    0.03,
+    0.09
+  ],
+  "beta_policy": "fixed_physical_B_from_initialization_no_recalibration"
+}

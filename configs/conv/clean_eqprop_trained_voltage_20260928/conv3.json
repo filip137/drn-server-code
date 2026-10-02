@@ -1,0 +1,244 @@
+{
+  "study_id": "conv123-clean-eqprop-trained-voltage-20260928-v1",
+  "architecture": "conv3",
+  "target": "akib",
+  "budget_seconds": 1200,
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "cuda_allocator_cap_bytes": 8053063680,
+  "output_root": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/production/conv3",
+  "cases": [
+    {
+      "name": "conv3_baseline_initialization",
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_baseline/source_config.json",
+      "source_config_sha256": "4f0659ee4fc348b5030947179994b32ee702882d120d0acac6897e90adb4e3da",
+      "checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_baseline/initialization.pt",
+      "checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "checkpoint_epoch": 0,
+      "checkpoint_role": "initialization",
+      "initialization_checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_baseline/initialization.pt",
+      "initialization_checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "injected_beta": 3.1924590902511554,
+      "T": 8,
+      "K": 8,
+      "input_gain": 360,
+      "source_provenance": {
+        "architecture": "conv3",
+        "scheme": "baseline",
+        "source_bundle": "results/conv23-noiseless-baseline-three-seed-20260927-v1/collected/trex/production/trex/conv3_baseline_relative6_eta0_seed0/000_conv3_baseline_relative6_eta0_seed0_a43eff43",
+        "source_result_sha256": "de2e4c9b227086ddaa3dc3852cc98b31d11e9b34421d8e400876fa38282cdfda",
+        "source_manifest_sha256": "e390bc0a41f3e3969cf0e8744e850336173ebea0d6f1015b8bdf44a46caa1809",
+        "checkpoint_epoch": 30,
+        "source_hashes": {
+          "source_config.json": "4f0659ee4fc348b5030947179994b32ee702882d120d0acac6897e90adb4e3da",
+          "initialization.pt": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+          "final.pt": "54be8a6026a5caad7cb44e1d95755dd8d765e3715b4ce7963052bf936579a288"
+        },
+        "seed": 0,
+        "training_algorithm": "EP",
+        "training_noise_eta": 0,
+        "checkpoint_selection": "fixed_final_epoch",
+        "source_final_validation": 97.56
+      },
+      "expected_initial_free_rms": [
+        6.826719199606973,
+        0.10356550182031002,
+        0.023221972770939844,
+        0.006000413186499233
+      ]
+    },
+    {
+      "name": "conv3_baseline_final",
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_baseline/source_config.json",
+      "source_config_sha256": "4f0659ee4fc348b5030947179994b32ee702882d120d0acac6897e90adb4e3da",
+      "checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_baseline/final.pt",
+      "checkpoint_sha256": "54be8a6026a5caad7cb44e1d95755dd8d765e3715b4ce7963052bf936579a288",
+      "checkpoint_epoch": 30,
+      "checkpoint_role": "final",
+      "initialization_checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_baseline/initialization.pt",
+      "initialization_checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "injected_beta": 3.1924590902511554,
+      "T": 8,
+      "K": 8,
+      "input_gain": 360,
+      "source_provenance": {
+        "architecture": "conv3",
+        "scheme": "baseline",
+        "source_bundle": "results/conv23-noiseless-baseline-three-seed-20260927-v1/collected/trex/production/trex/conv3_baseline_relative6_eta0_seed0/000_conv3_baseline_relative6_eta0_seed0_a43eff43",
+        "source_result_sha256": "de2e4c9b227086ddaa3dc3852cc98b31d11e9b34421d8e400876fa38282cdfda",
+        "source_manifest_sha256": "e390bc0a41f3e3969cf0e8744e850336173ebea0d6f1015b8bdf44a46caa1809",
+        "checkpoint_epoch": 30,
+        "source_hashes": {
+          "source_config.json": "4f0659ee4fc348b5030947179994b32ee702882d120d0acac6897e90adb4e3da",
+          "initialization.pt": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+          "final.pt": "54be8a6026a5caad7cb44e1d95755dd8d765e3715b4ce7963052bf936579a288"
+        },
+        "seed": 0,
+        "training_algorithm": "EP",
+        "training_noise_eta": 0,
+        "checkpoint_selection": "fixed_final_epoch",
+        "source_final_validation": 97.56
+      }
+    },
+    {
+      "name": "conv3_ours_initialization",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_ours/source_config.json",
+      "source_config_sha256": "4be1c92d53729757c3dbf62904ddad0b18dd7ab4443c783278351dd83911a373",
+      "checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_ours/initialization.pt",
+      "checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "checkpoint_epoch": 0,
+      "checkpoint_role": "initialization",
+      "initialization_checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_ours/initialization.pt",
+      "initialization_checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "injected_beta": 0.343319929011904,
+      "T": 8,
+      "K": 8,
+      "input_gain": 360,
+      "source_provenance": {
+        "architecture": "conv3",
+        "scheme": "ours",
+        "source_bundle": "results/conv23-noiseless-three-seed-20260927-v1/collected/fifi/production/fifi/conv3_ours_relative6_eta0_seed0/000_conv3_ours_relative6_eta0_seed0_1f44460b",
+        "source_result_sha256": "b839d5744ebf82781ba6d97c7c69636c15fe7ac2f30c6200af4a4efb2aa583d8",
+        "source_manifest_sha256": "6c531b7bf05ad279416ae6c8756ad927d18123a8a3b825df0ad81cdef970e18e",
+        "checkpoint_epoch": 30,
+        "source_hashes": {
+          "source_config.json": "4be1c92d53729757c3dbf62904ddad0b18dd7ab4443c783278351dd83911a373",
+          "initialization.pt": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+          "final.pt": "515f2d8b05601ea7bbe4cbc30947cd7c0e96d073215b8d16d60b4fffb44caee2"
+        },
+        "seed": 0,
+        "training_algorithm": "EP",
+        "training_noise_eta": 0,
+        "checkpoint_selection": "fixed_final_epoch",
+        "source_final_validation": 98.76
+      },
+      "expected_initial_free_rms": [
+        2.392819420670006,
+        0.0444531148034213,
+        0.03894924357545824,
+        0.04130631136293949
+      ]
+    },
+    {
+      "name": "conv3_ours_final",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_ours/source_config.json",
+      "source_config_sha256": "4be1c92d53729757c3dbf62904ddad0b18dd7ab4443c783278351dd83911a373",
+      "checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_ours/final.pt",
+      "checkpoint_sha256": "515f2d8b05601ea7bbe4cbc30947cd7c0e96d073215b8d16d60b4fffb44caee2",
+      "checkpoint_epoch": 30,
+      "checkpoint_role": "final",
+      "initialization_checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_ours/initialization.pt",
+      "initialization_checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "injected_beta": 0.343319929011904,
+      "T": 8,
+      "K": 8,
+      "input_gain": 360,
+      "source_provenance": {
+        "architecture": "conv3",
+        "scheme": "ours",
+        "source_bundle": "results/conv23-noiseless-three-seed-20260927-v1/collected/fifi/production/fifi/conv3_ours_relative6_eta0_seed0/000_conv3_ours_relative6_eta0_seed0_1f44460b",
+        "source_result_sha256": "b839d5744ebf82781ba6d97c7c69636c15fe7ac2f30c6200af4a4efb2aa583d8",
+        "source_manifest_sha256": "6c531b7bf05ad279416ae6c8756ad927d18123a8a3b825df0ad81cdef970e18e",
+        "checkpoint_epoch": 30,
+        "source_hashes": {
+          "source_config.json": "4be1c92d53729757c3dbf62904ddad0b18dd7ab4443c783278351dd83911a373",
+          "initialization.pt": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+          "final.pt": "515f2d8b05601ea7bbe4cbc30947cd7c0e96d073215b8d16d60b4fffb44caee2"
+        },
+        "seed": 0,
+        "training_algorithm": "EP",
+        "training_noise_eta": 0,
+        "checkpoint_selection": "fixed_final_epoch",
+        "source_final_validation": 98.76
+      }
+    },
+    {
+      "name": "conv3_legacy_initialization",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_legacy/source_config.json",
+      "source_config_sha256": "32136fa1d2495079f09d35bda704e3564ae0d324dd735640e734760bcc87ee3d",
+      "checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_legacy/initialization.pt",
+      "checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "checkpoint_epoch": 0,
+      "checkpoint_role": "initialization",
+      "initialization_checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_legacy/initialization.pt",
+      "initialization_checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "injected_beta": 0.05007530792395309,
+      "T": 8,
+      "K": 8,
+      "input_gain": 360,
+      "source_provenance": {
+        "architecture": "conv3",
+        "scheme": "legacy",
+        "source_bundle": "results/conv23-noiseless-three-seed-20260927-v1/collected/fifi/production/fifi/conv3_legacy_relative6_eta0_seed0/000_conv3_legacy_relative6_eta0_seed0_6f2748df",
+        "source_result_sha256": "f5a31562fd30595c13fbba5e7d4307fc33571cc09f5cec992e15536ef1a62455",
+        "source_manifest_sha256": "928a3e9b468df5e35a82d785ec86af5478a82e62c7e728ebdf4794f42908a941",
+        "checkpoint_epoch": 30,
+        "source_hashes": {
+          "source_config.json": "32136fa1d2495079f09d35bda704e3564ae0d324dd735640e734760bcc87ee3d",
+          "initialization.pt": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+          "final.pt": "92cd7e7240d66a906850280584e74a9d7b13435b3754a9c640b630be166ab2ce"
+        },
+        "seed": 0,
+        "training_algorithm": "EP",
+        "training_noise_eta": 0,
+        "checkpoint_selection": "fixed_final_epoch",
+        "source_final_validation": 98.7
+      },
+      "expected_initial_free_rms": [
+        6.826719199606973,
+        0.4142620072812401,
+        0.3715515643350375,
+        0.3840264439359509
+      ]
+    },
+    {
+      "name": "conv3_legacy_final",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_legacy/source_config.json",
+      "source_config_sha256": "32136fa1d2495079f09d35bda704e3564ae0d324dd735640e734760bcc87ee3d",
+      "checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_legacy/final.pt",
+      "checkpoint_sha256": "92cd7e7240d66a906850280584e74a9d7b13435b3754a9c640b630be166ab2ce",
+      "checkpoint_epoch": 30,
+      "checkpoint_role": "final",
+      "initialization_checkpoint_path": "results/conv123-clean-eqprop-trained-voltage-20260928-v1/inputs/conv3_legacy/initialization.pt",
+      "initialization_checkpoint_sha256": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+      "injected_beta": 0.05007530792395309,
+      "T": 8,
+      "K": 8,
+      "input_gain": 360,
+      "source_provenance": {
+        "architecture": "conv3",
+        "scheme": "legacy",
+        "source_bundle": "results/conv23-noiseless-three-seed-20260927-v1/collected/fifi/production/fifi/conv3_legacy_relative6_eta0_seed0/000_conv3_legacy_relative6_eta0_seed0_6f2748df",
+        "source_result_sha256": "f5a31562fd30595c13fbba5e7d4307fc33571cc09f5cec992e15536ef1a62455",
+        "source_manifest_sha256": "928a3e9b468df5e35a82d785ec86af5478a82e62c7e728ebdf4794f42908a941",
+        "checkpoint_epoch": 30,
+        "source_hashes": {
+          "source_config.json": "32136fa1d2495079f09d35bda704e3564ae0d324dd735640e734760bcc87ee3d",
+          "initialization.pt": "d5aa5e2fe6d1954a936aa1ec00a9814f75265d3f6f7f05078ef14f61668177a2",
+          "final.pt": "92cd7e7240d66a906850280584e74a9d7b13435b3754a9c640b630be166ab2ce"
+        },
+        "seed": 0,
+        "training_algorithm": "EP",
+        "training_noise_eta": 0,
+        "checkpoint_selection": "fixed_final_epoch",
+        "source_final_validation": 98.7
+      }
+    }
+  ]
+}

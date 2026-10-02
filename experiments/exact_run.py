@@ -20,10 +20,15 @@ try:
         fail_run,
         runtime_context,
         start_run,
-        update_status_progress,
+        is_paused,
+        iter_metrics,
+        pause_run,
+        resume_run,
+        sha256_file,
     )
 except ModuleNotFoundError:  # Support direct execution from the repository root.
-    from reporting import complete_run, fail_run, runtime_context, start_run, update_status_progress
+    from reporting import (complete_run, fail_run, runtime_context, start_run,
+                           is_paused, iter_metrics, pause_run, resume_run, sha256_file)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -387,6 +392,43 @@ def _completion_errors(
     return errors
 
 
+def _training_artifact_errors(
+    run_dir: Path, metrics: Mapping[str, Any], *, epochs: int, evaluation_split: str,
+) -> list[str]:
+    """Require the declared training coverage even for smoke/diagnostic runs."""
+    errors = []
+    for name in ("best_model.pt", "final_model.pt"):
+        path = run_dir / name
+        if not path.is_file() or not path.stat().st_size:
+            errors.append(f"missing or empty {name}")
+    for key in ("final_train_loss", "final_train_accuracy", "best_train_accuracy",
+                "final_test_loss", "final_test_accuracy", "best_test_accuracy"):
+        value = metrics.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            errors.append(f"expected finite {key}")
+    best_epoch = metrics.get("best_epoch")
+    if type(best_epoch) is not int or not 1 <= best_epoch <= epochs:
+        errors.append("best_epoch is outside the completed epoch budget")
+    try:
+        rows = list(iter_metrics(run_dir / "metrics.jsonl"))
+    except (ValueError, OSError) as error:
+        return [*errors, str(error)]
+    if ([row.get("epoch") for row in rows] != list(range(1, epochs + 1))
+            or any(type(row.get("epoch")) is not int for row in rows)):
+        errors.append(f"expected complete ordered epoch coverage 1..{epochs}")
+    for row in rows:
+        if row.get("kind") != "epoch" or row.get("evaluation_split") != evaluation_split:
+            errors.append(f"invalid epoch record or evaluation split at epoch {row.get('epoch')}")
+        values = row.get("metrics", {})
+        keys = ("train_loss", "train_accuracy", f"{evaluation_split}_loss", f"{evaluation_split}_accuracy")
+        if not isinstance(values, dict) or any(
+            isinstance(values.get(key), bool) or not isinstance(values.get(key), (int, float))
+            or not math.isfinite(values[key]) for key in keys
+        ):
+            errors.append(f"missing or nonfinite epoch measurements at epoch {row.get('epoch')}")
+    return errors
+
+
 def run(
     configs: Sequence[Path],
     *,
@@ -405,11 +447,22 @@ def run(
     skip_terminal_official_test: bool = False,
     environ: Mapping[str, str] | None = None,
     epoch_chunk_size: int | None = None,
+    resume_diagnostic_run: Path | None = None,
+    resume_diagnostic_epoch: int | None = None,
 ) -> dict[str, Any]:
     chosen = selected_configs(configs, index, environ=environ)
     output_root = Path(output_root).expanduser().resolve()
     results = []
     git_state = _git_state()
+    if resume_diagnostic_run is not None and (
+        len(chosen) != 1 or smoke or epoch_override is not None
+        or epoch_chunk_size is None or not checkpoint_every_epoch
+        or gradient_trace_samples_per_epoch or device is None
+    ):
+        raise ValueError("Diagnostic recovery needs one config, explicit device, epoch chunking, "
+                         "epoch checkpoints, and the unchanged full horizon without traces")
+    if resume_diagnostic_epoch is not None and resume_diagnostic_run is None:
+        raise ValueError("--resume-diagnostic-epoch requires --resume-diagnostic-run")
     if epoch_chunk_size is not None and (epoch_chunk_size <= 0 or epoch_override is not None):
         raise ValueError("Epoch continuation requires a positive chunk and the unchanged full epoch budget")
     if epoch_override is not None and int(epoch_override) <= 0:
@@ -503,6 +556,8 @@ def run(
             "status": "planned" if dry_run else "running",
         }
         if dry_run:
+            if resume_diagnostic_run is not None:
+                record["diagnostic_resume_source"] = str(Path(resume_diagnostic_run).resolve())
             results.append(record)
             continue
         if case_dir.exists() and any(case_dir.iterdir()):
@@ -512,7 +567,7 @@ def run(
                 )
             prior = json.loads((case_dir / "manifest.json").read_text())
             status = json.loads((case_dir / "status.json").read_text())
-            if (case_dir / "result.json").exists() or status["state"] != "running" or status["progress"].get("stage") != "checkpointed_pause":
+            if (case_dir / "result.json").exists() or not is_paused(status):
                 raise ValueError("Only an intact planned pause can be continued")
             if (prior["configuration"]["sha256"] != config_sha256 or prior["command"] != command
                     or prior["runtime"]["target"] != target
@@ -560,17 +615,26 @@ def run(
             ],
         }
         if "continued_from" not in record:
+            if resume_diagnostic_run is not None:
+                from experiments.resume_diagnostic_epoch import prepare_diagnostic_resume
+                recovery = prepare_diagnostic_resume(
+                    source_run=resume_diagnostic_run, run_dir=case_dir,
+                    config_path=config_path, device=device, epoch=resume_diagnostic_epoch)
+                manifest["diagnostic_resume"] = recovery
+                record["diagnostic_resume"] = recovery
             start_run(case_dir, manifest)
         record_path = case_dir / "exact_run.json"
         invocation_path = None
         if epoch_chunk_size is not None:
-            start_epoch = record.get("continued_from", {}).get("completed_epochs", 0)
+            start_epoch = record.get("continued_from", record.get("diagnostic_resume", {})).get("completed_epochs", 0)
             invocation_path = case_dir / "invocations" / f"after_epoch_{start_epoch:03}.json"
             if invocation_path.exists():
                 raise FileExistsError(f"Duplicate continuation invocation: {invocation_path}")
             _write_json(invocation_path, record)
         _write_json(record_path, record)
         try:
+            if "continued_from" in record:
+                resume_run(case_dir, runtime=runtime)
             completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
         except BaseException as error:
             record["status"] = "failed"
@@ -580,15 +644,25 @@ def run(
             raise
         record["returncode"] = completed.returncode
         if completed.returncode == 75 and epoch_chunk_size is not None:
-            checkpoint = json.loads((case_dir / "continuation.json").read_text())
-            if not 0 < checkpoint["completed_epochs"] < configured_epochs or (case_dir / "result.json").exists():
-                raise ValueError("Invalid planned-pause checkpoint")
+            try:
+                checkpoint = json.loads((case_dir / "continuation.json").read_text())
+                if (not 0 < checkpoint["completed_epochs"] < resolved_epochs
+                        or sha256_file(case_dir / "continuation.pt") != checkpoint["checkpoint_sha256"]):
+                    raise ValueError("Invalid planned-pause checkpoint")
+                pause_run(case_dir, checkpoint=case_dir / "continuation.pt",
+                          progress=dict(epoch=checkpoint["completed_epochs"], epochs=resolved_epochs),
+                          reason="Planned epoch-boundary pause")
+            except (ValueError, KeyError, TypeError, OSError) as error:
+                record.update(status="failed", error=str(error))
+                _write_json(record_path, record)
+                _write_json(invocation_path, record)
+                fail_run(case_dir, error=error, returncode=75)
+                results.append(record)
+                break
             record["status"] = "paused"
             record["completed_epochs"] = checkpoint["completed_epochs"]
             _write_json(record_path, record)
             _write_json(invocation_path, record)
-            update_status_progress(case_dir, dict(stage="checkpointed_pause", epoch=checkpoint["completed_epochs"],
-                                                 epochs=configured_epochs, checkpoint_sha256=checkpoint["checkpoint_sha256"]))
             results.append(record)
             continue
         record["status"] = "complete" if completed.returncode == 0 else "failed"
@@ -603,21 +677,26 @@ def run(
             )
         else:
             metrics_path = case_dir / "metrics.json"
-            metrics = (
-                json.loads(metrics_path.read_text(encoding="utf-8"))
-                if metrics_path.exists()
-                else {}
-            )
-            completion_errors = _completion_errors(
-                config,
-                metrics,
-                smoke=bool(smoke or skip_terminal_official_test),
-            )
+            try:
+                metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+                if not isinstance(metrics, dict):
+                    raise ValueError("metrics.json must contain an object")
+                json.dumps(metrics, allow_nan=False)
+                completion_errors = _training_artifact_errors(
+                    case_dir, metrics, epochs=resolved_epochs,
+                    evaluation_split=dataset_contract["evaluation_split"],
+                ) + _completion_errors(
+                    config, metrics, smoke=bool(smoke or skip_terminal_official_test),
+                )
+            except (ValueError, OSError) as error:
+                completion_errors = [f"invalid training artifacts: {error}"]
             if completion_errors:
                 error = "; ".join(completion_errors)
                 record["status"] = "failed"
                 record["error"] = error
                 _write_json(record_path, record)
+                if invocation_path is not None:
+                    _write_json(invocation_path, record)
                 fail_run(case_dir, error=error, returncode=completed.returncode)
                 results.append(record)
                 break
@@ -653,6 +732,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--epoch-chunk-size", type=int, default=None,
                         help="Continue one full-budget run across planned epoch-boundary allocations.")
+    parser.add_argument("--resume-diagnostic-run", type=Path,
+                        help="Recover a stopped run into a new bundle with saved Adam state; missing RNG is labeled approximate.")
+    parser.add_argument("--resume-diagnostic-epoch", type=int,
+                        help="Completed source epoch; default is latest safe checkpoint pair.")
     parser.add_argument("configs", type=Path, nargs="+")
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--device")
@@ -717,6 +800,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         checkpoint_every_epoch=args.checkpoint_every_epoch,
         skip_terminal_official_test=args.skip_terminal_official_test,
         epoch_chunk_size=args.epoch_chunk_size,
+        resume_diagnostic_run=args.resume_diagnostic_run,
+        resume_diagnostic_epoch=args.resume_diagnostic_epoch,
     )
     if args.summary_json is not None:
         _write_json(args.summary_json.expanduser().resolve(), result["runs"])

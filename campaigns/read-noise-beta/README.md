@@ -20,9 +20,8 @@ gradient-alignment advantage of ours over both legacy and baseline?
   the clean means and several noisy cells. See the
   [training results](series/007-relative-noise-training/README.md).
 
-Training measurements are validation results. Noisy comparisons use one seed;
-the Conv2/3 baseline and ours/legacy trajectories also differ in Adam history.
-The result notes retain these limits and distinguish replay from training.
+The earlier training measurements are validation results. Historical noisy comparisons use
+one seed and differ in Adam history. The completed October 1 [exp022 replication](series/007-relative-noise-training/results/exp-022-relative-noise-seeds.md) adds 72 uninterrupted seed-1/2 cases: ours beats baseline in every pair, but its advantage over legacy is inconsistent. Historical reset cases remain separate. [Exp023](series/007-relative-noise-training/results/exp-023-official-test.md) subsequently evaluated153 sealed best-validation-selected models on the official test set: the noisy two-seed means favor ours over baseline throughout, but show no general advantage over legacy.
 
 ## Scope
 
@@ -38,7 +37,9 @@ The [training series](series/007-relative-noise-training/README.md) indexes the
 ten-epoch sweep, selected continuations, three-seed clean controls and noisy
 baseline controls. The read-noise table in Overleaf's
 `bidir_paper_theory_revised.tex` was updated from these results on September 28
-(Overleaf commit `c05d0b9`). No further run is assigned by this review.
+(Overleaf commit `c05d0b9`). The later user-authorized [exp019 eta=5e-4 extension](series/007-relative-noise-training/experiments/exp-019-relative-noise-eta5em4.md)
+adds nine all-scheme Conv1/2/3 runs on Jean Zay V100s. Its scientific contract and
+execution handoff own the new scope.
 
 - [Ideas](ideas.md): possible explanations and directions.
 - [Current exploration](explorations/X-009-relative-noise-advantage-ridge.md) and

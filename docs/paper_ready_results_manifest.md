@@ -784,8 +784,8 @@ paths are mapped in the collection records without rewriting those manifests.
 
 After a launch or collection, update the affected row in `run_status.csv`
 with the target/job, actual source and copied result, checksum, and scientific
-state; reconcile `remaining_runs.csv`, the counts here, and the persistent
-[`current_simulations.md`](current_simulations.md) row. Validate each new bundle
+state; reconcile `remaining_runs.csv`, the counts here, and the owning
+experiment/pilot handoff. Validate each new bundle
 before adding its measurements to `collected_results.csv` and the validation
 tables. Keep incomplete/failed runs and replacements visible. Record official
 test results separately after sealing, and mark this ledger complete only

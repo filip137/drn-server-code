@@ -55,7 +55,6 @@ def main():
     cfg = json.loads(args.config.read_text())
     study = ROOT/cfg['output_root']
     out = study/'analysis/measurements'
-    assert cfg['study_id'] in (ROOT/'docs/current_simulations.md').read_text()
     started = time.monotonic()
     sources, cases = [], None
     for path, k in zip(cfg['source_configs'], [cfg['main_K'], cfg['control_K']]):

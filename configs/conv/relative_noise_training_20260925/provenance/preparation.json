@@ -1,0 +1,1333 @@
+{
+  "study_id": "conv123-relative-noise-training-20260925-v1",
+  "cases": [
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta1em8_seed0.json",
+      "sha256": "d674e6845c1d44babed7a1e29c0bb0c2137148e0b442bc7137ff4245c9b75de1",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-08,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta1em7_seed0.json",
+      "sha256": "e9624ab215ce1bd194581f80ce59898effe81542c0c1c1a00c5f27e9c1293df1",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-07,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta1em6_seed0.json",
+      "sha256": "eddac060ff66b4e36b33b13125519f8c8a6c384a9a24912c72884cd5e257d2f6",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-06,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta1em5_seed0.json",
+      "sha256": "3e7941f7ffcc8abe3e3c238d92503b900e2fc057634c821c3f966707d69865f9",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-05,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta1em4_seed0.json",
+      "sha256": "4f804c93d438f54d02d01844094f76fb4db246acc2cbe39e58d5e37dd4c4b0cf",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 0.0001,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta3em4_seed0.json",
+      "sha256": "9f817b1ba6d2c3542a9c8f0da667377484b13b93859274b6209b41b2b1ac9868",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 0.0003,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_ours_relative1_eta1em3_seed0.json",
+      "sha256": "62a8c3781da4e881b9cc42618921c11347251c414a14ea4ca6075e87751a4ee5",
+      "architecture": "conv1",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 0.001,
+      "beta": 0.8076502505643521,
+      "injected_beta": 3.2306010022574085
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta1em8_seed0.json",
+      "sha256": "90a29529b042b823a1ddd1483e1ea6d8ee50c4b4fcfbfb82f9cfaafd26b8017a",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-08,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta1em7_seed0.json",
+      "sha256": "4d20d674e5ed081f8c2bf900776c6afa5acba1fc8d88da0823b5959a526e891b",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-07,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta1em6_seed0.json",
+      "sha256": "93fecba2e03021c277e1f4401d98809396f30119486071042f165b0b305594b7",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-06,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta1em5_seed0.json",
+      "sha256": "137979c3118d0e2333621581a4afc35fdfcb2de5a784f9be462076157a2a4c66",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-05,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta1em4_seed0.json",
+      "sha256": "2b7da1777cfa5dc0fdd52d9090b1d5eb97394bd4adbdb0d8975055517198dbcd",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 0.0001,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta3em4_seed0.json",
+      "sha256": "dbc1ab9e2c68c630c48dc705be7e6b0869622b9a6337a9e78869cef9b3a055c5",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 0.0003,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv1_legacy_relative1_eta1em3_seed0.json",
+      "sha256": "e3fab09e19cb23e609df7c8f7d32542076785a60b5d89e8a29d473414407b8fd",
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 0.001,
+      "beta": 0.05762054077568885,
+      "injected_beta": 0.9219286524110216
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta1em8_seed0.json",
+      "sha256": "1797be650a12434c651b2433eadaaad98e304d87201dd1dbf0894139acffae95",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-08,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta1em7_seed0.json",
+      "sha256": "e547038b602e275e51e45d812540eb440437f8f875aa03d8c8bd4af2e248261c",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-07,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta1em6_seed0.json",
+      "sha256": "06ad05a76f4683e4f7822dd148f7353626301dabb49c8065c211bcc01a97faf3",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-06,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta1em5_seed0.json",
+      "sha256": "23c7cf2176dccb0c991fff773f8a29dc18854ece4975c32dbc36152d61ffbae4",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 1e-05,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta1em4_seed0.json",
+      "sha256": "f68b6eae11df7597e66537b07c45d8f6a5931fec133737c6093d3df85d2c6919",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 0.0001,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta3em4_seed0.json",
+      "sha256": "887dc5a5999119b6e16b1a00e9f249bde24218111f7a716482e3fbe78817baec",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 0.0003,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative1_eta1em3_seed0.json",
+      "sha256": "85cf6001d325bbf9a9b9f0b62715712748916e7be8128592b2268cc198afd462",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 1.0,
+      "eta": 0.001,
+      "beta": 0.016963332058835972,
+      "injected_beta": 0.27141331294137555
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta1em8_seed0.json",
+      "sha256": "52cfca5b7038838e4c3d85a1cdf10d2b5d19c016132003e1a1c0e140c592cf0b",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 1e-08,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta1em7_seed0.json",
+      "sha256": "cedf06599f5002e9723d38347fb9f62e12ae26ca88c2e92e30b04aaf8a181618",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 1e-07,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta1em6_seed0.json",
+      "sha256": "ff2b4d6ef7868fde6f8698f3b9c03127efab12106cda3793f7026fb967c41231",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 1e-06,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta1em5_seed0.json",
+      "sha256": "8961e936d0af0732e0a6b896db0813629b15592fe20cbe62c307511f540902a4",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 1e-05,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta1em4_seed0.json",
+      "sha256": "c23ff5b2bce8d867e3efd661f82ae053959bd55b710116b78baf77d8e2759a4e",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 0.0001,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta3em4_seed0.json",
+      "sha256": "78ce7e3ac354349f5cf28a2ba241da9b8a339ae6817d983763719e86a3fe28e4",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 0.0003,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative2_eta1em3_seed0.json",
+      "sha256": "d31868cb12ecf24818e8253662ac4b6130a4681eb907a58db43a452f629fdba9",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 2.0,
+      "eta": 0.001,
+      "beta": 0.03392666411767195,
+      "injected_beta": 0.5428266258827512
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta1em8_seed0.json",
+      "sha256": "71bd8923b84ea4353b9c074483e87c65d56d2ee9cec252889c9afc333ee864c3",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-08,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta1em7_seed0.json",
+      "sha256": "64494cdfa57b2fd41f2b3dbc0b6252d7ea9a23c360af3c0f0e7e8a8bef4ab7ff",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-07,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta1em6_seed0.json",
+      "sha256": "9d12c33bdca900941d322069335b92451b627d84af197b71f66b1354ac123eba",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-06,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta1em5_seed0.json",
+      "sha256": "b8c4b8f767bed5f128c378df9179941e99536cab868fa327dbe10a4dfda41b01",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-05,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta1em4_seed0.json",
+      "sha256": "c0b788016db00899e80c49ef834ae04e5c43fd350861477dad345e85c22f81a8",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 0.0001,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta3em4_seed0.json",
+      "sha256": "568075559fe9ea885c95029036c0a478168fcbeaf4718ee8ffedfc1aea52fdc1",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 0.0003,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_ours_relative4_eta1em3_seed0.json",
+      "sha256": "ffb6dd9c84e26aedfa7b26c972bfdc013a680db1f7c309b05008a6fb9e5472da",
+      "architecture": "conv2",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 0.001,
+      "beta": 0.0678533282353439,
+      "injected_beta": 1.0856532517655024
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta1em8_seed0.json",
+      "sha256": "af981e060c614f9a3d7e3ec2f174ac2f662f84c7d0e71d22dfbb3d35e8303ce2",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-08,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta1em7_seed0.json",
+      "sha256": "1760994b20644f910040735ac9555e55597f0f93be89fb0622ff4f05896e223a",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-07,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta1em6_seed0.json",
+      "sha256": "cc61467b2b01003e7cd8e44a773e03adf5b81af2ad1e27b7b00970c08719ea42",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-06,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta1em5_seed0.json",
+      "sha256": "3f982f97dc6677d6eb94271716462580fbb35de82b89613076aaff8fdae6c645",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 1e-05,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta1em4_seed0.json",
+      "sha256": "42a13159cc8c2327fea0883e713bd931267329c5e2bad7bd98bf35e293343a12",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 0.0001,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta3em4_seed0.json",
+      "sha256": "4cc08bbe5b3d88c02ebe40182124871ddce27f76f570c076241195565900cd4d",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 0.0003,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative1_eta1em3_seed0.json",
+      "sha256": "181f8d11b68eeffecc507487c479adf0a5d009d7cbd967a069b76a895a7c50db",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 1.0,
+      "eta": 0.001,
+      "beta": 0.00018833004274215035,
+      "injected_beta": 0.04821249094199049
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta1em8_seed0.json",
+      "sha256": "6128fa8c84ffa7173369491d2393f2c074cf45119b296a6ee4821f33f67a619c",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 1e-08,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta1em7_seed0.json",
+      "sha256": "bb3149684d3885ac9c098a43a07dea0366f246d316c5341084a0f75ae4363f44",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 1e-07,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta1em6_seed0.json",
+      "sha256": "78d08d37c56732d2d1fe00616afb73dc691a2d4b5a1b4f56740d9d4dfddb18c0",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 1e-06,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta1em5_seed0.json",
+      "sha256": "699a06e9ebfd8646d5a0cb53fc4ad6dbc46ea601c1a1405243a0ae7789d5a789",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 1e-05,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta1em4_seed0.json",
+      "sha256": "446483db31385ae7dbdfdf064053d52df80e3dccb043547391b9e7ffafe18676",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 0.0001,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta3em4_seed0.json",
+      "sha256": "98b418abcf62b9603711e8f833c21e1526bf8029769f0f01c232501d7ae2e421",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 0.0003,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative2_eta1em3_seed0.json",
+      "sha256": "d6494f11b41d01587c4a88ab931ac2f5bcafebe2a50a11da76015ceefc241e2b",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 2.0,
+      "eta": 0.001,
+      "beta": 0.0003766600854843007,
+      "injected_beta": 0.09642498188398098
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta1em8_seed0.json",
+      "sha256": "812d3586beb67fcde5834bfc28f4fea38832c1cf6095f877ad96d3ebda5fcb41",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-08,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta1em7_seed0.json",
+      "sha256": "c84bd152989f7aab4dfc6b80d88750eabc2d2139f3237601877d47e123b4adb3",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-07,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta1em6_seed0.json",
+      "sha256": "8402e69a52631d015c48200de25b091069339cd031cf4bfbbccf86f252ec6736",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-06,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta1em5_seed0.json",
+      "sha256": "166a755d4a804bc886d97fe945c7302a7a9c4d1ab24e9e2d607033d7e263d0cd",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-05,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta1em4_seed0.json",
+      "sha256": "7732e05e5f677d462470d0fffd081043b028475c199fc904e958e3311dcd5c31",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 0.0001,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta3em4_seed0.json",
+      "sha256": "f4535d320caa348b75805caf59083cb2ba15b7c6252c750bb7aa3e82231ed000",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 0.0003,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv2_legacy_relative4_eta1em3_seed0.json",
+      "sha256": "29f629477f611973d2291ed1332925df8f77e4dfbcc7a7ccab30822bc09ce726",
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 0.001,
+      "beta": 0.0007533201709686014,
+      "injected_beta": 0.19284996376796196
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta1em8_seed0.json",
+      "sha256": "ef4a1076aac972c2d575c9ba46c64a1cb70658973a1338ff0d610121c627fee7",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-08,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta1em7_seed0.json",
+      "sha256": "d4c8658f6eb262e95f2aea5af4bbbb2357cbd9469dfc94c361dc0e623c27514f",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-07,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta1em6_seed0.json",
+      "sha256": "58bc72d6ffc5a1fc15e90698a0072397c151b12d09490ee4c6d70ce8b43522b9",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-06,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta1em5_seed0.json",
+      "sha256": "ef58ca409fdeb4be453031207555d030e5d5ac6b99c7c82c7b82d573bce8fd23",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 1e-05,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta1em4_seed0.json",
+      "sha256": "5cf7fbdac558d18a9f2d22522abeb81d36fc58326277593bdfb853ce368a2eb9",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 0.0001,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta3em4_seed0.json",
+      "sha256": "909685b8e73ae10b62bb2a6cf8792ff1c998b9d654f73aaa4e6db78193c6ca2f",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 0.0003,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative4_eta1em3_seed0.json",
+      "sha256": "3144e294cc500330c46f47290839029c7bbc7ce56475a33cf1fdb721e2c65064",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 4.0,
+      "eta": 0.001,
+      "beta": 0.003576249260540667,
+      "injected_beta": 0.22887995267460268
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta1em8_seed0.json",
+      "sha256": "ec85e2b163f2cb60c827f1252ef3b513bbb2ebf523ff40f9b50c1a4b009628a9",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 1e-08,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta1em7_seed0.json",
+      "sha256": "e7f34d42b0bd27c2425c8a25f15304af89161b9918d7066e519f894fd125fe76",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 1e-07,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta1em6_seed0.json",
+      "sha256": "02f1cb7f27b14f333d2167ee6e2e620e10187c7a705bf757c0a767e1d5fa674e",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 1e-06,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta1em5_seed0.json",
+      "sha256": "6da8996b420c6ced54f75d5d87250a6a1354824c08aea997ce0d5e6d66febdde",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 1e-05,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta1em4_seed0.json",
+      "sha256": "89005f5a7769c1bcc607a4c0a5367f37492d75ba65f223f81d846739671493c9",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 0.0001,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta3em4_seed0.json",
+      "sha256": "d9a7c17d8564508c39b96e3c87724a9db03524ab83ea92d66b2710730a3e5e04",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 0.0003,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_ours_relative6_eta1em3_seed0.json",
+      "sha256": "75bf4af3e23247b344c62e616ae046943c6c646fcf5d6788df23a17975915d9c",
+      "architecture": "conv3",
+      "scheme": "ours",
+      "relative_target": 6.0,
+      "eta": 0.001,
+      "beta": 0.005364373890811,
+      "injected_beta": 0.343319929011904
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta1em8_seed0.json",
+      "sha256": "5e941533f03ada8ba825595b81a51bf74a4749cda6a79ee9db787ba55f1fc516",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-08,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta1em7_seed0.json",
+      "sha256": "1819e6eb96d4c6483cb3413f84e8ab338cd250de3e6328bf14a4e8493cb39078",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-07,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta1em6_seed0.json",
+      "sha256": "f5281cd4b9421b321a6a5abd5bc073c323ebfb303be418dd365e45029d653ceb",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-06,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta1em5_seed0.json",
+      "sha256": "64ff5516d5d2b572a06266ad1802ed48c76bd9d115b1107dc8eb89c2dbb328c1",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 1e-05,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta1em4_seed0.json",
+      "sha256": "bc685628cd84cb1a4162e6ec9aaa6308f93f4572458301483654edeec56918e3",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 0.0001,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta3em4_seed0.json",
+      "sha256": "1f7b2ae8fbfa161e0ef7afacea3252e2c756412c20b10aac5395bd80727fe4eb",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 0.0003,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative4_eta1em3_seed0.json",
+      "sha256": "9165c5060cde41090418750b5af53ff0bcf0f6bccdefea724be98febe3212e32",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 4.0,
+      "eta": 0.001,
+      "beta": 8.15027798241424e-06,
+      "injected_beta": 0.033383538615968725
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta1em8_seed0.json",
+      "sha256": "3b9e867e8105dfaded7cd4847ec0a5a2765b688119cdeb89d391d552bc0ee819",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 1e-08,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta1em7_seed0.json",
+      "sha256": "b8958b815c696cd1c8daf3f4aae69ac2d00d1687affbae23bb7126759a8e758c",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 1e-07,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta1em6_seed0.json",
+      "sha256": "ac7d6e9fd7b96ca76897e620adfff92045cd4d663739c28f28f7012850ffc02a",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 1e-06,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta1em5_seed0.json",
+      "sha256": "e0ec4cbbb499afe1021c483efd99512ef3a35fbed620425c54730ac4656eee61",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 1e-05,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta1em4_seed0.json",
+      "sha256": "a8b07b2d76a7c7e36e62216d13ef1007acb1592d66eedb65899f10bdc9ce860f",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 0.0001,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta3em4_seed0.json",
+      "sha256": "38860bfaf151d0b3dfd01d7b64c27f9bad9695099354726e4a6d1c601f85912c",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 0.0003,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    },
+    {
+      "path": "configs/conv/relative_noise_training_20260925/conv3_legacy_relative6_eta1em3_seed0.json",
+      "sha256": "4aac2f0f0465c2c680f6406f2ffaf947e827361ed7d38b3c051b68a64fee5959",
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "relative_target": 6.0,
+      "eta": 0.001,
+      "beta": 1.222541697362136e-05,
+      "injected_beta": 0.05007530792395309
+    }
+  ],
+  "matching_contexts": [
+    {
+      "architecture": "conv1",
+      "scheme": "ours",
+      "target": 1.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv1/cases/conv1_ours_relative1/matching.json",
+      "matching_sha256": "09185543fa1cb9004a6dab6bc2fefc46656657b0a1fb0975e429b52ed3dec9dd",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv1/config.used.json",
+      "replay_config_sha256": "9e9c2cb345fc42f42c4c5a8da139acf782abd750e927bf0b7195f460a084ab8c",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv1_ours_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "aee6c6b962c18b4ff235edcacb369fbecd3373a825791a8535b639204e5f2f15",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/ours/seed0/config.used.json",
+      "source_config_sha256": "41de9e7208abdf7cf9d39243bf1db7cdb6d4d91af31f4e037ee1d812a89d7e4e",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 0.9999961172286941,
+        "base_beta": 0.8076502505643521,
+        "centered_rms": 0.15720495199785034,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.15720556239109712,
+        "history": [
+          {
+            "actual_relative_output_rms": 0.9999961172286941,
+            "base_beta": 0.8076502505643521,
+            "centered_rms": 0.15720495199785034,
+            "correction": 0,
+            "free_rms": 0.15720556239109712,
+            "injected_beta": 3.2306010022574085,
+            "relative_error": 3.882771305918631e-06
+          }
+        ],
+        "injected_beta": 3.2306010022574085,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 3.882771305918631e-06,
+        "relative_target": 1.0
+      }
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "legacy",
+      "target": 1.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv1/cases/conv1_legacy_relative1/matching.json",
+      "matching_sha256": "a301ca25a5b0be7554f7c19d571320dfdea003e4886289308224482431b7568a",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv1/config.used.json",
+      "replay_config_sha256": "9e9c2cb345fc42f42c4c5a8da139acf782abd750e927bf0b7195f460a084ab8c",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv1_legacy_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "3a3370e5794fcb5b54a965bc5e61591e2135af307e6563b3bea74062e77f51ed",
+      "source_config": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/inputs/conv1/legacy/seed0/config.used.json",
+      "source_config_sha256": "c4549c21112073dd23c076e816df7572e5666c537f4b88bedd583610696301a0",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 0.9999993067822526,
+        "base_beta": 0.05762054077568885,
+        "centered_rms": 0.18260131549004016,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.1826014420726005,
+        "history": [
+          {
+            "actual_relative_output_rms": 0.9999993067822526,
+            "base_beta": 0.05762054077568885,
+            "centered_rms": 0.18260131549004016,
+            "correction": 0,
+            "free_rms": 0.1826014420726005,
+            "injected_beta": 0.9219286524110216,
+            "relative_error": 6.93217747427255e-07
+          }
+        ],
+        "injected_beta": 0.9219286524110216,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 6.93217747427255e-07,
+        "relative_target": 1.0
+      }
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "ours",
+      "target": 1.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_ours_relative1/matching.json",
+      "matching_sha256": "7836b02705e9076b334eda65cb5c611fb8454411649c1e1c66993fe361136449",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+      "replay_config_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv2_ours_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "e66521dfd4210810886772fcae742754a1f4b38fd3e49ff28ab38f7c1ea7143c",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/ours/seed0/config.used.json",
+      "source_config_sha256": "c9ee6f52daed954d1b746c55543fb88fb1424bfe98cfa4020efbbcc1b2ad11e0",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local/initializers/conv2/seed0.pt",
+      "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 0.9999947751632372,
+        "base_beta": 0.016963332058835972,
+        "centered_rms": 0.06906325602915853,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.06906361687528295,
+        "history": [
+          {
+            "actual_relative_output_rms": 0.9999947751632372,
+            "base_beta": 0.016963332058835972,
+            "centered_rms": 0.06906325602915853,
+            "correction": 0,
+            "free_rms": 0.06906361687528295,
+            "injected_beta": 0.27141331294137555,
+            "relative_error": 5.224836762796059e-06
+          }
+        ],
+        "injected_beta": 0.27141331294137555,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 5.224836762796059e-06,
+        "relative_target": 1.0
+      }
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "ours",
+      "target": 2.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_ours_relative2/matching.json",
+      "matching_sha256": "f326ef8a855964caf44c514cda81b41811b71279a724b5944ed114224d14464c",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+      "replay_config_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv2_ours_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "e66521dfd4210810886772fcae742754a1f4b38fd3e49ff28ab38f7c1ea7143c",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/ours/seed0/config.used.json",
+      "source_config_sha256": "c9ee6f52daed954d1b746c55543fb88fb1424bfe98cfa4020efbbcc1b2ad11e0",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local/initializers/conv2/seed0.pt",
+      "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 1.9999895304403106,
+        "base_beta": 0.03392666411767195,
+        "centered_rms": 0.13812651068490667,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.06906361687528295,
+        "history": [
+          {
+            "actual_relative_output_rms": 1.9999895304403106,
+            "base_beta": 0.03392666411767195,
+            "centered_rms": 0.13812651068490667,
+            "correction": 0,
+            "free_rms": 0.06906361687528295,
+            "injected_beta": 0.5428266258827512,
+            "relative_error": 5.234779844709436e-06
+          }
+        ],
+        "injected_beta": 0.5428266258827512,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 5.234779844709436e-06,
+        "relative_target": 2.0
+      }
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "ours",
+      "target": 4.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_ours_relative4/matching.json",
+      "matching_sha256": "4ff203c4bbcf33a180be6d03ffbfdb995d149a707ab58b4764cb15f620b698e3",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+      "replay_config_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv2_ours_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "e66521dfd4210810886772fcae742754a1f4b38fd3e49ff28ab38f7c1ea7143c",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/ours/seed0/config.used.json",
+      "source_config_sha256": "c9ee6f52daed954d1b746c55543fb88fb1424bfe98cfa4020efbbcc1b2ad11e0",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local/initializers/conv2/seed0.pt",
+      "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 3.999978981978211,
+        "base_beta": 0.0678533282353439,
+        "centered_rms": 0.2762530159205275,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.06906361687528295,
+        "history": [
+          {
+            "actual_relative_output_rms": 3.999978981978211,
+            "base_beta": 0.0678533282353439,
+            "centered_rms": 0.2762530159205275,
+            "correction": 0,
+            "free_rms": 0.06906361687528295,
+            "injected_beta": 1.0856532517655024,
+            "relative_error": 5.254505447305213e-06
+          }
+        ],
+        "injected_beta": 1.0856532517655024,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 5.254505447305213e-06,
+        "relative_target": 4.0
+      }
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "target": 1.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_legacy_relative1/matching.json",
+      "matching_sha256": "e730c0405ee27855c22fa2d70ac3e1479681716bdfdc6fa3fba7ea55263017b9",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+      "replay_config_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv2_legacy_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "608de83de0a6037331a6f2f79f942b926c7d3b9270fe9919e1b08a5772cea3a1",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/legacy/seed0/config.used.json",
+      "source_config_sha256": "a6fc6350dd6d6a77883e23cf6fd0c7534a098a1270c084781f36b208e73aedb0",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local/initializers/conv2/seed0.pt",
+      "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 1.0000000013684442,
+        "base_beta": 0.00018833004274215035,
+        "centered_rms": 0.19642850840254825,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.1964285081337468,
+        "history": [
+          {
+            "actual_relative_output_rms": 1.0000000013684442,
+            "base_beta": 0.00018833004274215035,
+            "centered_rms": 0.19642850840254825,
+            "correction": 0,
+            "free_rms": 0.1964285081337468,
+            "injected_beta": 0.04821249094199049,
+            "relative_error": 1.3684442468075986e-09
+          }
+        ],
+        "injected_beta": 0.04821249094199049,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 1.3684442468075986e-09,
+        "relative_target": 1.0
+      }
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "target": 2.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_legacy_relative2/matching.json",
+      "matching_sha256": "31c9f7acbef70a480da1d2cbed759bc12356c7244edff3e8cb46097bdb5d3fa8",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+      "replay_config_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv2_legacy_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "608de83de0a6037331a6f2f79f942b926c7d3b9270fe9919e1b08a5772cea3a1",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/legacy/seed0/config.used.json",
+      "source_config_sha256": "a6fc6350dd6d6a77883e23cf6fd0c7534a098a1270c084781f36b208e73aedb0",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local/initializers/conv2/seed0.pt",
+      "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 2.000000008790705,
+        "base_beta": 0.0003766600854843007,
+        "centered_rms": 0.39285701799423867,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.1964285081337468,
+        "history": [
+          {
+            "actual_relative_output_rms": 2.000000008790705,
+            "base_beta": 0.0003766600854843007,
+            "centered_rms": 0.39285701799423867,
+            "correction": 0,
+            "free_rms": 0.1964285081337468,
+            "injected_beta": 0.09642498188398098,
+            "relative_error": 4.395352526387342e-09
+          }
+        ],
+        "injected_beta": 0.09642498188398098,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 4.395352526387342e-09,
+        "relative_target": 2.0
+      }
+    },
+    {
+      "architecture": "conv2",
+      "scheme": "legacy",
+      "target": 4.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_legacy_relative4/matching.json",
+      "matching_sha256": "9129908457354b07edbe80593e21881f81943067830b75ffbdcd3586d4ee577d",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+      "replay_config_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv2_legacy_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "608de83de0a6037331a6f2f79f942b926c7d3b9270fe9919e1b08a5772cea3a1",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/legacy/seed0/config.used.json",
+      "source_config_sha256": "a6fc6350dd6d6a77883e23cf6fd0c7534a098a1270c084781f36b208e73aedb0",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local/initializers/conv2/seed0.pt",
+      "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 4.000000053377498,
+        "base_beta": 0.0007533201709686014,
+        "centered_rms": 0.7857140430198495,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.1964285081337468,
+        "history": [
+          {
+            "actual_relative_output_rms": 4.000000053377498,
+            "base_beta": 0.0007533201709686014,
+            "centered_rms": 0.7857140430198495,
+            "correction": 0,
+            "free_rms": 0.1964285081337468,
+            "injected_beta": 0.19284996376796196,
+            "relative_error": 1.3344374494295153e-08
+          }
+        ],
+        "injected_beta": 0.19284996376796196,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 1.3344374494295153e-08,
+        "relative_target": 4.0
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "target": 4.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_ours_relative4/matching.json",
+      "matching_sha256": "c6fc9c0854a42fefbbc16a6323e35cbccd834817e5038d338d338d7efc4ec089",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/config.used.json",
+      "replay_config_sha256": "9bb84a27ee32f9fe64f2edf088fcf434db61b56c87635e2f1bf074da5da37730",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv3_ours_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "8f19583be6e04af31c2ad24c2ac92beedd417fcfdc926f47fc9f7c5f8f2cfd36",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 3.9999999420456662,
+        "base_beta": 0.003576249260540667,
+        "centered_rms": 0.1652252430578782,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.04130631136293949,
+        "history": [
+          {
+            "actual_relative_output_rms": 3.9999999420456662,
+            "base_beta": 0.003576249260540667,
+            "centered_rms": 0.1652252430578782,
+            "correction": 0,
+            "free_rms": 0.04130631136293949,
+            "injected_beta": 0.22887995267460268,
+            "relative_error": 1.448858344410553e-08
+          }
+        ],
+        "injected_beta": 0.22887995267460268,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 1.448858344410553e-08,
+        "relative_target": 4.0
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "target": 6.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_ours_relative6/matching.json",
+      "matching_sha256": "73092defbb3f3a325dc3aa2f88f3d2a60ff379df002a37188eaafbed64d8fd9e",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/config.used.json",
+      "replay_config_sha256": "9bb84a27ee32f9fe64f2edf088fcf434db61b56c87635e2f1bf074da5da37730",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv3_ours_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "8f19583be6e04af31c2ad24c2ac92beedd417fcfdc926f47fc9f7c5f8f2cfd36",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 5.999999922039472,
+        "base_beta": 0.005364373890811,
+        "centered_rms": 0.2478378649573751,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.04130631136293949,
+        "history": [
+          {
+            "actual_relative_output_rms": 5.999999922039472,
+            "base_beta": 0.005364373890811,
+            "centered_rms": 0.2478378649573751,
+            "correction": 0,
+            "free_rms": 0.04130631136293949,
+            "injected_beta": 0.343319929011904,
+            "relative_error": 1.2993421338869382e-08
+          }
+        ],
+        "injected_beta": 0.343319929011904,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 1.2993421338869382e-08,
+        "relative_target": 6.0
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "target": 4.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_legacy_relative4/matching.json",
+      "matching_sha256": "a51ff00d28a97d35d3e6cd4b33477953baa82fd49219b2cdf0d4d5fcdf7f60ec",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/config.used.json",
+      "replay_config_sha256": "9bb84a27ee32f9fe64f2edf088fcf434db61b56c87635e2f1bf074da5da37730",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv3_legacy_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "1a2e568193f54f044c2dbeca69edac146ab4880c03a9fc41fe2b176138c4a353",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 3.9999999975218454,
+        "base_beta": 8.15027798241424e-06,
+        "centered_rms": 1.5361057747921267,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.3840264439359509,
+        "history": [
+          {
+            "actual_relative_output_rms": 3.9999999975218454,
+            "base_beta": 8.15027798241424e-06,
+            "centered_rms": 1.5361057747921267,
+            "correction": 0,
+            "free_rms": 0.3840264439359509,
+            "injected_beta": 0.033383538615968725,
+            "relative_error": 6.195386426099958e-10
+          }
+        ],
+        "injected_beta": 0.033383538615968725,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 6.195386426099958e-10,
+        "relative_target": 4.0
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "target": 6.0,
+      "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_legacy_relative6/matching.json",
+      "matching_sha256": "4a72ce0781e9ab03f2a5b6f912655197700a0142b7f668fab97c323b214bd633",
+      "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/config.used.json",
+      "replay_config_sha256": "9bb84a27ee32f9fe64f2edf088fcf434db61b56c87635e2f1bf074da5da37730",
+      "training_template": "configs/conv/eqprop_conv123_relative_output_20260924/conv3_legacy_relative2_sigma5em4_seed0.json",
+      "training_template_sha256": "1a2e568193f54f044c2dbeca69edac146ab4880c03a9fc41fe2b176138c4a353",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+      "measured": {
+        "actual_relative_output_rms": 5.999999999888761,
+        "base_beta": 1.222541697362136e-05,
+        "centered_rms": 2.304158663572987,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.3840264439359509,
+        "history": [
+          {
+            "actual_relative_output_rms": 5.999999999888761,
+            "base_beta": 1.222541697362136e-05,
+            "centered_rms": 2.304158663572987,
+            "correction": 0,
+            "free_rms": 0.3840264439359509,
+            "injected_beta": 0.05007530792395309,
+            "relative_error": 1.8539836332820414e-11
+          }
+        ],
+        "injected_beta": 0.05007530792395309,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 1.8539836332820414e-11,
+        "relative_target": 6.0
+      }
+    }
+  ],
+  "counts": {
+    "conv1": 14,
+    "conv2": 42,
+    "conv3": 28
+  },
+  "training_noise_seed": 2026081601
+}

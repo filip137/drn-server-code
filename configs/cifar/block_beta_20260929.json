@@ -1,0 +1,21 @@
+{
+  "study_id": "cifar-block-beta-20260929-v1",
+  "model_config": "inputs/model_config.json",
+  "checkpoint": "inputs/initial_model.pt",
+  "checkpoint_sha256": "c4d98ef636949fed044ce4d2e94544be8c69eb816dc279338d7a067018fa6c37",
+  "checkpoint_epoch": 0,
+  "metric": "relative_rms",
+  "targets": [
+    4.0,
+    4.0,
+    1.0
+  ],
+  "batch_size": 32,
+  "calibration_examples": 128,
+  "confirmation_examples": 128,
+  "cohort_seed": 20260929,
+  "relative_tolerance": 0.05,
+  "confirmation_tolerance": 0.1,
+  "max_evaluations": 24,
+  "budget_seconds": 3000
+}

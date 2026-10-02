@@ -1,0 +1,126 @@
+{
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "disabled; no solver qualification requested",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0"
+  ],
+  "source_commit": "08aad531a4f1fe809c37eb5289d26f4ffd5cbddc",
+  "study_id": "conv23-target-scale-read-noise-20261001-v1",
+  "stage": "layerwise",
+  "architecture": "conv3",
+  "output_root": "results/conv23-target-scale-read-noise-20261001-v1/initialization/production/conv3",
+  "target": "local",
+  "budget_seconds": 600,
+  "prior_gpu_seconds": 15,
+  "expected_batches": 36,
+  "noisy_batches": 12,
+  "relative_targets": [
+    6.0
+  ],
+  "noise_levels": [
+    3e-09,
+    1e-08,
+    3e-08,
+    1e-07,
+    3e-07,
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05,
+    0.0001,
+    0.0003,
+    0.001,
+    0.003,
+    0.01
+  ],
+  "read_noise_seeds": [
+    111000000,
+    112000000,
+    113000000
+  ],
+  "max_matching_corrections": 2,
+  "target_relative_tolerance": 0.01,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "cuda_allocator_cap_bytes": 8053063680,
+  "saved_activation_cpu_offload": true,
+  "tests_and_canaries_skipped_by_user": false,
+  "cases": [
+    {
+      "architecture": "conv3",
+      "scheme": "amp2",
+      "source_config": "configs/conv/current_amp2_20260928/conv3_amp2_relative6_eta0_seed0.json",
+      "source_config_sha256": "968b0506ab58028b13a128ecd66bbcb6fdaffe39f0827b31aa3b0098c80ae2c3",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_amp2_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 0.7574642494273278,
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "path": "configs/conv/current_amp2_20260928/conv3_amp2_relative6_eta0_seed0.json",
+        "calibration": "existing exp020 pooled 576-example matching"
+      }
+    }
+  ],
+  "expected_case_count": 21,
+  "expected_layer_comparisons": 1440
+}

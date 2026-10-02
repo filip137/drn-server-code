@@ -1,5 +1,9 @@
 # CIFAR-10 experiment review, September 24, 2026
 
+> Current planning: [CIFAR-10 legacy-gap campaign](../campaigns/cifar10-legacy-gap/README.md).
+> New ideas, hypotheses and tests go there. This review remains the dated evidence
+> synthesis; the campaign does not retroactively change its controls or conclusions.
+
 This review consolidates the CIFAR evidence through September 24: the digital
 L12/L8 references, analog L8 batch and learning-rate searches, continuations,
 implementation checks, and BN/epsilon/gradient/gain investigations. It uses

@@ -179,8 +179,6 @@ def resolved_config(row, parent, asset, ep_template):
 
 
 def prepare(root=ROOT):
-    if STUDY not in (root / "docs/current_simulations.md").read_text():
-        raise ValueError("Register the planned result directory first")
     assets = prepare_assets(root)
     write_json(root / RESULT_ROOT / "assets/initializers.json", assets)
     rows = list(csv.DictReader((root / "paper_ready_results/remaining_runs.csv").open()))

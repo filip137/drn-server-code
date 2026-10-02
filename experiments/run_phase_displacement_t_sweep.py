@@ -40,8 +40,6 @@ def completion_counts(config):
 
 
 def prepare():
-    if STUDY not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise ValueError('Register the persistent study row before preparation.')
     snapshot = {}
     changed = {'experiments/audit_eqprop_float64_shadow.py',
                'experiments/analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py'}

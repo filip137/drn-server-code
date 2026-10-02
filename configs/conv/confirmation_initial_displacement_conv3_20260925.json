@@ -1,0 +1,256 @@
+{
+  "study_id": "conv123-initial-displacement-noise-map-20260925-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "paper_facing": false,
+  "scientific_question": "Independent-noise confirmation of the prespecified selected adjacent pair",
+  "output_root": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/conv3",
+  "cases": [
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative0p2",
+      "relative_target": 0.2,
+      "injected_beta": 0.10641530267449781,
+      "calibration": {
+        "centered_rms": 0.0012000826387137651,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 0.10641530267449781,
+        "relative_output_rms": 0.20000000023563685,
+        "relative_target_error": 1.1781842168545609e-09
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "screen_references": {
+        "guards": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_baseline_relative0p2/screen_read_only_guards.json",
+          "sha256": "a4db1ae81536af3ef5fd42d0148379fdcfcafbc7c2d518ab946f39a52c88c650"
+        },
+        "layer_metrics": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_baseline_relative0p2/screen_layer_metrics.csv",
+          "sha256": "65837c826d43a9d12461f60e87396c6b35c81a249fb0776cb68d16804886d315"
+        },
+        "manifest": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_baseline_relative0p2/screen_manifest.json",
+          "sha256": "486ca4b87d5bb72871b5546e9e8366a6bbfe4a801c55afc2bf8b9a0c862f9688"
+        },
+        "result": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_baseline_relative0p2/screen_result.json",
+          "sha256": "887e1593a64cf2d29255f5be803e14e2dc2acb1b5248fbeb2d1fff0fce17cf8d"
+        }
+      },
+      "screen_source_bundle": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_baseline_relative0p2"
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative0p2",
+      "relative_target": 0.2,
+      "injected_beta": 0.011443997874447567,
+      "calibration": {
+        "centered_rms": 0.00826126233183174,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.011443997874447567,
+        "relative_output_rms": 0.20000000143425642,
+        "relative_target_error": 7.1712820126634824e-09
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "screen_references": {
+        "guards": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_ours_relative0p2/screen_read_only_guards.json",
+          "sha256": "68384a59c19b486eb6ce554f6ae9bfcb21bc9d62580ae597c9207e09361da622"
+        },
+        "layer_metrics": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_ours_relative0p2/screen_layer_metrics.csv",
+          "sha256": "f90cec209407104b8282b4a816259968da978e2118ff037cb3d3734e34e88ca0"
+        },
+        "manifest": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_ours_relative0p2/screen_manifest.json",
+          "sha256": "d181cdaca3af7044d2fd66a837ffddbc60c1aac874646c6fb05ba3e5bb553569"
+        },
+        "result": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_ours_relative0p2/screen_result.json",
+          "sha256": "fc3a61a92bf0ed83a7cb6924c0f0338ee680092ccb8c46ca4b1e1756049ba8cf"
+        }
+      },
+      "screen_source_bundle": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_ours_relative0p2"
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative0p2",
+      "relative_target": 0.2,
+      "injected_beta": 0.001669176928684768,
+      "calibration": {
+        "centered_rms": 0.07680528886897481,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.001669176928684768,
+        "relative_output_rms": 0.20000000021296613,
+        "relative_target_error": 1.0648306680849373e-09
+      },
+      "calibration_proof": {
+        "path": "results/conv123-initial-displacement-noise-map-20260925-v1/beta_lookup/calibration/all/matches.json",
+        "sha256": "25fd1003dd8412dd935f814a8701384f24d1aac0e63ce2d51d5b64d846410270"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "screen_references": {
+        "guards": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_legacy_relative0p2/screen_read_only_guards.json",
+          "sha256": "64ae9d091d98f47fd89d4f4d01d20a8fd4f5d2e50e83961202b63ffb8b724655"
+        },
+        "layer_metrics": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_legacy_relative0p2/screen_layer_metrics.csv",
+          "sha256": "da21d830f30a7d3b2aa88198f87c0d17083cc15440ee20b26f2959951dc34b5e"
+        },
+        "manifest": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_legacy_relative0p2/screen_manifest.json",
+          "sha256": "2ba7062c038fbf10d180a16fc4ae3f8fa865d71ba2f63859699b5199f9ae0479"
+        },
+        "result": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/references/conv3_legacy_relative0p2/screen_result.json",
+          "sha256": "069740b838da847cd5ceba62bd864a31564e79bd8b356ddbf7225cca9db127de"
+        }
+      },
+      "screen_source_bundle": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_legacy_relative0p2"
+    }
+  ],
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "cohort_config_sha256": "a48815aeb8954cdfce284a771bed27f0bd4c976054bfc04c01f649dfcdfdad79",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "runtime_hashes_source": "cohort_config.runtime_sha256",
+  "beta_convention": "injected_B; base_beta=B/(voltage_amp/current_amp)^convolution_depth",
+  "noise_sigmas": [
+    0.0,
+    0.002,
+    0.005
+  ],
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "report residual flags at accepted T/K; no additional solver tests",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "budget_seconds": 4500,
+  "expected_case_count": 3,
+  "expected_batches": 36,
+  "expected_layer_comparisons": 4752,
+  "target": "local:RTX3090",
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "source_commit": "6be7d41038018b225cef7d1771fdb905084b0db7",
+  "read_noise_seeds": [
+    94000000,
+    95000000,
+    96000000,
+    97000000,
+    98000000
+  ],
+  "draws_per_noisy_batch": 5,
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0"
+  ],
+  "selected_pair": {
+    "architecture": "conv3",
+    "competitor": "ours",
+    "cells": [
+      [
+        0.2,
+        0.002
+      ],
+      [
+        0.2,
+        0.005
+      ]
+    ],
+    "margins": [
+      0.00010782290768564066,
+      0.00010879112573739663
+    ],
+    "minimum_margin": 0.00010782290768564066
+  },
+  "screen_candidate_file_sha256": "a65940b8f94afe69c2505c413587d651f70c64a634da8404352d58bea6f1f8a7",
+  "screen_runner_sha256": "cacca7852b8949164c65d19761ec7541acc3fd8ec18f0e77facae72131d06e0a",
+  "screen_source_archive_sha256": "666df5a434daad68074097ee526809d618a52f58d2298bf2c85eda857055daf1",
+  "assigned_experiment": "campaigns/read-noise-beta/series/005-initial-displacement-noise-map/experiments/exp-011-confirm-candidate-region.md"
+}

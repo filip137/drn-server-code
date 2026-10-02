@@ -4,8 +4,8 @@ Updated: 2026-08-17
 
 Status: working research synthesis. This note tracks progress toward the
 paper's intended figures; it does not supersede the active scientific
-protocols. Individual analyzed studies remain authoritative in
-[`experimental_manifest.md`](experimental_manifest.md), and
+protocols. New reviewed studies live in [campaign result/pilot notes](../campaigns/README.md);
+[`experimental_manifest.md`](experimental_manifest.md) preserves historical conclusions, and
 `current_state.md` remains human-authored. On 2026-08-17 Filip selected
 ordinary MNIST, rather than deterministic medium-affine MNIST, as the active
 paper dataset.

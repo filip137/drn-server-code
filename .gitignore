@@ -89,6 +89,11 @@ data/
 logs/
 runs/
 results/
+# Campaign results contain reviewed notes, not generated run bundles.
+!campaigns/*/series/*/results/
+campaigns/*/series/*/results/*
+!campaigns/*/series/*/results/*.md
+!campaigns/*/series/*/results/.gitkeep
 *.log
 events.out.tfevents*
 

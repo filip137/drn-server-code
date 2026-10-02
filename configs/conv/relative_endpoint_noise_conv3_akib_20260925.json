@@ -1,0 +1,262 @@
+{
+  "study_id": "conv3-relative-endpoint-noise-20260925-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "paper_facing": false,
+  "scientific_question": "Does nodewise relative endpoint noise change legacy later-layer alignment advantage compared with absolute noise?",
+  "output_root": "results/conv3-relative-endpoint-noise-20260925-v1/akib",
+  "cases": [
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 3.1924590902511554,
+      "calibration": {
+        "centered_rms": 0.03600247918162555,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 3.1924590902511554,
+        "relative_output_rms": 6.000000010437639,
+        "relative_target_error": 1.7396064588837135e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "screen_references": {
+        "guards": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_baseline_relative6/read_only_guards.json",
+          "sha256": "c112226e0698dbd0882fae51bd4b76442d80375b413f6b15488c33d7797d11ab"
+        },
+        "layer_metrics": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_baseline_relative6/layer_metrics.csv",
+          "sha256": "ca8209ed0375bd693e77f05f80fcb840ded6180b2e9c8feb67895d07ac9064c0"
+        },
+        "residuals": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_baseline_relative6/equilibrium_residuals.csv",
+          "sha256": "2e1b7d5e05c1d047650be6ce05e84489a58aa1e9e481a736e5f3f13b7fe74022"
+        },
+        "manifest": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_baseline_relative6/manifest.json",
+          "sha256": "cf0215f2592d8cb6e23c6bd8c254f0d8a6519a65ee8115dbbc59c9ecf4070c54"
+        },
+        "phases": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_baseline_relative6/phase_diagnostics.csv",
+          "sha256": "51133a176e33a11b9b7a6e3b839b5583faf03ffbd0d561b6560958a095442762"
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 0.343319929011904,
+      "calibration": {
+        "centered_rms": 0.2478378649573751,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.343319929011904,
+        "relative_output_rms": 5.999999922039472,
+        "relative_target_error": 1.2993421338869382e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "screen_references": {
+        "guards": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_ours_relative6/read_only_guards.json",
+          "sha256": "e5063d503572364c7cf6509a9289d52f02e9da24a4edca125b01c9b1238d3b32"
+        },
+        "layer_metrics": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_ours_relative6/layer_metrics.csv",
+          "sha256": "12719461c2f9a2786b2ecd3214ce107200f89d53b799c93b03b178d70c5c36c7"
+        },
+        "residuals": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_ours_relative6/equilibrium_residuals.csv",
+          "sha256": "07d3ce405f7125174f4d924e92573b0a7101347b74b91cc02374c04ba485c29d"
+        },
+        "manifest": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_ours_relative6/manifest.json",
+          "sha256": "1fe1f001502837e875df953837282a45728309e6a1dd2d7d28bb43de79d79d7f"
+        },
+        "phases": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_ours_relative6/phase_diagnostics.csv",
+          "sha256": "26d9965937e922d8a7cff80115138138a8e84fba41501a37bb51a0567ca603b8"
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 0.05007530792395309,
+      "calibration": {
+        "centered_rms": 2.304158663572987,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.05007530792395309,
+        "relative_output_rms": 5.999999999888761,
+        "relative_target_error": 1.8539836332820414e-11
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "screen_references": {
+        "guards": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_legacy_relative6/read_only_guards.json",
+          "sha256": "e0df2d12c839dfbeb0d7d95d60453b0d93a2eba1c944e06a64f9a098600c627f"
+        },
+        "layer_metrics": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_legacy_relative6/layer_metrics.csv",
+          "sha256": "f72191421529828d37c8cda8a634e04950f5303550bfa2517463ca492f657ac9"
+        },
+        "residuals": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_legacy_relative6/equilibrium_residuals.csv",
+          "sha256": "8a5540d3b3e87211299b3f8baa810b4a6ac90b9ac51c5361a59fd2efb78345ba"
+        },
+        "manifest": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_legacy_relative6/manifest.json",
+          "sha256": "67b78cb822445f756da4557b6affe408d35b04f77ba236686431a2f845182603"
+        },
+        "phases": {
+          "path": "results/conv123-initial-displacement-noise-map-20260925-v1/screen/conv3/runs/conv3_legacy_relative6/phase_diagnostics.csv",
+          "sha256": "6f60ea0fd08ef0aa0c2c0b392de80694fe83b4b689a52aa8b0aa6ffba0137835"
+        }
+      }
+    }
+  ],
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "cohort_config_sha256": "a48815aeb8954cdfce284a771bed27f0bd4c976054bfc04c01f649dfcdfdad79",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "runtime_hashes_source": "cohort_config.runtime_sha256",
+  "beta_convention": "injected_B; base_beta=B/(voltage_amp/current_amp)^convolution_depth",
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "report residual flags at accepted T/K; no additional solver tests",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "budget_seconds": 1800,
+  "expected_case_count": 3,
+  "expected_batches": 36,
+  "expected_layer_comparisons": 5616,
+  "target": "akib:RTX3080",
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "source_commit": "6be7d41038018b225cef7d1771fdb905084b0db7",
+  "read_noise_seeds": [
+    101000000,
+    102000000,
+    103000000
+  ],
+  "draws_per_noisy_batch": 3,
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0"
+  ],
+  "noise_models": [
+    "absolute",
+    "nodewise_relative"
+  ],
+  "noise_levels": [
+    0.0001,
+    0.001
+  ],
+  "saved_activation_cpu_offload": true,
+  "release_unused_cuda_cache": true,
+  "cuda_required": true,
+  "relative_noise_formula": "v_tilde = v + eta*abs(v)*xi; exact_zero_receives_zero_noise; no_floor",
+  "phase_rms_definition": "P = sqrt((sum(v_plus^2)+sum(v_minus^2))/(2*element_count)); D = RMS((v_plus-v_minus)/2)",
+  "scientific_comparison": "Within-model scheme comparisons; equal numerical sigma and eta do not imply matched noise power",
+  "assigned_experiment": "campaigns/read-noise-beta/series/006-relative-endpoint-noise/experiments/exp-012-relative-endpoint-noise.md",
+  "parent_runner_sha256": "cacca7852b8949164c65d19761ec7541acc3fd8ec18f0e77facae72131d06e0a",
+  "parent_config": {
+    "path": "configs/conv/initial_displacement_noise_conv3_20260925.json",
+    "sha256": "2ab9189772b0617c8ad96af04a1724bbe88a0990a84d20c6a0d099026d93b4a4"
+  },
+  "cuda_allocator_cap_bytes": 8053063680,
+  "saved_activation_cpu_offload_scope": "physical_replay_and_acquisition",
+  "residual_diagnostic_policy": "reuse_hash_pinned_identical_screen_endpoints",
+  "bptt_reference_validation": "unchecked_cross_device_user_override",
+  "interpretation_caveat": "Exploratory: cross-device BPTT numerical equivalence unchecked by explicit user instruction; actual native GPU reference retained.",
+  "smoke_gate_policy": "skipped_by_explicit_user_override",
+  "previous_failed_target_smoke_seconds": 6.36
+}

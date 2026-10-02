@@ -125,9 +125,11 @@ def _build_runtime(
         amplification_max=model_config.get("amplification_max"),
     )
     energy_fn.set_device(device)
-    energy_fn.load(checkpoint_path)
     runtime_dtype_name, runtime_dtype = trainer._runtime_dtype_from_config(config)
     trainer._convert_energy_runtime_dtype(energy_fn, runtime_dtype)
+    # Checkpoint schema validation includes dtype; set the frozen numerical
+    # precision before restoring, preserving the stored tensors exactly.
+    energy_fn.load(checkpoint_path)
 
     network = Network(energy_fn)
     free_layers = network.free_layers()
@@ -135,7 +137,9 @@ def _build_runtime(
     if output_layer.shape == (10,):
         cost_fn = SquaredError(output_layer)
     elif output_layer.shape == (20,):
-        cost_fn = SquaredErrorPairedOutputs(output_layer, num_classes=10)
+        cost_fn = SquaredErrorPairedOutputs(
+            output_layer, num_classes=10, target_scale=float(config.get("target_scale", 1.0))
+        )
     else:
         raise ValueError(f"Expected output shape (10,) or (20,), got {output_layer.shape!r}.")
 

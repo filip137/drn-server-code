@@ -68,6 +68,20 @@ def check_noise_record(seen, record, *, sigma, seed, batch_index):
     assert seen.setdefault(scaled_key, digest) == digest, 'Unmatched endpoint noise within sigma'
 
 
+def endpoint_draws(cfg, sigma):
+    """Keep the clean comparison and exactly the declared independent noisy draws."""
+    seeds = cfg['read_noise_seeds']
+    assert len(seeds) == len(set(seeds)) == cfg['draws_per_noisy_batch']
+    assert cfg['draws_per_noisy_batch'] >= 0
+    return [(0., None)] + [(sigma, seed) for seed in seeds]
+
+
+def recoverable_numerical_failure(cfg, exc, *, smoke=False):
+    """Never continue past source, invariant, CUDA or other operational errors."""
+    return (not smoke and cfg.get('continue_numerical_failures', False)
+            and isinstance(exc, (FloatingPointError, OverflowError)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
@@ -81,8 +95,6 @@ def main():
     cfg = json.loads(args.config.read_text())
     assert 0 <= args.shard_index < args.shard_count
     out = ROOT / cfg['output_root']
-    if cfg['study_id'] not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise RuntimeError('Register the planned result directory before running.')
     spec = importlib.util.spec_from_file_location(
         'trained_beta_noise_gate', ROOT / cfg['analyzer_source_root'] /
         'analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py')
@@ -119,7 +131,7 @@ def main():
     assert points == sorted(set(points))
     assert all(math.isfinite(x) and x > 0 for x in points)
     assert all(c['replay_T'] > 0 for c in contexts)
-    assert len(set(cfg['read_noise_seeds'])) == cfg['draws_per_noisy_batch'] == 4
+    draw_count = len(endpoint_draws(cfg, 0.))
     assert not cfg['official_test_read'] and not cfg['optimizer_steps_applied']
     started = time.monotonic()
     runner_hash = base.sha256_file(Path(__file__))
@@ -258,13 +270,17 @@ def main():
                             training_sigma=declared['sigma'] if epoch else None, beta_factor=factor, injected_beta=beta,
                             batch_index=int(batch['batch_index']), layer_index=i,
                             layer_name=str(runtime['free_layers'][i].name), element_count=free.numel(),
-                            free_rms=rms(free), positive_free_rms=rms(positive-free),
+                            free_mean=float(free.mean()), free_rms=rms(free),
+                            positive_mean=float(positive.mean()), positive_rms=rms(positive),
+                            negative_mean=float(negative.mean()), negative_rms=rms(negative),
+                            zero_mean=float(zero.mean()), zero_rms=rms(zero),
+                            positive_free_rms=rms(positive-free),
                             negative_free_rms=rms(negative-free), centered_half_difference_rms=rms((positive-negative)/2),
                             zero_free_rms=rms(zero-free), midpoint_minus_zero_rms=rms((positive+negative)/2-zero),
                             positive_activity_change_fraction=float((active(positive) != active(free)).double().mean()) if is_hidden else None,
                             negative_activity_change_fraction=float((active(negative) != active(free)).double().mean()) if is_hidden else None,
                             phase_activity_disagreement_fraction=float((active(positive) != active(negative)).double().mean()) if is_hidden else None))
-                    draws = [(0., None)] + [(declared['sigma'], seed) for seed in cfg['read_noise_seeds']]
+                    draws = endpoint_draws(cfg, declared['sigma'])
                     for draw_index, (sigma, seed) in enumerate(draws):
                         noise = gate._read_noise_contract({})
                         noise.update(endpoint_read_noise_std=sigma, endpoint_read_noise_seed=seed)
@@ -314,7 +330,7 @@ def main():
                     assert base.sha256_file(bundle / name) == digest, name
                 if role == 'reconstructed_initialization':
                     assert base.sha256_file(ROOT / cfg['initializer_checkpoint_path']) == checkpoint_sha
-                assert len(rows) == len(batches) * 5 * 4
+                assert len(rows) == len(batches) * draw_count * 4
                 for name, records in [('layer_metrics', rows), ('state_signals', signals), ('equilibrium_residuals', residuals)]:
                     base._write_csv(run / f'{name}.csv', records)
                 atomic_write_json(run / 'read_only_guards.json', guards)
@@ -334,20 +350,37 @@ def main():
                                   dict(cells=summary, cells_expected=sum(len(beta_points(cfg, smoke=args.smoke, case=c)[args.shard_index::args.shard_count]) for c in contexts)))
                 print('DONE', cell_name, round(elapsed, 2), 'seconds', flush=True)
             except BaseException as exc:
-                if rows:
-                    base._write_csv(run / 'partial_layer_metrics.csv', rows)
+                for name, records in [('layer_metrics', rows), ('state_signals', signals), ('equilibrium_residuals', residuals)]:
+                    if records:
+                        base._write_csv(run / f'partial_{name}.csv', records)
                 fail_run(run, error=exc)
+                if recoverable_numerical_failure(cfg, exc, smoke=args.smoke):
+                    verify_inputs()
+                    summary.append(dict(name=cell_name, run_dir=str(run.relative_to(ROOT)),
+                        state='failed', failure_class='numerical', error=str(exc),
+                        layer_comparisons=0, partial_layer_comparisons=len(rows),
+                        elapsed_seconds=time.monotonic()-cell_started))
+                    atomic_write_json(out / 'progress.json', dict(cells=summary,
+                        cells_expected=sum(len(beta_points(cfg, case=c)[args.shard_index::args.shard_count]) for c in contexts)))
+                    print('NUMERICAL_FAILURE', cell_name, str(exc), flush=True)
+                    gc.collect()
+                    continue
                 raise
     verify_inputs()
-    expected = sum(len(beta_points(cfg, smoke=args.smoke, case=c)[args.shard_index::args.shard_count]) for c in contexts) * len(batches) * 5 * 4
+    cells_expected = sum(len(beta_points(cfg, smoke=args.smoke, case=c)[args.shard_index::args.shard_count]) for c in contexts)
+    assert len(summary) == cells_expected
+    failures = sum(c['state'] == 'failed' for c in summary)
+    expected = (cells_expected - failures) * len(batches) * draw_count * 4
     assert sum(c['layer_comparisons'] for c in summary) == expected
-    atomic_write_json(smoke_path if args.smoke else out / 'summary.json', dict(state='complete', cells=summary,
+    atomic_write_json(smoke_path if args.smoke else out / 'summary.json', dict(state='partial' if failures else 'complete', cells=summary,
+        cells_expected=cells_expected, numerical_failures=failures, all_cells_attempted=True,
         shard_index=args.shard_index, shard_count=args.shard_count, beta_points=factors,
         beta_mode='injected' if absolute else 'factor',
         replay_T=cfg.get('T_values', cfg.get('T')), replay_K=cfg.get('K_values', cfg.get('K')), target=args.target or cfg['target'],
         config_sha256=config_hash, runner_sha256=runner_hash, cohort_sha256=cohort['cohort_sha256'],
         bptt_invariant_across_beta=True, noise_draws_matched_across_schemes_and_beta=True,
         elapsed_seconds=time.monotonic()-started, total_including_smoke_seconds=time.monotonic()-started+prior_seconds,
+        peak_cuda_memory_allocated_bytes=torch.cuda.max_memory_allocated() if args.device.startswith('cuda') else None,
         official_test_read=False, optimizer_steps_applied=False, accuracy_evaluation=False))
     print('COMPLETE', len(summary), 'cells', round(time.monotonic()-started, 2), 'seconds', flush=True)
 

@@ -1,6 +1,10 @@
 # Experimental Manifest
 
-Updated: 2026-09-24
+> Historical snapshot, retired September 25, 2026. Do not append new conclusions.
+> New reviewed evidence lives in [campaign result/pilot notes](../campaigns/README.md).
+> The contents below are preserved as provenance; their old reporting instructions are superseded.
+
+Updated: 2026-09-25
 
 This is the manually curated ledger of analyzed studies. It is not generated
 from raw metrics and does not track transient job state.
@@ -27,6 +31,140 @@ only when it materially affects the scientific conclusion.
 The [CIFAR experiment review, September 24](cifar_experiment_review_20260924.md)
 consolidates the digital references, analog searches and continuations, and
 BN/epsilon/gradient/gain controls, with completed and failed cases distinguished.
+
+## Conv3 absolute versus relative endpoint noise, September 25
+
+Outcome: **positive exploratory support for H-009's predicted third-layer
+pattern**, with causal attribution unresolved. All6 production contexts and
+11,232 finite rows are collected. The legacy-minus-competitor alignment gap
+shrinks in12/12 paired comparisons for each competitor and both BPTT/clean-EqProp
+references. Ours leads all4 relative-noise cells; legacy leads all4 absolute-noise
+cells in the third convolution. At D/F2 and level1e-4, BPTT cosines for
+baseline/ours/legacy change from0.1718/0.3738/0.6826 (absolute) to
+0.5892/0.9412/0.5838 (relative).
+
+Retrospective mechanism interpretation: at output D/F=2, ours has 4.04 times
+legacy's third-convolution D/P and 3.95 times lower relative gradient error
+at eta=1e-4; clean alignment exceeds 0.9999 for all schemes. This supports a
+larger fractional hidden-layer signal as the explanation for its noisy-gradient
+advantage. Legacy and baseline have nearly equal hidden D/P despite different
+voltage scales. Attribution to the changed normalized interlayer coupling
+remains an inference. The proposed next control matches third-convolution D/P
+at fixed eta; it has not been launched. Early convolutions remain noise-dominated,
+and no training advantage is established.
+
+This is seed0 initialization, one576-example validation cohort, Conv3T=K8,
+float64, paired endpoint noise and no training/test evaluation. Noise models
+have unequal severity/covariance. Filip waived additional checks; Akib's native
+BPTT cross-device equivalence is unchecked, and canonical/source revalidation
+was skipped. All failed preparation attempts are preserved. Measured total
+cost0.42464GPUh; no further admissions.
+
+See [result and limitations](../campaigns/read-noise-beta/series/006-relative-endpoint-noise/results/exp-012-relative-endpoint-noise.md),
+[analysis and plots](../results/conv3-relative-endpoint-noise-20260925-v1/analysis/report.md).
+
+## Tiny experiment-loop workflow audit, September 25
+
+Engineering workflow pilot with a real matched tiny Conv1 scientific comparison (workflow_diagnostic): baseline v1/c1 versus ours v4/c1, seed0, two hidden channels, CPU BPTT T=K=2, identical initialization/data order/Adam rates,32 updates per arm and16 validation examples. Both smokes and both arms completed; four canonical bundles validated once, no test-set read or scientific retries.
+
+Scientific outcome: **inconclusive**. Step8→32 relative loss reduction was 0.5990% baseline versus 1.4785% ours, a +0.8795pp contrast below the predeclared >2pp support threshold. Workflow outcome: fixed overhead dominated this pilot; 19.818s smoke+training versus 278.221s outside invocations before review. Monitor first observed completed work. Priorities: research question before implementation, a short-run path that avoids separate monitoring/smoke when justified, compact evidence reads/handoffs, and lighter pilot records. Cheap integrity checks were not the bottleneck. No general performance or remote-workflow claim.
+
+[Plan](../campaigns/workflow-efficiency/series/001-tiny-local/experiments/exp-002-paired-learning.md) · [Full review and workflow model](../campaigns/workflow-efficiency/series/001-tiny-local/results/exp-002-paired-learning.md) · [Raw evidence](../results/experiment-loop-tiny-audit-20260925-v1/). Exp-001 was superseded without execution after user correction of premature setup; preserve that observation. Recommendations are recorded, not deployed.
+
+## Initialization displacement/noise cosine screen and confirmation, September 25
+
+Outcome: **H-008 supported in its existential initialization scope by Conv1/2;
+Conv3's selected candidate is mixed and not confirmed**. The complete screen has
+45contexts/77,760finite layer/batch/draw cosines; confirmation has12contexts/11,016
+rows. All canonical and scientific audits pass, including actual output D/F
+matching, source/config/initializer/cohort identities and paired noise/BPTT/state
+hashes. No failures, exclusions, retries, optimizer steps or official-test reads.
+
+Ours confirms the selected worst-layer advantage over legacy at both cells in
+all five fresh noise draws: Conv1 D/F0.8 at sigma0.001/0.002 has margins
+**+0.309521 to+0.381923**; Conv2 D/F6/10 at sigma0.0001 has **+0.130685 to+0.215791**.
+Conv3 D/F0.2 at sigma0.002/0.005 is positive in6/10cell/draw contrasts, ranging
+**−0.00341023 to+0.00128070**; seeds96m/97m are negative at both cells and retained.
+No selected ours comparison establishes all-layer dominance. W is the minimum
+of layer mean cosines, including readout; this is not mean-of-minima or cosine
+of an averaged gradient.
+
+The frozen regime is seed-0 initialization on576 identical ordinary-MNIST
+validation examples, centered frozen-current EqProp, float64, physical20outputs,
+zero frozen biases, bounds[0,100], gains40/100/360 and accepted T=K4/6/8. The
+reference is finite-K BPTT from the common post-T state. The complete screen
+selected only one adjacent pair/depth before five fresh noise seeds94m–98m.
+Selected clean states were reconstructed because raw caches were not persisted;
+this accommodation preceded selection and exact screen hashes were verified.
+
+Conv1/2 stayed on Akib RTX3080 and Conv3 on local RTX3090. Matching, screening
+and confirmation consumed approximately0.97GPUh including measured smokes;
+all jobs ended before12:30Paris and both GPU lanes are released. The authorized
+series is complete. Evidence remains conditional on one initializer/cohort;
+relative-D matching does not equalize absolute SNR, and improved W establishes
+neither all-depth/all-layer superiority nor better training accuracy.
+
+See the [overview](../results/conv123-initial-displacement-noise-map-20260925-v1/report.md),
+[screen report and heatmaps](../results/conv123-initial-displacement-noise-map-20260925-v1/analysis/report.md),
+[confirmation report and per-draw figure](../results/conv123-initial-displacement-noise-map-20260925-v1/confirmation/analysis/report.md),
+and [reviewed campaign result](../campaigns/read-noise-beta/series/005-initial-displacement-noise-map/results/exp-011-confirm-candidate-region.md).
+
+## Matched initial relative output displacement training, September 24
+
+Outcome: **negative in the complete Conv1/3 scopes; H-006 broadly inconclusive
+with partial coverage**. All 36 original cases are reconciled: 33 completed,
+three user-cancelled Fifi cases. All 35 attempted bundles validate locally;
+one operational Conv3 node-paging failure is preserved and replaced under
+unchanged science. Seed 0, ten epochs, ordinary MNIST55k/5k, centered EqProp,
+float64, fixed initial D/F targets0.8/1.2/1.6/2.0, additive endpoint sigma5e-4,
+source Adam rates and accepted T=K4/6/8; official test remains unread.
+
+The prespecified mean epoch-10 validation difference, ours minus legacy, is
+**−0.065pp for Conv1** and **−4.460pp for Conv3**, with ours winning0/4 and1/4
+targets respectively. Conv2's observed differences are−0.80/−0.50/missing/−0.36pp;
+its four-target mean is undefined. No partial mean, best target or best epoch
+substitutes for the declared comparison. Conv3 legacy's target0.8 best-to-final
+drop of5.72pp is retained as a finite negative outcome.
+
+These single-seed validation data do not support the proposed all-depth
+advantage. Matched initial D/F does not equalize absolute signal or SNR; beta
+is fixed during training and inherited rates differ by scheme. Between-target
+host changes are disclosed. Collection and review are finished; experiment
+state remains partial due to cancellations. Observed use is roughly26.8GPUh
+under the60GPUh cap.
+[Full report, all endpoints and plots](../results/eqprop-conv123-relative-output-20260924-v1/analysis/report.md) ·
+[Campaign review](../campaigns/read-noise-beta/series/004-relative-output-training/results/exp-007-relative-output-training.md).
+The already assigned exp008 extension has a separate target/noise decision rule.
+
+## Clean Conv3 beta-response diagnostic, September 24
+
+Outcome: **mixed; H-005 broadly inconclusive**. All114/114 declared clean
+replay cells validate locally (16,416 state and16,416 gradient rows), with
+no failures/retries/exclusions;2.6275GPUh including smoke. Shared initialization
+and clean EqProp epoch30, baseline/ours/legacy, nineteen injected betas
+1e-6–1e3, fixed T=K8, float64 and576 matched ordinary-MNIST validation examples.
+No optimizer step, official-test read or additional T/K experiment occurred.
+
+Centered displacement is approximately proportional to beta. Legacy mainly
+has greater amplitude at the same beta; slope contrasts vary across layers,
+stages and ranges, without a general steeper-decay pattern. The near-parallel
+linear regime contradicts a systematic larger legacy exponent there. At beta
+.01, initial output D/F is .018794/.174764/1.198195 and trained D/F is
+5.7097e-6/.00092333/.197233 (baseline/ours/legacy). A fixed beta therefore
+does not preserve relative output displacement through training.
+
+Small-beta first-layer cancellation and large-beta direction bias remain
+visible. At beta1000, trained third-convolution median cosine is
+.9984/.9304/.5788. A large, nearly linear readout displacement does not
+qualify the gradient. Positive-free displacement plateaus include continued
+free relaxation; trained baseline has Conv1/Conv3 residual flags at all19
+betas. BPTT is the matched K8 finite-unroll reference, not exact equilibrium.
+These are single-seed mechanism measurements, not a training-accuracy claim.
+
+The already assigned exp-007 directly tests actual training with matched
+initial output ratios .8/1.2/1.6/2.0 and additive endpoint noise5e-4.
+[Full report and plots](../results/conv3-clean-eqprop-rms-beta-20260924-v1/analysis/report.md) ·
+[Campaign review](../campaigns/read-noise-beta/series/003-clean-beta-response/results/exp-006-beta-response.md).
 
 ## CIFAR L8 overnight BN, Adam-step and gain controls, September 24
 

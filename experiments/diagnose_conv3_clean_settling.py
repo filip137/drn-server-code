@@ -22,7 +22,6 @@ def main():
     args = parser.parse_args()
     cfg = json.loads(args.config.read_text())
     out = ROOT / cfg['output_root'] / 'settling_diagnostic'
-    assert cfg['study_id'] in (ROOT / 'docs/current_simulations.md').read_text()
     spec = importlib.util.spec_from_file_location('settling_gate', ROOT / cfg['analyzer_source_root'] /
         'analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py')
     gate = importlib.util.module_from_spec(spec)

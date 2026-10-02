@@ -1,0 +1,137 @@
+{
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "disabled; no solver qualification requested",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "parameter_order": [
+    "ConvWeight_0",
+    "DenseWeight_0"
+  ],
+  "source_commit": "d9f581fbef9ba40401a073f1e80c9c85ffdb1d75",
+  "study_id": "conv123-reduced-current-layerwise-20260928-v1",
+  "stage": "layerwise",
+  "architecture": "conv1",
+  "output_root": "results/conv123-reduced-current-layerwise-20260928-v1/production/conv1",
+  "target": "akib",
+  "budget_seconds": 1200,
+  "prior_gpu_seconds": 0.0,
+  "expected_batches": 36,
+  "noisy_batches": 12,
+  "relative_targets": [
+    1.0
+  ],
+  "noise_levels": [
+    1e-06,
+    1e-05,
+    0.0001,
+    0.0003
+  ],
+  "read_noise_seeds": [
+    111000000,
+    112000000,
+    113000000
+  ],
+  "max_matching_corrections": 2,
+  "target_relative_tolerance": 0.01,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "cuda_allocator_cap_bytes": 8053063680,
+  "saved_activation_cpu_offload": true,
+  "tests_and_canaries_skipped_by_user": false,
+  "cases": [
+    {
+      "architecture": "conv1",
+      "scheme": "v1_c0p5",
+      "source_config": "configs/conv/reduced_current_layerwise_20260928/sources/conv1_v1_c0p5.json",
+      "source_config_sha256": "0aaa59a0e3c4a96637666b5145a23800c2eac8537df9748f25de16f6b08ad128",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_v1_c0p5_relative1",
+      "relative_target": 1.0,
+      "injected_beta": 4.019442283658996,
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 1.0,
+      "noise_levels": [
+        1e-06,
+        1e-05,
+        0.0001,
+        0.0003
+      ],
+      "beta_proposal_reference": {
+        "path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv1/cases/conv1_baseline_relative1/matching.json",
+        "sha256": "fb270d8564638ae7de42b7ab3d60eef5469f2ff8189808c48f496a544ac7a19e",
+        "scheme": "baseline",
+        "relative_target": 1,
+        "inherited_as_proposal_only": true
+      }
+    },
+    {
+      "architecture": "conv1",
+      "scheme": "v1_c0p25",
+      "source_config": "configs/conv/reduced_current_layerwise_20260928/sources/conv1_v1_c0p25.json",
+      "source_config_sha256": "29a62bb7261cce43683132bba1dab42c53629bad26244a50706c8ee6528bf839",
+      "initializer_checkpoint_path": "results/eqprop-beta-rule-comparison-20260918-v1/akib_stage/initializers/conv1/seed0.pt",
+      "initializer_checkpoint_sha256": "f453d719befc1b81f3f2780fd4c5edc061a73cffdcfeb6a5655ee3bd929d4800",
+      "T": 4,
+      "K": 4,
+      "name": "conv1_v1_c0p25_relative1",
+      "relative_target": 1.0,
+      "injected_beta": 4.019442283658996,
+      "reconstructed_initialization_tensor_sha256": "fd7b715b1c8f1f47a3d679e5ab49c97c4f284a4ecca38b1be8fcaa00b9ece5c1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 1.0,
+      "noise_levels": [
+        1e-06,
+        1e-05,
+        0.0001,
+        0.0003
+      ],
+      "beta_proposal_reference": {
+        "path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv1/cases/conv1_baseline_relative1/matching.json",
+        "sha256": "fb270d8564638ae7de42b7ab3d60eef5469f2ff8189808c48f496a544ac7a19e",
+        "scheme": "baseline",
+        "relative_target": 1,
+        "inherited_as_proposal_only": true
+      }
+    }
+  ],
+  "expected_case_count": 21,
+  "expected_layer_comparisons": 720
+}

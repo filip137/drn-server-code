@@ -1,0 +1,392 @@
+{
+  "arm_id": "conv3_baseline_relative6_eta3em4_seed2",
+  "baseline_source_proof": {
+    "K": 8,
+    "T": 8,
+    "base_beta": 3.1924590902511554,
+    "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+    "lr": [
+      0.0026037179886572314,
+      0.00046993113678684014,
+      0.0003322605058323205,
+      0.001023541308739098,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "matched_relative_output": 6.00000001043764,
+    "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_baseline_relative6/matching.json",
+    "matching_sha256": "0df178fac619c5ba55f1f6d87f5385b6060a7a58f8696d2a80fe70a478b5126b",
+    "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/config.used.json",
+    "replay_sha256": "9bb84a27ee32f9fe64f2edf088fcf434db61b56c87635e2f1bf074da5da37730",
+    "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+    "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9"
+  },
+  "batch_state_policy": "reset_each_batch",
+  "beta": 3.1924590902511554,
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "params": {
+        "affine_config": null,
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "num_workers": 0,
+        "pin_memory": false,
+        "root": "/home/filip/datasets/mnist",
+        "shuffle_seed": 2,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "eqprop": {
+    "amplification_factor": 1.0,
+    "beta_policy": "initial_centered_physical_output_relative_rms_fixed_during_training",
+    "current_scale": "auto",
+    "endpoint_read_noise_eta": 0.0003,
+    "endpoint_read_noise_floor": 0.0,
+    "endpoint_read_noise_mode": "nodewise_relative",
+    "endpoint_read_noise_seed": 2026081603,
+    "endpoint_read_noise_std": 0.0,
+    "endpoint_read_noise_units": "dimensionless",
+    "injected_beta_B": 3.1924590902511554,
+    "input_read_noise": false,
+    "layer_noise_correlation": "independent",
+    "matched_standard_normal_draws_across_cases": true,
+    "noise_applied_after_equilibrium_before_local_energy_gradient": true,
+    "normalize_current_scale": true,
+    "nudging_mode": "current",
+    "phase_noise_correlation": "independent",
+    "same_eta_all_noninput_layers": true,
+    "validation_read_noise": false,
+    "variant": "centered"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "epoch_split": "validation",
+    "inclusion_rule": "Retain all outcomes. Primary comparison uses paired seeds 1/2 at the fixed final epoch; historical seed0 optimizer/RNG-reset trajectories remain separate.",
+    "official_test": {
+      "policy": "disabled"
+    }
+  },
+  "handoff": {
+    "diagnostic_bias_ablation": {
+      "all_weight_learning_rates_unchanged": true,
+      "bias_initialization": "zero",
+      "dataset_variant": "ordinary_mnist_train_validation",
+      "freeze_method": "exact zero learning rate with ordinary post-step nonnegative projection",
+      "frozen_parameters_csv": "Bias_0,Bias_1,Bias_2",
+      "scientific_question": "Do baseline, ours, and legacy retain their ordinary-MNIST performance ordering when every hidden bias is frozen at zero?",
+      "source_config": "configs/conv/paper_medium_affine_perfectdiode_wide_seed0_20260729_v1/conv3/01_baseline_adam_seed0.json"
+    },
+    "downstream_weight_contract_authorized_at": "2026-07-29",
+    "downstream_weight_contract_authorized_by": "Filip",
+    "entry_id": "conv3_baseline_adam",
+    "id": "perfectdiode-conv3-unbounded-selected-lr-20260729-v1",
+    "path": "configs/conv/perfectdiode_conv3_unbounded_fixed_lr_handoff_20260729_v1.json",
+    "sha256": "47c88be060efbbff49708d3ed9ef94f38c0bc4955858e7f0ea9cf648aecc70bb",
+    "source_selection_weight_contract_exact_match": false
+  },
+  "init_checkpoint_path": "inputs/initializers/conv3_seed2.pt",
+  "initialization": {
+    "checkpoint_sha256": "8acb2609ec9ebf1ec38b7a0bdb6579cf53ae0f43e8c40ad2ce1fe43b4365e8b3",
+    "optimizer_state": "fresh_at_initialization",
+    "recipe": "wide_kaiming",
+    "seed": 2
+  },
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 30,
+    "model_key": "mnist_bp_conv_amp"
+  },
+  "learning_rates_by_parameter": {
+    "Bias_0": 0.0,
+    "Bias_1": 0.0,
+    "Bias_2": 0.0,
+    "ConvWeight_0": 0.0026037179886572314,
+    "ConvWeight_1": 0.00046993113678684014,
+    "ConvWeight_2": 0.0003322605058323205,
+    "DenseWeight_0": 0.001023541308739098
+  },
+  "log_interval": 500,
+  "lr": [
+    0.0026037179886572314,
+    0.00046993113678684014,
+    0.0003322605058323205,
+    0.001023541308739098,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 360.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 8,
+    "num_iterations_training": 8,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 1.0,
+    "weight_init_mode": "kaiming_uniform",
+    "weight_max": 100.0,
+    "weight_min": 0.0
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 1
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          128,
+          7,
+          7
+        ],
+        [
+          256,
+          7,
+          7
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "amsgrad": false,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "capturable": false,
+    "differentiable": false,
+    "eps": 1e-08,
+    "foreach": false,
+    "fused": false,
+    "learning_rate": [
+      0.0026037179886572314,
+      0.00046993113678684014,
+      0.0003322605058323205,
+      0.001023541308739098,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "lr_decay": 1.0,
+    "maximize": false,
+    "momentum": 0.0,
+    "name": "Adam",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0",
+    "Bias_0",
+    "Bias_1",
+    "Bias_2"
+  ],
+  "read_noise_seed_replication": {
+    "acquisition_seed": 2026081603,
+    "checkpoint_recovery": "full_state_epoch_boundary_only",
+    "displacement_label": "seed0-reference D/F=6",
+    "eta": 0.0003,
+    "fixed_seed0_beta": true,
+    "model_seed": 2,
+    "optimizer_reset_at_epoch10": false,
+    "rng_reset_at_epoch10": false,
+    "shuffle_seed": 2,
+    "source_config": "configs/conv/noiseless_baseline_three_seed_20260927/conv3_baseline_relative6_eta0_seed2.json",
+    "source_config_sha256": "2d0733635f5ce6c60960d92b1e6fa6a5c9eb1655cb1952baf92a79810a0549c0",
+    "split_seed": 0,
+    "uninterrupted_epochs": 30
+  },
+  "relative_noise_training": {
+    "beta_frozen": true,
+    "calibration_reused": false,
+    "eta": 0.0003,
+    "fixed_seed0_beta": true,
+    "primary_metric": "epoch_30_validation_accuracy",
+    "reference_displacement_seed": 0,
+    "relative_target": 6.0,
+    "stage": "exploratory"
+  },
+  "relative_output_calibration": {
+    "K": 8,
+    "T": 8,
+    "actual_displacement_for_this_seed": "unmeasured_may_differ",
+    "base_beta": 3.1924590902511554,
+    "beta_frozen_across_seeds": true,
+    "calibrated_for_this_seed": false,
+    "definition": "D/F: pooled physical output half-difference RMS / post-T free RMS over 576x20 nodes",
+    "injected_beta": 3.1924590902511554,
+    "reference_seed": 0,
+    "seed0_reference": {
+      "K": 8,
+      "T": 8,
+      "base_beta": 3.1924590902511554,
+      "definition": "D/F: pooled physical output half-difference RMS / post-T free RMS over 576x20 nodes",
+      "injected_beta": 3.1924590902511554,
+      "matching_proof": {
+        "K": 8,
+        "T": 8,
+        "base_beta": 3.1924590902511554,
+        "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+        "lr": [
+          0.0026037179886572314,
+          0.00046993113678684014,
+          0.0003322605058323205,
+          0.001023541308739098,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "matched_relative_output": 6.00000001043764,
+        "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_baseline_relative6/matching.json",
+        "matching_sha256": "0df178fac619c5ba55f1f6d87f5385b6060a7a58f8696d2a80fe70a478b5126b",
+        "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/config.used.json",
+        "replay_sha256": "9bb84a27ee32f9fe64f2edf088fcf434db61b56c87635e2f1bf074da5da37730",
+        "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+        "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9"
+      },
+      "measured": {
+        "actual_relative_output_rms": 6.00000001043764,
+        "base_beta": 3.1924590902511554,
+        "centered_rms": 0.03600247918162555,
+        "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+        "corrections": 0,
+        "free_rms": 0.006000413186499233,
+        "history": [
+          {
+            "actual_relative_output_rms": 6.00000001043764,
+            "base_beta": 3.1924590902511554,
+            "centered_rms": 0.03600247918162555,
+            "correction": 0,
+            "free_rms": 0.006000413186499233,
+            "injected_beta": 3.1924590902511554,
+            "relative_error": 1.7396066809283184e-09
+          }
+        ],
+        "injected_beta": 3.1924590902511554,
+        "matched": true,
+        "matching_examples": 576,
+        "relative_error": 1.7396066809283184e-09,
+        "relative_target": 6.0
+      },
+      "target": 6.0
+    },
+    "target": 6.0
+  },
+  "reporting": {
+    "arm_id": "conv3_baseline_relative6_eta3em4_seed2",
+    "evidence_class": "ordinary_mnist_selection",
+    "paper_facing": false,
+    "study_id": "conv123-relative-noise-seeds12-jeanzay-20260930-v1"
+  },
+  "runtime_dtype": "float64",
+  "schema_version": "mnist-conv-paper-exact-run/v1",
+  "seed": 2,
+  "study_id": "conv123-relative-noise-seeds12-jeanzay-20260930-v1",
+  "training_algorithm": "EP"
+}

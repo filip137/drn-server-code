@@ -16,11 +16,13 @@ from experiments.exact_run import (
     run,
     selected_configs,
 )
+from experiments import reporting
 
 
 def _config(*, optimizer: str = "SGD") -> dict:
     value = {
-        "lab": {"epochs": 3},
+        "lab": {"epochs": 3, "dataset_key": "mnist"},
+        "datasets": {"mnist": {"factory": "MnistTrainValidation"}},
         "lr": [0.1, 0.02],
         "optimizer": {
             "name": optimizer,
@@ -49,6 +51,21 @@ def _config(*, optimizer: str = "SGD") -> dict:
 def _write_config(path: Path, *, optimizer: str = "SGD") -> Path:
     path.write_text(json.dumps(_config(optimizer=optimizer)), encoding="utf-8")
     return path
+
+
+def _training_outputs(output, epochs=3):
+    metrics = dict(best_epoch=1, final_train_loss=.3, final_train_accuracy=.8,
+                   best_train_accuracy=.8, final_test_loss=.2, final_test_accuracy=.9,
+                   best_test_accuracy=.9,
+                   dataset_provenance={"schema": "mnist-train-validation-split/v1"})
+    (output / "metrics.json").write_text(json.dumps(metrics))
+    for name in ("best_model.pt", "final_model.pt"):
+        (output / name).write_bytes(b"checkpoint")
+    (output / "metrics.jsonl").write_text("")
+    for epoch in range(1, epochs + 1):
+        reporting.append_metric(output / "metrics.jsonl", dict(
+            kind="epoch", epoch=epoch, evaluation_split="validation",
+            metrics=dict(train_loss=.3, train_accuracy=.8, validation_loss=.2, validation_accuracy=.9)))
 
 
 def test_load_exact_config_requires_matching_explicit_rates(tmp_path: Path) -> None:
@@ -337,25 +354,7 @@ def test_successful_run_writes_canonical_result_bundle(
 
     def successful(command: list[str], **kwargs: object) -> object:
         output = Path(command[command.index("--output-dir") + 1])
-        output.mkdir(parents=True, exist_ok=True)
-        (output / "metrics.json").write_text(
-            json.dumps(
-                {
-                    "best_epoch": 1,
-                    "final_train_loss": 0.3,
-                    "final_train_accuracy": 0.8,
-                    "best_train_accuracy": 0.8,
-                    "final_test_loss": 0.2,
-                    "final_test_accuracy": 0.9,
-                    "best_test_accuracy": 0.9,
-                    "dataset_provenance": {
-                        "schema": "mnist-train-validation-split/v1"
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-        (output / "final_model.pt").write_bytes(b"checkpoint")
+        _training_outputs(output)
         return type("Completed", (), {"returncode": 0})()
 
     monkeypatch.setattr("experiments.exact_run.subprocess.run", successful)
@@ -375,6 +374,103 @@ def test_successful_run_writes_canonical_result_bundle(
         "final_accuracy"
     ] == 0.9
     assert (run_dir / "checkpoints" / "final_model.pt").is_symlink()
+    assert reporting.validate_run(run_dir) == []
+
+
+@pytest.mark.parametrize("defect", ["no_artifacts", "short_epochs", "missing_checkpoint", "empty_checkpoint",
+                                  "invalid_metrics", "nonfinite_metrics", "wrong_split", "missing_measurements"])
+def test_zero_exit_without_complete_training_evidence_fails(tmp_path, monkeypatch, defect):
+    config = _write_config(tmp_path / "config.json")
+    monkeypatch.setattr("experiments.exact_run._git_state", lambda: {"commit": "abc"})
+
+    def trainer(command, **kwargs):
+        output = Path(command[command.index("--output-dir") + 1])
+        if defect != "no_artifacts":
+            _training_outputs(output, epochs=2 if defect == "short_epochs" else 3)
+            if defect == "missing_checkpoint":
+                (output / "best_model.pt").unlink()
+            elif defect == "empty_checkpoint":
+                (output / "final_model.pt").write_bytes(b"")
+            elif defect == "invalid_metrics":
+                (output / "metrics.json").write_text("not json")
+            elif defect == "nonfinite_metrics":
+                (output / "metrics.jsonl").write_text('{"epoch":1,"loss":NaN}\n')
+            elif defect in {"wrong_split", "missing_measurements"}:
+                rows = list(reporting.iter_metrics(output / "metrics.jsonl"))
+                for row in rows:
+                    if defect == "wrong_split": row["evaluation_split"] = "test"
+                    else: row["metrics"] = {}
+                (output / "metrics.jsonl").write_text(''.join(json.dumps(row)+'\n' for row in rows))
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr("experiments.exact_run.subprocess.run", trainer)
+    result = run([config], output_root=tmp_path / "output")
+    assert result["status"] == "failed"
+    directory = Path(result["runs"][0]["output_dir"])
+    assert not (directory / "result.json").exists()
+    assert json.loads((directory / "status.json").read_text())["state"] == "failed"
+
+
+@pytest.mark.parametrize("options,epochs", [({"smoke": True}, 1), ({"epoch_override": 2}, 2),
+                                          ({"skip_terminal_official_test": True}, 3)])
+def test_smoke_and_diagnostic_overrides_still_require_training_evidence(tmp_path, monkeypatch, options, epochs):
+    config = _write_config(tmp_path / "config.json")
+    monkeypatch.setattr("experiments.exact_run._git_state", lambda: {"commit": "abc"})
+    def trainer(command, **kwargs):
+        _training_outputs(Path(command[command.index("--output-dir") + 1]), epochs=epochs)
+        return type("Completed", (), {"returncode": 0})()
+    monkeypatch.setattr("experiments.exact_run.subprocess.run", trainer)
+    assert run([config], output_root=tmp_path / "good", **options)["status"] == "complete"
+    monkeypatch.setattr("experiments.exact_run.subprocess.run",
+                        lambda *a, **k: type("Completed", (), {"returncode": 0})())
+    assert run([config], output_root=tmp_path / "bad", **options)["status"] == "failed"
+
+
+@pytest.mark.parametrize("legacy_pause", [False, True])
+def test_exact_pause_resume_and_final_coverage(tmp_path, monkeypatch, legacy_pause):
+    config = _write_config(tmp_path / "config.json")
+    monkeypatch.setattr("experiments.exact_run._git_state", lambda: {"commit": "abc"})
+    calls = []
+    def trainer(command, **kwargs):
+        output = Path(command[command.index("--output-dir") + 1])
+        assert json.loads((output / "status.json").read_text())["state"] == "running"
+        calls.append(output)
+        if len(calls) < 3:
+            (output / "continuation.pt").write_bytes(f"checkpoint-{len(calls)}".encode())
+            reporting.atomic_write_json(output / "continuation.json", dict(
+                completed_epochs=len(calls), checkpoint_sha256=reporting.sha256_file(output / "continuation.pt")))
+            return type("Completed", (), {"returncode": 75})()
+        _training_outputs(output)
+        return type("Completed", (), {"returncode": 0})()
+    monkeypatch.setattr("experiments.exact_run.subprocess.run", trainer)
+    for expected in ("paused", "paused", "complete"):
+        result = run([config], output_root=tmp_path / "output", epoch_chunk_size=1)
+        assert result["status"] == expected
+        assert json.loads((calls[-1] / "status.json").read_text())["state"] == expected
+        assert reporting.validate_run(calls[-1]) == []
+        if legacy_pause and expected == "paused":
+            path = calls[-1] / "status.json"
+            status = json.loads(path.read_text())
+            status["state"] = "running"
+            status.pop("pause")
+            reporting.atomic_write_json(path, status)
+
+
+def test_exact_rejects_a_corrupt_pause_checkpoint(tmp_path, monkeypatch):
+    config = _write_config(tmp_path / "config.json")
+    monkeypatch.setattr("experiments.exact_run._git_state", lambda: {"commit": "abc"})
+    def trainer(command, **kwargs):
+        output = Path(command[command.index("--output-dir") + 1])
+        (output / "continuation.pt").write_bytes(b"damaged")
+        reporting.atomic_write_json(output / "continuation.json",
+                                    {"completed_epochs": 1, "checkpoint_sha256": "wrong"})
+        return type("Completed", (), {"returncode": 75})()
+    monkeypatch.setattr("experiments.exact_run.subprocess.run", trainer)
+    result = run([config], output_root=tmp_path / "output", epoch_chunk_size=1)
+    assert result["status"] == "failed"
+    path = Path(result["runs"][0]["output_dir"])
+    assert not (path / "result.json").exists()
+    assert json.loads((path / "status.json").read_text())["state"] == "failed"
 
 
 def test_existing_case_directory_is_not_reused(

@@ -1,5 +1,13 @@
 # Perfect-Diode Conv3 Wide-Range T/K And Rho Protocol
 
+> **September 25, 2026 — pre-launch policy update:** Filip retired the mandatory
+> Conv1/2 fixed-T/K gradient check, Conv3 residual/gradient selection and operating-point
+> replay, and optimizer/rho probes as prerequisites for routine runs. Use declared
+> T/K and explicit LR vectors directly. The selection procedures below remain as
+> historical methods and for explicitly assigned diagnostic/selection work; they
+> do not require requalification before launching. See the
+> [current execution policy](experiment_workflow.md#retired-pre-launch-diagnostics-september-25-2026).
+
 Updated: 2026-08-17
 
 Status: scientific design approved. The user-fixed `T=K=8` six-surface rho

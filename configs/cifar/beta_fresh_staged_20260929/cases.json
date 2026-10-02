@@ -1,0 +1,77 @@
+{
+  "native_bptt": {
+    "method": "native_bptt"
+  },
+  "beta_0p3": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.028356966006427994,
+      1.1189959117137818,
+      0.35085590124458804
+    ],
+    "beta_multiplier": 0.3
+  },
+  "beta_1": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.09452322002142666,
+      3.729986372379273,
+      1.1695196708152935
+    ],
+    "beta_multiplier": 1.0
+  },
+  "beta_0p0001": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      9.452322002142666e-06,
+      0.00037299863723792734,
+      0.00011695196708152936
+    ],
+    "beta_multiplier": 0.0001
+  },
+  "beta_0p001": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      9.452322002142666e-05,
+      0.003729986372379273,
+      0.0011695196708152934
+    ],
+    "beta_multiplier": 0.001
+  },
+  "beta_0p01": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.0009452322002142666,
+      0.03729986372379273,
+      0.011695196708152935
+    ],
+    "beta_multiplier": 0.01
+  },
+  "beta_0p03": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.0028356966006428,
+      0.11189959117137818,
+      0.035085590124458804
+    ],
+    "beta_multiplier": 0.03
+  },
+  "beta_0p1": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.009452322002142667,
+      0.3729986372379273,
+      0.11695196708152936
+    ],
+    "beta_multiplier": 0.1
+  },
+  "beta_3": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.28356966006427997,
+      11.18995911713782,
+      3.5085590124458808
+    ],
+    "beta_multiplier": 3.0
+  }
+}

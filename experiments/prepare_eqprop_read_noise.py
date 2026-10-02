@@ -32,7 +32,6 @@ def write(path, value):
 def main():
     from experiments.exact_run import load_exact_config
 
-    assert STUDY in (ROOT / "docs/current_simulations.md").read_text()
     base = ROOT / "results/paper-training-completion-20260911-v1/source-v11"
     # Use the already accepted trainer snapshot, isolating unrelated current work.
     for line in (base / "INPUT_SHA256SUMS").read_text().splitlines():

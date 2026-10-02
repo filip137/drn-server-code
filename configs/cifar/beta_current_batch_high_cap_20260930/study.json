@@ -1,0 +1,4 @@
+{
+  "comparison_only": true,
+  "expected_environment": {"torch": "2.5.1+cu121", "cuda": "12.1"}
+}

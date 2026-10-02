@@ -315,6 +315,8 @@ class EquilibriumProp(GradientEstimator):
         normalize_current_scale=False,
         endpoint_read_noise_std=0.0,
         endpoint_read_noise_seed=None,
+        endpoint_read_noise_mode="absolute",
+        endpoint_read_noise_eta=0.0,
     ):
         """Creates an instance of equilibrium propagation
 
@@ -356,7 +358,17 @@ class EquilibriumProp(GradientEstimator):
                 "endpoint_read_noise_std must be finite and non-negative, "
                 "but got {}".format(endpoint_read_noise_std)
             )
-        if self._endpoint_read_noise_std > 0.0 and endpoint_read_noise_seed is None:
+        self._endpoint_read_noise_mode = str(endpoint_read_noise_mode)
+        self._endpoint_read_noise_eta = float(endpoint_read_noise_eta)
+        if self._endpoint_read_noise_mode not in {"absolute", "nodewise_relative"}:
+            raise ValueError("Unsupported endpoint read-noise mode")
+        if not torch.isfinite(torch.tensor(self._endpoint_read_noise_eta)) or self._endpoint_read_noise_eta < 0.0:
+            raise ValueError("endpoint_read_noise_eta must be finite and non-negative")
+        if self._endpoint_read_noise_mode == "nodewise_relative" and self._endpoint_read_noise_std != 0.0:
+            raise ValueError("Relative endpoint noise requires absolute std=0")
+        if self._endpoint_read_noise_mode == "absolute" and self._endpoint_read_noise_eta != 0.0:
+            raise ValueError("Absolute endpoint noise requires relative eta=0")
+        if max(self._endpoint_read_noise_std, self._endpoint_read_noise_eta) > 0.0 and endpoint_read_noise_seed is None:
             raise ValueError(
                 "endpoint_read_noise_seed is required when endpoint read noise is enabled"
             )
@@ -460,14 +472,14 @@ class EquilibriumProp(GradientEstimator):
         return generator
 
     def _apply_endpoint_read_noise(self, states):
-        """Read phase endpoint voltages with independent additive Gaussian noise.
+        """Read endpoints with absolute or nodewise-relative Gaussian acquisition noise.
 
         The physical phase state is not perturbed.  Noise is added only to the
         copied free-layer voltages consumed by the unchanged local energy-
         gradient evaluation; the clamped input layer is therefore exact.
         """
 
-        if self._endpoint_read_noise_std == 0.0:
+        if self._endpoint_read_noise_std == 0.0 and self._endpoint_read_noise_eta == 0.0:
             return states
         noised = {}
         for layer in self._layers:
@@ -478,10 +490,13 @@ class EquilibriumProp(GradientEstimator):
                 device=state.device,
                 generator=self._noise_generator(state),
             )
-            noised[layer.name] = (
-                state.detach().clone()
-                + self._endpoint_read_noise_std * standard_normal
-            )
+            # Scale from the clean endpoint, never from a previously noisy read.
+            # The same eta applies to every free layer, including the readout.
+            if self._endpoint_read_noise_mode == "nodewise_relative":
+                noise = (self._endpoint_read_noise_eta * state.detach().abs()) * standard_normal
+            else:
+                noise = self._endpoint_read_noise_std * standard_normal
+            noised[layer.name] = state.detach().clone() + noise
             self._endpoint_read_noise_draw_count += 1
         return noised
 

@@ -1,0 +1,1414 @@
+{
+  "checkpoint_role": "reconstructed_initialization",
+  "checkpoint_epoch": 0,
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "gradient_contract": {
+    "bias_dynamics": "all_bias_tensors_exact_zero_at_initialization",
+    "bptt_reference": "differentiate_through_exactly_K_zero_nudge_iterations_from_the_identical_post_T_state",
+    "cosine_minimum": 0.99,
+    "current_scale": "auto",
+    "eqprop_variant": "centered",
+    "equilibrium_residual_p90_threshold": 0.01,
+    "finite_difference": "(dtheta_E_plus-dtheta_E_minus)/(2*base_beta*output_row_current_scale)",
+    "frozen_force": "minus_dC_dy_materialized_once_at_the_common_post_T_state_and_reused_byte_identically",
+    "nudging_mode": "current",
+    "optimizer_steps_applied": false,
+    "parameter_exclusion": [
+      "Bias_*"
+    ],
+    "parameter_inclusion": [
+      "ConvWeight_*",
+      "DenseWeight_*"
+    ],
+    "residual_policy": "disabled; no solver qualification requested",
+    "runtime_dtype": "float64",
+    "symmetric_norm_delta_definition": "2*abs(norm_eqprop-norm_bptt)/(norm_eqprop+norm_bptt)",
+    "symmetric_norm_delta_maximum": 0.1
+  },
+  "expected_cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "ConvWeight_2",
+    "DenseWeight_0"
+  ],
+  "source_commit": "6be7d41038018b225cef7d1771fdb905084b0db7",
+  "study_id": "conv123-relative-noise-advantage-map-20260925-v1",
+  "stage": "screen",
+  "architecture": "conv3",
+  "output_root": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3",
+  "target": "local",
+  "budget_seconds": 12600,
+  "prior_gpu_seconds": 0.0,
+  "expected_batches": 36,
+  "noisy_batches": 12,
+  "relative_targets": [
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    8.0
+  ],
+  "noise_levels": [
+    3e-09,
+    1e-08,
+    3e-08,
+    1e-07,
+    3e-07,
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05,
+    0.0001,
+    0.0003,
+    0.001,
+    0.003,
+    0.01
+  ],
+  "read_noise_seeds": [
+    111000000,
+    112000000,
+    113000000
+  ],
+  "max_matching_corrections": 2,
+  "target_relative_tolerance": 0.01,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "cuda_allocator_cap_bytes": 8053063680,
+  "saved_activation_cpu_offload": true,
+  "tests_and_canaries_skipped_by_user": true,
+  "cases": [
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative1",
+      "relative_target": 1.0,
+      "injected_beta": 0.4256612120334874,
+      "calibration": {
+        "centered_rms": 0.004800330564260245,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 0.4256612120334874,
+        "relative_output_rms": 0.8000000025099702,
+        "relative_target_error": 3.1374627340596817e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 0.8,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 0.8,
+        "injected_beta": 0.4256612120334874,
+        "calibration": {
+          "centered_rms": 0.004800330564260245,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 0.4256612120334874,
+          "relative_output_rms": 0.8000000025099702,
+          "relative_target_error": 3.1374627340596817e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative1",
+      "relative_target": 1.0,
+      "injected_beta": 0.04577599053492054,
+      "calibration": {
+        "centered_rms": 0.03304504839526937,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.04577599053492054,
+        "relative_output_rms": 0.7999999831724938,
+        "relative_target_error": 2.1034382791107475e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 0.8,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 0.8,
+        "injected_beta": 0.04577599053492054,
+        "calibration": {
+          "centered_rms": 0.03304504839526937,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.04577599053492054,
+          "relative_output_rms": 0.7999999831724938,
+          "relative_target_error": 2.1034382791107475e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative1",
+      "relative_target": 1.0,
+      "injected_beta": 0.006676707723193745,
+      "calibration": {
+        "centered_rms": 0.307221155537793,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.006676707723193745,
+        "relative_output_rms": 0.800000001013035,
+        "relative_target_error": 1.2662937365348625e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 0.8,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 0.8,
+        "injected_beta": 0.006676707723193745,
+        "calibration": {
+          "centered_rms": 0.307221155537793,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.006676707723193745,
+          "relative_output_rms": 0.800000001013035,
+          "relative_target_error": 1.2662937365348625e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative2",
+      "relative_target": 2.0,
+      "injected_beta": 1.0641530300837183,
+      "calibration": {
+        "centered_rms": 0.012000826399869002,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 1.0641530300837183,
+        "relative_output_rms": 2.000000004478114,
+        "relative_target_error": 2.2390569398567095e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 1.0641530300837183,
+        "calibration": {
+          "centered_rms": 0.012000826399869002,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 1.0641530300837183,
+          "relative_output_rms": 2.000000004478114,
+          "relative_target_error": 2.2390569398567095e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative2",
+      "relative_target": 2.0,
+      "injected_beta": 0.11443997633730134,
+      "calibration": {
+        "centered_rms": 0.08261262115500556,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.11443997633730134,
+        "relative_output_rms": 1.9999999619701359,
+        "relative_target_error": 1.9014932073346813e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 0.11443997633730134,
+        "calibration": {
+          "centered_rms": 0.08261262115500556,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.11443997633730134,
+          "relative_output_rms": 1.9999999619701359,
+          "relative_target_error": 1.9014932073346813e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative2",
+      "relative_target": 2.0,
+      "injected_beta": 0.016691769307984362,
+      "calibration": {
+        "centered_rms": 0.7680528880871398,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.016691769307984362,
+        "relative_output_rms": 2.0000000005604766,
+        "relative_target_error": 2.8023827702838844e-10
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 0.016691769307984362,
+        "calibration": {
+          "centered_rms": 0.7680528880871398,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.016691769307984362,
+          "relative_output_rms": 2.0000000005604766,
+          "relative_target_error": 2.8023827702838844e-10
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative3",
+      "relative_target": 3.0,
+      "injected_beta": 1.0641530300837183,
+      "calibration": {
+        "centered_rms": 0.012000826399869002,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 1.0641530300837183,
+        "relative_output_rms": 2.000000004478114,
+        "relative_target_error": 2.2390569398567095e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 1.0641530300837183,
+        "calibration": {
+          "centered_rms": 0.012000826399869002,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 1.0641530300837183,
+          "relative_output_rms": 2.000000004478114,
+          "relative_target_error": 2.2390569398567095e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative3",
+      "relative_target": 3.0,
+      "injected_beta": 0.11443997633730134,
+      "calibration": {
+        "centered_rms": 0.08261262115500556,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.11443997633730134,
+        "relative_output_rms": 1.9999999619701359,
+        "relative_target_error": 1.9014932073346813e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 0.11443997633730134,
+        "calibration": {
+          "centered_rms": 0.08261262115500556,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.11443997633730134,
+          "relative_output_rms": 1.9999999619701359,
+          "relative_target_error": 1.9014932073346813e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative3",
+      "relative_target": 3.0,
+      "injected_beta": 0.016691769307984362,
+      "calibration": {
+        "centered_rms": 0.7680528880871398,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.016691769307984362,
+        "relative_output_rms": 2.0000000005604766,
+        "relative_target_error": 2.8023827702838844e-10
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 0.016691769307984362,
+        "calibration": {
+          "centered_rms": 0.7680528880871398,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.016691769307984362,
+          "relative_output_rms": 2.0000000005604766,
+          "relative_target_error": 2.8023827702838844e-10
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative4",
+      "relative_target": 4.0,
+      "injected_beta": 1.0641530300837183,
+      "calibration": {
+        "centered_rms": 0.012000826399869002,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 1.0641530300837183,
+        "relative_output_rms": 2.000000004478114,
+        "relative_target_error": 2.2390569398567095e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 1.0641530300837183,
+        "calibration": {
+          "centered_rms": 0.012000826399869002,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 1.0641530300837183,
+          "relative_output_rms": 2.000000004478114,
+          "relative_target_error": 2.2390569398567095e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative4",
+      "relative_target": 4.0,
+      "injected_beta": 0.11443997633730134,
+      "calibration": {
+        "centered_rms": 0.08261262115500556,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.11443997633730134,
+        "relative_output_rms": 1.9999999619701359,
+        "relative_target_error": 1.9014932073346813e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 0.11443997633730134,
+        "calibration": {
+          "centered_rms": 0.08261262115500556,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.11443997633730134,
+          "relative_output_rms": 1.9999999619701359,
+          "relative_target_error": 1.9014932073346813e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative4",
+      "relative_target": 4.0,
+      "injected_beta": 0.016691769307984362,
+      "calibration": {
+        "centered_rms": 0.7680528880871398,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.016691769307984362,
+        "relative_output_rms": 2.0000000005604766,
+        "relative_target_error": 2.8023827702838844e-10
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-20260924-v1/calibration_collected_loulou/results/eqprop-conv123-relative-output-20260924-v1/calibration/all/matches.json",
+        "sha256": "ce0e38827a984e8a3da4267749a7ed656b7027142996ea7eb7b2707d01ebf33e"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 2.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 2.0,
+        "injected_beta": 0.016691769307984362,
+        "calibration": {
+          "centered_rms": 0.7680528880871398,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.016691769307984362,
+          "relative_output_rms": 2.0000000005604766,
+          "relative_target_error": 2.8023827702838844e-10
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative5",
+      "relative_target": 5.0,
+      "injected_beta": 3.1924590902511554,
+      "calibration": {
+        "centered_rms": 0.03600247918162555,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 3.1924590902511554,
+        "relative_output_rms": 6.000000010437639,
+        "relative_target_error": 1.7396064588837135e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 3.1924590902511554,
+        "calibration": {
+          "centered_rms": 0.03600247918162555,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 3.1924590902511554,
+          "relative_output_rms": 6.000000010437639,
+          "relative_target_error": 1.7396064588837135e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative5",
+      "relative_target": 5.0,
+      "injected_beta": 0.343319929011904,
+      "calibration": {
+        "centered_rms": 0.2478378649573751,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.343319929011904,
+        "relative_output_rms": 5.999999922039472,
+        "relative_target_error": 1.2993421338869382e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 0.343319929011904,
+        "calibration": {
+          "centered_rms": 0.2478378649573751,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.343319929011904,
+          "relative_output_rms": 5.999999922039472,
+          "relative_target_error": 1.2993421338869382e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative5",
+      "relative_target": 5.0,
+      "injected_beta": 0.05007530792395309,
+      "calibration": {
+        "centered_rms": 2.304158663572987,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.05007530792395309,
+        "relative_output_rms": 5.999999999888761,
+        "relative_target_error": 1.8539836332820414e-11
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 0.05007530792395309,
+        "calibration": {
+          "centered_rms": 2.304158663572987,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.05007530792395309,
+          "relative_output_rms": 5.999999999888761,
+          "relative_target_error": 1.8539836332820414e-11
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 3.1924590902511554,
+      "calibration": {
+        "centered_rms": 0.03600247918162555,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 3.1924590902511554,
+        "relative_output_rms": 6.000000010437639,
+        "relative_target_error": 1.7396064588837135e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 3.1924590902511554,
+        "calibration": {
+          "centered_rms": 0.03600247918162555,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 3.1924590902511554,
+          "relative_output_rms": 6.000000010437639,
+          "relative_target_error": 1.7396064588837135e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 0.343319929011904,
+      "calibration": {
+        "centered_rms": 0.2478378649573751,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.343319929011904,
+        "relative_output_rms": 5.999999922039472,
+        "relative_target_error": 1.2993421338869382e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 0.343319929011904,
+        "calibration": {
+          "centered_rms": 0.2478378649573751,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.343319929011904,
+          "relative_output_rms": 5.999999922039472,
+          "relative_target_error": 1.2993421338869382e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative6",
+      "relative_target": 6.0,
+      "injected_beta": 0.05007530792395309,
+      "calibration": {
+        "centered_rms": 2.304158663572987,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.05007530792395309,
+        "relative_output_rms": 5.999999999888761,
+        "relative_target_error": 1.8539836332820414e-11
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 0.05007530792395309,
+        "calibration": {
+          "centered_rms": 2.304158663572987,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.05007530792395309,
+          "relative_output_rms": 5.999999999888761,
+          "relative_target_error": 1.8539836332820414e-11
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "baseline",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/baseline/seed0/config.used.json",
+      "source_config_sha256": "c0cda590992c93e4ba9bd3561ac87424d0bac6eb05bc4d45c8b2f90849deaff9",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_baseline_relative8",
+      "relative_target": 8.0,
+      "injected_beta": 3.1924590902511554,
+      "calibration": {
+        "centered_rms": 0.03600247918162555,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.006000413186499233,
+        "injected_beta": 3.1924590902511554,
+        "relative_output_rms": 6.000000010437639,
+        "relative_target_error": 1.7396064588837135e-09
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 3.1924590902511554,
+        "calibration": {
+          "centered_rms": 0.03600247918162555,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.006000413186499233,
+          "injected_beta": 3.1924590902511554,
+          "relative_output_rms": 6.000000010437639,
+          "relative_target_error": 1.7396064588837135e-09
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "ours",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/ours/seed0/config.used.json",
+      "source_config_sha256": "15df884ecb93627d5691ca3f10e403d391a942160f0003e0535045fefa7d8a40",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_ours_relative8",
+      "relative_target": 8.0,
+      "injected_beta": 0.343319929011904,
+      "calibration": {
+        "centered_rms": 0.2478378649573751,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.04130631136293948,
+        "injected_beta": 0.343319929011904,
+        "relative_output_rms": 5.999999922039472,
+        "relative_target_error": 1.2993421338869382e-08
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 0.343319929011904,
+        "calibration": {
+          "centered_rms": 0.2478378649573751,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.04130631136293948,
+          "injected_beta": 0.343319929011904,
+          "relative_output_rms": 5.999999922039472,
+          "relative_target_error": 1.2993421338869382e-08
+        }
+      }
+    },
+    {
+      "architecture": "conv3",
+      "scheme": "legacy",
+      "source_config": "results/eqprop-beta-refinement-20260919-v1/local_conv3/inputs/conv3/legacy/seed0/config.used.json",
+      "source_config_sha256": "44e50e994060192e818579fe4e6f0ebd90625aaa2031032afdd0a25b92e5300a",
+      "initializer_checkpoint_path": "results/eqprop-beta-refinement-20260919-v1/local_conv3/initializers/conv3/seed0.pt",
+      "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+      "T": 8,
+      "K": 8,
+      "name": "conv3_legacy_relative8",
+      "relative_target": 8.0,
+      "injected_beta": 0.05007530792395309,
+      "calibration": {
+        "centered_rms": 2.304158663572987,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.3840264439359509,
+        "injected_beta": 0.05007530792395309,
+        "relative_output_rms": 5.999999999888761,
+        "relative_target_error": 1.8539836332820414e-11
+      },
+      "calibration_proof": {
+        "path": "results/eqprop-conv123-relative-output-noise-extension-20260924-v1/target6/calibration/all/matches.json",
+        "sha256": "969c9e99a36682f31f83bc12230fe5a1789516b144afa24107088129147d7995"
+      },
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1",
+      "parameter_order": [
+        "ConvWeight_0",
+        "ConvWeight_1",
+        "ConvWeight_2",
+        "DenseWeight_0"
+      ],
+      "beta_reference_target": 6.0,
+      "noise_levels": [
+        3e-09,
+        1e-08,
+        3e-08,
+        1e-07,
+        3e-07,
+        1e-06,
+        3e-06,
+        1e-05,
+        3e-05,
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "beta_proposal_reference": {
+        "relative_target": 6.0,
+        "injected_beta": 0.05007530792395309,
+        "calibration": {
+          "centered_rms": 2.304158663572987,
+          "correction": 0,
+          "elements": 11520,
+          "free_rms": 0.3840264439359509,
+          "injected_beta": 0.05007530792395309,
+          "relative_output_rms": 5.999999999888761,
+          "relative_target_error": 1.8539836332820414e-11
+        }
+      }
+    }
+  ],
+  "expected_case_count": 21,
+  "expected_layer_comparisons": 45360
+}

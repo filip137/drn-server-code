@@ -21,7 +21,6 @@ def main():
     args = parser.parse_args()
     cfg = json.loads(args.config.read_text())
     parent = json.loads((ROOT / cfg['replay_config']).read_text())
-    assert cfg['study_id'] in (ROOT / 'docs/current_simulations.md').read_text()
     spec = importlib.util.spec_from_file_location('minimum_t_gate', ROOT / parent['analyzer_source_root'] /
         'analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py')
     gate = importlib.util.module_from_spec(spec)

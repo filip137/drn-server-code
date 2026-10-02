@@ -36,8 +36,6 @@ def reference():
 
 
 def prepare():
-    if STUDY not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise ValueError('Register the persistent study row before preparation.')
     prior_execution = read(T_STUDY / 'execution.json')
     if (prior_execution['state'] != 'complete' or prior_execution['selected_T'] is not None
             or any(r['phase'] == 'confirmation' for r in prior_execution['runs'])

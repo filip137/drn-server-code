@@ -1,0 +1,313 @@
+{
+  "arm_id": "conv2_baseline_target16_eta0_seed0",
+  "baseline_source_proof": {
+    "K": 6,
+    "T": 6,
+    "base_beta": 3.0901706245678895,
+    "initializer_checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+    "lr": [
+      0.00260078,
+      0.000459053,
+      0.00046766,
+      0.0,
+      0.0
+    ],
+    "matched_relative_output": 3.9999994033644186,
+    "matching_path": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/cases/conv2_baseline_relative4/matching.json",
+    "matching_sha256": "72de6165a34f4af17d952980ce767ea8fc7cf446c0c584b086070ba8715c4002",
+    "replay_config": "results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv2/config.used.json",
+    "replay_sha256": "df36d74305d5710753768d443d354619b2bd14be9d5c9b76a4310b1fcdf35da4",
+    "source_config": "results/eqprop-beta-refinement-20260919-v1/local/inputs/conv2/baseline/seed0/config.used.json",
+    "source_config_sha256": "08367d7aeecb7ffa0cdab4d7af12920f45888f7400d1cfb8bfd9f42edce37b29"
+  },
+  "batch_state_policy": "reset_each_batch",
+  "beta": 49.36959074808516,
+  "datasets": {
+    "mnist": {
+      "factory": "labs.datasets.MnistTrainValidationDataset",
+      "params": {
+        "affine_config": null,
+        "batch_size": 16,
+        "download": false,
+        "name": "mnist",
+        "normalize": true,
+        "normalize_mean": 0.1307,
+        "normalize_scale": 0.3,
+        "normalize_std": 0.3081,
+        "num_workers": 0,
+        "pin_memory": false,
+        "root": "/lustre/fsn1/projects/rech/umg/ucy17uy/datasets/mnist",
+        "shuffle_seed": 0,
+        "split_seed": 0,
+        "train": true,
+        "validation_batch_size": 64
+      }
+    }
+  },
+  "energy_minimizer": {
+    "mode": "asynchronous"
+  },
+  "eqprop": {
+    "amplification_factor": 1.0,
+    "beta_policy": "initial_centered_physical_output_relative_rms_fixed_during_training",
+    "current_scale": "auto",
+    "endpoint_read_noise_eta": 0.0,
+    "endpoint_read_noise_floor": 0.0,
+    "endpoint_read_noise_mode": "nodewise_relative",
+    "endpoint_read_noise_seed": 2026081601,
+    "endpoint_read_noise_std": 0.0,
+    "endpoint_read_noise_units": "dimensionless",
+    "injected_beta_B": 49.36959074808516,
+    "input_read_noise": false,
+    "layer_noise_correlation": "independent",
+    "matched_standard_normal_draws_across_cases": true,
+    "noise_applied_after_equilibrium_before_local_energy_gradient": true,
+    "normalize_current_scale": true,
+    "nudging_mode": "current",
+    "phase_noise_correlation": "independent",
+    "same_eta_all_noninput_layers": true,
+    "validation_read_noise": false,
+    "variant": "centered"
+  },
+  "evaluation": {
+    "checkpoint_selection": "maximum_validation_accuracy",
+    "epoch_split": "validation",
+    "inclusion_rule": "Retain all scientific outcomes; compare final validation at epoch 30.",
+    "official_test": {
+      "policy": "disabled"
+    }
+  },
+  "init_checkpoint_path": "results/conv123-rescaled-target-relative-noise-jeanzay-20261001-v1/inputs/initializers/conv2_seed0.pt",
+  "initialization": {
+    "checkpoint_sha256": "7717c90d3a7daa6fd9e848469013525beb36d549e39077873c55e0c3ab62aec0",
+    "optimizer_state": "fresh",
+    "recipe": "wide_kaiming",
+    "seed": 0
+  },
+  "input_mode": "train",
+  "lab": {
+    "dataset_key": "mnist",
+    "epochs": 30,
+    "model_key": "mnist_bp_conv_amp"
+  },
+  "learning_rates_by_parameter": {
+    "Bias_0": 0.0,
+    "Bias_1": 0.0,
+    "ConvWeight_0": 0.00260078,
+    "ConvWeight_1": 0.000459053,
+    "DenseWeight_0": 0.00046766
+  },
+  "log_interval": 500,
+  "lr": [
+    0.00260078,
+    0.000459053,
+    0.00046766,
+    0.0,
+    0.0
+  ],
+  "max_batches": null,
+  "max_test_batches": null,
+  "model_base": {
+    "amplification_max": null,
+    "amplification_min": 1e-06,
+    "current_amp": 1.0,
+    "exponential_diode_param": {
+      "I_s": 1e-06,
+      "V_off": 0.0,
+      "V_t": 0.025
+    },
+    "hard_sigmoid_param": {
+      "g_off": 0.0,
+      "g_on": 100.0,
+      "v_max": 1.5,
+      "v_min": -1.5
+    },
+    "input_gain": 100.0,
+    "minimizer": {
+      "adaptive_equilibrium": false,
+      "double_diode_updater": "CustomExponentialDoubleDiodeUpdater",
+      "experimental_damping": 0.5,
+      "experimental_newton_max_steps": 100,
+      "iv_data_path": null,
+      "overrelaxation_factor": 1.1,
+      "settings": {
+        "dynamic_polish": true,
+        "exp_clip": 100000.0,
+        "experimental_exponential_newton_tol_end": 1e-05,
+        "experimental_exponential_newton_tol_progressive": true,
+        "experimental_exponential_newton_tol_start": 1e-05,
+        "experimental_exponential_newton_tol_switch_hi": 0.01,
+        "experimental_exponential_newton_tol_switch_lo": 0.0005,
+        "max_newton_iters": 32,
+        "overrelaxation_reject_eps": 0.0,
+        "overrelaxation_reject_max_tries": 3,
+        "overrelaxation_reject_shrink": 0.5,
+        "overrelaxation_reject_steps": false,
+        "rel_tol": 1e-05,
+        "use_polish": true,
+        "vn_tol": 1e-06,
+        "z_thresh": 10000000000.0
+      },
+      "single_diode_updater": "custom"
+    },
+    "non_linearity": "perfect_diode",
+    "num_iterations_inference": 6,
+    "num_iterations_training": 6,
+    "quadratic_diode_param": {
+      "diode_conductance": 1.0,
+      "v_max": 1000000.0,
+      "v_min": -1000000.0
+    },
+    "trainable_amplification": false,
+    "voltage_amp": 1.0,
+    "weight_init_mode": "kaiming_uniform",
+    "weight_max": 100.0,
+    "weight_min": 0.0
+  },
+  "model_overrides": {
+    "mnist_bp_conv_amp": {
+      "conv_pipeline": [
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        },
+        {
+          "kernel": [
+            3,
+            3
+          ],
+          "mode": "convolution",
+          "padding": 1,
+          "stride": 2
+        }
+      ],
+      "layer_shapes": [
+        [
+          2,
+          28,
+          28
+        ],
+        [
+          64,
+          14,
+          14
+        ],
+        [
+          128,
+          7,
+          7
+        ],
+        [
+          20
+        ]
+      ],
+      "weight_gains": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "optimizer": {
+    "amsgrad": false,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "capturable": false,
+    "differentiable": false,
+    "eps": 1e-08,
+    "foreach": false,
+    "fused": false,
+    "learning_rate": [
+      0.00260078,
+      0.000459053,
+      0.00046766,
+      0.0,
+      0.0
+    ],
+    "lr_decay": 1.0,
+    "maximize": false,
+    "momentum": 0.0,
+    "name": "Adam",
+    "weight_decay": 0.0
+  },
+  "parameter_order": [
+    "ConvWeight_0",
+    "ConvWeight_1",
+    "DenseWeight_0",
+    "Bias_0",
+    "Bias_1"
+  ],
+  "relative_output_calibration": {
+    "K": 6,
+    "T": 6,
+    "actual_loss_target": true,
+    "all_parameters_unchanged": true,
+    "base_beta": 49.36959074808516,
+    "beta_frozen": true,
+    "cohort_sha256": "95af3eebd9416ec643b7d698d061b7dac3fe0d52311dd888293609bada629acd",
+    "definition": "D/F: pooled physical output half-difference RMS / post-T free RMS over 576x20 nodes",
+    "history": [
+      {
+        "centered_rms": 0.04910712771210263,
+        "correction": 0,
+        "elements": 11520,
+        "free_rms": 0.012276781758359175,
+        "injected_beta": 49.36959074808516,
+        "relative_output_rms": 4.0000000552804424,
+        "relative_target_error": 1.3820110611462155e-08
+      }
+    ],
+    "initializer_parameter_state_sha256": "d5833e8f0033f19fddda2522f3b0eeb6b438a9fe97062754c960efa4ec0a6bc5",
+    "injected_beta": 49.36959074808516,
+    "matching_examples": 576,
+    "measured": {
+      "centered_rms": 0.04910712771210263,
+      "correction": 0,
+      "elements": 11520,
+      "free_rms": 0.012276781758359175,
+      "injected_beta": 49.36959074808516,
+      "relative_output_rms": 4.0000000552804424,
+      "relative_target_error": 1.3820110611462155e-08
+    },
+    "source_config": "configs/conv/rescaled_target_noise_20261001/provenance/calibration_conv2_baseline.json",
+    "source_config_sha256": "9af966ec823a0bba964488c89b811b7d6c8ae61c98899ec1f92e68e18cbbf613",
+    "target": 4,
+    "target_scale": 0.0625
+  },
+  "reporting": {
+    "arm_id": "conv2_baseline_target16_eta0_seed0",
+    "evidence_class": "ordinary_mnist_selection",
+    "paper_facing": false,
+    "study_id": "conv123-rescaled-target-relative-noise-jeanzay-20261001-v1"
+  },
+  "rescaled_target_noise": {
+    "actual_loss": "0.5 * sum((paired_scores - target_scale * one_hot)**2)",
+    "beta_frozen": true,
+    "calibration_reused": false,
+    "checkpoint_recovery": "full_state_epoch_boundary_only",
+    "eta": 0.0,
+    "learning_rate_multiplier_of_source": 1,
+    "learning_rate_target_compensation": false,
+    "loss_normalization": false,
+    "primary_metric": "epoch_30_validation_accuracy",
+    "relative_target": 4,
+    "scheme": "baseline",
+    "source_config": "configs/conv/relative_noise_eta5em4_20260928/conv2_baseline_relative4_eta5em4_seed0.json",
+    "source_config_sha256": "615b358773e20c253d6a33bd205dc2d3b4863028966966b28b94f60f3f374d45",
+    "target_scale": 0.0625,
+    "uninterrupted_optimizer_history": true
+  },
+  "runtime_dtype": "float64",
+  "schema_version": "mnist-conv-paper-exact-run/v1",
+  "seed": 0,
+  "study_id": "conv123-rescaled-target-relative-noise-jeanzay-20261001-v1",
+  "target_scale": 0.0625,
+  "training_algorithm": "EP"
+}

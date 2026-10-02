@@ -23,8 +23,6 @@ def main():
     args = parser.parse_args()
     cfg = json.loads(args.config.read_text())
     out = ROOT / cfg['output_root']
-    if cfg['study_id'] not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise RuntimeError('Register the planned result directory before running.')
     spec = importlib.util.spec_from_file_location(
         'init_noise_gate', ROOT / cfg['analyzer_source_root'] /
         'analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py')

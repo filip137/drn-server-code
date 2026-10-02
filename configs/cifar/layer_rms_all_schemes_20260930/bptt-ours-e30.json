@@ -1,0 +1,66 @@
+{
+  "study_id": "cifar-layer-rms-all-schemes-20260930-v1",
+  "scheme": "ours",
+  "trajectory": "bptt",
+  "case_id": "bptt-ours-e30",
+  "batch_size": 32,
+  "budget_seconds": 1110,
+  "base_betas": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "relative_rms_targets": [
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05,
+    0.0001,
+    0.00025,
+    0.0005,
+    0.001,
+    0.0025,
+    0.005,
+    0.01,
+    0.02,
+    0.035,
+    0.05,
+    0.065,
+    0.075,
+    0.085,
+    0.1,
+    0.125,
+    0.2,
+    0.4
+  ],
+  "displacement_calibration": {
+    "relative_tolerance": 0.03,
+    "max_evaluations": 24,
+    "initial_beta_guesses": [
+      1.1667980920843555,
+      18.041341762263563,
+      88.02823672541166
+    ],
+    "initial_guess_relative_rms": 1.0
+  },
+  "measure_layer_displacement": true,
+  "expected_environment": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8"
+  },
+  "parameters_and_bn_read_only": true,
+  "noise": 0,
+  "energy_difference": "factored_centered_voltage_products",
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "checkpoint_file": "inputs/checkpoint.pt",
+  "checkpoint_epoch": 30,
+  "input_sha256": {
+    "inputs/model_config.json": "ed941eee4642ebf8d6b047a249e101c7fd82d2000dbc569c5b88ec0d760f59f4",
+    "inputs/checkpoint.pt": "e793e4e2480824fdb2e2ff47555f0fb6703355acc8f876d6a0cb05109fe8bfc7",
+    "inputs/cohort.json": "8e27e65e45582d502f14d04d32e06647800f4cee57963a79b1fbe8ac7e203d2d",
+    "inputs/checkpoint_provenance.json": "2250eeb35a656ec8d038aba468242f44679f43c4df757de8e1bc7389fb352cd7"
+  }
+}

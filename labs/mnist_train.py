@@ -217,6 +217,8 @@ def _eqprop_contract_from_config(config, training_algorithm):
             "current_scale": 1.0,
             "normalize_current_scale": False,
             "endpoint_read_noise_std": 0.0,
+            "endpoint_read_noise_mode": "absolute",
+            "endpoint_read_noise_eta": 0.0,
             "endpoint_read_noise_seed": None,
             "input_read_noise": False,
         }
@@ -229,6 +231,10 @@ def _eqprop_contract_from_config(config, training_algorithm):
             raw.get("endpoint_read_noise_std", 0.0),
             "EqProp endpoint_read_noise_std",
         ),
+        "endpoint_read_noise_mode": str(raw.get("endpoint_read_noise_mode", "absolute")),
+        "endpoint_read_noise_eta": _require_finite_scalar(
+            raw.get("endpoint_read_noise_eta", 0.0), "EqProp endpoint_read_noise_eta"
+        ),
         "endpoint_read_noise_seed": raw.get("endpoint_read_noise_seed"),
         "input_read_noise": bool(raw.get("input_read_noise", False)),
     }
@@ -240,7 +246,15 @@ def _eqprop_contract_from_config(config, training_algorithm):
         )
     if contract["endpoint_read_noise_std"] < 0.0:
         raise ValueError("EqProp endpoint_read_noise_std must be non-negative.")
-    if contract["endpoint_read_noise_std"] > 0.0 and contract[
+    if contract["endpoint_read_noise_mode"] not in {"absolute", "nodewise_relative"}:
+        raise ValueError("Unsupported EqProp endpoint_read_noise_mode")
+    if contract["endpoint_read_noise_eta"] < 0.0:
+        raise ValueError("EqProp endpoint_read_noise_eta must be non-negative")
+    if contract["endpoint_read_noise_mode"] == "nodewise_relative" and contract["endpoint_read_noise_std"] != 0.0:
+        raise ValueError("Relative endpoint noise requires absolute std=0")
+    if contract["endpoint_read_noise_mode"] == "absolute" and contract["endpoint_read_noise_eta"] != 0.0:
+        raise ValueError("Absolute endpoint noise requires relative eta=0")
+    if max(contract["endpoint_read_noise_std"], contract["endpoint_read_noise_eta"]) > 0.0 and contract[
         "endpoint_read_noise_seed"
     ] is None:
         raise ValueError(
@@ -578,6 +592,7 @@ def _save_epoch_diagnostic_checkpoint(
     energy_fn,
     optimizer,
     parameters,
+    continuation=None,
 ):
     """Save model and optimizer state for an immutable diagnostic epoch."""
 
@@ -626,6 +641,21 @@ def _save_epoch_diagnostic_checkpoint(
             ),
         },
     }
+    if continuation is not None:
+        estimator = continuation.estimator
+        noise = None
+        if hasattr(estimator, "_endpoint_read_noise_generators"):
+            noise = {
+                "generators": {key: generator.get_state() for key, generator in
+                               estimator._endpoint_read_noise_generators.items()},
+                "draw_count": estimator.endpoint_read_noise_draw_count,
+            }
+        optimizer_payload["continuation_state"] = {
+            "contract": continuation.contract,
+            "sampler_rng": continuation.loaders._train_sampler.generator.get_state(),
+            "worker_rng": continuation.loaders._worker_generator.get_state(),
+            "endpoint_noise": noise,
+        }
     temporary = optimizer_path.with_name(
         f".{optimizer_path.name}.{os.getpid()}.tmp"
     )
@@ -1452,6 +1482,11 @@ def _train_image_task(
                 observed_hash = hashlib.sha256(init_checkpoint_path.read_bytes()).hexdigest()
                 if observed_hash != expected_hash:
                     raise ValueError("Initialization checkpoint SHA256 mismatch.")
+        # Trained checkpoints retain the declared runtime dtype. Construct the
+        # matching schema before strict loading; never round trained weights
+        # through the constructor's default float32 parameters.
+        if config.get("weights_only_continuation"):
+            _convert_energy_runtime_dtype(energy_fn, runtime_dtype)
         energy_fn.load(init_checkpoint_path)
         print(f"[mnist_train] Initialized model from checkpoint {init_checkpoint_path}")
     else:
@@ -1480,11 +1515,16 @@ def _train_image_task(
         raise ValueError("Image setup expects a vector output layer.")
 
     output_dim = output_layer.shape[0]
+    target_scale = float(config.get("target_scale", 1.0))
 
     if output_dim == num_classes:
+        if target_scale != 1.0:
+            raise ValueError("Nondefault target_scale requires paired outputs.")
         cost_fn = SquaredError(output_layer)
     elif output_dim == 2 * num_classes:
-        cost_fn = SquaredErrorPairedOutputs(output_layer, num_classes=num_classes)
+        cost_fn = SquaredErrorPairedOutputs(
+            output_layer, num_classes=num_classes, target_scale=target_scale,
+        )
     else:
         raise ValueError(
             f"Unsupported output_dim={output_dim}; expected {num_classes} or {2 * num_classes}."
@@ -1594,6 +1634,8 @@ def _train_image_task(
             normalize_current_scale=eqprop_contract["normalize_current_scale"],
             endpoint_read_noise_std=eqprop_contract["endpoint_read_noise_std"],
             endpoint_read_noise_seed=eqprop_contract["endpoint_read_noise_seed"],
+            endpoint_read_noise_mode=eqprop_contract["endpoint_read_noise_mode"],
+            endpoint_read_noise_eta=eqprop_contract["endpoint_read_noise_eta"],
         )
     else:
         params = energy_fn.params()
@@ -1664,6 +1706,7 @@ def _train_image_task(
 
     resolved_run_config = {
         "config_path": str(config_path),
+        "target_scale": target_scale,
         "init_checkpoint_path": str(init_checkpoint_path) if init_checkpoint_path else None,
         "training_algorithm": training_algorithm,
         "seed": seed_value,
@@ -1768,8 +1811,6 @@ def _train_image_task(
     continuation = None
     first_epoch = 0
     if epoch_chunk_size is not None:
-        if checkpoint_every_epoch:
-            raise ValueError("Use continuation checkpoints without diagnostic epoch checkpoints")
         from experiments.epoch_continuation import EpochContinuation, continuation_contract
         continuation = EpochContinuation(
             run_dir=run_dir, config=config, epochs=epochs, chunk_epochs=epoch_chunk_size,
@@ -1784,8 +1825,17 @@ def _train_image_task(
             first_epoch = restored["epoch"]
             history = restored["history"]
             best_test_accuracy, best_epoch = restored["best_accuracy"], restored["best_epoch"]
-            print(f"[mnist_train] Continued exact state after epoch {first_epoch}", flush=True)
-    if checkpoint_every_epoch:
+            recovery = restored.get("diagnostic_resume", {})
+            quality = ("approximate stochastic continuation"
+                       if recovery.get("continuation_quality") == "approximate_stochastic_continuation"
+                       else "exact state")
+            print(f"[mnist_train] Continued {quality} after epoch {first_epoch}", flush=True)
+    if checkpoint_every_epoch and first_epoch:
+        epoch_checkpoint_records = [json.loads(line) for line in
+            (run_dir / "epoch_checkpoint_index.jsonl").read_text().splitlines() if line.strip()]
+        if [row["epoch"] for row in epoch_checkpoint_records] != list(range(first_epoch + 1)):
+            raise ValueError("Continuation diagnostic checkpoint coverage mismatch")
+    if checkpoint_every_epoch and not first_epoch:
         epoch_checkpoint_records.append(
             _save_epoch_diagnostic_checkpoint(
                 run_dir=run_dir,
@@ -1793,6 +1843,7 @@ def _train_image_task(
                 energy_fn=energy_fn,
                 optimizer=optimizer,
                 parameters=params,
+                continuation=continuation,
             )
         )
     for epoch in range(first_epoch, epochs):
@@ -2054,6 +2105,7 @@ def _train_image_task(
                     energy_fn=energy_fn,
                     optimizer=optimizer,
                     parameters=params,
+                    continuation=continuation,
                 )
             )
         if should_stop:

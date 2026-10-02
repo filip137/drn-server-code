@@ -1,10 +1,20 @@
 ---
 experiment: "exp-022"
 evidence: "validated-local"
-summary: "Larger beta largely restores trained gradients; initialization instead needs smaller beta. All eight pooled layer gradients meet the descriptive criterion at each checkpoint with separate block betas."
+summary: "Float32 replay: larger beta largely restores trained gradients; initialization needs smaller beta. Matched exp-024 shows full float64 essentially removes this practical lower nudging bound."
 verdicts: {"H-017": "supports"}
 ---
 # Small trained responses explain a recoverable part of the gradient error
+
+**Precision follow-up:** [exp-024](exp-024-precision-response.md) replays the
+same checkpoints and cohort and shows that full float64 essentially removes
+the practical lower nudging bound observed here in float32. Good gradients
+remain available with very small nudging: multipliers 1e-6, 1e-4 and 3e-4 of
+the saved block beta vector pass cosine >=0.95 and norm ratio 0.9–1.1 for
+every layer and minibatch at all three checkpoints. The lower RMS bounds
+below describe float32 behavior, not an intrinsic minimum response required
+by EqProp. Float64's own precision floor remains at much smaller scales;
+the evidence is a noiseless gradient replay, not a training-accuracy result.
 
 Read-only replay of the same ours fixed-0.3× trajectory at epochs 0, 1 and 5,
 256 identical unaugmented training images in eight batches, 17 beta multipliers,
@@ -16,7 +26,7 @@ Riri RTX 5090, torch 2.11.0+cu128 / CUDA 12.8, native float32 T/K [6,6,4].
 Scientific compute took 748 seconds in total; charged queue execution including
 validation was about 754 seconds, within the 5,400-second allowance.
 
-Artifacts: `results/cifar-ours-epoch-beta-gradients-20260930-v1/`.
+Artifacts: [results/cifar-ours-epoch-beta-gradients-20260930-v1/](../../../../../results/cifar-ours-epoch-beta-gradients-20260930-v1/).
 Exact inputs/source identity and configs are recorded in the
 [experiment](../experiments/exp-022-epoch-layer-response.md), `analysis/input_provenance.json`,
 and each bundle manifest. `analysis/e{0,1,5}-collection.json` records validation.
@@ -264,3 +274,10 @@ spacing on active units, and compare both pre/post responses. This would
 separate gradient-arithmetic cancellation from phase-state precision and test
 whether the lower alignment boundary moves. This is a proposed diagnostic,
 not a launched experiment or an authorization to resume training.
+
+Subsequent authorized follow-up: [exp-024](exp-024-precision-response.md)
+completed this three-arm comparison on the same checkpoints and cohort.
+Full float64 moves the lower response boundary by many orders of magnitude;
+float64 arithmetic on unchanged float32 endpoints does not recover agreement.
+Its review supersedes the unresolved precision interpretation above while
+preserving these original float32 measurements. No training was resumed.

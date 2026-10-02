@@ -5,6 +5,26 @@
 This repository contains the simulations and evidence for a paper on
 bidirectional amplification in dissipative resistive networks.
 
+## Research Planning
+
+Use [campaigns/README.md](campaigns/README.md) and the repository's
+[experiment-loop skill](.agents/skills/experiment-loop/SKILL.md) for research
+questions and the full Explorer → Codifier → Monitor → Reviewer lifecycle.
+New planning for an adopted question belongs in its campaign; preserve historical
+plans and result paths. Small exploratory pilots use one note in `campaigns/pilots/`
+without full campaign scaffolding. Pass record paths and compact
+evidence summaries between roles; reuse unchanged context rather than rereading it.
+run-experiment remains a compatibility entry point into the same lifecycle.
+For explicit EqProp and CIFAR tasks, use their declared task-specific scientific
+contracts rather than substituting the general Conv BPTT scope below.
+
+Campaign setup or planning alone does not launch simulations. Explicit execution
+requests retain the standing authority below. Experiment/pilot notes own execution
+handoffs and result paths; result/pilot notes own reviewed conclusions. The campaign
+ledger is generated scientific navigation. `docs/current_simulations.md` and
+`docs/experimental_manifest.md` are historical snapshots: do not refresh or append
+to them. This supersedes older plans and external skills requiring those updates.
+
 ## Agent Authority
 
 This is a trusted, agent-operated research worktree. Within an assigned task,
@@ -34,6 +54,10 @@ require another approval; changing or stopping another person's jobs does.
 
 ## Repository Rules
 
+- The active paper manuscript is now `paper_bidir.tex` in the Overleaf project.
+  Apply manuscript updates to this file; it supersedes
+  `bidir_paper_theory_revised.tex`. Sync the Overleaf checkout before editing if
+  the renamed file is not yet present locally.
 - Keep source, small configs, documentation, and lightweight result summaries
   in Git. Keep datasets, checkpoints, logs, and generated result bundles out
   of Git.
@@ -42,6 +66,8 @@ require another approval; changing or stopping another person's jobs does.
   diode defaults.
 - Use `matplotlib` for generated plots unless the user requests another
   backend.
+- Export plots as `.jpg` by default and link the JPG files in user-facing
+  responses. Additional formats such as PDF may be provided when useful.
 - Treat `docs/current_state.md` as human-authored: read it for context, but do
   not edit it unless Filip explicitly grants permission for that edit.
 - Read or edit `docs/my_notes.md` only when Filip explicitly asks.
@@ -57,13 +83,13 @@ Conv3. Start with:
 - `docs/perfectdiode_conv3_learning_protocol.md`
 - `docs/perfectdiode_bounded_weight_protocol.md`
 
-`docs/current_state.md` is the concise dashboard and node inventory.
+`docs/current_state.md` is the concise human-authored dashboard.
 `docs/experiment_workflow.md` is the execution guide. Historical and archived
 documents are provenance, not authority for new runs.
-New runs follow `docs/experiment_reporting.md`; live state is generated in
-`docs/current_simulations.md`, every agent-created top-level result directory
-is indexed persistently there, and analyzed conclusions are curated manually in
-`docs/experimental_manifest.md`.
+New runs follow `docs/experiment_reporting.md`. Runners write live state into their
+own bundles; the owning experiment/pilot note links every top-level result directory,
+including failed or superseded attempts. Keep conclusions in the result/pilot note
+and refresh an established campaign's ledger when its inputs change.
 
 Ordinary MNIST is used for both hyperparameter selection and the active paper
 runs. Selection uses the deterministic 55,000/5,000 train/validation split and
@@ -75,157 +101,54 @@ as historical or optional robustness evidence, not a required paper dataset.
 
 ## Experiments
 
-Follow `docs/experiment_workflow.md`.
+Routine launches do not require T/K gradient/residual qualification or replay,
+optimizer/rho probes, or CIFAR solver/migration audits. Use declared iteration
+counts and learning rates; run those diagnostics only when explicitly assigned.
+The September 25 retirement in docs/experiment_workflow.md supersedes older
+pre-launch requirements. Keep execution smoke, identity/restore checks and
+runtime nonfinite guards.
 
-- Keep scientific choices in a readable config or command. Do not introduce
-  catalogs, receipt graphs, launch schemas, or experiment-specific control
-  planes.
-- When Filip supplies complete configs with exact learning-rate vectors, use
-  `python -m experiments.exact_run`. Do not run a rho search, calibration, or
-  broad test campaign first. Use its one-train-batch/one-validation-batch
-  `--smoke` mode locally, then launch the unchanged configs.
-- Prefer a direct runner. Extract shared code only when it serves more than
-  one experiment.
-- Before a long or scheduled run, record and report the scientific cases,
-  target, budget, expected duration, and result path, then proceed once the
-  applicable smoke and scientific gates pass.
-- Before creating a top-level result directory, add or update its persistent
-  row in `docs/current_simulations.md`. Maintain its study-level state through
-  launch, remote collection, validation, review, and supersession; automatic
-  per-run status reporting does not replace this handoff row.
-- Before submitting any live Jean Zay job, including a production job, array,
-  restored remote canary, or retry, verify that its `planned` row already
-  exists in `docs/current_simulations.md`. Prefer a direct result-directory
-  link. If no directory can be linked yet, record the launch name, config or
-  wrapper, and expected remote output root or pattern; immediately after
-  `sbatch`, add the Slurm job ID and resolve the result link when possible.
-- Check the simulation GPU hosts listed below and the configured `jean-zay`
-  target before allocating work. An RTX 5090 being used by Ben remains an
-  authorized shared target under the policy below. Never replace, terminate,
-  suspend, or reconfigure unrelated jobs or take over their launcher lanes.
-- Run a short end-to-end smoke through the same scientific runner and config.
-  For Jean Zay, the default operational gate is a synchronous local smoke
-  followed immediately by one production submission; do not submit a separate
-  remote canary job. Record the local command and require its semantic output
-  before production. If a future production failure is attributable to a
-  Jean Zay-only environment, staging, device, filesystem, or Slurm issue,
-  restore a live Jean Zay canary for that affected execution contract.
-  Conv amplification runs also need the active scientific `T/K` gate unless
-  an unchanged accepted operating point applies. Exact-config repeats cite the
-  accepted operating point instead of rerunning it.
-- Use `python -m experiments.launch` for the common local, tmux, SSH/tmux, and
-  Slurm cases. A direct command is fine when it is clearer.
-- Keep one scientific surface on one recorded target. Host selection is
-  transport, not a scheme-dependent scientific factor; initialization,
-  cohorts, minibatch order, and resolved config must remain identical where
-  the protocol requires matched comparisons.
-- Save the resolved config, exact command, commit, environment summary, logs,
-  metrics, and checkpoints in one run-specific directory.
-- For new active runs, write the canonical `manifest.json`, `status.json`,
-  `metrics.jsonl`, and successful-only `result.json` bundle defined by
-  `docs/experiment_reporting.md`.
-- Diagnose operational failures and retry when the cause is understood and the
-  science, target class, and budget remain in scope. Agents may cancel and
-  replace jobs they launched when those jobs are invalid, obsolete, or
-  operationally broken; do not disturb unrelated jobs or delete irreplaceable
-  data.
-- While actively monitoring, keep progress observable and use a deadline.
-- Copy remote results locally and validate the local copy before drawing final
-  conclusions.
-- Do not mark a scientific study `ready-for-review` until expected coverage is
-  reconciled, the authoritative local copy exists, included run bundles
-  validate, and failures, exclusions, and replacement directories are named.
-- Interpret completed or clearly labeled partial results directly against the
-  governing protocol. Distinguish measurements from inference and record
-  uncertainty or protocol deviations instead of withholding a supported
-  conclusion for another approval step.
+Use [experiment-loop](.agents/skills/experiment-loop/SKILL.md) for role ownership
+and handoffs. [docs/experiment_workflow.md](docs/experiment_workflow.md) is the
+operational authority for exact-config execution, smoke/scientific gates, GPU
+placement, launch, timing, monitoring, recovery and collection. The
+[reporting contract](docs/experiment_reporting.md) defines evidence and validation.
+Keep scientific choices in readable configs/commands; do not add catalogs,
+receipt graphs, launch schemas or experiment-specific control planes.
 
-Prefer placement by model size and GPU capacity:
+## Sharing GPUs With Ben
 
-- Conv1: prefer the smaller GPUs—Akib's RTX 3080 or the RTX 3090s on local
-  (`local`/`main`) and `nom-cool-1`.
-- Conv2: placement is flexible; choose an available GPU according to the
-  run's memory needs and expected duration.
-- Conv3: prefer the RTX 5090 machines (`trex`, `fifi`, `loulou`, or another
-  host once verified to have an RTX 5090) or `jean-zay`.
+For the exp014 relative-noise training campaign, Filip also explicitly permits
+sharing with Kellian (September 25). Admit when measured memory plus headroom
+fits, preserve both workloads, and keep the existing study budget and deadline.
+This campaign permission overrides an exclusive-GPU reservation for its Conv3
+runs; it does not authorize sharing with other unidentified or unapproved owners.
 
-These are placement preferences; preserve the scientific config and matched
-comparison requirements when choosing a host.
-Jean Zay defaults to `fmu@v100`; put outputs under
-`/lustre/fsn1/projects/rech/fmu/$USER/server_code/results`.
+Standing sharing permission and its admission rules are maintained in the
+[execution policy](docs/experiment_workflow.md#sharing-gpus-with-ben), covering
+all authorized GPU models, including RTX 3080, 3090 and 5090.
 
-## Sharing RTX 5090 GPUs With Ben
-
-RTX 5090 GPUs may always be considered for our simulations while Ben is using
-them, during both daytime and nighttime. His presence or high GPU utilization
-alone is not a reason to reject the host or wait for it to become idle. This
-is standing permission to share; do not ask again for each launch.
-
-- Verify the GPU model, free memory, process owners and existing launchers.
-  Identify Ben's workload from process ownership or known launcher metadata;
-  do not assume that every occupied GPU belongs to him.
-- Admit our job when its measured peak memory plus headroom fits alongside
-  the existing workload. Preserve its scientific batch size, precision and
-  config. If it does not fit, choose another target or wait for memory.
-- Use our own launcher/session and result path. Leave Ben's processes, queues,
-  priorities, MPS service and GPU-wide settings intact. Other users' occupied
-  lanes retain their existing protection unless separately authorized.
-- Measure our throughput under actual sharing and use that rate for duration
-  estimates and deadlines. Record shared use in the run's environment notes;
-  do not report shared-GPU timings as exclusive-GPU benchmarks.
+Weekdays 09:00–18:00 Europe/Paris: admit new work only within two distinct RTX
+5090s across all our jobs. Existing jobs may finish after 09:00; wait for usage
+below two before occupying another 5090. A Conv2 pair counts as one GPU.
+Nights/weekends have no fleet-count cap.
+Prefer memory-heavy jobs on 5090s. Use the queue's explicit Conv2/Conv3 profiles:
+two Conv2 workers per 5090 when memory fits; one Conv3 reserving measured peak
+memory plus headroom. Filip removed the fixed 31 GiB reservation on September29.
+See execution policy for admission details.
+Prepared jobs can use the shared run-watch queue; record its job ID in the
+existing handoff and keep one monitoring owner.
 
 ## Overnight Simulations
 
-Proactively use **22:00–08:00 Europe/Paris** for authorized long simulations.
-Prepare configs, inputs, smoke checks and the run queue during the day, then
-arm a detached, dated launcher for the next night window. Do not require Filip
-to return at 22:00 or approve each night of an already assigned experiment.
-This schedules work within its existing scientific scope, budget and deadline;
-it does not authorize an open-ended search or invented follow-up experiments.
-
-Default to completing or safely checkpointing and pausing overnight workers
-by 08:00, unless the recorded run plan permits daytime continuation. A pause
-must preserve the full state needed for scientifically equivalent resumption.
-If the runner cannot do that, admit only runs expected to finish within the
-window with a margin. Do not truncate epochs or change scientific configs to
-fit the night. Pending work may use a later night within the original budget.
-
-Nighttime is an opportunity, not evidence that a GPU is idle. Recheck live
-memory, users and queues at actual launch; the Ben/RTX 5090 sharing permission
-still applies. Keep jobs observable and monitored, and collect a morning
-summary of completed, paused, failed and unstarted cases. Follow the concrete
-[overnight queue workflow](docs/experiment_workflow.md#overnight-runs).
+Use the [overnight policy](docs/experiment_workflow.md#overnight-runs) for
+authorized long runs, including the 22:00–08:00 Europe/Paris window.
 
 ## Simulation GPU Inventory
 
-The following machines are authorized simulation resources. This is a hardware
-and access inventory, not a statement that their GPUs are idle. Check live GPU
-memory, utilization, and running jobs immediately before allocating work.
-
-| Machine | Access / launcher target | GPU inventory | Verification |
-|---|---|---|---|
-| Local (`nom-cool-2`) | `local` foreground or `main` tmux | 1 × NVIDIA GeForce RTX 3090, 24 GiB | Queried 2026-09-11 |
-| `akibscomputer` (Akib) | SSH `akibscomputer` → `filiposana@172.24.6.229` (hostname `integnano-akib`); launcher `akib` still uses SSH `akib` | 1 × NVIDIA GeForce RTX 3080, 10 GiB | Queried via `akibscomputer` on 2026-09-11 |
-| `nom-cool-1` | SSH `filip@nom-cool-1` | 1 × NVIDIA GeForce RTX 3090, 24 GiB | Queried 2026-09-11 |
-| `trex` | SSH `filip@trex`; launcher `trex` | 1 × NVIDIA GeForce RTX 5090, 32 GiB | Queried 2026-09-11 |
-| `riri` | SSH `filip@riri` | Model, count, and memory unverified | SSH authentication failed on 2026-09-11 |
-| `fifi` | SSH `filip@fifi` | 1 × NVIDIA GeForce RTX 5090, 32 GiB | Queried 2026-09-11 |
-| `loulou` | SSH `filip@loulou` | 1 × NVIDIA GeForce RTX 5090, 32 GiB | Queried 2026-09-11 |
-
-Memory above is nominal capacity; `nvidia-smi` reported 10,240 MiB for the
-RTX 3080, 24,576 MiB for the RTX 3090s, and 32,607 MiB for the RTX 5090s.
-Re-query unverified hardware before choosing a workload for it.
-
-`local` and `main` share one physical GPU host. `akibscomputer` is both the
-historical tmux name and a working SSH alias for Akib, not an additional
-machine. Prefer SSH `akibscomputer`: SSH `akib` was unreachable during the
-earlier check on 2026-09-11. The configured launcher target `akib` still uses
-SSH `akib`; verify that route or update its host before using the launcher.
-`nom-cool-1`, `riri`, `fifi`, and `loulou` are not currently named targets in
-`configs/experiment_targets.json`; use a direct SSH runner or configure the
-target before using `experiments.launch`, and verify the remote checkout and
-Python environment. Jean Zay remains available through the existing Slurm
-target and its allocation-specific GPU resources.
+See the [GPU inventory](docs/experiment_workflow.md#simulation-gpu-inventory)
+and [placement preferences](docs/experiment_workflow.md#gpu-placement).
+Inventory is not live availability; verify resources before allocation.
 
 ## Environment
 

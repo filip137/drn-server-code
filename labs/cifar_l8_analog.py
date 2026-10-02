@@ -15,7 +15,7 @@ from torch.nn.modules.batchnorm import _BatchNorm
 from labs.custom_minimizer import CustomQuadraticMinimizer, MinimizerSettings
 from model.function.interaction import BiasInteraction, SumSeparableFunction
 from model.resistive.interaction import ConvResistive, DenseResistive
-from model.resistive.layer import ConvLayer, ResistiveInputLayer
+from model.resistive.layer import ConvLayer, NonlinearResistiveLayer, ResistiveInputLayer
 from model.variable.layer import LinearLayer
 from model.variable.parameter import Bias, ConvWeight, DenseWeight
 
@@ -178,8 +178,12 @@ class VoltageClampedConvBlock(nn.Module):
         weight_max: float,
         device: torch.device | str,
         input_gain_mode: str = 'softplus',
+        output_activation: str = 'perfect_diode',
     ) -> None:
         super().__init__()
+        if output_activation not in ('perfect_diode', 'linear'):
+            raise ValueError('block_output_activation must be perfect_diode or linear')
+        self.output_activation = output_activation
         self.logical_input_channels = _require_positive_int(
             logical_input_channels, "logical_input_channels"
         )
@@ -220,9 +224,10 @@ class VoltageClampedConvBlock(nn.Module):
                 (channels, self.spatial_size, self.spatial_size),
                 batch_size=1,
                 device=target_device,
-                non_linearity="perfect_diode",
+                non_linearity=(output_activation if index == len(self.analog_channels) - 1
+                               else "perfect_diode"),
             )
-            for channels in self.analog_channels
+            for index, channels in enumerate(self.analog_channels)
         ]
 
         # ConvResistive derives amplification position from the layer suffix.
@@ -460,7 +465,10 @@ class AnalogDenseReadout(nn.Module):
         self._input_gain_raw = nn.Parameter(torch.tensor(
             _inverse_softplus(config['input_gain_init']), device=device))
 
-    def forward(self, values):
+    def analog_variables(self):
+        return (self.boundary, self.output, self.weight)
+
+    def forward(self, values, reset=True):
         self.boundary.set_input(F.softplus(self._input_gain_raw) * values)
         # Exact single-node-layer coordinate update of the DenseResistive energy.
         # No digital learned matrix, bias, softmax, or post-logit scaling.
@@ -472,6 +480,77 @@ class AnalogDenseReadout(nn.Module):
     def detach_state_(self):
         self.boundary.state = self.boundary.state.detach()
         self.output.state = self.output.state.detach()
+
+
+class NonlinearAnalogDenseReadout(nn.Module):
+    """Two coupled resistive edges with a half-positive, half-negative hidden layer."""
+
+    def __init__(self, features, classes, config, device):
+        super().__init__()
+        hidden_units = _require_positive_int(config['head_hidden_units'], 'head_hidden_units')
+        if hidden_units % 2:
+            raise ValueError('head_hidden_units must be even for perfect-diode polarities')
+        self.num_iterations = _require_positive_int(config.get('head_iterations', 4), 'head_iterations')
+        solver = AnalogSolverConfig.from_mapping(config['solver'])
+        self.boundary = ResistiveInputLayer((2 * features,), gain=1., device=device)
+        self.hidden = NonlinearResistiveLayer((hidden_units,), device=device,
+                                             non_linearity=solver.non_linearity)
+        self.output = LinearLayer((classes,), device=device)
+        layers = (self.boundary, self.hidden, self.output)
+        for index, layer in enumerate(layers):
+            layer._name = f'Layer_{index}'
+        weights = []
+        for before, after in zip(layers, layers[1:]):
+            weight = DenseWeight(before.shape, after.shape, gain=config['weight_gain'],
+                                 device=device, clamp=True,
+                                 clamp_min=config['weight_min'], clamp_max=config['weight_max'],
+                                 init_mode=config['weight_init_mode'])
+            weight.state.requires_grad_(True)
+            weights.append(weight)
+        self.hidden_weight, self.weight = weights
+        self.interactions = [
+            DenseResistive(before, after, weight, solver.voltage_amp, solver.current_amp)
+            for before, after, weight in zip(layers, layers[1:], weights)
+        ]
+        # The hidden update includes both adjacent edges, including output feedback.
+        self.energy = SumSeparableFunction(layers=list(layers), params=weights,
+                                           interactions=self.interactions)
+        self.minimizer = CustomQuadraticMinimizer(
+            self.energy, free_layers=[self.hidden, self.output],
+            num_iterations=self.num_iterations, mode=solver.mode,
+            non_linearity=solver.non_linearity,
+            quadratic_diode_param=dict(solver.quadratic_diode_param),
+            exponential_diode_param=dict(solver.exponential_diode_param),
+            voltage_amp=solver.voltage_amp, current_amp=solver.current_amp,
+            hard_sigmoid_param=dict(solver.hard_sigmoid_param),
+            iv_data=solver.iv_data, iv_data_path=solver.iv_data_path,
+            double_diode_updater=solver.double_diode_updater,
+            adaptive_equilibrium=solver.adaptive_equilibrium,
+            overrelaxation_factor=solver.overrelaxation_factor,
+            single_diode_updater=solver.single_diode_updater,
+            minimizer_settings=solver.minimizer_settings, damping=solver.damping,
+            experimental_newton_max_steps=solver.experimental_newton_max_steps,
+        )
+        self._input_gain_raw = nn.Parameter(torch.tensor(
+            _inverse_softplus(config['input_gain_init']), device=device))
+
+    def analog_variables(self):
+        return (self.boundary, self.hidden, self.output, self.hidden_weight, self.weight)
+
+    def forward(self, values, reset=True):
+        for layer in (self.hidden, self.output):
+            if reset:
+                layer.init_state(values.size(0), values.device)
+            elif layer.state.size(0) != values.size(0):
+                raise ValueError('Cannot replay a detached analog state with a different batch size')
+        self.boundary.set_input(F.softplus(self._input_gain_raw) * values)
+        self.minimizer.num_iterations = self.num_iterations
+        self.minimizer.compute_equilibrium()
+        return self.output.state
+
+    def detach_state_(self):
+        for layer in (self.boundary, self.hidden, self.output):
+            layer.state = layer.state.detach()
 
 
 def boundary_normalization_settings(config):
@@ -491,6 +570,7 @@ class CifarL8Analog(nn.Module):
     def __init__(self, config, device='cpu'):
         super().__init__()
         solver = AnalogSolverConfig.from_mapping(config['solver'])
+        self.block_output_activation = config.get('block_output_activation', 'perfect_diode')
         self.boundary_normalization, bn_eps, bn_trainable = boundary_normalization_settings(config)
         normalization = config.get('block_output_normalization', 'none')
         if normalization not in ('none', 'voltage'):
@@ -506,6 +586,7 @@ class CifarL8Analog(nn.Module):
                 logical_input_channels=channels, analog_channels=[2*c for c in logical],
                 spatial_size=size, solver=solver, input_gain_init=config['input_gain_init'],
                 input_gain_mode=config.get('conv_input_gain_mode', 'softplus'),
+                output_activation=self.block_output_activation,
                 weight_gain=config['weight_gain'], weight_init_mode=config['weight_init_mode'],
                 weight_min=config['weight_min'], weight_max=config['weight_max'], device=device))
             channels, size = logical[-1], size // 2
@@ -516,7 +597,11 @@ class CifarL8Analog(nn.Module):
             bridges.append(nn.Sequential(nn.MaxPool2d(2), norm))
         self.analog_blocks = nn.ModuleList(blocks)
         self.bridges = nn.ModuleList(bridges)
-        self.head = AnalogDenseReadout(channels*size*size, config['num_classes'], config, device)
+        hidden_units = config.get('head_hidden_units', 0)
+        if not isinstance(hidden_units, int) or hidden_units < 0:
+            raise ValueError('head_hidden_units must be a nonnegative integer')
+        head_class = NonlinearAnalogDenseReadout if hidden_units else AnalogDenseReadout
+        self.head = head_class(channels*size*size, config['num_classes'], config, device)
 
     def forward(self, x, iterations, reset=True):
         if len(iterations) != len(self.analog_blocks):
@@ -528,7 +613,7 @@ class CifarL8Analog(nn.Module):
             if scale != 1.:
                 x = x / scale
             x = bridge(x)
-        return self.head(x.flatten(1))
+        return self.head(x.flatten(1), reset=reset)
 
     def detach_state_(self):
         for block in self.analog_blocks:
@@ -549,6 +634,8 @@ class CifarL8Analog(nn.Module):
         for i, block in enumerate(self.analog_blocks):
             for j, weight in enumerate(block.weights):
                 yield f'blocks.{i}.weights.{j}', weight.state
+        if isinstance(self.head, NonlinearAnalogDenseReadout):
+            yield 'head.hidden_weight', self.head.hidden_weight.state
         yield 'head.weight', self.head.weight.state
 
     def trainable_tensors(self):
@@ -558,6 +645,8 @@ class CifarL8Analog(nn.Module):
     def optimizer_groups(self, config):
         rates = [lr for block in config['conv_learning_rates'] for lr in block]
         rates.append(config['head_learning_rate'])
+        if isinstance(self.head, NonlinearAnalogDenseReadout):
+            rates.append(config['head_learning_rate'])
         conductances = list(self.named_conductances())
         if len(rates) != len(conductances):
             raise ValueError('Learning rates do not cover all conductances')
@@ -578,6 +667,8 @@ class CifarL8Analog(nn.Module):
         for block in self.analog_blocks:
             block.project_weights_()
         with torch.no_grad():
+            if isinstance(self.head, NonlinearAnalogDenseReadout):
+                self.head.hidden_weight.clamp_()
             self.head.weight.clamp_()
 
     def snapshot(self):

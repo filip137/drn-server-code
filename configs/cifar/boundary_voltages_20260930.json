@@ -1,0 +1,53 @@
+{
+  "study_id": "cifar-boundary-voltage-20260930-v1",
+  "epochs": [
+    0,
+    1,
+    5
+  ],
+  "batch_size": 32,
+  "budget_seconds": 870,
+  "expected_environment": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8"
+  },
+  "input_sha256": {
+    "inputs/model_config.json": "69405307957d4e3508149bd4f0788f8caed36cde3fb2484e155bdbfd88ebf545",
+    "inputs/cohort.json": "315b7a64a4775a994e7689d68f5dab27863f12304e0ec4cffad9ba3e7d3987f0",
+    "inputs/e0.pt": "c4d98ef636949fed044ce4d2e94544be8c69eb816dc279338d7a067018fa6c37",
+    "inputs/e1.pt": "6910a9f414acf7c846dddd1b56d8bf1f7bd912c386c652cf5c93a68d5c53e5bd",
+    "inputs/e5.pt": "fec573b499e008a434b6e6ee537e38109678230d43dac77c600d9b5128b627ef"
+  },
+  "reference_free_rms": {
+    "0": {
+      "block1/conv1_state": 0.19435179285763146,
+      "block1/conv2_state": 0.007594189291407743,
+      "block1/conv3_state": 0.013175439140956363,
+      "block2/conv1_state": 0.2821254243297979,
+      "block2/conv2_state": 0.004320348101006872,
+      "block2/conv3_state": 0.0051433507012768505,
+      "block3/conv1_state": 0.18880793549644917,
+      "block3/conv2_state": 0.011987102207468783
+    },
+    "1": {
+      "block1/conv1_state": 0.30313557111662237,
+      "block1/conv2_state": 0.06725952889951983,
+      "block1/conv3_state": 0.1237542298477096,
+      "block2/conv1_state": 4.395784242011457,
+      "block2/conv2_state": 1.7464025375398655,
+      "block2/conv3_state": 3.8061298066076037,
+      "block3/conv1_state": 3.43931309132737,
+      "block3/conv2_state": 1.9173662482130478
+    },
+    "5": {
+      "block1/conv1_state": 0.20827428263183112,
+      "block1/conv2_state": 0.01925480947396757,
+      "block1/conv3_state": 0.021585032889278388,
+      "block2/conv1_state": 2.453000530792306,
+      "block2/conv2_state": 0.7641973511594884,
+      "block2/conv3_state": 1.3801526016896548,
+      "block3/conv1_state": 1.875422592376957,
+      "block3/conv2_state": 0.3747705758155284
+    }
+  }
+}

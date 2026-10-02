@@ -26,8 +26,6 @@ RUNNER = OUT / 'source/experiments/analyze_conv123_zero_bias_eqprop_bptt_gradien
 
 
 def prepare():
-    if STUDY not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise ValueError('Register the persistent study row first.')
     beta_result = read(BETA / 'execution.json')
     if beta_result['state'] != 'complete' or beta_result['selected_beta'] is None:
         raise ValueError('Finish the beta sweep and record a candidate before this study.')

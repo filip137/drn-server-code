@@ -1,0 +1,53 @@
+{
+  "native_bptt": {
+    "method": "native_bptt"
+  },
+  "free_t_bptt": {
+    "method": "free_t_bptt"
+  },
+  "beta_0p1": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.009452322002142667,
+      0.3729986372379273,
+      0.11695196708152936
+    ],
+    "beta_multiplier": 0.1
+  },
+  "beta_0p3": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.028356966006427994,
+      1.1189959117137818,
+      0.35085590124458804
+    ],
+    "beta_multiplier": 0.3
+  },
+  "beta_1": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.09452322002142666,
+      3.729986372379273,
+      1.1695196708152935
+    ],
+    "beta_multiplier": 1.0
+  },
+  "beta_3": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.28356966006427997,
+      11.18995911713782,
+      3.5085590124458808
+    ],
+    "beta_multiplier": 3.0
+  },
+  "beta_10": {
+    "method": "hybrid_eqprop",
+    "betas": [
+      0.9452322002142666,
+      37.29986372379273,
+      11.695196708152935
+    ],
+    "beta_multiplier": 10.0
+  }
+}

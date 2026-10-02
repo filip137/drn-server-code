@@ -1,0 +1,169 @@
+{
+  "study_id": "conv3-clean-eqprop-rms-beta-20260924-v1",
+  "output_root": "results/conv3-clean-eqprop-rms-beta-20260924-v1",
+  "evidence_class": "ordinary_mnist_selection",
+  "evidence_tier": "exploratory",
+  "target": "local:RTX3090",
+  "source_commit": "6be7d41038018b225cef7d1771fdb905084b0db7",
+  "source_contract": {
+    "runtime_source_root": "results/eqprop-conv3-p90-read-noise-20260919-v1/source-continuation-v1"
+  },
+  "analyzer_source_root": "results/eqprop-conv3-p90-final-noise-cosine-20260921-v1/source/experiments",
+  "analyzer_sha256": {
+    "analyze_conv123_zero_bias_eqprop_bptt_gradient_gate.py": "2a698f5687a1765015018fb4c9249629571634ad4029cee6da35654a77bd65c9",
+    "audit_eqprop_float64_shadow.py": "94e78d16bf0d084bafb6f4985c70a17bf5f53999def8ede056dbe4a7da93e962",
+    "analyze_conv_eqprop_bptt_beta_tk_displacement.py": "28373b0af1ebeb72f2bc872c31ecbbe3cc482d4aaf8ebaba422472292bc4425d",
+    "analyze_conv_eqprop_bptt_checkpoint_gradients.py": "ffb5c96cd46a8d03c7b12ed9342b7888d410454bca67511ffe5074669230b062"
+  },
+  "cohort_config": "configs/conv/eqprop_conv3_p90_final_noise_cosine_20260921.json",
+  "cohort_config_sha256": "a48815aeb8954cdfce284a771bed27f0bd4c976054bfc04c01f649dfcdfdad79",
+  "cases": [
+    {
+      "name": "baseline_epoch0",
+      "scheme": "baseline",
+      "gpu": "A100",
+      "sigma": 0.0,
+      "beta": 404.141105702,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_0/runs/000_conv3_baseline_p90_sigma0_seed0_da5e36ad",
+      "source_hashes": {
+        "final_model.pt": "515fe13fcca36f6878c0c4d9859e30bb928896295f3c7cbbe1503dfcae7866af",
+        "weights_final.npz": "b72f93c28de18753711b2e95d1464f2ced8fb5677b48b86d7cf4262e711e288e",
+        "config.used.json": "43f58ae9019cf2531258ade4e87045598d684ff8c611bea9a66a12db8e049d68",
+        "result.json": "d6f7fd53336871e26c12a9696af733ee3faa4a1e772bd2a9e528ad0b3f4853eb"
+      },
+      "checkpoint_role": "reconstructed_initialization",
+      "checkpoint_epoch": 0,
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "baseline_epoch30",
+      "scheme": "baseline",
+      "gpu": "A100",
+      "sigma": 0.0,
+      "beta": 404.141105702,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_0/runs/000_conv3_baseline_p90_sigma0_seed0_da5e36ad",
+      "source_hashes": {
+        "final_model.pt": "515fe13fcca36f6878c0c4d9859e30bb928896295f3c7cbbe1503dfcae7866af",
+        "weights_final.npz": "b72f93c28de18753711b2e95d1464f2ced8fb5677b48b86d7cf4262e711e288e",
+        "config.used.json": "43f58ae9019cf2531258ade4e87045598d684ff8c611bea9a66a12db8e049d68",
+        "result.json": "d6f7fd53336871e26c12a9696af733ee3faa4a1e772bd2a9e528ad0b3f4853eb"
+      },
+      "checkpoint_role": "final",
+      "checkpoint_epoch": 30
+    },
+    {
+      "name": "ours_epoch0",
+      "scheme": "ours",
+      "gpu": "A100",
+      "sigma": 0.0,
+      "beta": 5.26875648112,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_6/runs/000_conv3_ours_p90_sigma0_seed0_03483376",
+      "source_hashes": {
+        "final_model.pt": "8840b2bedbd9e8b4d5d46ae26ffde2f92928cc734951d7c1eb6e78c17bfe41b6",
+        "weights_final.npz": "014f83f3a7d40c909aae43575dae114a34bb72052540c85694b96732eb26e908",
+        "config.used.json": "33bc8fe32419636171e6466356baac74f26bd38ddb6b9a4e177d3b719e1678f9",
+        "result.json": "9093102a915bd72c1f4447332857ae7d7222024894205c674aa251af7e09c6c1"
+      },
+      "checkpoint_role": "reconstructed_initialization",
+      "checkpoint_epoch": 0,
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "ours_epoch30",
+      "scheme": "ours",
+      "gpu": "A100",
+      "sigma": 0.0,
+      "beta": 5.26875648112,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_6/runs/000_conv3_ours_p90_sigma0_seed0_03483376",
+      "source_hashes": {
+        "final_model.pt": "8840b2bedbd9e8b4d5d46ae26ffde2f92928cc734951d7c1eb6e78c17bfe41b6",
+        "weights_final.npz": "014f83f3a7d40c909aae43575dae114a34bb72052540c85694b96732eb26e908",
+        "config.used.json": "33bc8fe32419636171e6466356baac74f26bd38ddb6b9a4e177d3b719e1678f9",
+        "result.json": "9093102a915bd72c1f4447332857ae7d7222024894205c674aa251af7e09c6c1"
+      },
+      "checkpoint_role": "final",
+      "checkpoint_epoch": 30
+    },
+    {
+      "name": "legacy_epoch0",
+      "scheme": "legacy",
+      "gpu": "A100",
+      "sigma": 0.0,
+      "beta": 4.42250110273,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_3/runs/000_conv3_legacy_p90_sigma0_seed0_f7b6c852",
+      "source_hashes": {
+        "final_model.pt": "c38e07d857b8ea6828dbf7325a3a03a698fe1a758106c1be54a32da723cd430a",
+        "weights_final.npz": "c42ed1c23b1c110025efcb854004c54a727a270ba0d4e7f3b0fc9e0b44fdb846",
+        "config.used.json": "a639ac8476e1a2c7e349b1ad303b446abdf4c21fd660f5967f1c9a45d0d0cea1",
+        "result.json": "587eb0ca06fecc634862673db11c71f6366f7f3f8cd3f69ace6a2dbb083f41a2"
+      },
+      "checkpoint_role": "reconstructed_initialization",
+      "checkpoint_epoch": 0,
+      "reconstructed_initialization_tensor_sha256": "eb31329b8b5d1441339b5b06c4d2c2e4cc1df1e6172ca808bb7da12bacd7d8b1"
+    },
+    {
+      "name": "legacy_epoch30",
+      "scheme": "legacy",
+      "gpu": "A100",
+      "sigma": 0.0,
+      "beta": 4.42250110273,
+      "bundle": "results/eqprop-conv3-p90-read-noise-20260919-v1/jz/a100-production/task_3/runs/000_conv3_legacy_p90_sigma0_seed0_f7b6c852",
+      "source_hashes": {
+        "final_model.pt": "c38e07d857b8ea6828dbf7325a3a03a698fe1a758106c1be54a32da723cd430a",
+        "weights_final.npz": "c42ed1c23b1c110025efcb854004c54a727a270ba0d4e7f3b0fc9e0b44fdb846",
+        "config.used.json": "a639ac8476e1a2c7e349b1ad303b446abdf4c21fd660f5967f1c9a45d0d0cea1",
+        "result.json": "587eb0ca06fecc634862673db11c71f6366f7f3f8cd3f69ace6a2dbb083f41a2"
+      },
+      "checkpoint_role": "final",
+      "checkpoint_epoch": 30
+    }
+  ],
+  "read_noise_seeds": [],
+  "draws_per_noisy_batch": 0,
+  "expected_checkpoints": 6,
+  "expected_batches": 36,
+  "expected_production_cells": 114,
+  "expected_layer_comparisons": 16416,
+  "budget_seconds": 14400,
+  "official_test_read": false,
+  "optimizer_steps_applied": false,
+  "accuracy_evaluation": false,
+  "analysis_objective": "clean_voltage_displacement_RMS_and_EqProp_vs_BPTT_cosine_at_initialization_and_epoch30",
+  "source_bundles_validated_locally": true,
+  "data_root": "/home/filip/datasets/mnist",
+  "injected_betas": [
+    1e-06,
+    3.162277660168379e-06,
+    1e-05,
+    3.1622776601683795e-05,
+    0.0001,
+    0.00031622776601683794,
+    0.001,
+    0.0031622776601683794,
+    0.01,
+    0.03162277660168379,
+    0.1,
+    0.31622776601683794,
+    1.0,
+    3.1622776601683795,
+    10.0,
+    31.622776601683793,
+    100.0,
+    316.22776601683796,
+    1000.0
+  ],
+  "smoke_injected_betas": [
+    1.0
+  ],
+  "prior_attempt_seconds": 0,
+  "expected_duration_minutes": [
+    90,
+    150
+  ],
+  "initializer_checkpoint_path": "results/eqprop-conv3-init-beta-tk-20260923-v1/inputs/initialization.pt",
+  "initializer_checkpoint_sha256": "5e5782bd9bf166b8a432cbf283d745ffe4d25fe4a69ed656f14f9e7e9407392f",
+  "T": 8,
+  "K": 8,
+  "continue_numerical_failures": true,
+  "daytime_execution_authorized": true
+}

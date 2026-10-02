@@ -1,0 +1,21 @@
+{
+  "study_id": "cifar-block-beta-gradients-20260929-v3",
+  "batch_size": 32,
+  "budget_seconds": 3000,
+  "input_sha256": {
+    "inputs/cohort.json": "8e27e65e45582d502f14d04d32e06647800f4cee57963a79b1fbe8ac7e203d2d",
+    "inputs/initial_model.pt": "c4d98ef636949fed044ce4d2e94544be8c69eb816dc279338d7a067018fa6c37",
+    "inputs/matches.json": "6f372e5bab9c1d5670f3997b3a03d18927e5b41c5fb6d00f8cd33f64848935bb",
+    "inputs/model_config.json": "d8e405741bbb489a9fdf53ce62b8a5421c93bf884f35153f3316c92bdb6862ac"
+  },
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "betas": "inputs/matches.json",
+  "cohort": "inputs/cohort.json",
+  "initializer_epoch": 0,
+  "parameters_and_bn_read_only": true,
+  "noise": 0,
+  "energy_difference": "factored_centered_voltage_products"
+}

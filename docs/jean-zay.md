@@ -23,16 +23,15 @@ gate is insufficient.
 
 ## Submission Recording
 
-Before any live `sbatch`, add a `planned` row to the Recent Experiment
-Directories table in
-[`current_simulations.md`](current_simulations.md). This applies to production
-jobs, arrays, restored remote canaries, and retries.
+Before any live `sbatch`, record the planned submission in the owning
+experiment/pilot handoff. This applies to production jobs, arrays, restored
+remote canaries and retries; no central registry entry is required.
 
 Prefer a direct link to the intended result directory. When the final directory
 depends on the Slurm job ID and cannot yet be linked, record enough information
 to recover it: the launch name, config or Slurm wrapper, and expected remote
 result root or filename pattern. Immediately after submission, add the returned
-job ID, change the row to `running`, and replace the placeholder with the
+job ID, mark the handoff `running`, and replace the placeholder with the
 result link as soon as it resolves.
 
 ## Launch

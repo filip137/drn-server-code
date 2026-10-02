@@ -1,0 +1,53 @@
+{
+  "study_id": "cifar-block-rms-e50-20260929-v1",
+  "scheme": "legacy",
+  "batch_size": 32,
+  "budget_seconds": 1100,
+  "base_betas": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "relative_rms_targets": [
+    0.005,
+    0.01,
+    0.02,
+    0.035,
+    0.05,
+    0.065,
+    0.075,
+    0.085,
+    0.1,
+    0.125,
+    0.2,
+    0.4
+  ],
+  "displacement_calibration": {
+    "relative_tolerance": 0.03,
+    "max_evaluations": 24,
+    "initial_beta_guesses": [
+      0.02172490308862434,
+      0.002186961341264791,
+      0.034025885601231015
+    ],
+    "initial_guess_relative_rms": 0.075
+  },
+  "parameters_and_bn_read_only": true,
+  "noise": 0,
+  "energy_difference": "factored_centered_voltage_products",
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "optimizer_settings_ignored": true,
+  "high_cosine_threshold": 0.95,
+  "strict_cosine_threshold": 0.99,
+  "input_sha256": {
+    "inputs/model_config.json": "0e775d5c097232ad7b1e32fe5a86f49074a1a2b478a790ff87ce331229fac9e8",
+    "inputs/checkpoint_e50.pt": "66b8315f4cb52b308c2592bae3e269168b616b247aa6150e638d17f2cf50262f",
+    "inputs/cohort.json": "8e27e65e45582d502f14d04d32e06647800f4cee57963a79b1fbe8ac7e203d2d",
+    "inputs/checkpoint_provenance.json": "d69b1fb4ceb9f6fbf128fe186f41521b770bc9019766b4e1cfc8f6118a19ca33"
+  },
+  "checkpoint_file": "inputs/checkpoint_e50.pt",
+  "checkpoint_epoch": 50
+}

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 import torch
 import torch.nn.functional as F
 
@@ -220,6 +221,7 @@ class ConvResistive(QFunction):
         self._D = dilation
         self._voltage_amp = voltage_amp
         self._current_amp = current_amp
+        self._a_col2im_cache = None
 
     def _amp_factor(self):
         layer_pre_index = int(self._layer_pre._name[-1])
@@ -307,7 +309,38 @@ class ConvResistive(QFunction):
         a_per_ch = weight.view(C_out, -1).sum(dim=1).view(1, C_out, 1, 1)
         return a_per_ch.expand(1, C_out, H_out, W_out)
 
+    @contextmanager
+    def cache_a_col2im(self):
+        """Reuse constant coefficients only within an explicit solver scope."""
+        previous = self._a_col2im_cache
+        self._a_col2im_cache = {}
+        try:
+            yield
+        finally:
+            self._a_col2im_cache = previous
+
     def a_col2im(self):
+        cache = self._a_col2im_cache
+        weight, y = self._weight.get(), self._layer_post.state
+        if (cache is None
+                or weight.dtype != torch.float64 or y.dtype != torch.float64
+                or (torch.is_grad_enabled() and weight.requires_grad)):
+            return self._a_col2im_uncached()
+        # Preserve the original full-batch matmul/fold arithmetic. A versioned
+        # key also prevents stale reuse after in-scope parameter or geometry
+        # changes; the normal hybrid scope contains no optimizer update. Grad
+        # mode and requires_grad can change backend reduction dispatch, so the
+        # tracked free pass and no-grad nudged phases keep separate values.
+        key = (id(weight), weight._version, tuple(weight.shape), weight.stride(),
+               weight.device, tuple(self._layer_pre.state.shape), tuple(y.shape),
+               y.stride(), y.device, self._P, self._S, self._D,
+               torch.is_grad_enabled(), weight.requires_grad)
+        if key not in cache:
+            cache.clear()
+            cache[key] = self._a_col2im_uncached()
+        return cache[key]
+
+    def _a_col2im_uncached(self):
         weight, C_out, C_in, Kh, Kw, H_in, W_in, H_out, W_out = self._conv_geometry()
         y = self._layer_post.state
         y_ones = torch.ones_like(y)

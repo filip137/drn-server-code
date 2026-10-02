@@ -59,8 +59,6 @@ def csv_rows(path):
 
 
 def prepare():
-    if STUDY not in (ROOT / 'docs/current_simulations.md').read_text():
-        raise ValueError('Register the planned study before creating its directory.')
     if (OUT / 'execution.json').exists():
         raise ValueError('Execution already exists; do not replace its inputs.')
     source_names = [RUNNER_NAME, 'audit_eqprop_float64_shadow.py',

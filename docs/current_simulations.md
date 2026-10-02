@@ -1,5 +1,9 @@
 # Current Simulations
 
+> Historical snapshot, retired September 25, 2026. Do not refresh or append entries.
+> Current handoffs and result paths live in [campaign experiment/pilot notes](../campaigns/README.md).
+> The instructions and recorded states below describe the previous workflow, not current jobs.
+
 Updated: 2026-09-23
 
 The Active section is generated from local `results/**/status.json` files.
@@ -102,19 +106,38 @@ and [worktree retirement record](result_relocations/20260911-worktree-retirement
 ## Active
 
 <!-- BEGIN GENERATED ACTIVE RUNS -->
+### `cifar10-l8-bn-gain-followup-seed0-20260923-v1`
+
+| Run | Arm | Observation | Progress | Target | Updated | Status file |
+|---|---|---|---|---|---|---|
+| `deadline-boundary` | `legacy_voltage_normalized_e10_e50` | paused | checkpointed_pause (legacy encoding) | `local-boundary-check` | `2026-09-23T21:41:12.583139+00:00` | `results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/smoke/deadline-boundary/status.json` |
+| `legacy_voltage_normalized_e10_e50` | `legacy_voltage_normalized_e10_e50` | paused | checkpointed_pause (legacy encoding) | `fifi` | `2026-09-24T05:44:35.390376+00:00` | `results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/cells/legacy_voltage_normalized_e10_e50/status.json` |
+
+### `cifar10-l8-schedule-renewal-e50-e70-seed0-20260924-v1`
+
+| Run | Arm | Observation | Progress | Target | Updated | Status file |
+|---|---|---|---|---|---|---|
+| `baseline_renewal_e50_e70` | `baseline_renewal_e50_e70` | paused | checkpointed_pause epoch 51/70 | `local` | `2026-09-25T12:11:10.118909+00:00` | `results/cifar10-l8-schedule-renewal-e50-e70-seed0-20260924-v1/cells/baseline_renewal_e50_e70/status.json` |
+| `legacy_renewal_e50_e70` | `legacy_renewal_e50_e70` | paused | checkpointed_pause epoch 51/70 | `nom-cool-1` | `2026-09-25T12:11:10.804269+00:00` | `results/cifar10-l8-schedule-renewal-e50-e70-seed0-20260924-v1/cells/legacy_renewal_e50_e70/status.json` |
+
+### `conv123-relative-noise-advantage-map-20260925-v1`
+
+| Run | Arm | Observation | Progress | Target | Updated | Status file |
+|---|---|---|---|---|---|---|
+| `conv3_baseline_relative2` | `conv3_baseline_relative2` | running | relative_noise | `local:RTX3090` | `2026-09-25T13:04:25.571078+00:00` | `results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/cases/conv3_baseline_relative2/status.json` |
+| `screen-conv3` | `screen-conv3` | running | relative_noise | `local:RTX3090` | `2026-09-25T13:04:25.569440+00:00` | `results/conv123-relative-noise-advantage-map-20260925-v1/stage_a/conv3/status.json` |
+
 ### `perfectdiode-conv12-bounded-rho-baseline-ours-seed0-20260729-v1`
 
-| Run | Arm | Progress | Target | Updated | Status file |
-|---|---|---|---|---|---|
-| `044_rc_0p000111111111111_rd_0p00037037037037` | `adam-rho-0.000111111-0.00037037` | starting | `main` | `2026-07-29T18:00:44.837178+00:00` | `results/perfectdiode-conv12-bounded-rho-baseline-ours-tk46-seed0-v1/recovery/bounded_uniform__conv1__ours__adam_pre_clean_restart_20260729T2002/rho/cells/044_rc_0p000111111111111_rd_0p00037037037037/status.json` |
+| Run | Arm | Observation | Progress | Target | Updated | Status file |
+|---|---|---|---|---|---|---|
+| `044_rc_0p000111111111111_rd_0p00037037037037` | `adam-rho-0.000111111-0.00037037` | stale | starting | `main` | `2026-07-29T18:00:44.837178+00:00` | `results/perfectdiode-conv12-bounded-rho-baseline-ours-tk46-seed0-v1/recovery/bounded_uniform__conv1__ours__adam_pre_clean_restart_20260729T2002/rho/cells/044_rc_0p000111111111111_rd_0p00037037037037/status.json` |
 
 ### `runs`
 
-| Run | Arm | Progress | Target | Updated | Status file |
-|---|---|---|---|---|---|
-| `000_conv3_baseline_p95_sigma1em3_seed0_faaf4741` | `conv3_baseline_p95_sigma1em3_seed0` | training epoch 23/30 | `jean-zay` | `2026-09-21T15:04:21.689701+00:00` | `results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/.incoming/stopped-production/shards/jean-zay/task_0/runs/000_conv3_baseline_p95_sigma1em3_seed0_faaf4741/status.json` |
-| `000_conv3_legacy_p95_sigma1em3_seed0_bc831159` | `conv3_legacy_p95_sigma1em3_seed0` | training epoch 25/30 | `jean-zay` | `2026-09-21T15:04:11.231174+00:00` | `results/eqprop-conv3-p95-read-noise-1em3-20260921-v1/.incoming/stopped-production/shards/jean-zay/task_2/runs/000_conv3_legacy_p95_sigma1em3_seed0_bc831159/status.json` |
-| `000_conv3_ours_B0p3_sigma5em4_seed0_1371a1db` | `conv3_ours_B0p3_sigma5em4_seed0` | training epoch 9/10 | `trex` | `2026-09-22T23:31:37.507089+00:00` | `results/eqprop-conv3-beta-sweep-5em4-10ep-20260922-v2/collected/trex/conv3_ours_B0p3_sigma5em4_seed0/runs/000_conv3_ours_B0p3_sigma5em4_seed0_1371a1db/status.json` |
+| Run | Arm | Observation | Progress | Target | Updated | Status file |
+|---|---|---|---|---|---|---|
+| `000_conv3_ours_B0p3_sigma5em4_seed0_1371a1db` | `conv3_ours_B0p3_sigma5em4_seed0` | stale | training epoch 9/10 | `trex` | `2026-09-22T23:31:37.507089+00:00` | `results/eqprop-conv3-beta-sweep-5em4-10ep-20260922-v2/collected/trex/conv3_ours_B0p3_sigma5em4_seed0/runs/000_conv3_ours_B0p3_sigma5em4_seed0_1371a1db/status.json` |
 <!-- END GENERATED ACTIVE RUNS -->
 
 The generated entry above is an orphaned pre-clean recovery record: it has
@@ -688,6 +711,15 @@ after submission.
 
 | Results | State | Summary |
 |---|---|---|
+| [Conv1/2/3 uniform relative-noise advantage map](../results/conv123-relative-noise-advantage-map-20260925-v1/) | `running` | Exp013/H010 Sep25: Conv1 Akib CUDA580287, Conv2 nom-cool-1 CUDA3102865, Conv3 local CUDA2698152 all advancing StageA. Conv2 launched15:07Paris sharing with verified Ben jobs under new explicit all-GPU permission; his jobs/MPS untouched. Common 7 D/F x14 global eta, all schemes/depths, then shared refinement. Deadline18:58:56Paris, total5GPUh. Canary/tests waived. Run-watch PID2717721 armed with retained history for collection/refinement/review/chat. [Handles and commands](../results/conv123-relative-noise-advantage-map-20260925-v1/transport/launch-handoff.md). |
+| [Tiny experiment-loop audit](../results/experiment-loop-tiny-audit-20260925-v1/) | `reviewed` | Exp-002: two32-step CPU arms plus two smokes complete; four bundles valid. Science inconclusive (+0.879pp loss-reduction contrast). Workflow: 19.82s invocation time, 278.22s outside invocations before review; completion-only Monitor. Findings linked in manifest; no further run queued. |
+| [Conv3 relative endpoint noise](../results/conv3-relative-endpoint-noise-20260925-v1/) | `reviewed` | Sep25: exp012/H009 complete exploratory replay, 6 contexts / 11,232 finite rows collected. Relative noise reduces legacy third-convolution advantage in all paired comparisons; ours leads all four relative-noise cells. User waived further qualification; cross-device BPTT unchecked. Total0.42464GPUh. [Report](../results/conv3-relative-endpoint-noise-20260925-v1/analysis/report.md). |
+| [CIFAR L8 horizon continuation](../results/cifar10-l8-horizon-e50-e70-seed0-20260924-v1/) | `superseded` | Sep25: user cancelled all floor production and Fifi queue; PID18566 terminated after confirming no child. No production or remote gates ran. CPU/preparation evidence retained; old monitor STOP set. See series003/HANDOFF.md. |
+| [CIFAR L8 schedule renewal](../results/cifar10-l8-schedule-renewal-e50-e70-seed0-20260924-v1/) | `running` | Sep25: user requested3090 shutdown and V10032GB migration. Baseline/local and legacy/nom safely paused at epoch51; full-state bundles collected/validated, partial52 replayed. Jean Zay V10032GB jobs181102/181103 running, epoch52/batch700 at14:40 Paris; native restore succeeded. Unchanged deadlines~19:14–19:18 Paris; tests/canary skipped explicitly. Ours continues Riri, watcher active. Current commands/handles in series003/HANDOFF.md. |
+| [Initial normalized displacement / read-noise cosine map](../results/conv123-initial-displacement-noise-map-20260925-v1/report.md) | complete / reviewed | Exp00945beta matches; exp01045/45contexts77,760rows and exp01112/12contexts11,016rows collected and scientifically validated. H008 supported for selected Conv1/2 worst-layer pairs (10/10positive fresh-noise cell/draw contrasts each); Conv3 mixed6/10, not confirmed. No all-layer dominance, training or official-test read; no failures/exclusions/retries. Same-host matching preserved: Conv1/2Akib,Conv3local. Both lanes ended before12:30Paris September25; GPUs released. Measured series use≈0.97GPUh vs6.5h cap. [Screen](../campaigns/read-noise-beta/series/005-initial-displacement-noise-map/results/exp-010-initial-cosine-surface.md) · [Final confirmation review](../campaigns/read-noise-beta/series/005-initial-displacement-noise-map/results/exp-011-confirm-candidate-region.md). |
+| [Relative output displacement / noise extension](../results/eqprop-conv123-relative-output-noise-extension-20260924-v1/) | stopping at active-case boundary | Exp-008 user scope change September25 11:15Paris: no further training admissions.105 new cases complete and locally validated; active169756_21/22/23 finish unchanged, expected final108 successful new cases. Pending169756_24/25/26 cancelled before start (zero elapsed);27–32 never submitted and held. These9 exclusions are Conv3target6 across all3schemes/noises; preserve configs/attempt records, no automatic restart. All84 workstation cases complete; our workstation workers released. Medium owns final3 collection/validation. Frozen source5a1e95b8… and prior100GPUh cap retained as provenance; current request authorizes planning only, no cosine launch. [Plan](../campaigns/read-noise-beta/series/004-relative-output-training/experiments/exp-008-relative-output-noise-extension.md). |
+| [Conv1/2/3 matched relative output displacement training](../results/eqprop-conv123-relative-output-20260924-v1/) | reviewed | Exp007:33/36 completed; three Fifi user cancellations. All35 attempted bundles validate; one paging-failed Conv3 attempt preserved and replaced unchanged. Fixed ours−legacy means Conv1 −0.065pp, Conv3 −4.460pp; Conv2 mean undefined. H006 scoped contradictions, broad complete-grid inconclusive. [Full local report/plots](../results/eqprop-conv123-relative-output-20260924-v1/analysis/report.md); approximately26.8GPUh, no further exp007 launches. |
+| [Conv3 clean EqProp RMS and cosine versus beta](../results/conv3-clean-eqprop-rms-beta-20260924-v1/) | reviewed | Campaign exp-006:114/114 clean replay cells validate,16,416 state andgradientrows;2.6275GPUh,finished17:01:27Paris,workersgone. Centered displacement nearlylinear; no general steeperlegacydecay. Fullplots/report under analysis/; residualflags retained, no extraT/K ortraining. |
 | [CIFAR L8 overnight BN/gain follow-up](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/) | `reviewed` | Declared coverage complete: normalized legacy 50/50, two gain controls, 16 Adam/BN checkpoint cases and epoch-48 audit. Normalized/raw legacy finish 88.82/88.72%; no sustained validation benefit from epsilon correction at selected legacy rates. Native final solver audit passes. All nine bundles validate locally, including the preserved paused ancestor. Overnight stopped before 08:00; explicitly approved daytime completion finished on Fifi within its one-hour cap. All owned workers exited and GPU resources released; total 13.191/16 GPUh. [Report](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/report.md); [coverage](../results/cifar10-l8-bn-gain-followup-seed0-20260923-v1/analysis/collection_validation.json); [conclusions](experimental_manifest.md#cifar-l8-overnight-bn-adam-step-and-gain-controls-september-24). |
 | [Conv3 RMS-one beta T8 comparison](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/) | `reviewed` | No material gradient-quality change: max noisy/clean median cosine shift1.50e-7/8.73e-8; largest paired cosine shift1.42e-6. Ours retains its Conv3 advantage; early layers remain noise-dominated. Four new cases/2,880 rows paired with T16; eight smokes,119 remote hashes and all residuals validate. Akib exited0;625.35s total. [Report](../results/eqprop-conv3-rms1-t8-replay-20260923-v1/analysis/report.md). |
 | [Conv3 output-RMS-one gradient replay](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/) | `reviewed` | Ours beta1.385 versus legacy .02173: noisy Conv3 cosine .697/.238 initially and .753/.277 at p99 epoch30; ours improves on all36 paired batches at both checkpoints. First two layers remain noise-dominated. Four cases/2,880 comparisons, eight smokes,119 remote hashes and all residuals validate. Akib exited0;634.77s total. [Report](../results/eqprop-conv3-rms1-gradient-replay-20260923-v1/analysis/report.md). |
@@ -865,3 +897,12 @@ None recorded.
 ## Analyzing
 
 None recorded.
+
+
+| Planned submission | State | Config/wrapper and expected output |
+|---|---|---|
+| exp-007 Conv3 initial relative output training | all original cases submitted | `results/eqprop-conv123-relative-output-20260924-v1/transport/conv3.slurm`; fmu@v100/dev,2h/task. First array **152887** (0–8%3) terminal; task6 replaced by validated **159309**, now complete. Final array **160519** (9–11%3) running on3V100s, all500 finite batches verified after fresh3/3 local exact smokes and complete pool release; exclude r10i2n8. Expected remote root `/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv123-relative-output-20260924-v1/training_workspace/`. |
+
+| exp-007 task6 node recovery | canary159207 validated / replacement submitted159309 | Same frozen Conv3 baseline target1.6 config; `results/eqprop-conv123-relative-output-20260924-v1/transport/conv3-task6-recovery.slurm`; fmu@v100/dev, exclude r10i2n8. Diagnosed extreme major paging faults/physical reads; preserve partial task152887_6 and replace operationally. Fresh local exact smoke passed; restored live canary Slurm **159207** (10min), then unchanged10epoch production Slurm **159309** (2h) after canary validation. Expected remote root `/lustre/fsn1/projects/rech/fmu/ucy17uy/server_code/results/eqprop-conv123-relative-output-20260924-v1/`, outputs `target-smokes/jz-6-recovery1` and `production/jz-6-recovery1`. Extra3h V100 reserve transferred from validated unused Akib allocation; total60GPUh cap unchanged. |
+
+| exp-008 V100 extension | admissions stopped by user; final3 active | [Study](../results/eqprop-conv123-relative-output-noise-extension-20260924-v1/): arrays162366(0–8) and166933(9–17) complete;169756 tasks18–20 complete,21–23 active and allowed to finish. At September25 11:15Paris, `scancel --state=PENDING 169756_24 169756_25 169756_26` cancelled only those unstarted tasks (zero elapsed), preserving active21–23. Tasks27–32 were never submitted and are held. All9 Conv3target6 cases are scope-change exclusions, not numerical failures. No further training or cosine admissions. Exact source/configs and Slurm attempts retained; final collection owned by Medium. |

@@ -1,0 +1,71 @@
+{
+  "arm": "control",
+  "base_betas": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "batch_size": 32,
+  "budget_seconds": 900,
+  "case_id": "bptt-ours-e50",
+  "checkpoint_epoch": 50,
+  "checkpoint_file": "inputs/checkpoint.pt",
+  "diagnostic_blocks": [
+    3
+  ],
+  "displacement_calibration": {
+    "initial_beta_guesses": [
+      2.833995391538472,
+      55.533870458466694,
+      176.19753610179012
+    ],
+    "initial_guess_relative_rms": 1.0,
+    "max_evaluations": 24,
+    "relative_tolerance": 0.03
+  },
+  "energy_difference": "factored_centered_voltage_products",
+  "expected_environment": {
+    "cuda": "12.8",
+    "torch": "2.11.0+cu128"
+  },
+  "input_sha256": {
+    "inputs/checkpoint.pt": "740f536b0cae14f9289d8e84c826bb25025ce0e62fc73e880447565d5d74bcf5",
+    "inputs/checkpoint_provenance.json": "32e8e1a295ebd79101fd432d56feaf1fb615e0d2daffc5ce4bf037de38ac5063",
+    "inputs/cohort.json": "8e27e65e45582d502f14d04d32e06647800f4cee57963a79b1fbe8ac7e203d2d",
+    "inputs/model_config.json": "5fbb27053d59588a18a4f0a2da1f7dcdb5f02dc277c5a55802d091c50ff2d3de"
+  },
+  "measure_layer_displacement": true,
+  "noise": 0,
+  "parameters_and_bn_read_only": true,
+  "precision": "float32",
+  "references": [
+    "native_cifar_bptt",
+    "matched_frozen_current_local_bptt"
+  ],
+  "relative_rms_targets": [
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05,
+    0.0001,
+    0.00025,
+    0.0005,
+    0.001,
+    0.0025,
+    0.005,
+    0.01,
+    0.02,
+    0.035,
+    0.05,
+    0.065,
+    0.075,
+    0.085,
+    0.1,
+    0.125,
+    0.2,
+    0.4
+  ],
+  "scheme": "ours",
+  "study_id": "cifar-force-mask-float32-replay-20261001-v1",
+  "trajectory": "bptt"
+}

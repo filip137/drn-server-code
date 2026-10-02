@@ -1,0 +1,21 @@
+{
+  "fixed": {
+    "method": "hybrid_eqprop",
+    "betas": [0.009452322002142667, 0.3729986372379273, 0.11695196708152936],
+    "rms_targets": [0.02, 0.035, 0.001],
+    "measure_training_rms": true
+  },
+  "feedback": {
+    "method": "hybrid_eqprop",
+    "betas": [0.009452322002142667, 0.3729986372379273, 0.11695196708152936],
+    "rms_targets": [0.02, 0.035, 0.001],
+    "measure_training_rms": true,
+    "beta_feedback": {
+      "targets": [0.02, 0.035, 0.001],
+      "damping": 0.5,
+      "factor_bounds": [0.5, 2.0],
+      "beta_bounds": [0.00000001, 10000.0],
+      "rms_floor": 0.000000000001
+    }
+  }
+}
