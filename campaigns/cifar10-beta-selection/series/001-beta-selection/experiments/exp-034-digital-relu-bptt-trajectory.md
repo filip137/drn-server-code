@@ -65,3 +65,11 @@ replays on riri.
 bundle validated by the queue, 3.1s, peak reserved 10.4GiB (16-image validation CE
 71.8 after four updates, as in earlier smokes of this recipe). Production admitted on
 riri at about 15:31.
+
+**Reprioritized (15:40).** Filip set the plain-linear architecture as the first target.
+The running production attempt `cifar-digital-relu-bptt-ours-20261002` (admitted about
+15:31, under 10 minutes of training, no completed epoch) was cancelled by this session
+to free riri. Its partial remote bundle `cells/ours/` on riri is superseded and kept.
+It was resubmitted as `cifar-digital-relu-bptt-ours-r2-20261002`, run dir
+`cells/ours-r2/`, priority 3 (below the linear replays), with an unchanged scientific
+contract. The local collection path stays `cells/ours/`.

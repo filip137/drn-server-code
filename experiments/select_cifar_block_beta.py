@@ -1,6 +1,6 @@
 """Apply the frozen H-029 rule: per-block output-RMS targets (and a fixed-beta test) across checkpoints.
 
-    python -m experiments.select_cifar_block_beta STUDY_ROOT [--group relu] [--out NAME]
+    python -m experiments.select_cifar_block_beta STUDY_ROOT [--group G] [--scheme S] [--out NAME]
 
 Reads ``cases.json`` and each collected ``cells/<case>/artifacts/comparison.json``.
 Strict pass: every layer's pooled local cosine >= 0.99, every minibatch >= 0.95 and
@@ -42,9 +42,10 @@ def runs(grid, passing):
     return result
 
 
-def select(root, group=None):
+def select(root, group=None, scheme=None):
     cases = [r for r in json.loads((root / 'cases.json').read_text())
-             if (group is None or r['group'] == group) and (root / 'analysis' / f"{r['id']}-collection.json").is_file()]
+             if (group is None or r['group'] == group) and (scheme is None or r['scheme'] == scheme)
+             and (root / 'analysis' / f"{r['id']}-collection.json").is_file()]
     cases.sort(key=lambda r: r['epoch'])
     tables = {r['id']: json.loads((root / 'cells' / r['id'] / 'artifacts/comparison.json').read_text()) for r in cases}
     blocks = {}
@@ -114,10 +115,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root', type=Path)
     parser.add_argument('--group')
+    parser.add_argument('--scheme')
     parser.add_argument('--out', default='beta_selection')
     args = parser.parse_args()
     from experiments import reporting
-    summary = select(args.root, args.group)
+    summary = select(args.root, args.group, args.scheme)
     reporting.atomic_write_json(args.root / 'analysis' / f'{args.out}.json', summary)
     plot(summary, args.root, args.out, args.root)
     print(json.dumps({b: {k: v for k, v in info.items() if k in ('passing_targets', 'recommended_target', 'margin_steps',

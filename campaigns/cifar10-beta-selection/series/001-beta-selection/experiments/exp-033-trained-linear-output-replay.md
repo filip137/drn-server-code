@@ -88,3 +88,13 @@ cancelled before starting and resubmitted with riri-only placements as
 `cifar-trained-output-<case>-riri-20261002`, plus baseline e50. Their remote run
 directories are `cells/<case>-riri/`; the local collection path is unchanged.
 The coordinator restarted riri-only (stages legacy e5/e10, pushes to riri only).
+
+**Linear target first (Filip, October2 15:40).** Per-block beta selection is to be
+done first for the plain `linear` architecture. The linear group is extended to the
+full Codex trajectory: ours epochs 0/1/5/10 plus 20/30/40/50 from its continuation
+cell `ours-e10-e50` (fifi; expected about 16:00, 18:05, 20:10, 22:20) and legacy
+0/1/5/10. `linear-ours-e0`/`linear-legacy-e0` staged and submitted riri-only at 15:45.
+H-029's frozen selection rule is applied per scheme to this trajectory
+(`experiments/select_cifar_block_beta.py --group linear --scheme S`, output
+`analysis/beta_selection_linear_<scheme>.{json,jpg}`), descriptively for the linear
+architecture. Coordinator: scratchpad `coordinator2.py` (stateless, restartable).

@@ -164,19 +164,23 @@ def stage_linear(scheme, epoch):
     import torch
     epoch = int(epoch)
     case = f'linear-{scheme}-e{epoch}'
-    assert scheme in LINEAR_REMOTE and epoch in (1, 5, 10), (scheme, epoch)
+    assert scheme in LINEAR_REMOTE and epoch in (0, 1, 5, 10, 20, 30, 40, 50), (scheme, epoch)
     assert case not in {r['id'] for r in rows()}, case
-    source = LINEAR / 'cells' / scheme / 'checkpoints' / f'epoch_{epoch:03d}.pt'
+    # Epochs 20-50 come from the Codex ours continuation (cell ours-e10-e50, on fifi).
+    cell = f'{scheme}-e10-e50' if epoch > 10 else scheme
+    assert epoch <= 10 or scheme == 'ours', (scheme, epoch)
+    name = 'initial_model.pt' if epoch == 0 else f'epoch_{epoch:03d}.pt'
+    source = LINEAR / 'cells' / cell / 'checkpoints' / name
     if LINEAR_REMOTE[scheme] != 'local':
         source.parent.mkdir(parents=True, exist_ok=True)
-        remote = REMOTE_RESULTS / LINEAR.name / 'cells' / scheme / 'checkpoints' / source.name
+        remote = REMOTE_RESULTS / LINEAR.name / 'cells' / cell / 'checkpoints' / source.name
         subprocess.run(['rsync', '-a', '-e', ' '.join(SSH), f'{LINEAR_REMOTE[scheme]}:{remote}', str(source)], check=True)
     checkpoint = torch.load(source, map_location='cpu', weights_only=False)
     assert checkpoint['epoch'] == epoch and checkpoint['config']['scheme'] == scheme
     assert checkpoint['config']['block_output_activation'] == 'linear'
     model_config = checkpoint['config']
     del checkpoint
-    base = json.loads((PARENT_CONFIGS / f'bptt-{scheme}-e10.json').read_text())
+    base = json.loads((PARENT_CONFIGS / (f'init-{scheme}-e0.json' if epoch == 0 else f'bptt-{scheme}-e10.json')).read_text())
     base.update(checkpoint_epoch=epoch, scheme=scheme, trajectory='bptt-linear-outputs')
     from experiments import reporting
     provenance = dict(source_study=LINEAR.name, source_checkpoint=str(source.relative_to(REPO)),

@@ -36,7 +36,9 @@ SSH = ['ssh', '-F', '/home/filip/.ssh/config', '-o', 'BatchMode=yes']
 ENV = dict(KMP_DISABLE_SHM='1', KMP_SHM_DISABLE='1', OMP_NUM_THREADS='1', MKL_NUM_THREADS='1',
            OPENBLAS_NUM_THREADS='1', NUMEXPR_NUM_THREADS='1', CUBLAS_WORKSPACE_CONFIG=':4096:8',
            PYTHONUNBUFFERED='1')
-JOB = 'cifar-digital-relu-bptt-ours-20261002'
+# r2: resubmitted at lower priority after the first attempt was cancelled to put linear replays first.
+JOB = 'cifar-digital-relu-bptt-ours-r2-20261002'
+RUN_CELL = 'ours-r2'
 BUDGET_SECONDS = 21590
 
 
@@ -131,7 +133,7 @@ def smoke(target):
 def queue_spec(target):
     from experiments import reporting
     base = REMOTE_RESULTS / STUDY
-    run_dir = base / 'cells/ours'
+    run_dir = base / 'cells' / RUN_CELL
     stop = ('import datetime,runpy,sys; seconds=float(sys.argv[1]); '
             'deadline=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=seconds)).isoformat(); '
             "sys.argv=['experiments.train_cifar_l8_analog',*sys.argv[2:],'--stop-before',deadline]; "
@@ -144,7 +146,7 @@ def queue_spec(target):
                        'digital-ReLU block-output architecture; this BPTT run supplies its trajectory checkpoints. '
                        'Same contract as the Codex linear-output ours arm; runs restricted to riri.'),
         resource_profile='default', peak_memory_mib=11264, headroom_mib=2048, expected_seconds=12000,
-        budget_seconds=BUDGET_SECONDS, stale_seconds=2700, startup_grace_seconds=180, priority=6,
+        budget_seconds=BUDGET_SECONDS, stale_seconds=2700, startup_grace_seconds=180, priority=3,
         deadline='2026-10-03T08:00:00+02:00', retry_safe=False, recovery=True,
         placements={target: dict(workdir=str(base / 'source'), run_dir=str(run_dir), env=dict(ENV),
             gpu_models=['RTX 5090'], argv=argv,
@@ -157,7 +159,7 @@ def queue_spec(target):
 
 def submit(target):
     from experiments import reporting
-    path = ROOT / 'launch/ours-job.json'
+    path = ROOT / f'launch/{RUN_CELL}-job.json'
     reporting.atomic_write_json(path, queue_spec(target))
     subprocess.run([sys.executable, QUEUE, 'submit', str(path)], check=True)
 
