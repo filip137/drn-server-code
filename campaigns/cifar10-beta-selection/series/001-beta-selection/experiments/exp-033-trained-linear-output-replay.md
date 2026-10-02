@@ -69,3 +69,12 @@ stages/pushes/submits `linear-ours-e10`, `linear-legacy-e5` and `linear-legacy-e
 as Codex writes them. The queue owns placement, monitoring and the completion hook
 `run_cifar_trained_output_replay collect CASE`. The coordinator's session limit is
 2h (until about 15:10); it must be restarted for legacy e10 (expected about 16:25).
+
+**Placement restricted to riri (Filip, October2 13:50).** By then the smoke had
+validated (13:26) and released jobs had completed on trex/fifi/riri: baseline
+e1/e5/e10/e30 and ours e1/e5 transplants. `transplant-bptt-baseline-e50` was
+cancelled on fifi by someone outside this session. The 12 jobs still pending were
+cancelled before starting and resubmitted with riri-only placements as
+`cifar-trained-output-<case>-riri-20261002`, plus baseline e50. Their remote run
+directories are `cells/<case>-riri/`; the local collection path is unchanged.
+The coordinator restarted riri-only (stages legacy e5/e10, pushes to riri only).

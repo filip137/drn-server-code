@@ -62,8 +62,8 @@ def save_rows(table):
     reporting.atomic_write_json(ROOT / 'cases.json', table)
 
 
-def job_id(case):
-    return f'cifar-trained-output-{case}-20261002'
+def job_id(case, tag=None):
+    return f'cifar-trained-output-{case}-{tag}-20261002' if tag else f'cifar-trained-output-{case}-20261002'
 
 
 def source_files():
@@ -193,14 +193,15 @@ def push(target):
     print(json.dumps(dict(target=target, verified_files=len(observed))))
 
 
-def placement(row, target):
+def placement(row, target, tag=None):
     from experiments import reporting
     local = target == 'local'
     base = ROOT if local else REMOTE_RESULTS / STUDY
     python = LOCAL_PYTHON if local else REMOTE_PYTHON
     dataset = (REPO if local else REMOTE_RESULTS.parent) / 'results/cifar10-l8-analog-three-scheme-adam-lr-seed0-20260921-v1/data/cifar-10-batches-py'
     input_root = base / row['input_root']
-    run_dir = base / 'cells' / row['id']
+    # A resubmission under a new job id needs its own remote run directory.
+    run_dir = base / 'cells' / (f"{row['id']}-{tag}" if tag else row['id'])
     config = base / 'source' / row['config']
     identity = base / 'source/source_identity.json'
     return dict(workdir=str(base / 'source'), run_dir=str(run_dir), env=dict(ENV),
@@ -214,26 +215,31 @@ def placement(row, target):
                         dict(path=str(input_root / 'inputs/checkpoint.pt'), sha256=row['checkpoint_sha256'])])
 
 
-def queue_spec(row):
-    return dict(id=row['job_id'], project_dir=str(REPO), handoff=str(HANDOFF),
+def queue_spec(row, targets=PLACEMENTS, tag=None):
+    return dict(id=job_id(row['id'], tag), project_dir=str(REPO), handoff=str(HANDOFF),
         authorization=('Filip asked (October 2) for float32 replays of trained checkpoints: Codex linear-output '
                        'BPTT checkpoints in the linear architecture and the earlier diode-output checkpoints '
                        'loaded into the digital_relu architecture. Read-only; no training, noise or test split.'),
         resource_profile='default', peak_memory_mib=11264, headroom_mib=2048, priority=4,
         expected_seconds=EXPECTED_SECONDS, budget_seconds=QUEUE_SECONDS, deadline='2026-10-03T08:00:00+02:00',
         retry_safe=False, recovery=False, stale_seconds=900,
-        placements={target: placement(row, target) for target in PLACEMENTS},
+        placements={target: placement(row, target, tag) for target in targets},
         completion=dict(argv=[sys.executable, '-m', 'experiments.run_cifar_trained_output_replay', 'collect',
                               row['id']], workdir=str(REPO), timeout_seconds=900, retry_safe=True))
 
 
 def submit(*cases):
+    """``submit CASE ...`` uses every placement; ``submit --only TARGET CASE ...`` restricts to one host."""
     from experiments import reporting
+    targets, tag = PLACEMENTS, None
+    if cases and cases[0] == '--only':
+        targets, tag, cases = (cases[1],), cases[1], cases[2:]
+        assert tag in PLACEMENTS, tag
     table = {r['id']: r for r in rows()}
     for case in cases:
         row = table[case]
-        path = ROOT / 'launch' / f'{case}.json'
-        reporting.atomic_write_json(path, queue_spec(row))
+        path = ROOT / 'launch' / (f'{case}-{tag}.json' if tag else f'{case}.json')
+        reporting.atomic_write_json(path, queue_spec(row, targets, tag))
         subprocess.run([sys.executable, QUEUE, 'submit', str(path)], check=True)
 
 
