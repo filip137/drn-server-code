@@ -680,17 +680,12 @@ nudging strengths, $+\beta$ and $-\beta$:
 \section{Experimental part}
 \label{sec:selection_stage_conv_results}
 We investigate how the choice of bidirectional amplification factors
-affects the training performance and robustness of deep resistive
-networks (DRNs). We compare three amplification schemes, denoted
-baseline, balanced, and legacy, which differ in the relative
-strengths of forward voltage and backward current amplification.
-We now investigate how the choice of bidirectional amplification factors, and the resulting asymmetry between forward and backward interactions, affects the training of DRNs.
-We compare three bidirectional amplification schemes, using $(A,B)=(1,1)$,
-$(4,1)$, and $(4,0.25)$ where $A$ and $B$ denote the forward voltage and backward
-current amplification factors. We denote these schemes as baseline, balanced, and legacy,
-respectively.
+affects the training performance and robustness of DRNs. We compare three amplification schemes using $(A,B)=(1,1)$,
+$(4,1)$, and $(4,0.25)$, which we denote as
+baseline, balanced, and legacy, respectively.
 
-We first compare the amplification schemes under idealized conditions and then we examine their sensitivity to hardware constraints. First, we evaluate the effects of the voltage read noise during training and a then of a limited available conductance range. To assess how the effects of amplification extend to a more demanding setting, we conclude with CIFAR-10 experiments using the deeper L8 architecture, comparing training with and without voltage read noise.
+
+Our experiments are divided in two parts. First, we first compare the three amplification schemes on MNIST using convolutional DRNs of increasing depths. We compare them under idealized conditions and then examine how sensitive the training is to the read-noise and limited conductance range. Second, we implement a hybrid analog--digital architecture that enables us to scale DRNs to CIFAR-10. We evaluate the performance of the three amplification schemes in this architecture, both with and without read noise.
 
 
 
@@ -699,22 +694,31 @@ We first compare the amplification schemes under idealized conditions and then w
 \subsection{MNIST experiments}
 \label{sec:mnist_experiments}
 
-We first perform the experiments on the MNIST dataset, where each scheme is evaluated on the
-DRNs with one, two, or three convolutional layers (Conv1, Conv2, Conv3), with
-hidden-channel configurations $[64]$, $[64,128]$, and $[64,128,256]$.
-All convolutions use $3\times3$ kernels, unit padding, and no pooling, with
-strides $[2]$, $[2,2]$, and $[2,2,1]$, respectively.
-Each class is represented by a differential pair of output neurons as described in
-Section~\ref{sec:supp_output_encoding}.
+For the MNIST experiments, we consider three convolutional DRN
+architectures with one, two, and three convolutional layers,
+denoted Conv1, Conv2, and Conv3, respectively.
+Their hidden-channel configurations are $[64]$, $[64,128]$,
+and $[64,128,256]$. All convolutions use $3\times3$ kernels
+with unit padding and no pooling, with strides $[2]$,
+$[2,2]$, and $[2,2,1]$, respectively.
+The output layer contains ten differential pairs of neurons,
+one per class, with the class scores given by the voltage
+differences within each pair
+(Section~\ref{sec:supp_output_encoding}).
+
+We use BPTT to investigate the effects of amplification under
+noiseless conditions and with bounded conductances. We then
+use centered EqProp to examine how voltage read noise
+affects gradient estimation and training.
 
 \subsubsection{No non-idealities}
 \label{sec:wide_bptt_eqprop_results}
 
 % The slight problem with this section is that it seems I am promising the intepretation of these results and I end up explaining the effects of the amplification on the voltage magnitude before training and on the conductance distribution after training
 % However, these are important to explain why does the baseline perform worse
-Here, we compare the three amplification schemes under noiseless conditions, and when the networks are trained with BPTT.
-Table~\ref{tab:wide-bptt-test} reports MNIST test accuracy for Conv1, Conv2 and Conv3,
-with mean and sample standard deviation over three seeds. The schemes have similar accuracy for Conv1. For Conv2 and Conv3, both amplified schemes achieve higher accuracy than baseline. Balanced and legacy remain close and their mean accuracies differ by only $0.03$--$0.06$ percentage points across the three architectures.
+Table~\ref{tab:wide-bptt-test} reports MNIST test accuracy
+after BPTT training for Conv1, Conv2, and Conv3, with mean
+and sample standard deviation over three seeds. The schemes have similar accuracy for Conv1. For Conv2 and Conv3, both amplified schemes achieve higher accuracy than baseline. Balanced and legacy remain close and their mean accuracies differ by only $0.03$--$0.06$ percentage points across the three architectures.
 
 
 To interpret these results, we examine how the amplification schemes affect voltage propagation throughout the network before training. Figure~\ref{fig:bptt-free-voltages-before} compares the layer-wise free-state RMS voltages at initialization. We observe that, in the unamplified network (baseline), the voltage attenuates across successive layers because each layer is resistively loaded by the downstream network. In the amplified networks (balanced, legacy) this is mitigated by the forward voltage amplification, which counteracts the attenuation, while current de-amplification (legacy) further reduces the loading by the downstream network on the upstream nodes.
@@ -769,15 +773,10 @@ In the previous section, we assumed idealized, noiseless conditions. Neuromorphi
 
 %The previous section assumes noiseless voltage measurements for the EqProp update. As the EqProp gradient update depends on the contrast between positive and negative nudged states, its quality is sensitive to errors in these measurements. 
 Here, we assume that the noise occurs due to the measurement error occurs when reading the nudged-state voltages and we model it as
-\[
-\widetilde v_i^{(\ell),\pm}
-=
-v_i^{(\ell),\pm}
-+
-\eta\lvert v_i^{(\ell),\pm}\rvert z_i^{(\ell),\pm},
-\qquad
-z_i^{(\ell),\pm}\sim\mathcal N(0,1).
-\]
+\begin{equation}
+    v_{\mathrm{read}} = v + \eta |v| \epsilon,
+    \qquad \epsilon \sim \mathcal{N}(0,1),
+\end{equation}
 The relative noise coefficient \(\eta\) is identical across layers and amplification schemes, with independent errors across nodes, phases, and training examples. Each noisy node voltage read is reused for all incident connections.
 
 To compare the amplification schemes at a common relative output
@@ -892,6 +891,10 @@ less weights stuck at $G_{\min}$.
 
 \subsection{CIFAR-10 experiments}
 \label{sec:cifar10_results}
+
+\subsubsection{Network}
+\label{sec:cifar10_network}
+
 %This is also tricky because it seems that I will spend a significant portion of the section actually describing the network and how do the forward/backward pass work
 %This stays in the main for sure
 To evaluate amplification in a deeper network, we extend our experiments
@@ -911,6 +914,18 @@ layer is linear. Each analog block is followed by digital $2\times2$ max
 pooling and batch normalization. The resulting
 features are passed to a fully connected resistive readout with ten
 linear output nodes, whose voltages serve as the classification logits.
+
+Figure~\ref{fig:l8-hybrid-schematic} shows the network and the flow of loss derivatives through its analog and digital stages.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/l8_hybrid_schematic.pdf}
+\caption{Hybrid analog--digital L8 architecture for CIFAR-10. The three analog convolutional blocks and the analog fully connected readout are trained with EqProp (EP), while the digital stages use backpropagation (BP). Convolutional channel counts refer to physical channels; differential decoding yields 128, 256 and 512 features at the successive block outputs.}
+\label{fig:l8-hybrid-schematic}
+\end{figure}
+
+\subsubsection{Experiments}
+\label{sec:cifar10_experiments}
 
 To investigate the effect of voltage read noise in the hybrid architecture,
 we compare the amplification schemes under clean and noisy training
