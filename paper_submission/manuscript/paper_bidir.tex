@@ -683,14 +683,8 @@ We now investigate how the choice of bidirectional amplification factors, and th
 We compare three bidirectional amplification schemes, using $(A,B)=(1,1)$,
 $(4,1)$, and $(4,0.25)$ where $A$ and $B$ denote the forward voltage and backward
 current amplification factors. We note these schemes as baseline, balanced, and legacy,
-respectively. Each scheme is evaluated on the
-DRNs with one, two, or three convolutional layers (Conv1, Conv2, Conv3), with
-hidden-channel configurations $[64]$, $[64,128]$, and $[64,128,256]$.
-All convolutions use $3\times3$ kernels, unit padding, and no pooling, with
-strides $[2]$, $[2,2]$, and $[2,2,1]$, respectively.
-Each class is represented by a differential pair of output neurons as described in
-Section~\ref{sec:supp_output_encoding}.
-\\
+respectively.
+
 We first compare the performance of the three amplification
 schemes in the idealized conditions. We then evaluate how read noise in the
 voltage measurements of the positive and negative nudged phases affects
@@ -702,7 +696,18 @@ noisy training on CIFAR-10 using the deeper L8 architecture.
 
 
 
-\subsection{No non-idealities}
+\subsection{MNIST experiments}
+\label{sec:mnist_experiments}
+
+Each scheme is evaluated on MNIST using
+DRNs with one, two, or three convolutional layers (Conv1, Conv2, Conv3), with
+hidden-channel configurations $[64]$, $[64,128]$, and $[64,128,256]$.
+All convolutions use $3\times3$ kernels, unit padding, and no pooling, with
+strides $[2]$, $[2,2]$, and $[2,2,1]$, respectively.
+Each class is represented by a differential pair of output neurons as described in
+Section~\ref{sec:supp_output_encoding}.
+
+\subsubsection{No non-idealities}
 \label{sec:wide_bptt_eqprop_results}
 
 
@@ -782,7 +787,7 @@ The unamplified network exhibits the strongest initial forward attenuation. Afte
 \end{figure}
 
 
-\subsection{EqProp with endpoint read noise}
+\subsubsection{EqProp with endpoint read noise}
 \label{sec:eqprop_endpoint_read_noise_results}
 % BEGIN PROPOSED SECTION 4.2 REWRITE
 % Proposed replacement for the prose in Section 4.2 (2026-10-10).
@@ -950,7 +955,7 @@ amplification-only effect.
 \label{fig:eqprop-conv123-trained-cosine-to-bptt}
 \end{figure}
 
-\subsection{BPTT with bounded conductances}
+\subsubsection{BPTT with bounded conductances}
 \label{sec:bounded_bptt_results}
 % i should probably say that this limits signal or something similar
 % Perhaps I should do something better than memristive? More general?
@@ -993,7 +998,7 @@ less weights stuck at $G_{\min}$.
 
 \clearpage
 
-\subsection{CIFAR-10 results}
+\subsection{CIFAR-10 experiments}
 \label{sec:cifar10_results}
 
 We also evaluate amplification on CIFAR-10 using L8, a network with eight
