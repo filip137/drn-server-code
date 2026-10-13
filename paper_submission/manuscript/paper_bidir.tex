@@ -1,0 +1,1321 @@
+% Review alternative: original Sections 1--5, with Sections 2 and 3 merged.
+% Select paper_bidir.tex as the main document when compiling.
+\documentclass{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage[american]{circuitikz}
+\usetikzlibrary{arrows.meta,calc,positioning}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+\allowdisplaybreaks
+
+\title{Bidirectional Amplification in Deep Resistive Networks}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+
+\subsection{Physical neural networks}
+
+
+Physical neural networks seek to perform computation directly through the
+dynamics of a physical system, rather than by numerically emulating a neural
+network on digital hardware. By exploiting analog dynamics such systems offer a route towards more energy-efficient machine learning.\\
+Training these systems, however, remains challenging. Backpropagation requires access to an accurate differentiable model of the forward
+computation. In physical hardware the explicit expression for the forward
+dynamics may not be known precisely, and may tbe affected by hardware non-idealities.
+
+
+
+
+
+\subsection{Equilibrium Propagation}
+Equilibrium Propagation (EP) emerged as a promising way to train such physical
+systems~\cite{scellier2017equilibrium}. Rather than implementing
+backpropagation as a separate computational graph, EP uses the physical system
+itself to compute the learning rule. In this way, inference and credit
+assignment are performed by the same hardware, without requiring an explicit
+model of its internal parameters.
+
+\subsection{Extending Equilibrium Propagation beyond symmetry}
+
+The standard energy-based formulation of EP is limited to conservative systems, whose dynamics are reciprocal. Vector-Field formulation of EP extends the error-propagation through the physical system principle to general fixed-point dynamics~\cite{scellier2018generalization}, but does not recover the exact gradient when these dynamics are non-reciprocal. Scurria et al.~\cite{scurria2026nonconservative} showed that EP can be applied to the non-conservative systems by correcting the nudged dynamics for their non-reciprocal component. More recently, physical-adjoint theory has shown that ordinary reciprocity is stronger than necessary as the exact gradient can be obtained also when the dynamics satisy Onsager reciprocity~\cite{bosch2026unifying}.
+
+\subsection{Asymmetry as a useful design choice}
+
+Recent work has also shown that the asymmetry is not an imperfection that needs to be accounted for but it can also
+be a useful design variable. Høier et al. showed that skew-symmetric Hopfield networks trained with dyadic learning exhibit improved robustness and reduced neuronal saturation while retaining comparable predictive performance.~\cite{hoier2024dyadic}. Liu and Chen showed that weakening
+backward interactions in EP-trained Hopfield networks can substantially
+stabilize and accelerate convergence ~\cite{liu2026practical}. While these results motivate controlling
+asymmetry, they do not establish how the asymmetry can be realized in the physical neural network nor how it can be appropriately chosen under the constraints and the non-idealities of the hardware.
+
+\subsection{Our work}
+The physical neural network that we focus on in this work is the Deep Resistive Network (DRN). DRNs are nonlinear electrical circuits in where the state variables are the node voltages and the trainable parameters are the conductances. Computation is performed by allowing the circuit to relax to its steady-state voltage configuration, and the conductances can be trained using local learning rules such as Equilibrium Propagation.  
+We show that bidirectional amplification provides a physical
+mechanism for controlling the asymmetry of interactions in DRNs. Bidirectional amplifiers make the DRN dynamics Onsager reciprocal, with a
+diagonal Onsager metric determined explicitly by the amplifier gains. These
+gains control the relative strength of forward and backward interactions
+between adjecent layers, thereby tuning how feed-forward the network
+dynamics are.
+
+We first characterize this theoretically by studying DRN's vector field and deriving the
+corresponding learning rule. We then investigate how the amplification should be chosen under hardware constraints and
+non-idealities. We compare three amplification schemes in DRNs with one, two,
+and three convolutional layers. In the noiseless regime, making the network
+more feed-forward improves the performance, with an even stronger
+advantage when the available weight dynamic range is limited. However, this benefit comes at a cost. Increasing
+feed-forwardness attenuates the propagation of the error signal,
+making credit assignment progressively more sensitive to read noise and
+eventually preventing successful training even at small noise levels.
+Bidirectional amplification therefore exposes a hardware-dependent trade-off
+between feed-forward computation and conductance-range requirements on the one
+hand, and robust physical error propagation on the other.
+
+\section{Equilibrium Propagation and Onsager reciprocity}
+\label{sec:equilibrium_onsager}
+
+\subsection{Vector-Field Equilibrium Propagation}
+\label{sec:vector_field_ep}
+
+We consider a physical system characterized by a vector field
+$F(x,s;\theta)$, where $x$ denotes the clamped input, $s$ the state of the
+system, and $\theta$ its trainable parameters. We denote its state Jacobian
+by $J(x,s;\theta):=\partial F(x,s;\theta)/\partial s$.
+Given a target $y$, learning
+aims to minimize a cost $C(s^0,y)$ evaluated at the free equilibrium
+$s^0=s^0(x;\theta)$. We denote the cost at the steady state by
+$\mathcal L(\theta)=C(s^0(x;\theta),y)$, so that
+$\mathrm dC/\mathrm d\theta=\nabla_\theta\mathcal L$.
+
+Equilibrium Propagation (EP) estimates this gradient using two phases,
+the free phase and the nudged phase.
+
+In the free phase, the input $x$ is clamped and the network settles into
+its free equilibrium $s^0$:
+\begin{equation}
+F(x,s^0;\theta)=0.
+\label{eq:vector_field_free_equilibrium}
+\end{equation}
+
+In the nudged phase, the vector field is perturbed by the cost-derived
+term $-\beta\nabla_s C$ to nudge the output toward the
+target~\cite{scellier2018generalization}. The parameter $\beta>0$ controls
+the strength of this perturbation, while the input and trainable parameters
+remain fixed. The network then settles into a nudged equilibrium $s^\beta$
+satisfying
+\begin{equation}
+F(x,s^\beta;\theta)-\beta\nabla_s C(s^\beta,y)=0.
+\label{eq:vector_field_nudged_equilibrium}
+\end{equation}
+
+Comparing the free and nudged equilibria gives the learning rule
+\begin{equation}
+\nu_{\mathrm{VF}}
+=
+\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}.
+\label{eq:vector_field_learning_rule}
+\end{equation}
+Throughout this section, we denote the Jacobian at the equilibrium $s^0$ as $J=J(x,s^0;\theta)$ and evaluate
+$\partial F/\partial\theta$ at the same equilibrium.
+
+To determine when this update agrees with gradient descent on the cost,
+we apply the chain rule to $C(s^0(x;\theta),y)$:
+\begin{equation}
+\frac{\mathrm dC}{\mathrm d\theta}
+=
+\left(\frac{\mathrm ds^0}{\mathrm d\theta}\right)^{\mathsf T}
+\nabla_s C(s^0,y).
+\label{eq:vector_field_cost_chain_rule}
+\end{equation}
+Differentiating the the stady-state condition of Eq.~\eqref{eq:vector_field_free_equilibrium} with respect to $\theta$ gives
+\begin{equation}
+J\frac{\mathrm d s^0}{\mathrm d\theta}
++\frac{\partial F}{\partial\theta}=0,
+\end{equation}
+such that
+\begin{equation}
+\frac{\mathrm d s^0}{\mathrm d\theta}
+=-J^{-1}\frac{\partial F}{\partial\theta}.
+\end{equation}
+Substituting this into Eq.~\eqref{eq:vector_field_cost_chain_rule}
+gives the cost gradient
+\begin{equation}
+\frac{\mathrm dC}{\mathrm d\theta}
+=
+-\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}
+J^{-\mathsf T}
+\nabla_s C(s^0,y).
+\label{eq:vector_field_exact_gradient}
+\end{equation}
+
+To express the learning rule in Eq.~\eqref{eq:vector_field_learning_rule}
+in terms of the same derivatives, we now evaluate the nudging response
+$\left.\mathrm ds^\beta/\mathrm d\beta\right|_{\beta=0}$. We differentiate
+Eq.~\eqref{eq:vector_field_nudged_equilibrium} with respect to $\beta$. At $\beta=0$, this gives
+\begin{equation}
+J
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+-\nabla_s C(s^0,y)=0.
+\label{eq:vector_field_nudging_derivative}
+\end{equation}
+Here, the term containing the derivative of $\nabla_s C(s^\beta,y)$ is
+multiplied by $\beta$ and vanishes at $\beta=0$. The response of the
+equilibrium to nudging is therefore
+\begin{equation}
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+=
+J^{-1}
+\nabla_s C(s^0,y).
+\label{eq:vector_field_nudging_sensitivity}
+\end{equation}
+The vector-field EP update follows by substituting this response into
+Eq.~\eqref{eq:vector_field_learning_rule}:
+\begin{equation}
+\nu_{\mathrm{VF}}
+=
+\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}
+J^{-1}
+\nabla_s C(s^0,y).
+\label{eq:vector_field_update_response}
+\end{equation}
+Comparing this expression with Eq.~\eqref{eq:vector_field_exact_gradient}
+shows that the EP update contains the inverse state Jacobian $J^{-1}$,
+whereas the exact descent direction $-\mathrm dC/\mathrm d\theta$ contains
+its inverse transpose $J^{-\mathsf T}$. The two agree when the state
+Jacobian is symmetric:
+\begin{equation}
+J=J^{\mathsf T}.
+\label{eq:vector_field_symmetry}
+\end{equation}
+This symmetry condition concerns the Jacobian at the free equilibrium.
+When it is not satisfied, the vector-field update is biased.
+
+\subsection{Onsager reciprocity and nudging}
+%TO DO NEED TO DECIDE WHICH 2.2 CHAPTER DO I USE
+\label{sec:two_sections_symmetrizable_fields}
+\subsubsection{New explanation}
+The previous section showed that the response of the equilibrium to the nudge is
+\begin{equation}
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+=
+J^{-1}\nabla_s C,
+\end{equation}
+whereas the exact descent direction is
+\begin{equation}
+-\frac{\mathrm d C}{\mathrm d\theta}
+=
+\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}
+J^{-\mathsf T}\nabla_s C.
+\end{equation}
+For a general non-reciprocal system, these two responses differ.
+Here, we consider systems for which they are related by a fixed
+symmetric positive-definite matrix $D$ according to
+\begin{equation}
+J^{-\mathsf T}=D J^{-1}D^{-1}.
+\label{eq:onsager_relation}
+\end{equation}
+Equation~\eqref{eq:onsager_relation} shows how the physical
+$J^{-1}$ response can be used to recover the $J^{-\mathsf T}$
+response required for exact gradient descent. Specifically, we first
+transform the cost nudge by $D^{-1}$. The nudged equilibrium is therefore
+defined by
+\begin{equation}
+F(x,s^\beta;\theta)
+-\beta D^{-1}\nabla_s C(s^\beta,y)=0.
+\label{eq:two_sections_weighted_nudging}
+\end{equation}
+Differentiating with respect to $\beta$ at $\beta=0$ gives
+\begin{equation}
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+=
+J^{-1}D^{-1}\nabla_s C(s^0,y).
+\label{eq:two_sections_weighted_response}
+\end{equation}
+Multiplying this response by $D$ then gives
+\begin{equation}
+D
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+=
+D J^{-1}D^{-1}\nabla_s C
+=
+J^{-\mathsf T}\nabla_s C,
+\end{equation}
+which is precisely the response entering the exact descent direction.
+We therefore define the weighted EP update
+\begin{equation}
+\begin{aligned}
+\nu_D
+&:=
+\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}D
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+\\
+&=
+\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}
+J^{-\mathsf T}\nabla_s C(s^0,y)
+\\
+&=
+-\frac{\mathrm dC}{\mathrm d\theta}.
+\end{aligned}
+\label{eq:weighted_vector_field_update}
+\end{equation}
+This is the form of Onsager reciprocity discussed by
+B\"osch et al.~\cite{bosch2026unifying}. 
+In the following section, we establish this condition for bidirectionally
+amplified DRNs, determine $D$ from the amplifier gains, and derive the learning rule.
+
+\subsubsection{My explanation}
+\label{sec:my_vector_field_explanation}
+
+The difference between the vector-field EP update and the exact gradient descent
+on the cost function is that the former depends on the $J^{-1}$ whereas the latter depends on the $J^{-\mathsf T}$. We notice, however, that we can
+define an auxiliary vector field
+\begin{equation}
+\widetilde F(x,s;\theta)=DF(x,s;\theta),
+\label{eq:my_explanation_auxiliary_field}
+\end{equation}
+where $D$ is symmetric positive definite and independent of the state. Since $D$ is invertible, $\widetilde F=0$ and
+$F=0$ have the same solutions. 
+Since $D$ is state-independent, the Jacobian of the $\widetilde F(x,s;\theta)$ is
+\begin{equation}
+\widetilde J
+:=\frac{\partial\widetilde F}{\partial s}
+=DJ.
+\label{eq:my_explanation_auxiliary_jacobian}
+\end{equation}
+Using $D^{\mathsf T}=D$, its symmetry condition becomes
+\begin{equation}
+\widetilde J=\widetilde J^{\mathsf T}
+\quad\Longleftrightarrow\quad
+DJ=J^{\mathsf T}D.
+\label{eq:my_explanation_reciprocity}
+\end{equation}
+The condition on the right is Onsager reciprocity~\cite{bosch2026unifying}.
+If such a matrix $D$ exists, the auxiliary field has a symmetric Jacobian
+even when the original field does not. We can therefore apply the result
+of Section~\ref{sec:vector_field_ep} to $\widetilde F$ and obtain the exact
+gradient of the same equilibrium cost.
+
+In this representation, adding the usual cost-derived perturbation to
+$\widetilde F$ gives the nudged equilibrium condition
+\begin{equation}
+DF(x,s^\beta;\theta)-\beta\nabla_s C(s^\beta,y)=0.
+\label{eq:my_explanation_auxiliary_nudging}
+\end{equation}
+Multiplying by $D^{-1}$ expresses this condition in terms of the physical
+vector field:
+\begin{equation}
+F(x,s^\beta;\theta)-\beta D^{-1}\nabla_s C(s^\beta,y)=0.
+\label{eq:my_explanation_physical_nudging}
+\end{equation}
+Thus, the nudging prescribed for $\widetilde F$ can be implemented in the
+physical system by rescaling the cost-derived perturbation by $D^{-1}$.
+
+Applying the learning rule in Eq.~\eqref{eq:vector_field_learning_rule}
+to $\widetilde F$ therefore gives
+\begin{equation}
+-\frac{\mathrm dC}{\mathrm d\theta}
+=
+\left(\frac{\partial\widetilde F}{\partial\theta}\right)^{\mathsf T}
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}
+=
+\left(\frac{\partial F}{\partial\theta}\right)^{\mathsf T}D
+\left.\frac{\mathrm ds^\beta}{\mathrm d\beta}\right|_{\beta=0}.
+\label{eq:my_explanation_learning_rule}
+\end{equation}
+Here, the parameter derivatives are evaluated at the free equilibrium,
+and $s^\beta$ satisfies Eq.~\eqref{eq:my_explanation_physical_nudging}.
+The auxiliary field thus leads to a rescaling of the physical nudging by
+$D^{-1}$ and of the measured state response in the learning rule by $D$.
+
+\section{Onsager reciprocity of bidirectionally amplified DRNs}
+\label{sec:amplified_drn_weighted_symmetry}
+\input{figures/drn_schematic}
+% We consider the systems where J is not equal to J^T
+% but there exist such symmetric positive definite D that J^-T = D * J^-1 * D^-1
+% The free phase is still crahactarized by the F = 0 
+% while in the nudged phase we rescale the perturbation by the factor of D^-1 so that at the equilibrium ...
+% differentiating this with beta as .. we obtain ds/dbeta = ...
+% The VF learning rule is then v_vf = dF/dtheta * D * ds/dbeta and expanding this we recover the exact gradient descent on the cost
+We now establish the Onsager reciprocity condition of
+Section~\ref{sec:equilibrium_onsager} for the bidirectionally amplified DRN
+shown in Fig.~\ref{fig:drn-schematic}. The state $s$ becomes the vector $v$ of
+free-node voltages, and $F(v)$ is the KCL current-balance field.
+We consider the deep resistive network (DRN) architecture introduced by
+Kendall et al.~\cite{Kendall2020} and shown in
+Fig.~\ref{fig:drn-schematic}. DRN is a layered nonlinear resistive network
+trainable by EqProp, where the voltages \(v_k^{(\ell)}\) are the state variables and the trainable parameters are the interlayer conductances
+$g_{jk}^{(\ell)}$.
+\\
+In a purely passive DRN, each hidden layer is driven by the voltages of the previous layer and loaded by the conductances of the the following layer. It is a classic circuit theory result that a passive resistive stage cannot have voltage gain larger than unity and under nontrivial loading reduces the transmitted voltage swing. This attenuation compounds across successive
+layers, producing the vanishing-signal effect. To mitigate the attenuation, Kendall et al.~\cite{Kendall2020} introduced a bidirectional amplifier, which is shown
+Fig.~\ref{fig:amp_local_node}. It is composed by the voltage-controlled voltage source (VCVS), which amplifies the voltage $v_k^{(\ell)}$ by the factor of $A$, and the
+current-controlled current source (CCCS) which amplifies the current through the outgoing branch by the factor of $B$ and injects it in the node $(\ell,k)$. Hence $A$ controls the forward voltage amplification, whereas $B$ controls how strongly the downstream network loads the upstream node. Kendall et al. proposed using $B=1/A$, which was retained in all subsequent DRN works ~\cite{watfa2023energy}.
+\\
+To understand how the voltage amplification $A$ and current amplification $B$ affect the dynamics of the network, we now study DRNs vector field that determines its equilibrium.
+\input{figures/amp_local_node}
+\subsection{The KCL vector field}
+A DRN's steady state is the DC operating point at which Kirchoff's current law (KCL) is satisfied at every node. Let $v$ collect all free-node voltages, and let
+$F_k^{(\ell)}(v)$ denote the net current injected into node $(\ell,k)$.
+Stacking these nodewise KCL equations defines the \emph{KCL vector field}
+$F(v)$. The equilibria of the DRN are the zeros of the vector field
+\begin{equation}
+      F(v^\star)=0.
+      \label{eq:amp_kcl_equilibrium}
+  \end{equation}
+
+
+The bidirectional amplifier at each hidden node imposes
+relations between the node voltage, the voltage delivered by its VCVS, and
+the current returned by its CCCS. These relations modify the KCL equation at
+that node and thus DRN's steady state. To make this explicit, we now derive the nodewise
+components of this vector field.
+\\
+We consider the free node
+$(\ell,k)$ shown at the center of Fig.~\ref{fig:amp_local_node}. We refer to
+the branches connecting layer $\ell-1$ to this node as the \emph{upstream
+branches}. The branches leading from this node toward
+layer $\ell+1$ are called the \emph{downstream branches}.
+
+
+\paragraph{Upstream branches.}
+The first a conductance $g_{jk}^{(\ell)}$ connecting the preceding layer
+to node $(\ell,k)$. For $\ell=1$, this branch is driven directly by the
+clamped input and is therefore unamplified. For $\ell\geq2$, it is driven by
+the VCVS associated with node $(\ell-1,j)$ and therefore carries the voltage
+gain $A$. We encode the two cases by
+\begin{equation}
+\alpha_\ell=
+\begin{cases}
+1, & \ell=1,\\
+A, & \ell=2,\dots,L.
+\end{cases}
+\label{eq:amp_boundary_gain}
+\end{equation}
+The current entering the node
+through the conductance $g_{jk}^{(\ell)}$ is
+\[
+g_{jk}^{(\ell)}
+\left(
+\alpha_\ell v_j^{(\ell-1)}-v_k^{(\ell)}
+\right).
+\]
+Summing over all nodes in layer $\ell-1$ gives
+\begin{equation}
+F_{\mathrm{up},k}^{(\ell)}(v)
+=
+\sum_{j=1}^{N_{\ell-1}}
+g_{jk}^{(\ell)}
+\left(
+\alpha_\ell v_j^{(\ell-1)}-v_k^{(\ell)}
+\right).
+\label{eq:amp_upstream_field}
+\end{equation}
+\paragraph{Downstream branches.}
+The downstream branches contribute differently because
+their conductances are not directly connected to the free node
+$(\ell,k)$. Instead, they are driven by the VCVS, and their currents are
+reflected back into the node $v_k^{(\ell)}$ through the CCCS.
+\\
+The current $i_{km}^{(\ell+1)}$ through the conductance $g_{km}^{(\ell+1)}$ in Fig.~\ref{fig:amp_local_node} is given by
+  \begin{equation}
+  i_{km}^{(\ell+1)}
+  =
+  g_{km}^{(\ell+1)}
+  \left(
+  A v_k^{(\ell)}-v_m^{(\ell+1)}
+  \right).
+  \end{equation}
+  The CCCS draws $B i_{km}^{(\ell+1)}$ from node $(\ell,k)$, so this branch
+  contributes $-B i_{km}^{(\ell+1)}$ to $F_k^{(\ell)}$. Summing over all branches then gives
+  \begin{equation}
+  F_{\mathrm{down},k}^{(\ell)}(v)
+  =
+  \mathbf 1_{\{\ell<L\}}B
+  \sum_{m=1}^{N_{\ell+1}}
+  g_{km}^{(\ell+1)}
+  \left(
+  v_m^{(\ell+1)}-A v_k^{(\ell)}
+  \right).
+  \label{eq:amp_downstream_field}
+  \end{equation}
+
+
+\paragraph{Node nonlinearity.}
+Each hidden node is additionally connected to a nonlinear one-port element.
+Its current $i_{\mathrm{nl},k}^{(\ell)}(v_k^{(\ell)})$ depends only on the local
+node voltage and contributes
+$-i_{\mathrm{nl},k}^{(\ell)}(v_k^{(\ell)})$ to $F_k^{(\ell)}$.
+
+\paragraph{Nudging currents.}
+During the nudge phase, the output source in
+Fig.~\ref{fig:drn-schematic} injects the current
+\(I_{\mathrm{nudge},k}\) into output node \((L,k)\).
+\\
+Combining the four contributions gives
+ \begin{equation}
+F_k^{(\ell)}(v;I_{\mathrm{nudge}})
+=
+F_{\mathrm{up},k}^{(\ell)}(v)
++
+F_{\mathrm{down},k}^{(\ell)}(v)
+-
+i_{\mathrm{nl},k}^{(\ell)}\!\left(v_k^{(\ell)}\right)
++
+\mathbf 1_{\{\ell=L\}}I_{\mathrm{nudge},k}.
+\label{eq:amp_kcl_field_decomposition}
+\end{equation}
+  Here $i_{\mathrm{nl},k}^{(L)}\equiv0$ because the output layer is linear. Stacking these
+  nodewise equations gives the full KCL vector field, whose zeros determine the
+  DRN operating points.
+
+
+\subsection{Structure of the KCL Jacobian}
+
+We can now examine the structure of the KCL Jacobian. For the DRN, the
+state $s$ is the voltage vector $v$, so the Jacobian defined in
+Section~\ref{sec:vector_field_ep} takes the form
+\begin{equation}
+J(v)=\frac{\partial F(v)}{\partial v}.
+\label{eq:amp_field_jacobian}
+\end{equation}
+We first note that the non-linearities are one-port elements and that the
+current through them depends only on the voltage of their own node. Therefore
+their contribution is on the
+diagonal of \(J\). 
+
+Let us next consider a nonzero conductance \(g_{km}^{(\ell+1)}>0\) connecting
+node \((\ell,k)\) to node \((\ell+1,m)\) in two consecutive free layers, as
+depicted in Fig.~\ref{fig:amp_local_node}. In
+the KCL equation for node \((\ell+1,m)\), this conductance belongs to an
+upstream branch and, by Eq.~\eqref{eq:amp_upstream_field}, contributes
+\(g_{km}^{(\ell+1)}(A v_k^{(\ell)}-v_m^{(\ell+1)})\). In the KCL equation for
+node \((\ell,k)\), it belongs to a downstream branch and, by
+Eq.~\eqref{eq:amp_downstream_field}, contributes
+\(B g_{km}^{(\ell+1)}(v_m^{(\ell+1)}-A v_k^{(\ell)})\).
+The corresponding off-diagonal entries are therefore
+\begin{equation}
+J_{(\ell+1,m),(\ell,k)}
+=
+A g_{km}^{(\ell+1)},
+\qquad
+J_{(\ell,k),(\ell+1,m)}
+=
+B g_{km}^{(\ell+1)}.
+\label{eq:amp_asymmetric_edge_entries}
+\end{equation}
+Consequently, when \(A\neq B\),
+\begin{equation}
+J(v)\neq J(v)^{\mathsf T}.
+\label{eq:amp_raw_jacobian_asymmetric}
+\end{equation}
+
+\subsection{The layer-wise Onsager metric}
+
+Although \(J\) is generally asymmetric, its asymmetry has a fixed
+layer-wise ratio. Define
+\begin{equation}
+d_\ell=
+\left(\frac{B}{A}\right)^{\ell-1},
+\qquad
+D=
+\operatorname{diag}
+\left(
+d_1 I_{N_1},
+\dots,
+d_L I_{N_L}
+\right).
+\label{eq:amp_layer_metric}
+\end{equation}
+For fixed positive gains \(A\) and \(B\), \(D\) is state-independent and
+symmetric positive definite. To verify the reciprocity condition in
+Section~\ref{sec:two_sections_symmetrizable_fields}, we multiply the
+Jacobian by $D$. The two transposed entries of $DJ$ for the edge
+considered above are
+\begin{equation}
+\left(DJ\right)_{(\ell,k),(\ell+1,m)}
+=
+d_\ell B g_{km}^{(\ell+1)},
+\qquad
+\left(DJ\right)_{(\ell+1,m),(\ell,k)}
+=
+d_{\ell+1}A g_{km}^{(\ell+1)}.
+\label{eq:amp_scaled_edge_entries}
+\end{equation}
+The definition of \(d_\ell\) gives
+\begin{equation}
+d_{\ell+1}=\frac{B}{A}d_\ell,
+\qquad\text{and hence}\qquad
+d_{\ell+1}A=d_\ell B.
+\label{eq:amp_layer_balance}
+\end{equation}
+Thus the entries in Eq.~\eqref{eq:amp_scaled_edge_entries} are equal for every
+inter-layer edge. All remaining off-diagonal entries are either another such
+edge pair or zero, and the non-linear elements populate only the diagonal. It follows that
+\begin{equation}
+D J(v)=J(v)^{\mathsf T}D.
+\label{eq:amp_weighted_symmetry}
+\end{equation}
+Thus positive gains \(A\) and \(B\) satisfy the Onsager reciprocity
+condition of Eq.~\eqref{eq:onsager_relation}. Here we note that the metric depends only on the
+gain ratio \(B/A\) and remains unchanged as the conductances are trained.
+
+
+\subsection{The learning rule}
+Here, we derive the learning rule for the DRN with the amplification.
+We define the voltage drop across conductance $g_{jk}^{(\ell)}$ as
+\begin{equation}
+\Delta V_{jk}^{(\ell),\gamma}
+:=
+\alpha_\ell v_j^{(\ell-1),\gamma}
+-
+v_k^{(\ell),\gamma},
+\qquad
+\alpha_\ell=
+\begin{cases}
+1, & \ell=1,\\
+A, & \ell\geq2,
+\end{cases}
+\label{eq:amp_branch_voltage_drop}
+\end{equation}
+where $\gamma\in\{0,\beta\}$ denotes the free and nudged phases.
+\\
+Each conductance appears in only two KCL equations.
+Differentiating at fixed voltages and evaluating at the free
+equilibrium gives
+\begin{equation}
+\frac{\partial F_k^{(\ell)}}{\partial g_{jk}^{(\ell)}}
+=
+\Delta V_{jk}^{(\ell),0},
+\qquad
+\frac{\partial F_j^{(\ell-1)}}{\partial g_{jk}^{(\ell)}}
+=
+-B\,\Delta V_{jk}^{(\ell),0},
+\label{eq:amp_conductance_sensitivities}
+\end{equation}
+with all other components equal to zero.
+
+Substituting these derivatives into the weighted EP rule and using
+$B d_{\ell-1}=A d_\ell$, we obtain
+\begin{equation}
+\begin{aligned}
+-\frac{\partial\mathcal L}{\partial g_{jk}^{(\ell)}}
+&=
+\left(\frac{\partial F}{\partial g_{jk}^{(\ell)}}\right)^{\mathsf T}
+D
+\left.\frac{\mathrm dv^\beta}{\mathrm d\beta}\right|_{\beta=0}
+\\
+&=
+\Delta V_{jk}^{(\ell),0}
+\left[
+d_\ell\frac{\mathrm dv_k^{(\ell),\beta}}{\mathrm d\beta}
+-
+B d_{\ell-1}
+\frac{\mathrm dv_j^{(\ell-1),\beta}}{\mathrm d\beta}
+\right]_{\beta=0}
+\\
+&=
+-d_\ell\Delta V_{jk}^{(\ell),0}
+\left.
+\frac{\mathrm d\Delta V_{jk}^{(\ell),\beta}}{\mathrm d\beta}
+\right|_{\beta=0}
+\\
+&=
+-\frac{d_\ell}{2}
+\left.
+\frac{\mathrm d}{\mathrm d\beta}
+\left(\Delta V_{jk}^{(\ell),\beta}\right)^2
+\right|_{\beta=0},
+\end{aligned}
+\label{eq:amp_vector_field_conductance_descent}
+\end{equation}
+where $\mathcal L=C(v^{(L),0},y)$.
+For $\ell=1$, only the downstream contribution is present.
+The same final expression holds because the input voltage is
+clamped and $\alpha_1=d_1=1$.
+
+
+The derivative can then be estimated from the difference between the free
+and nudged phases:
+\begin{equation}
+\Delta g_{jk}^{(\ell)}
+=
+-\eta\frac{d_\ell}{2\beta}
+\left[
+\left(\Delta V_{jk}^{(\ell),\beta}\right)^2
+-
+\left(\Delta V_{jk}^{(\ell),0}\right)^2
+\right].
+\label{eq:amp_conductance_learning_rule}
+\end{equation}
+
+Alternatively, we use the centered EqProp estimator of
+Laborieux et al.~\cite{laborieux2021scaling}, which replaces the free--nudged
+difference by the contrast between two equilibria obtained with opposite
+nudging strengths, $+\beta$ and $-\beta$:
+\begin{equation}
+\Delta g_{jk}^{(\ell)}
+=
+-\eta\frac{d_\ell}{4\beta}
+\left[
+\left(\Delta V_{jk}^{(\ell),+\beta}\right)^2
+-
+\left(\Delta V_{jk}^{(\ell),-\beta}\right)^2
+\right].
+\label{eq:amp_conductance_learning_rule_centered}
+\end{equation}
+
+
+
+
+\clearpage
+
+\section{Experimental part}
+\label{sec:selection_stage_conv_results}
+We now investigate how the choice of bidirectional amplification factors, and the resulting asymmetry between forward and backward interactions, affects the training of DRNs.
+We compare three bidirectional amplification schemes, using $(A,B)=(1,1)$,
+$(4,1)$, and $(4,0.25)$ where $A$ and $B$ denote the forward voltage and backward
+current amplification factors. We note these schemes as baseline, balanced, and legacy,
+respectively. Each scheme is evaluated on the
+DRNs with one, two, or three convolutional layers (Conv1, Conv2, Conv3), with
+hidden-channel configurations $[64]$, $[64,128]$, and $[64,128,256]$.
+All convolutions use $3\times3$ kernels, unit padding, and no pooling, with
+strides $[2]$, $[2,2]$, and $[2,2,1]$, respectively.
+Each class is represented by a differential pair of output neurons as described in
+Section~\ref{sec:supp_output_encoding}.
+\\
+We first compare the performance of the three amplification
+schemes in the idealized conditions. We then evaluate how read noise in the
+voltage measurements of the positive and negative nudged phases affects
+centered EqProp training. We then restrict the ratio $g_{\max}/g_{\min}$
+between the maximum and minimum conductances. Finally, we evaluate clean and
+noisy training on CIFAR-10 using the deeper L8 architecture.
+
+
+
+
+
+\subsection{No non-idealities}
+\label{sec:wide_bptt_eqprop_results}
+
+
+We first compare the three amplification schemes under noiseless conditions, with the FP32 weights and when the networks are trained with BPTT.
+Table~\ref{tab:wide-bptt-test} reports official MNIST test accuracy at the
+fixed final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3, respectively,
+with mean and sample standard deviation over three seeds. The schemes have similar accuracy for Conv1. For Conv2 and Conv3, both amplified schemes achieve higher accuracy than baseline. Balanced and legacy remain close and their mean accuracies differ by only $0.03$--$0.06$ percentage points across the three architectures.
+
+
+To interpret these results, we examine how the amplification schemes affect voltage propagation throughout the network. Figure~\ref{fig:bptt-free-voltages} compares the layer-wise free-state RMS voltages at initialization. We observe that, in the unamplified network (baseline), the voltage attenuates across successive layers because each layer is resistively loaded by the downstream network. In the amplified networks (balanced, legacy) this is mitigated by the forward voltage amplification, which counteracts the attenuation, while current de-amplification reduces the loading by the downstream network on the upstream nodes.
+%Perhaps here I can describe only the RMS voltage before training
+
+This difference becomes important during training because the loss function sets imposes an absolute voltage scale. Each class is represented by a differential pair of output neurons, and training drives the voltage difference of the correct pair toward the target amplitude. 
+%Here I can describe RMS voltage after training
+After training, baseline has the largest first-layer RMS voltage in all
+three architectures. For Conv3, this voltage reaches $40.04$ V, compared
+with $13.41$ V for balanced amplification and $18.96$ V for legacy.
+This is consistent with compensation for stronger attenuation through
+larger upstream voltage amplitudes. 
+%
+% Figure~\ref{fig:bptt-conv3-conductances} shows the corresponding fraction
+% of Conv3 conductances exactly at zero. Approximately half the weights are
+% zero at initialization, and this fraction decreases during training in
+% every layer and scheme. At the final epoch, baseline nevertheless retains
+% the largest zero fraction in every layer. In the second convolutional
+% layer, the mean fractions are $19.53\%$, $8.95\%$ and $4.38\%$ for
+% baseline, balanced and legacy, respectively. The schemes therefore reach
+% similar accuracies with different voltage profiles and conductance
+% patterns. These endpoint measurements support that association, but do
+% not establish whether the zero-conductance differences cause the changes
+% in voltage propagation or accuracy.
+% END PROPOSED SECTION 4.1 REWRITE
+
+We first compare the amplification schemes in noiseless simulations, with conductances constrained to the wide interval \([0,100]\). Table~\ref{tab:wide-bptt-test} reports official MNIST test accuracy after BPTT training with output target amplitude \(1/4\). All results use the fixed final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3 and summarize three seeds. Legacy has the highest mean for Conv1 and Conv3, while balanced amplification has the highest mean for Conv2. The differences between the amplified schemes are small: \(0.05\), \(0.03\) and \(0.06\) percentage points for Conv1, Conv2 and Conv3, respectively.
+
+
+
+% Here I am essentially describing the voltage magnitude but I am not really commenting on the results well. Perhaps I should mention that if we reduce the targets the results should get better
+To interpret these results, we examine how the amplification schemes affect voltage propagation throughout the network. Figure~\ref{fig:bptt-free-voltages} compares the layer-wise free-state RMS voltages at initialization and after training. We observe that, in the unamplified network, the voltage attenuates across successive layers because each layer is resistively loaded by the downstream network. Forward voltage amplification counteracts this attenuation, while current de-amplification reduces the loading by the downstream network on the upstream nodes.
+ 
+At initialization in the Conv3 networks, the mean first-layer RMS voltage is \(7.27\) V for both baseline and legacy, and \(2.53\) V for balanced amplification. At the readout, the corresponding values are \(0.0078\), \(0.497\) and \(0.053\) V for baseline, legacy and balanced amplification, respectively. Thus legacy has the largest initial readout voltage. After BPTT training, the mean readout RMS voltages are \(0.067\), \(0.139\) and \(0.115\) V for baseline, balanced amplification and legacy, respectively; the ordering of the amplified schemes changes. These are three-seed means, with sample standard deviations shown in Fig.~\ref{fig:bptt-free-voltages}.
+
+This difference becomes important during training because the output loss
+imposes an absolute voltage scale. Each class is represented by a
+differential pair of output nodes, and training drives the voltage
+difference of the correct pair toward the prescribed target amplitude.
+The unamplified network exhibits the strongest initial forward attenuation. After training, it has a higher first-layer RMS voltage than either amplified scheme in all three architectures. Figure~\ref{fig:bptt-conv3-conductances} also shows that the trained Conv3 baseline retains a larger fraction of zero conductances in every layer than either amplified scheme. For example, in the second convolutional layer these fractions are \(19.53\%\), \(8.95\%\) and \(4.38\%\) for baseline, balanced amplification and legacy, respectively. However, approximately half the weights are zero at initialization, and the zero fraction decreases during training in every layer and scheme. These endpoint comparisons therefore establish differences in the trained conductance patterns, rather than a net increase in zero weights during training. A causal link between these patterns and reduced downstream loading would require a separate intervention.
+% This is not very clear. The point that I wanted to make is that each network would like to have high-er magnitude on the readout layer to be able to induce these voltage differences. This is why the network needs to establish that the voltage at the end of conv1 is very high, because it will anyway attenuate throughout the network
+
+
+\input{tables/tab_paper_wide_bptt_test}
+
+\begin{figure}[htbp]
+\centering
+\begin{subfigure}{\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/bptt_target4_profiles/free_state_rms_initialization.pdf}
+\caption{Before training: initialization at epoch 0.}
+\label{fig:bptt-free-voltages-before}
+\end{subfigure}
+\par\medskip
+\begin{subfigure}{\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/bptt_target4_profiles/free_state_rms_trained.pdf}
+\caption{After BPTT training: final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3.}
+\label{fig:bptt-free-voltages-after}
+\end{subfigure}
+\caption{Free-state RMS voltage for the target-$1/4$ wide-range BPTT runs in Table~\ref{tab:wide-bptt-test}. Points and error bars show mean $\pm$ sample standard deviation over seeds 0, 1 and 2. For each seed and layer, RMS pools all nodes and the same 576 validation examples, including the readout. Replay uses saved configurations, float32 arithmetic and native inference counts $T=4,6,8$. Panels (a) and (b) share the same logarithmic voltage axis.}
+\label{fig:bptt-free-voltages}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/bptt_target4_profiles/conv3_weights_at_zero.pdf}
+\caption{Layer-wise percentage of Conv3 weights exactly at zero after BPTT training, for the same target-$1/4$ runs as Fig.~\ref{fig:bptt-free-voltages}. Colored bars show the three schemes at final epoch 30. Bars and error bars give mean $\pm$ sample standard deviation over seeds 0, 1 and 2. Each stored convolutional or dense weight is counted once, without expanding spatial reuse; biases are excluded.}
+\label{fig:bptt-conv3-conductances}
+\end{figure}
+
+
+\subsection{EqProp with endpoint read noise}
+\label{sec:eqprop_endpoint_read_noise_results}
+% BEGIN PROPOSED SECTION 4.2 REWRITE
+% Proposed replacement for the prose in Section 4.2 (2026-10-10).
+% This is a review comment; the typeset text below is unchanged.
+% Editorial note: Fig. 5 currently comes from the September 25 target-1
+% initialization diagnostic. The paragraph below explicitly identifies that
+% provenance. It should not be presented as a measurement of the new target-1/4
+% runs. Figures 6--7 already use target 1/4. Keep the existing table and figure
+% environments when applying this proposed prose.
+%
+% Centered EqProp estimates local weight updates from the contrast between
+% positive and negative nudged states. Errors in reading these states can
+% therefore corrupt the teaching signal even when the physical relaxation
+% and inference are noiseless. We model endpoint read noise as
+% \[
+% \widetilde v_i^{(\ell),\pm}
+% = v_i^{(\ell),\pm}
+% + \eta\lvert v_i^{(\ell),\pm}\rvert z_i^{(\ell),\pm},
+% \qquad z_i^{(\ell),\pm}\sim\mathcal N(0,1).
+% \]
+% The dimensionless coefficient $\eta$ is shared across schemes and all
+% noninput layers, including the readout. Errors are independent across
+% nodes, phases and examples; each noisy node read is reused for its incident
+% connections. Noise is applied only to endpoint measurements used for the
+% training update. Inputs, physical relaxation, the teaching force and test
+% inference remain clean.
+%
+% We choose a separate nudging coefficient $\beta$ for each architecture and
+% amplification scheme by matching the initial relative output displacement,
+% $D_{\mathrm{out}}/F_{\mathrm{out}}$, where
+% $D_{\mathrm{out}}=\operatorname{RMS}[(v_{\mathrm{out}}^+
+% -v_{\mathrm{out}}^-)/2]$ and
+% $F_{\mathrm{out}}=\operatorname{RMS}[v_{\mathrm{out}}^0]$.
+% The RMS values pool the 20 physical output nodes over a fixed 576-example
+% validation cohort. With output target amplitude $1/4$, we calibrate
+% $D_{\mathrm{out}}/F_{\mathrm{out}}$ to 1, 4 and 6 for Conv1, Conv2 and
+% Conv3, respectively, at seed-0 initialization. The resulting $\beta$ is
+% then held fixed across training epochs, noise levels and seeds. The
+% relative displacement is consequently matched at this initial reference
+% point; it can change during training and is not recalibrated for seeds
+% 1 and 2.
+%
+% Table~\ref{tab:eqprop-read-noise-test} reports official MNIST test accuracy,
+% with mean and sample standard deviation over three seeds at final epochs
+% 10, 15 and 30 for Conv1, Conv2 and Conv3. Conv1 shows small, noise-dependent
+% differences, with no scheme having the highest mean at every noise level.
+% For Conv2 and Conv3, balanced amplification has the highest mean at every
+% reported level. At $\eta=10^{-3}$, Conv2 reaches $96.57\pm0.22\%$ with
+% balanced amplification, compared with $95.14\pm0.63\%$ for legacy and
+% $93.86\pm0.49\%$ for baseline. At $\eta=10^{-4}$, Conv3 reaches
+% $97.31\pm0.40\%$, $94.23\pm1.14\%$ and $93.32\pm1.70\%$ for balanced,
+% legacy and baseline, respectively. Balanced exceeds legacy in each of the
+% three Conv3 seeds at both tested noise levels. These are comparisons of
+% the declared training settings: balanced Conv3 uses a tenfold learning-rate
+% reduction, while baseline and legacy retain their original scheme-specific
+% rates. The results therefore do not isolate amplification from the
+% learning-rate policy. The noisy EqProp runs use float64 arithmetic; the
+% BPTT reference in Section~\ref{sec:wide_bptt_eqprop_results} uses float32.
+%
+% Matching output displacement does not enforce equal perturbations in the
+% hidden layers. Figure~\ref{fig:eqprop-layer-displacement} illustrates this
+% in the earlier seed-0, unit-target initialization diagnostic, using the
+% same output $D/F$ targets of 1, 4 and 6. Balanced amplification produces a
+% larger fractional hidden-layer displacement $D/P$, where
+% $P=\sqrt{\bigl(\operatorname{RMS}[v^+]^2+
+% \operatorname{RMS}[v^-]^2\bigr)/2}$ is the pooled RMS of the clean nudged
+% endpoints. This denominator differs from the free-state RMS used to
+% calibrate $\beta$. Since read-noise amplitude scales with endpoint voltage,
+% $D/P$ characterizes the perturbation relative to the voltage scale that
+% sets the measurement noise. It provides a diagnostic of signal visibility,
+% without by itself specifying the accuracy of a local gradient estimate.
+%
+% Figures~\ref{fig:eqprop-conv123-cosine-to-bptt} and
+% \ref{fig:eqprop-conv123-trained-cosine-to-bptt} examine this sensitivity
+% more directly for target amplitude $1/4$, by comparing noisy centered
+% EqProp weight gradients with clean finite-$K$ BPTT gradients. These are
+% seed-0 replays on 192 fixed validation examples at initialization and at
+% clean-trained checkpoints. Each noise level is applied to the same frozen
+% checkpoint; the curves do not follow a noisy-training trajectory. Shaded
+% bands show the range across three noise-draw means, not variation across
+% training seeds. Balanced amplification preserves higher alignment in the
+% last convolutional layer of Conv3 over intermediate noise levels. This
+% benefit varies across layers: the first two convolutional layers lose
+% alignment at much smaller noise levels. The diagnostics are consistent
+% with the observed sensitivity of local credit assignment to read noise,
+% but they do not establish that improved gradient alignment causes the
+% higher test accuracy in Table~\ref{tab:eqprop-read-noise-test}.
+% END PROPOSED SECTION 4.2 REWRITE
+%Maybe this is particularly relevent for EqProp
+In the previous section, we assumed idealized, noiseless conditions. Neuromorphic systems, however, are physical systems and are inherently subject to noise. This is particularly relevant for EqProp as it estimates gradients from the difference between steady states induced by nudging. A small nudging amplitude is required to accurately approximate the loss gradient, but it also reduces the magnitude of this difference. As a result, the resulting teaching signal can be drowned out by measurement noise.
+% Here, we study how the noise impacts different amplification schemes.
+
+%The previous section assumes noiseless voltage measurements for the EqProp update. As the EqProp gradient update depends on the contrast between positive and negative nudged states, its quality is sensitive to errors in these measurements. 
+Here, we assume that the noise occurs due to the measurement error occurs when reading the nudged-state voltages and we model it as
+\[
+\widetilde v_i^{(\ell),\pm}
+=
+v_i^{(\ell),\pm}
++
+\eta\lvert v_i^{(\ell),\pm}\rvert z_i^{(\ell),\pm},
+\qquad
+z_i^{(\ell),\pm}\sim\mathcal N(0,1).
+\]
+The relative noise coefficient \(\eta\) is identical across layers and amplification schemes, with independent errors across nodes, phases, and training examples. Each noisy node voltage read is reused for all incident connections.
+
+To compare the amplification schemes at a common relative output
+perturbation, we choose $\beta$ separately for each scheme by matching
+$D_{\mathrm{out}}/F_{\mathrm{out}}$ at initialization, where
+$D_{\mathrm{out}}=\operatorname{RMS}[(v_{\mathrm{out}}^+
+-v_{\mathrm{out}}^-)/2]$ is the output displacement and
+$F_{\mathrm{out}}=\operatorname{RMS}[v_{\mathrm{out}}^0]$ is the
+free-state output RMS voltage.
+%this is not ok
+
+Table~\ref{tab:eqprop-read-noise-test} reports official MNIST test accuracy with output target amplitude $1/4$ for three seeds at the fixed final epochs. Conv1 shows small, noise-dependent differences between schemes. Balanced amplification has the highest mean for every reported Conv2 and Conv3 noise level. For Conv3 at $\eta=10^{-4}$, it reaches $97.31\pm0.40\%$, compared with $94.23\pm1.14\%$ for legacy and $93.32\pm1.70\%$ for baseline. These comparisons use the declared learning-rate policies, including the tenfold rate reduction for balanced Conv3, and do not isolate an amplification-only effect. Noise affects training only; test inference is clean. BPTT uses float32 arithmetic, while the noisy EqProp runs use float64.
+\input{tables/tab_paper_read_noise_test}
+
+To interpret these results, we examine how the output perturbation
+propagates through the hidden layers. Although the relative output
+displacement is matched at initialization, the corresponding
+displacements in earlier layers can differ.
+In the Figure~\ref{fig:eqprop-layer-displacement} it can be seen that balanced amplification produces a larger relative displacement in the hidden layers than baseline and legacy.
+
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{figures/conv123_absolute_and_fractional_displacement.jpg}
+\caption{Absolute and relative nudged-state displacement across layers at
+initialization for Conv1, Conv2, and Conv3. The left column shows
+$D=\operatorname{RMS}[(v^+-v^-)/2]$; the right column shows $D/P$ as a percentage,
+where $P$ is the RMS of the two clean nudged endpoints. The output
+$D/F$ targets are matched across schemes at 1, 4, and 6 for Conv1, Conv2,
+and Conv3, respectively, where $F$ is the free-output RMS voltage.}
+\label{fig:eqprop-layer-displacement}
+\end{figure}
+% The larger relative displacement results in the higher cosinus similarity -- or something similar
+Figures~\ref{fig:eqprop-conv123-cosine-to-bptt} and
+\ref{fig:eqprop-conv123-trained-cosine-to-bptt} examine gradient alignment
+at initialization and after clean training, respectively, using output target
+amplitude $1/4$. The corresponding noisy-training test accuracies are reported in
+Table~\ref{tab:eqprop-read-noise-test}. Each diagnostic curve sweeps
+read noise over a fixed checkpoint. Balanced amplification preserves higher
+alignment in the last convolutional layer of Conv3 over intermediate noise
+levels. This benefit is layer-dependent: the first two convolutional layers
+lose alignment at much smaller noise levels. The trained comparisons include
+the learning-rate policies described in the caption and do not isolate an
+amplification-only effect.
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{figures/conv123_target4_initialization_layerwise_noise_vs_bptt.jpg}
+\caption{Layerwise cosine similarity between noisy centered EqProp weight
+ gradients and clean finite-$K$ BPTT gradients at initialization, with output
+ target amplitude $1/4$. Rows show Conv1, Conv2, and Conv3; columns show
+ convolutional layers and the readout.}
+\label{fig:eqprop-conv123-cosine-to-bptt}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{figures/conv123_target4_final_layerwise_noise_vs_bptt.jpg}
+\caption{Layerwise cosine similarity between noisy centered EqProp weight
+ gradients and clean finite-$K$ BPTT gradients at the trained checkpoint, with output
+ target amplitude $1/4$. Rows show Conv1, Conv2, and Conv3; columns show
+ convolutional layers and the readout.}
+\label{fig:eqprop-conv123-trained-cosine-to-bptt}
+\end{figure}
+
+\subsection{BPTT with bounded conductances}
+\label{sec:bounded_bptt_results}
+% i should probably say that this limits signal or something similar
+% Perhaps I should do something better than memristive? More general?
+The experiments in
+Section~\ref{sec:wide_bptt_eqprop_results} suggest that the networks during training
+compensate for voltage attenuation caused by the resistive loading by reducing selected interlayer
+conductances. We now examine how
+a finite conductance range restricts this compensation. Such bounds arise,
+for example, from the finite ON/OFF ratio of memristive devices. A lower bound prevents conductances from being reduced to zero,
+while an upper bound limits the maximum conductance value. Thus the available conductance
+ratio restricts the adjustments that training can make to the
+network's electrical loading and voltage profile.
+
+All networks are trained with BPTT, with conductances constrained to
+$[G_{\min},G_{\max}]$. We fix $G_{\min}=10^{-5}$ and initialize
+conductances uniformly in $[10^{-5},10^{-4}]$. We then vary
+$G_{\max}\in\{10^{-4},5\times10^{-4},10^{-3}\}$.
+
+
+Table~\ref{tab:bounded-weights-test} shows that both amplified schemes achieve higher mean test accuracy than baseline at every reported conductance range. Legacy has the highest mean in all nine comparisons. For Conv3, reducing $G_{\max}$ from $10^{-3}$ to $10^{-4}$ decreases mean test accuracy by $8.93$, $6.30$ and $0.73$ percentage points for baseline, balanced amplification and legacy, respectively.
+
+\input{tables/tab_paper_bounded_bptt_test}
+
+To interpret these differences, we examine the fraction of learned
+conductances at each bound as shown in the Figure~\ref{fig:bounded-conductance-occupancy}. Across all experiments the share of the conductances stuck $G_{\min}$ is largest for
+baseline, intermediate for balanced amplification, and smallest for
+legacy. The fraction at $G_{\max}$ is
+substantially smaller and decreases as the upper bound is increased.
+This is consistent with the conductance changes observed in
+the noiseless experiments. There, the trained baseline retains a
+larger fraction of zero conductances than either amplified scheme, while here conductances can only
+be reduced to $G_{\min}$ and therefore retain a nonzero contribution
+to the interlayer coupling. The larger lower-bound occupancy in the
+baseline is consistent with a greater need to suppress conductances
+to compensate for attenuation. In the amplified schemes, the
+amplifiers help sustain the output voltage, reducing reliance on
+conductance adjustments alone, which attributes to the smaller accuracy losses and
+less weights stuck at $G_{\min}$.
+\input{figures/bounded_conductance_occupancy}
+
+\clearpage
+
+\subsection{CIFAR-10 results}
+\label{sec:cifar10_results}
+
+We also evaluate amplification on CIFAR-10 using L8, a network with eight
+convolutional layers arranged into three resistive blocks. The blocks contain
+three, three and two layers, with 128, 256 and 512 feature channels,
+respectively. All convolutions use $3\times3$ kernels, unit stride and unit
+padding. Within each block, the internal layers have perfect-diode
+nonlinearities, while the final layer is linear. The listed widths count
+differential features: each block output is decoded as the difference of a
+pair of physical channels. Each block is followed by digital $2\times2$ max
+pooling and batch normalization, reducing the spatial resolution from
+$32\times32$ to $4\times4$. The resulting features feed a fully connected
+resistive readout with ten linear output nodes, one per class. The inputs to
+each resistive block and to the readout are voltage-clamped.
+
+Training uses a hybrid scheme. Centered EqProp updates the convolutional
+conductances, while backpropagation through the free forward pass supplies
+the block nudging signals and trains the readout, batch normalization and
+input gains. The ten readout voltages are used directly as logits for
+softmax cross-entropy, as described in Section~\ref{sec:supp_output_encoding}.
+
+Table~\ref{tab:cifar10_clean_read_noise} compares clean training with relative
+endpoint read noise $\eta=10^{-4}$. 
+
+\begin{table}[htbp]
+    \centering
+    \caption{CIFAR-10 validation accuracy (\%) at epoch 50 using hybrid EqProp
+    training, seed 0.}
+    \label{tab:cifar10_clean_read_noise}
+    \begin{tabular}{lcc}
+        \toprule
+        Amplification scheme & Clean ($\eta=0$) & $\eta=10^{-4}$ \\
+        \midrule
+        Baseline & 91.46 & 86.86 \\
+        Balanced (ours) & 91.64 & 88.00 \\
+        Legacy & 91.04 & 86.28 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\clearpage
+
+\bibliographystyle{plain}
+\bibliography{bibtex}
+
+\clearpage
+\appendix
+\numberwithin{equation}{section}
+\section*{Supplementary material}
+
+\section{Energy function of the Onsager's network}
+\label{sec:supp_onsager_energy}
+\subsection{Energy construction from an equivalent vector field}
+
+A vector field satisfying Onsager reciprocity does not, in general, derive
+directly from a scalar energy. For a continuously differentiable
+vector field $F(s)$ on a simply connected domain, the Poincar\'e lemma
+requires
+\begin{equation}
+J_F(s)=J_F(s)^{\mathsf T}
+\end{equation}
+for the existence of a scalar function $E$ such that
+$F=-\nabla_s E$. In our case, the Jacobian $J_F$ is generally asymmetric,
+and therefore $F$ itself is not a conservative field.
+\\
+Onsager reciprocity provides a weaker symmetry condition,
+\begin{equation}
+D J_F(s)=J_F(s)^{\mathsf T}D,
+\label{eq:supp_energy_onsager}
+\end{equation}
+where $D$ is the state-independent, symmetric and positive-definite. This condition allows us
+to construct an equivalent conservative vector field.
+\\
+We define
+\begin{equation}
+\widetilde F(s)=D F(s).
+\label{eq:supp_energy_transformed_field}
+\end{equation}
+Since $D$ is invertible,
+\begin{equation}
+\widetilde F(s)=0
+\quad\Longleftrightarrow\quad
+F(s)=0,
+\label{eq:supp_energy_same_equilibria}
+\end{equation}
+so the two vector fields have exactly the same equilibrium states.
+
+Because $D$ is independent of the state,
+\begin{equation}
+J_{\widetilde F}(s)
+=
+D J_F(s).
+\end{equation}
+Using the Onsager relation in
+Eq.~\eqref{eq:supp_energy_onsager},
+\begin{equation}
+J_{\widetilde F}(s)
+=
+D J_F(s)
+=
+J_F(s)^{\mathsf T}D
+=
+J_{\widetilde F}(s)^{\mathsf T}.
+\end{equation}
+Hence $\widetilde F$ has a symmetric Jacobian and is therefore conservative.
+
+We may consequently define a scalar energy
+\begin{equation}
+E_D(s)
+=
+E_D(\bar s)
+-
+\int_{\bar s}^{s}
+\widetilde F(u)^{\mathsf T}\,\mathrm du,
+\label{eq:supp_energy_path_integral}
+\end{equation}
+where the integral is path-independent. Its gradient is
+\begin{equation}
+\nabla_s E_D(s)
+=
+-\widetilde F(s)
+=
+-D F(s).
+\label{eq:supp_energy_gradient}
+\end{equation}
+Equivalently,
+\begin{equation}
+F(s)
+=
+-D^{-1}\nabla_s E_D(s).
+\label{eq:supp_energy_generalized_gradient}
+\end{equation}
+
+Thus, $E_D$ is not an energy whose ordinary Euclidean gradient directly
+generates the original vector field $F$. Rather, it is the energy of the
+Onsager-transformed field $\widetilde F=DF$, or equivalently the potential
+associated with $F$ under the metric $D$. Importantly,
+\begin{equation}
+F(s)=0
+\quad\Longleftrightarrow\quad
+\nabla_s E_D(s)=0,
+\end{equation}
+so the original Onsager-reciprocal system and the conservative transformed
+system have exactly the same stationary states.
+
+\subsection{Explicit energy of the bidirectionally amplified DRN}
+
+For the DRN, set $s=v$ and consider the free phase
+$I_{\mathrm{nudge}}=0$. The input $v^{(0)}$ is clamped, and the amplifier
+gains $A,B>0$ are fixed. We use the boundary gains
+$\alpha_1=1$ and $\alpha_\ell=A$ for $\ell\geq2$ from
+Eq.~\eqref{eq:amp_boundary_gain}, together with
+$d_\ell=(B/A)^{\ell-1}$ from Eq.~\eqref{eq:amp_layer_metric}.
+For each smooth nonlinear one-port element, define the local potential
+\begin{equation}
+\Psi_k^{(\ell)}(z)
+:=\int_0^z i_{\mathrm{nl},k}^{(\ell)}(q)\,\mathrm dq,
+\qquad
+\frac{\mathrm d\Psi_k^{(\ell)}}{\mathrm dz}
+=i_{\mathrm{nl},k}^{(\ell)}(z).
+\label{eq:supp_energy_local_potential}
+\end{equation}
+The output layer is linear, so $\Psi_k^{(L)}\equiv0$.
+The energy of the transformed free-phase field is, up to an additive
+constant,
+\begin{equation}
+\begin{aligned}
+E_{\mathrm{amp}}(v)
+={}&\frac12\sum_{\ell=1}^{L}d_\ell
+\sum_{j=1}^{N_{\ell-1}}\sum_{k=1}^{N_\ell}
+g_{jk}^{(\ell)}
+\left(\alpha_\ell v_j^{(\ell-1)}-v_k^{(\ell)}\right)^2
+\\
+&+\sum_{\ell=1}^{L}d_\ell
+\sum_{k=1}^{N_\ell}\Psi_k^{(\ell)}\!\left(v_k^{(\ell)}\right).
+\end{aligned}
+\label{eq:supp_energy_explicit_drn}
+\end{equation}
+
+To verify this expression, differentiate with respect to a free-node
+voltage. The incoming conductances and the local nonlinear element
+contribute with weight $d_\ell$, while the outgoing conductances contribute
+with weight $d_{\ell+1}$. For a hidden node, this gives
+\begin{equation}
+\begin{aligned}
+\frac{\partial E_{\mathrm{amp}}}{\partial v_k^{(\ell)}}
+={}&d_\ell\sum_{j=1}^{N_{\ell-1}}g_{jk}^{(\ell)}
+\left(v_k^{(\ell)}-\alpha_\ell v_j^{(\ell-1)}\right)
++d_\ell i_{\mathrm{nl},k}^{(\ell)}\!\left(v_k^{(\ell)}\right)
+\\
+&+d_{\ell+1}A\sum_{m=1}^{N_{\ell+1}}g_{km}^{(\ell+1)}
+\left(A v_k^{(\ell)}-v_m^{(\ell+1)}\right).
+\end{aligned}
+\label{eq:supp_energy_node_derivative}
+\end{equation}
+For an output node, the outgoing term is absent and the local nonlinear
+current is zero. Using $d_{\ell+1}A=d_\ell B$ from
+Eq.~\eqref{eq:amp_layer_balance}, the derivative reproduces the negative
+of the KCL field in Eq.~\eqref{eq:amp_kcl_field_decomposition}, multiplied
+by the layer weight:
+\begin{equation}
+\frac{\partial E_{\mathrm{amp}}}{\partial v_k^{(\ell)}}
+=-d_\ell F_k^{(\ell)}(v;0),
+\qquad
+\nabla_vE_{\mathrm{amp}}(v)=-D F(v;0)=-\widetilde F(v;0).
+\label{eq:supp_energy_drn_gradient}
+\end{equation}
+Since every $d_\ell$ is positive, the stationary points of
+$E_{\mathrm{amp}}$ coincide exactly with the free-phase KCL operating
+points. Equation~\eqref{eq:supp_energy_explicit_drn} is therefore an
+explicit realization of the general construction in
+Eq.~\eqref{eq:supp_energy_path_integral}.
+
+
+
+\section{Experimental details}
+\label{sec:supp_experimental_details}
+
+\subsection{Output encoding and loss}
+\label{sec:supp_output_encoding}
+
+For the MNIST experiments, we use a mean-squared error (MSE) loss with
+one-hot encoded targets. To represent signed output values, each of the
+$K=10$ classes is assigned a pair of output neurons, such that the score of
+class $k$ is given by the differential voltage
+\begin{equation}
+    \hat{Y}_k = v_{k,+}-v_{k,-}.
+\end{equation}
+The target vector $Y$ is one-hot encoded, so that $Y_k=1$ for the correct
+class and $Y_k=0$ otherwise. Training therefore drives the voltage difference
+of the correct output pair toward one, while driving the remaining
+differences toward zero.
+
+The loss is
+\begin{equation}
+    C(\hat{Y},Y)
+    =
+    \frac{1}{2}
+    \sum_{k=1}^{K}
+    \left(\hat{Y}_k-Y_k\right)^2 .
+\end{equation}
+At inference, the predicted class is the one with the largest differential
+output voltage,
+\begin{equation}
+    \hat{k}=\arg\max_k \hat{Y}_k .
+\end{equation}
+
+For the CIFAR-10 experiments, the classifier has one linear output node per
+class, and we use a softmax cross-entropy loss. Its output voltages
+$\hat{Y}_k=v_k$ are treated directly as logits,
+\begin{equation}
+    p_k =
+    \frac{\exp(\hat{Y}_k)}
+    {\sum_{j=1}^{K}\exp(\hat{Y}_j)},
+\end{equation}
+and the loss is
+\begin{equation}
+    C(\hat{Y},Y)
+    =
+    -\sum_{k=1}^{K} Y_k \log p_k ,
+\end{equation}
+with $Y$ the one-hot encoded target vector.
+
+\section{Nudging-factor selection for endpoint read noise}
+\label{sec:supp_read_noise_nudging}
+Rather than equating the numerical nudging coefficients across schemes, we match
+the initial output displacement relative to the free output voltage. We define
+$D=\operatorname{RMS}[(v_{\mathrm{out}}^+-v_{\mathrm{out}}^-)/2]$ and
+$F=\operatorname{RMS}[v_{\mathrm{out}}^0]$, pooled over the 20 physical output
+nodes and a fixed 576-example validation cohort. The target $D/F$ is 1, 4 and 6
+for Conv1, Conv2 and Conv3, respectively. Matching is performed at seed-0
+initialization; the resulting scheme-specific nudging coefficient is then held
+fixed across noise levels, training epochs and seeds. The displacement can
+therefore change during training and is not rematched for clean seeds 1 and 2.
+
+\clearpage
+\section{Read-noise training with rescaled output targets}
+\label{sec:supp_rescaled_target_read_noise}
+
+Tables~\ref{tab:conv2_target16_read_noise} and
+\ref{tab:conv3_target64_read_noise} report additional MNIST experiments with
+the one-hot output targets scaled by $1/16$ for Conv2 and $1/64$ for Conv3.
+Training uses a batch size of 16 and relative endpoint read noise,
+$v_{\mathrm{read}}=v+\eta |v|\xi$, with independent standard normal draws
+across endpoint phases, nodes and layers, including the readout. Physical
+relaxation, the frozen teaching force and validation remain clean. Accuracies
+are measured on the 5,000-example validation split after training on the
+remaining 55,000 MNIST training examples; the official test split is not used.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Conv2 validation accuracy (\%) with output targets scaled by
+    $1/16$, evaluated at epoch 15. Entries are the mean $\pm$ sample standard
+    deviation across seeds 1 and 2.}
+    \label{tab:conv2_target16_read_noise}
+    \begin{tabular}{lccc}
+        \toprule
+        Relative noise $\eta$ & Baseline $(1,1)$ & Ours $(4,1)$ & Legacy $(4,0.25)$ \\
+        \midrule
+        $0$       & $98.12 \pm 0.14$ & $98.25 \pm 0.07$ & $98.21 \pm 0.01$ \\
+        $10^{-6}$ & $98.02 \pm 0.14$ & $98.18 \pm 0.03$ & $98.09 \pm 0.10$ \\
+        $10^{-5}$ & $97.40 \pm 0.08$ & $97.94 \pm 0.00$ & $97.38 \pm 0.31$ \\
+        $10^{-4}$ & $96.55 \pm 0.27$ & $97.04 \pm 0.00$ & $96.07 \pm 0.07$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Conv3 validation accuracy (\%) with output targets scaled by
+    $1/64$, evaluated at epoch 30 for seed 0.}
+    \label{tab:conv3_target64_read_noise}
+    \begin{tabular}{lccc}
+        \toprule
+        Relative noise $\eta$ & Baseline $(1,1)$ & Ours $(4,1)$ & Legacy $(4,0.25)$ \\
+        \midrule
+        $0$       & 98.88 & 98.88 & 98.96 \\
+        $10^{-6}$ & 97.90 & 97.36 & 86.46 \\
+        $10^{-5}$ & 96.94 & 93.82 & 90.72 \\
+        $10^{-4}$ & 93.34 & 88.76 & 83.54 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\end{document}
