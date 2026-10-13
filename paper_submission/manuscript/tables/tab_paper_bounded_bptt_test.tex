@@ -1,0 +1,25 @@
+% Official MNIST test results, 2026-10-10; source hashes and per-seed values in mnist_target4_official_test_20261010.json.
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lcrrr}
+\toprule
+Architecture & $G_{\max}$ & Baseline & Balanced & Legacy \\
+\midrule
+Conv1 & $10^{-4}$ & $94.17 \pm 0.48$ & $95.86 \pm 0.21$ & $96.45 \pm 0.13$ \\
+Conv1 & $5\times10^{-4}$ & $96.28 \pm 0.17$ & $96.50 \pm 0.10$ & $96.99 \pm 0.09$ \\
+Conv1 & $10^{-3}$ & $96.41 \pm 0.13$ & $96.49 \pm 0.11$ & $96.97 \pm 0.12$ \\
+\addlinespace
+Conv2 & $10^{-4}$ & $89.90 \pm 0.35$ & $95.77 \pm 0.23$ & $97.42 \pm 0.29$ \\
+Conv2 & $5\times10^{-4}$ & $95.12 \pm 0.14$ & $97.91 \pm 0.11$ & $98.33 \pm 0.11$ \\
+Conv2 & $10^{-3}$ & $95.99 \pm 0.14$ & $98.14 \pm 0.10$ & $98.41 \pm 0.06$ \\
+\addlinespace
+Conv3 & $10^{-4}$ & $85.44 \pm 0.56$ & $91.26 \pm 0.32$ & $98.17 \pm 0.04$ \\
+Conv3 & $5\times10^{-4}$ & $93.66 \pm 0.14$ & $97.02 \pm 0.36$ & $98.91 \pm 0.11$ \\
+Conv3 & $10^{-3}$ & $94.37 \pm 0.12$ & $97.56 \pm 0.30$ & $98.90 \pm 0.12$ \\
+\bottomrule
+\end{tabular}
+\caption{MNIST test accuracy (\%) after noiseless BPTT training with conductances bounded to $[G_{\min},G_{\max}]$, where $G_{\min}=10^{-5}$. Values are mean $\pm$ sample standard deviation over three seeds.}
+\label{tab:bounded-weights-test}
+\end{table}

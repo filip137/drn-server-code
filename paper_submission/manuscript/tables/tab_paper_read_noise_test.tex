@@ -1,0 +1,24 @@
+% Official MNIST test results, 2026-10-10; source hashes and per-seed values in mnist_target4_official_test_20261010.json.
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lcrrr}
+\toprule
+Architecture & $\eta$ & Baseline & Balanced & Legacy \\
+\midrule
+Conv1 & $10^{-5}$ & $96.90 \pm 0.07$ & $96.94 \pm 0.09$ & $96.96 \pm 0.15$ \\
+Conv1 & $10^{-4}$ & $96.86 \pm 0.09$ & $96.92 \pm 0.15$ & $96.91 \pm 0.13$ \\
+Conv1 & $10^{-3}$ & $96.27 \pm 0.09$ & $96.18 \pm 0.24$ & $96.14 \pm 0.09$ \\
+\addlinespace
+Conv2 & $10^{-5}$ & $97.77 \pm 0.07$ & $98.41 \pm 0.02$ & $98.36 \pm 0.07$ \\
+Conv2 & $10^{-4}$ & $96.83 \pm 0.07$ & $97.87 \pm 0.10$ & $97.65 \pm 0.09$ \\
+Conv2 & $10^{-3}$ & $93.86 \pm 0.49$ & $96.57 \pm 0.22$ & $95.14 \pm 0.63$ \\
+\addlinespace
+Conv3 & $10^{-5}$ & $96.73 \pm 0.52$ & $98.44 \pm 0.09$ & $97.36 \pm 0.37$ \\
+Conv3 & $10^{-4}$ & $93.32 \pm 1.70$ & $97.31 \pm 0.40$ & $94.23 \pm 1.14$ \\
+\bottomrule
+\end{tabular}
+\caption{MNIST test accuracy (\%) after centered EqProp training, with relative endpoint read noise during training and test inference. Values are mean $\pm$ sample standard deviation over three seeds.}
+\label{tab:eqprop-read-noise-test}
+\end{table}

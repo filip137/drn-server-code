@@ -1,0 +1,150 @@
+\begin{figure}[!ht]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{circuitikz}[american, x=1cm, y=1cm]
+\colorlet{wirecol}{black}
+\colorlet{connorange}{orange!85!black}
+
+\tikzset{
+  wire/.style={draw=wirecol, thick},
+  cross/.style={draw=connorange, thick, line cap=round},
+  dot/.style={circle, fill=connorange, inner sep=1.6pt},
+  knot/.style={circle, fill=black, inner sep=1.15pt},
+  nonlin/.style={
+    rectangle, draw=black, thick, fill=white,
+    minimum width=1.15cm, minimum height=0.80cm,
+    align=center, font=\normalsize
+  },
+  ba/.style={
+    rectangle, draw=black, thick, fill=white,
+    minimum width=1.55cm, minimum height=0.80cm,
+    align=center, font=\normalsize
+  },
+  lab/.style={font=\large},
+  layerlab/.style={font=\large\bfseries, align=center},
+  crossbarlab/.style={font=\normalsize, text=connorange, fill=white,
+    inner sep=1.5pt}
+}
+
+\def\dy{2.70}
+\def\yLab{0.24}
+\def\xNLtap{0.88}
+\def\yNL{-0.98}
+\def\yNLgnd{-0.24}
+\def\Vdrop{-1.25}
+\def\xItap{0.82}
+\def\Idrop{-1.55}
+
+\def\xVin{0}
+\def\xCBoneL{2.25}
+\def\xLone{5.60}
+\def\xBAone{7.55}
+\def\xCBtwoL{8.65}
+\def\xLtwo{12.00}
+\def\xBAtwo{13.95}
+\def\xCBthreeL{15.05}
+\def\xLthree{18.50}
+
+\foreach \k [evaluate=\k as \y using {-\dy*(\k-1)}] in {1,2,3} {
+  \coordinate (vin\k) at (\xVin,\y);
+  \coordinate (cb1L\k) at (\xCBoneL,\y);
+  \coordinate (v1\k) at (\xLone,\y);
+  \coordinate (cb2L\k) at (\xCBtwoL,\y);
+  \coordinate (v2\k) at (\xLtwo,\y);
+  \coordinate (cb3L\k) at (\xCBthreeL,\y);
+  \coordinate (v3\k) at (\xLthree,\y);
+}
+
+\node[layerlab] at (1.35,1.45) {Input layer\\[-1pt]\(\ell=0\)};
+\node[layerlab] at (\xLone,1.45) {Hidden layer\\[-1pt]\(\ell=1\)};
+\node[layerlab] at (\xLtwo,1.45) {Hidden layer\\[-1pt]\(\ell=2\)};
+\node[layerlab] at (\xLthree,1.45) {Linear output\\[-1pt]\(\ell=3\)};
+
+\node[crossbarlab] at (3.92,0.75)
+  {\(G^{(1)}=[g_{jk}^{(1)}]\)};
+\node[crossbarlab] at (10.32,0.75)
+  {\(G^{(2)}=[g_{jk}^{(2)}]\)};
+\node[crossbarlab] at (16.78,0.75)
+  {\(G^{(3)}=[g_{jk}^{(3)}]\)};
+
+\def\alphaVTap{0.78}
+\def\xInStub{0.30}
+
+\foreach \k [evaluate=\k as \y using {-\dy*(\k-1)}] in {1,2,3} {
+  \coordinate (vinNode\k) at ($(vin\k)!\alphaVTap!(cb1L\k)$);
+  \draw[wire] (vinNode\k) -- ++(-\xInStub,0);
+  \node[lab, left=0.52cm] at (vinNode\k) {$v_{\k}^{(0)}$};
+  \draw[wire] (vinNode\k) -- (cb1L\k);
+  \node[knot] at (vinNode\k) {};
+  \node[dot] at (cb1L\k) {};
+  \draw[wire] (vinNode\k) to[V] ++(0,\Vdrop) node[ground]{};
+}
+
+\foreach \k [evaluate=\k as \y using {-\dy*(\k-1)}] in {1,2,3} {
+  \node[lab, above=\yLab cm] at (v1\k) {$v_{\k}^{(1)}$};
+  \node[dot] at (v1\k) {};
+
+  \coordinate (tap1\k) at ($(v1\k)+(\xNLtap,0)$);
+  \draw[wire] (v1\k) -- (tap1\k);
+  \node[nonlin] (nl1\k) at ($(tap1\k)+(0,\yNL)$)
+    {$i_{\mathrm{nl},\k}^{(1)}$};
+  \draw[wire] (tap1\k) -- (nl1\k.north);
+  \draw[wire] (nl1\k.south) -- ++(0,\yNLgnd) node[ground]{};
+
+  \node[ba] (ba1\k) at (\xBAone,\y)
+    {BA\\[-2pt]\(\scriptstyle A{\rightarrow},\,B{\leftarrow}\)};
+  \draw[wire] (v1\k) -- (ba1\k.west);
+  \draw[wire] (ba1\k.east) -- (cb2L\k);
+  \node[dot] at (cb2L\k) {};
+}
+
+\foreach \k [evaluate=\k as \y using {-\dy*(\k-1)}] in {1,2,3} {
+  \node[lab, above=\yLab cm] at (v2\k) {$v_{\k}^{(2)}$};
+  \node[dot] at (v2\k) {};
+
+  \coordinate (tap2\k) at ($(v2\k)+(\xNLtap,0)$);
+  \draw[wire] (v2\k) -- (tap2\k);
+  \node[nonlin] (nl2\k) at ($(tap2\k)+(0,\yNL)$)
+    {$i_{\mathrm{nl},\k}^{(2)}$};
+  \draw[wire] (tap2\k) -- (nl2\k.north);
+  \draw[wire] (nl2\k.south) -- ++(0,\yNLgnd) node[ground]{};
+
+  \node[ba] (ba2\k) at (\xBAtwo,\y)
+    {BA\\[-2pt]\(\scriptstyle A{\rightarrow},\,B{\leftarrow}\)};
+  \draw[wire] (v2\k) -- (ba2\k.west);
+  \draw[wire] (ba2\k.east) -- (cb3L\k);
+  \node[dot] at (cb3L\k) {};
+}
+
+\foreach \k [evaluate=\k as \y using {-\dy*(\k-1)}] in {1,2,3} {
+  \node[lab, above=\yLab cm] at (v3\k) {$v_{\k}^{(3)}$};
+  \node[dot] at (v3\k) {};
+
+  \coordinate (outTap\k) at ($(v3\k)+(\xItap,0)$);
+  \draw[wire] (v3\k) -- (outTap\k);
+  \coordinate (gndI\k) at ($(outTap\k)+(0,\Idrop)$);
+  \draw[wire] (gndI\k) node[ground]{} to[I] (outTap\k);
+  \node[font=\normalsize, right=0.20cm]
+    at ($(outTap\k)!0.50!(gndI\k)$) {$I_{\mathrm{nudge},\k}$};
+}
+
+\foreach \j/\k in {1/2,1/3,2/1,2/2,2/3,3/1,3/2,3/3} {
+  \draw[cross] (cb1L\j) -- (v1\k);
+  \draw[cross] (cb2L\j) -- (v2\k);
+  \draw[cross] (cb3L\j) -- (v3\k);
+}
+
+\draw[draw=connorange, thick]
+  (cb1L1) to[R,l_={$g_{11}^{(1)}$}] (v11);
+\draw[draw=connorange, thick]
+  (cb2L1) to[R,l_={$g_{11}^{(2)}$}] (v21);
+\draw[draw=connorange, thick]
+  (cb3L1) to[R,l_={$g_{11}^{(3)}$}] (v31);
+
+\end{circuitikz}%
+}
+\caption{DRN with two nonlinear hidden layers, bidirectional amplifiers
+\(\mathrm{BA}(A,B)\), and linear output nodes. Orange branches denote
+trainable conductances; output current sources provide nudging.}
+\label{fig:drn-schematic}
+\end{figure}

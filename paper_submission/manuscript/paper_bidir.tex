@@ -686,6 +686,7 @@ baseline, balanced, and legacy, respectively.
 
 
 Our experiments are divided in two parts. First, we first compare the three amplification schemes on MNIST using convolutional DRNs of increasing depths. We compare them under idealized conditions and then examine how sensitive the training is to the read-noise and limited conductance range. Second, we implement a hybrid analog--digital architecture that enables us to scale DRNs to CIFAR-10. We evaluate the performance of the three amplification schemes in this architecture, both with and without read noise.
+Evaluation and plotting details are given in Section~\ref{sec:supp_evaluation_details}.
 
 
 
@@ -744,24 +745,24 @@ These differences suggest that stronger attenuation in baseline influences the c
 \begin{subfigure}{\linewidth}
 \centering
 \includegraphics[width=\linewidth]{figures/bptt_target4_profiles/free_state_rms_initialization.pdf}
-\caption{Before training: initialization at epoch 0.}
+\caption{At initialization.}
 \label{fig:bptt-free-voltages-before}
 \end{subfigure}
 \par\medskip
 \begin{subfigure}{\linewidth}
 \centering
 \includegraphics[width=\linewidth]{figures/bptt_target4_profiles/free_state_rms_trained.pdf}
-\caption{After BPTT training: final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3.}
+\caption{After BPTT training.}
 \label{fig:bptt-free-voltages-after}
 \end{subfigure}
-\caption{Free-state RMS voltage for the BPTT runs in Table~\ref{tab:wide-bptt-test}. Points and error bars show mean $\pm$ sample standard deviation over seeds 0, 1 and 2. For each seed and layer, RMS pools all nodes and the same 576 validation examples. Layer numbers denote convolutional layers within each network; Readout denotes the final fully connected layer. Panels (a) and (b) share the same logarithmic voltage axis.}
+\caption{Layerwise free-state RMS voltage before and after BPTT training for the runs in Table~\ref{tab:wide-bptt-test}. Points and error bars show the mean and sample standard deviation over three seeds. RMS values pool all nodes in each layer and 576 validation examples.}
 \label{fig:bptt-free-voltages}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{figures/bptt_target4_profiles/conv3_weights_at_zero.pdf}
-\caption{Layer-wise percentage of Conv3 weights exactly at zero after BPTT training, for the same target-$1/4$ runs as Fig.~\ref{fig:bptt-free-voltages}. Colored bars show the three schemes at final epoch 30. Bars and error bars give mean $\pm$ sample standard deviation over seeds 0, 1 and 2. Layer numbers denote convolutional layers within the network; Readout denotes the final fully connected layer. Each stored convolutional or dense weight is counted once, without expanding spatial reuse; biases are excluded.}
+\caption{Percentage of Conv3 conductances at zero after BPTT training (epoch 30). Bars and error bars show the mean and sample standard deviation over three seeds.}
 \label{fig:bptt-conv3-conductances}
 \end{figure}
 
@@ -789,62 +790,60 @@ free-state output RMS voltage.
 %this is not ok
 
 Table~\ref{tab:eqprop-read-noise-test} reports official MNIST test accuracy with output target amplitude $1/4$ for three seeds at the fixed final epochs. Conv1 shows small, noise-dependent differences between schemes. Balanced amplification has the highest mean for every reported Conv2 and Conv3 noise level.  
-\input{tables/tab_paper_read_noise_test}
 
-To interpret these results, we examine how the output perturbation
-propagates through the hidden layers. Although the relative output
-displacement is matched at initialization, the corresponding
-displacements in earlier layers can differ.
-In the Figure~\ref{fig:eqprop-layer-displacement} it can be seen that balanced amplification produces a larger relative displacement in the hidden layers than baseline and legacy.
+To interpret these results, we examine how the output nudging affects
+the hidden layers at initialization. For each layer $\ell$, we measure the RMS half-difference
+between the two nudged states,
+\begin{equation}
+    D_\ell
+    =
+    \operatorname{RMS}
+    \left[
+        \frac{v^{(\ell),+}-v^{(\ell),-}}{2}
+    \right],
+\end{equation}
+and normalize it by $P_\ell$, the RMS voltage over the two
+nudged endpoints.
+
+Figure~\ref{fig:eqprop-layer-displacement} shows that balanced
+amplification produces larger values of $D_\ell/P_\ell$ in the hidden
+layers than baseline and legacy at initialization. 
+This corresponds to a higher signal-to-noise ratio of the nudging-induced voltage differences. This suggests that balanced amplification allows the EqProp learning signal to be measured more reliably, which contributes to its better accuracy under read noise.
+
+We next examine whether how are the differences in relative displacement
+are accompanied by better alignment between noisy EqProp gradients
+and clean BPTT gradients.
+
+Figure~\ref{fig:eqprop-conv123-cosine-to-bptt}
+at initialization. Balanced amplification preserves higher
+alignment in the deeper networks and at intermediate noise
+levels. This benefit is layer-dependent as the first convolutional layers
+lose alignment at much smaller noise levels.
+
+\input{tables/tab_paper_read_noise_test}
 
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{figures/conv123_absolute_and_fractional_displacement.jpg}
-\caption{Absolute and relative nudged-state displacement across layers at
-initialization for the network architectures Conv1, Conv2, and Conv3.
-Layer numbers denote convolutional layers within each network; Readout
-denotes the final fully connected layer. The left column shows
-$D=\operatorname{RMS}[(v^+-v^-)/2]$; the right column shows $D/P$ as a percentage,
-where $P$ is the RMS of the two clean nudged endpoints. The output
-$D/F$ targets are matched across schemes at 1, 4, and 6 for Conv1, Conv2,
-and Conv3, respectively, where $F$ is the free-output RMS voltage.
-Measurements use seed 0 and 576 validation examples.}
+\caption{Layerwise nudged-state displacement at initialization: absolute
+displacement $D_\ell$ (left) and relative displacement $D_\ell/P_\ell$ (right).
+Measurements use seed 0 and 576 validation examples, with the initial output
+$D/F$ matched across amplification schemes.}
 \label{fig:eqprop-layer-displacement}
 \end{figure}
 % The larger relative displacement results in the higher cosinus similarity -- or something similar
-Figures~\ref{fig:eqprop-conv123-cosine-to-bptt} and
-\ref{fig:eqprop-conv123-trained-cosine-to-bptt} examine gradient alignment
-at initialization and after clean training, respectively, using output target
-amplitude $1/4$. The corresponding noisy-training test accuracies are reported in
-Table~\ref{tab:eqprop-read-noise-test}. Each diagnostic curve sweeps
-read noise over a fixed checkpoint. Balanced amplification preserves higher
-alignment in the last convolutional layer of Conv3 over intermediate noise
-levels. This benefit is layer-dependent: the first two convolutional layers
-lose alignment at much smaller noise levels. The trained comparisons include
-the learning-rate policies described in the caption and do not isolate an
-amplification-only effect.
-\begin{figure}[p]
-\centering
-\includegraphics[width=\linewidth]{figures/conv123_target4_initialization_layerwise_noise_vs_bptt.jpg}
-\caption{Layerwise cosine similarity between noisy centered EqProp weight
- gradients and clean finite-$K$ BPTT gradients at initialization, with output
- target amplitude $1/4$. Rows show the network architectures Conv1, Conv2,
- and Conv3; columns show successive convolutional layers (Layer 1, Layer 2
- and Layer 3) and the final fully connected layer (Readout).}
-\label{fig:eqprop-conv123-cosine-to-bptt}
-\end{figure}
 
 \begin{figure}[p]
 \centering
-\includegraphics[width=\linewidth]{figures/conv123_target4_final_layerwise_noise_vs_bptt.jpg}
-\caption{Layerwise cosine similarity between noisy centered EqProp weight
- gradients and clean finite-$K$ BPTT gradients at the trained checkpoint, with output
- target amplitude $1/4$. Rows show the network architectures Conv1, Conv2,
- and Conv3; columns show successive convolutional layers (Layer 1, Layer 2
- and Layer 3) and the final fully connected layer (Readout).}
-\label{fig:eqprop-conv123-trained-cosine-to-bptt}
+\includegraphics[width=\linewidth]{figures/conv123_target4_initialization_layerwise_noise_vs_bptt.jpg}
+\caption{Layerwise cosine similarity between noisy centered EqProp and clean
+finite-$K$ BPTT gradients at initialization, with target amplitude $1/4$.
+Rows show Conv1, Conv2 and Conv3; columns show convolutional layers and the readout.}
+\label{fig:eqprop-conv123-cosine-to-bptt}
 \end{figure}
+
+
 
 \subsubsection{Limited conductance range}
 \label{sec:bounded_bptt_results}
@@ -900,7 +899,7 @@ less weights stuck at $G_{\min}$.
 To evaluate amplification in a deeper network, we extend our experiments
 to CIFAR-10 a hybrid analog--digital convolutional architecture.
 Following the approach introduced by Nest and Ernoult~\cite{nest2024hybrid},
-we combine analog resistive networks with the digital stages.
+we combine analog resistive networks with the digital stages. The network in shown in the Figure~\ref{fig:l8-hybrid-schematic}. 
 All convolutional layers and a fully connected layer are implemented as the DRNs,
 while max pooling and batch normalization are performed in digital.
 The network is trained end-to-end by chaining EqProp for the analog blocks with backpropagation through the
@@ -915,12 +914,10 @@ pooling and batch normalization. The resulting
 features are passed to a fully connected resistive readout with ten
 linear output nodes, whose voltages serve as the classification logits.
 
-Figure~\ref{fig:l8-hybrid-schematic} shows the network and the flow of loss derivatives through its analog and digital stages.
-
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{figures/l8_hybrid_schematic.pdf}
-\caption{Hybrid analog--digital L8 architecture for CIFAR-10. The three analog convolutional blocks and the analog fully connected readout are trained with EqProp (EP), while the digital stages use backpropagation (BP). Convolutional channel counts refer to physical channels; differential decoding yields 128, 256 and 512 features at the successive block outputs.}
+\caption{Hybrid analog--digital L8 architecture for CIFAR-10. Analog blocks use EqProp (EP), and digital stages use backpropagation (BP). Convolutional labels give physical channel counts; block outputs are differentially decoded.}
 \label{fig:l8-hybrid-schematic}
 \end{figure}
 
@@ -942,11 +939,9 @@ of the final epoch-50 checkpoints across three training seeds.
 
 \begin{table}[htbp]
     \centering
-    \caption{CIFAR-10 test accuracy (\%) at epoch 50 using hybrid EqProp
-    training for both convolutional and readout conductances. Values are
-    mean $\pm$ sample standard deviation over seeds 0, 1 and 2 on the same
-    10,000-image official test set. Read noise is applied only to convolutional
-    endpoint acquisitions during training; test inference is clean.}
+    \caption{CIFAR-10 test accuracy (\%) after hybrid EqProp training (epoch 50).
+    Values are mean $\pm$ sample standard deviation over three seeds;
+    read noise affects training only.}
     \label{tab:cifar10_clean_read_noise}
     \begin{tabular}{lcc}
         \toprule
@@ -1194,6 +1189,24 @@ and the loss is
 \end{equation}
 with $Y$ the one-hot encoded target vector.
 
+\subsection{Evaluation and plotting details}
+\label{sec:supp_evaluation_details}
+
+Tables~\ref{tab:wide-bptt-test}, \ref{tab:eqprop-read-noise-test} and
+\ref{tab:bounded-weights-test} use output target amplitude $1/4$ and report
+accuracy on all 10,000 MNIST test examples at the fixed final epochs
+10, 15 and 30 for Conv1, Conv2 and Conv3, respectively. Each comparison uses
+seeds 0, 1 and 2. Table~\ref{tab:cifar10_clean_read_noise} uses the same seed
+indices and the full 10,000-image CIFAR-10 test set at epoch 50.
+
+For Table~\ref{tab:eqprop-read-noise-test}, conductance bounds are $[0,100]$. Balanced Conv3
+uses the selected tenfold learning-rate reduction; baseline and legacy
+retain their original scheme-specific rates.
+
+In layerwise plots, layer numbers denote convolutional layers and Readout
+denotes the final fully connected layer. Conductance percentages count each
+stored convolutional or dense coefficient once and exclude biases.
+
 \section{Nudging-factor selection for endpoint read noise}
 \label{sec:supp_read_noise_nudging}
 Rather than equating the numerical nudging coefficients across schemes, we match
@@ -1222,9 +1235,9 @@ remaining 55,000 MNIST training examples; the official test split is not used.
 
 \begin{table}[htbp]
     \centering
-    \caption{Conv2 validation accuracy (\%) with output targets scaled by
-    $1/16$, evaluated at epoch 15. Entries are the mean $\pm$ sample standard
-    deviation across seeds 1 and 2.}
+    \caption{MNIST validation accuracy (\%) for Conv2 at epoch 15 with target
+    amplitude $1/16$. Values are mean $\pm$ sample standard deviation over
+    seeds 1 and 2.}
     \label{tab:conv2_target16_read_noise}
     \begin{tabular}{lccc}
         \toprule
@@ -1240,8 +1253,8 @@ remaining 55,000 MNIST training examples; the official test split is not used.
 
 \begin{table}[htbp]
     \centering
-    \caption{Conv3 validation accuracy (\%) with output targets scaled by
-    $1/64$, evaluated at epoch 30 for seed 0.}
+    \caption{MNIST validation accuracy (\%) for Conv3 at epoch 30 with target
+    amplitude $1/64$ (seed 0).}
     \label{tab:conv3_target64_read_noise}
     \begin{tabular}{lccc}
         \toprule

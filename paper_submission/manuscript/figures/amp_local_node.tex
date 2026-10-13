@@ -1,0 +1,77 @@
+\begin{figure}[tbp]
+\centering
+\begin{circuitikz}[
+    scale=0.95,
+    transform shape,
+    line width=0.8pt,
+    font=\sffamily,
+    >={Latex[length=2.6mm,width=1.8mm]},
+    every node/.style={black}
+]
+\ctikzset{bipoles/length=1.55cm}
+\ctikzset{bipoles/generic/height=.50}
+
+\coordinate (upstream) at (-3.5,0);
+\coordinate (pre) at (0,0);
+\coordinate (cccs) at (2.65,0);
+\coordinate (amp) at (5.85,0);
+\coordinate (post) at (9.7,0);
+
+% One incoming conductance.
+\node[circ] at (upstream) {};
+\node[align=center,above=7pt] at (upstream)
+    {upstream side\\[-1pt]$\alpha_\ell v_j^{(\ell-1)}$};
+\draw (upstream)
+    to[R,l_={$g_{jk}^{(\ell)}$}] (pre);
+
+% Free node and its node-local nonlinear shunt.
+\node[circ] at (pre) {};
+\node[align=center,above=7pt] at (pre)
+    {free node $(\ell,k)$\\[-1pt]$v_k^{(\ell)}$};
+\draw (pre)
+    to[generic,name=nl] (0,-2.05)
+    -- (0,-2.40) node[ground]{};
+\node[font=\scriptsize] at (nl.center) {$i_{\mathrm{nl}}$};
+
+% Backward-current source on the free-node side of the amplifier.
+\draw (pre) -- (cccs);
+\node[circ] at (cccs) {};
+\draw (cccs)
+    to[american controlled current source] (2.65,-2.05)
+    -- (2.65,-2.40) node[ground]{};
+\node[align=right,left=16pt] at (2.65,-1.45)
+    {\textbf{CCCS}\\[-1pt]$B\,i_{km}^{(\ell+1)}$};
+
+% Forward voltage source and one outgoing conductance.
+\node[circ] at (amp) {};
+\draw (amp)
+    to[american controlled voltage source,invert] (5.85,-2.05)
+    -- (5.85,-2.40) node[ground]{};
+\node[align=left,right=16pt] at (5.85,-1.45)
+    {\textbf{VCVS}\\[-1pt]
+     $v_{\mathrm{amp}}=A v_k^{(\ell)}$};
+
+% Unlabelled internal coupling of the two dependent sources.
+\draw[densely dashed,line width=0.6pt]
+    (3.19,-1.025) -- (5.31,-1.025);
+
+\draw (amp)
+    to[R,l_={$g_{km}^{(\ell+1)}$}] (post);
+
+% Positive branch-current orientation.
+\draw[-{Latex[length=2.6mm,width=1.8mm]}]
+    (6.20,0.58) -- (6.95,0.58);
+\node[above=2pt] at (6.58,0.58)
+    {$i_{km}^{(\ell+1)}$};
+
+\node[circ] at (post) {};
+\node[align=center,above=7pt] at (post)
+    {downstream side $(\ell+1,m)$\\[-1pt]
+     $v_m^{(\ell+1)}$};
+
+\end{circuitikz}
+\caption{Bidirectional amplifier at a free node. The VCVS supplies the
+forward voltage \(A v_k^{(\ell)}\), while the CCCS draws the backward
+current \(B i_{km}^{(\ell+1)}\).}
+\label{fig:amp_local_node}
+\end{figure}

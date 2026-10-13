@@ -1,0 +1,17 @@
+% Official MNIST test results, 2026-10-10; source hashes and per-seed values in mnist_target4_official_test_20261010.json.
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lrrr}
+\toprule
+Architecture & Baseline & Balanced & Legacy \\
+\midrule
+Conv1 & $96.90 \pm 0.08$ & $96.94 \pm 0.10$ & $96.99 \pm 0.13$ \\
+Conv2 & $98.22 \pm 0.04$ & $98.64 \pm 0.07$ & $98.61 \pm 0.06$ \\
+Conv3 & $98.89 \pm 0.09$ & $99.17 \pm 0.12$ & $99.23 \pm 0.13$ \\
+\bottomrule
+\end{tabular}
+\caption{MNIST test accuracy (\%) after noiseless BPTT training. Values are mean $\pm$ sample standard deviation over three seeds.}
+\label{tab:wide-bptt-test}
+\end{table}
