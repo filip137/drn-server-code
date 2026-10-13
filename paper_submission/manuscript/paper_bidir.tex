@@ -679,18 +679,18 @@ nudging strengths, $+\beta$ and $-\beta$:
 
 \section{Experimental part}
 \label{sec:selection_stage_conv_results}
+We investigate how the choice of bidirectional amplification factors
+affects the training performance and robustness of deep resistive
+networks (DRNs). We compare three amplification schemes, denoted
+baseline, balanced, and legacy, which differ in the relative
+strengths of forward voltage and backward current amplification.
 We now investigate how the choice of bidirectional amplification factors, and the resulting asymmetry between forward and backward interactions, affects the training of DRNs.
 We compare three bidirectional amplification schemes, using $(A,B)=(1,1)$,
 $(4,1)$, and $(4,0.25)$ where $A$ and $B$ denote the forward voltage and backward
-current amplification factors. We note these schemes as baseline, balanced, and legacy,
+current amplification factors. We denote these schemes as baseline, balanced, and legacy,
 respectively.
 
-We first compare the performance of the three amplification
-schemes in the idealized conditions. We then evaluate how read noise in the
-voltage measurements of the positive and negative nudged phases affects
-centered EqProp training. We then restrict the ratio $g_{\max}/g_{\min}$
-between the maximum and minimum conductances. Finally, we evaluate clean and
-noisy training on CIFAR-10 using the deeper L8 architecture.
+We first compare the amplification schemes under idealized conditions and then we examine their sensitivity to hardware constraints. First, we evaluate the effects of the voltage read noise during training and a then of a limited available conductance range. To assess how the effects of amplification extend to a more demanding setting, we conclude with CIFAR-10 experiments using the deeper L8 architecture, comparing training with and without voltage read noise.
 
 
 
@@ -699,7 +699,7 @@ noisy training on CIFAR-10 using the deeper L8 architecture.
 \subsection{MNIST experiments}
 \label{sec:mnist_experiments}
 
-Each scheme is evaluated on MNIST using
+We first perform the experiments on the MNIST dataset, where each scheme is evaluated on the
 DRNs with one, two, or three convolutional layers (Conv1, Conv2, Conv3), with
 hidden-channel configurations $[64]$, $[64,128]$, and $[64,128,256]$.
 All convolutions use $3\times3$ kernels, unit padding, and no pooling, with
@@ -710,52 +710,27 @@ Section~\ref{sec:supp_output_encoding}.
 \subsubsection{No non-idealities}
 \label{sec:wide_bptt_eqprop_results}
 
-
-We first compare the three amplification schemes under noiseless conditions, with the FP32 weights and when the networks are trained with BPTT.
-Table~\ref{tab:wide-bptt-test} reports official MNIST test accuracy at the
-fixed final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3, respectively,
+% The slight problem with this section is that it seems I am promising the intepretation of these results and I end up explaining the effects of the amplification on the voltage magnitude before training and on the conductance distribution after training
+% However, these are important to explain why does the baseline perform worse
+Here, we compare the three amplification schemes under noiseless conditions, and when the networks are trained with BPTT.
+Table~\ref{tab:wide-bptt-test} reports MNIST test accuracy for Conv1, Conv2 and Conv3,
 with mean and sample standard deviation over three seeds. The schemes have similar accuracy for Conv1. For Conv2 and Conv3, both amplified schemes achieve higher accuracy than baseline. Balanced and legacy remain close and their mean accuracies differ by only $0.03$--$0.06$ percentage points across the three architectures.
 
 
-To interpret these results, we examine how the amplification schemes affect voltage propagation throughout the network. Figure~\ref{fig:bptt-free-voltages} compares the layer-wise free-state RMS voltages at initialization. We observe that, in the unamplified network (baseline), the voltage attenuates across successive layers because each layer is resistively loaded by the downstream network. In the amplified networks (balanced, legacy) this is mitigated by the forward voltage amplification, which counteracts the attenuation, while current de-amplification reduces the loading by the downstream network on the upstream nodes.
+To interpret these results, we examine how the amplification schemes affect voltage propagation throughout the network before training. Figure~\ref{fig:bptt-free-voltages-before} compares the layer-wise free-state RMS voltages at initialization. We observe that, in the unamplified network (baseline), the voltage attenuates across successive layers because each layer is resistively loaded by the downstream network. In the amplified networks (balanced, legacy) this is mitigated by the forward voltage amplification, which counteracts the attenuation, while current de-amplification (legacy) further reduces the loading by the downstream network on the upstream nodes.
 %Perhaps here I can describe only the RMS voltage before training
 
-This difference becomes important during training because the loss function sets imposes an absolute voltage scale. Each class is represented by a differential pair of output neurons, and training drives the voltage difference of the correct pair toward the target amplitude. 
-%Here I can describe RMS voltage after training
-After training, baseline has the largest first-layer RMS voltage in all
-three architectures. For Conv3, this voltage reaches $40.04$ V, compared
-with $13.41$ V for balanced amplification and $18.96$ V for legacy.
-This is consistent with compensation for stronger attenuation through
-larger upstream voltage amplitudes. 
-%
-% Figure~\ref{fig:bptt-conv3-conductances} shows the corresponding fraction
-% of Conv3 conductances exactly at zero. Approximately half the weights are
-% zero at initialization, and this fraction decreases during training in
-% every layer and scheme. At the final epoch, baseline nevertheless retains
-% the largest zero fraction in every layer. In the second convolutional
-% layer, the mean fractions are $19.53\%$, $8.95\%$ and $4.38\%$ for
-% baseline, balanced and legacy, respectively. The schemes therefore reach
-% similar accuracies with different voltage profiles and conductance
-% patterns. These endpoint measurements support that association, but do
-% not establish whether the zero-conductance differences cause the changes
-% in voltage propagation or accuracy.
-% END PROPOSED SECTION 4.1 REWRITE
 
-We first compare the amplification schemes in noiseless simulations, with conductances constrained to the wide interval \([0,100]\). Table~\ref{tab:wide-bptt-test} reports official MNIST test accuracy after BPTT training with output target amplitude \(1/4\). All results use the fixed final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3 and summarize three seeds. Legacy has the highest mean for Conv1 and Conv3, while balanced amplification has the highest mean for Conv2. The differences between the amplified schemes are small: \(0.05\), \(0.03\) and \(0.06\) percentage points for Conv1, Conv2 and Conv3, respectively.
+During training the network minimize the MSE loss function that drives the  voltage outputs towards the target amplitude. To achieve these targets despite voltage attenuation across successive layers, the network must adjust its conductances. %Each class is represented by a
+%differential pair of output nodes, and training drives the voltage
+%difference of the correct pair toward the target amplitude.
+The effect of this compensation is visible in the voltage profiles after training. As shown in Fig.~\ref{fig:bptt-free-voltages-after}, baseline exhibits the largest first-layer RMS voltage in all three architectures. For Conv3, this voltage reaches $40.04$ V, compared with $13.41$ V for balanced and $18.96$ V for legacy. This is consistent with the unamplified network requiring larger upstream voltage amplitudes to overcome the stronger attenuation and achieve the target voltage differences at the readout.
 
 
 
-% Here I am essentially describing the voltage magnitude but I am not really commenting on the results well. Perhaps I should mention that if we reduce the targets the results should get better
-To interpret these results, we examine how the amplification schemes affect voltage propagation throughout the network. Figure~\ref{fig:bptt-free-voltages} compares the layer-wise free-state RMS voltages at initialization and after training. We observe that, in the unamplified network, the voltage attenuates across successive layers because each layer is resistively loaded by the downstream network. Forward voltage amplification counteracts this attenuation, while current de-amplification reduces the loading by the downstream network on the upstream nodes.
- 
-At initialization in the Conv3 networks, the mean first-layer RMS voltage is \(7.27\) V for both baseline and legacy, and \(2.53\) V for balanced amplification. At the readout, the corresponding values are \(0.0078\), \(0.497\) and \(0.053\) V for baseline, legacy and balanced amplification, respectively. Thus legacy has the largest initial readout voltage. After BPTT training, the mean readout RMS voltages are \(0.067\), \(0.139\) and \(0.115\) V for baseline, balanced amplification and legacy, respectively; the ordering of the amplified schemes changes. These are three-seed means, with sample standard deviations shown in Fig.~\ref{fig:bptt-free-voltages}.
-
-This difference becomes important during training because the output loss
-imposes an absolute voltage scale. Each class is represented by a
-differential pair of output nodes, and training drives the voltage
-difference of the correct pair toward the prescribed target amplitude.
-The unamplified network exhibits the strongest initial forward attenuation. After training, it has a higher first-layer RMS voltage than either amplified scheme in all three architectures. Figure~\ref{fig:bptt-conv3-conductances} also shows that the trained Conv3 baseline retains a larger fraction of zero conductances in every layer than either amplified scheme. For example, in the second convolutional layer these fractions are \(19.53\%\), \(8.95\%\) and \(4.38\%\) for baseline, balanced amplification and legacy, respectively. However, approximately half the weights are zero at initialization, and the zero fraction decreases during training in every layer and scheme. These endpoint comparisons therefore establish differences in the trained conductance patterns, rather than a net increase in zero weights during training. A causal link between these patterns and reduced downstream loading would require a separate intervention.
-% This is not very clear. The point that I wanted to make is that each network would like to have high-er magnitude on the readout layer to be able to induce these voltage differences. This is why the network needs to establish that the voltage at the end of conv1 is very high, because it will anyway attenuate throughout the network
+Since the trainable conductances determine both voltage transmission and resistive loading, we also examine how their distributions differ after training. Figure~\ref{fig:bptt-conv3-conductances} illustrates how the amplification schemes affect the learned conductance distributions. After training, baseline retains the largest fraction of zero conductances in every layer of Conv3. In the second convolutional layer, these fractions are $19.53\%$, $8.95\%$, and $4.38\%$ for baseline, balanced, and legacy, respectively. 
+%This is not a good conclusion
+These differences suggest that stronger attenuation in baseline influences the conductance configurations reached during training, which contributes to its lower accuracy in deeper networks.
 
 
 \input{tables/tab_paper_wide_bptt_test}
@@ -775,108 +750,20 @@ The unamplified network exhibits the strongest initial forward attenuation. Afte
 \caption{After BPTT training: final epochs 10, 15 and 30 for Conv1, Conv2 and Conv3.}
 \label{fig:bptt-free-voltages-after}
 \end{subfigure}
-\caption{Free-state RMS voltage for the target-$1/4$ wide-range BPTT runs in Table~\ref{tab:wide-bptt-test}. Points and error bars show mean $\pm$ sample standard deviation over seeds 0, 1 and 2. For each seed and layer, RMS pools all nodes and the same 576 validation examples, including the readout. Replay uses saved configurations, float32 arithmetic and native inference counts $T=4,6,8$. Panels (a) and (b) share the same logarithmic voltage axis.}
+\caption{Free-state RMS voltage for the BPTT runs in Table~\ref{tab:wide-bptt-test}. Points and error bars show mean $\pm$ sample standard deviation over seeds 0, 1 and 2. For each seed and layer, RMS pools all nodes and the same 576 validation examples. Layer numbers denote convolutional layers within each network; Readout denotes the final fully connected layer. Panels (a) and (b) share the same logarithmic voltage axis.}
 \label{fig:bptt-free-voltages}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{figures/bptt_target4_profiles/conv3_weights_at_zero.pdf}
-\caption{Layer-wise percentage of Conv3 weights exactly at zero after BPTT training, for the same target-$1/4$ runs as Fig.~\ref{fig:bptt-free-voltages}. Colored bars show the three schemes at final epoch 30. Bars and error bars give mean $\pm$ sample standard deviation over seeds 0, 1 and 2. Each stored convolutional or dense weight is counted once, without expanding spatial reuse; biases are excluded.}
+\caption{Layer-wise percentage of Conv3 weights exactly at zero after BPTT training, for the same target-$1/4$ runs as Fig.~\ref{fig:bptt-free-voltages}. Colored bars show the three schemes at final epoch 30. Bars and error bars give mean $\pm$ sample standard deviation over seeds 0, 1 and 2. Layer numbers denote convolutional layers within the network; Readout denotes the final fully connected layer. Each stored convolutional or dense weight is counted once, without expanding spatial reuse; biases are excluded.}
 \label{fig:bptt-conv3-conductances}
 \end{figure}
 
 
-\subsubsection{EqProp with endpoint read noise}
+\subsubsection{Read noise}
 \label{sec:eqprop_endpoint_read_noise_results}
-% BEGIN PROPOSED SECTION 4.2 REWRITE
-% Proposed replacement for the prose in Section 4.2 (2026-10-10).
-% This is a review comment; the typeset text below is unchanged.
-% Editorial note: Fig. 5 currently comes from the September 25 target-1
-% initialization diagnostic. The paragraph below explicitly identifies that
-% provenance. It should not be presented as a measurement of the new target-1/4
-% runs. Figures 6--7 already use target 1/4. Keep the existing table and figure
-% environments when applying this proposed prose.
-%
-% Centered EqProp estimates local weight updates from the contrast between
-% positive and negative nudged states. Errors in reading these states can
-% therefore corrupt the teaching signal even when the physical relaxation
-% and inference are noiseless. We model endpoint read noise as
-% \[
-% \widetilde v_i^{(\ell),\pm}
-% = v_i^{(\ell),\pm}
-% + \eta\lvert v_i^{(\ell),\pm}\rvert z_i^{(\ell),\pm},
-% \qquad z_i^{(\ell),\pm}\sim\mathcal N(0,1).
-% \]
-% The dimensionless coefficient $\eta$ is shared across schemes and all
-% noninput layers, including the readout. Errors are independent across
-% nodes, phases and examples; each noisy node read is reused for its incident
-% connections. Noise is applied only to endpoint measurements used for the
-% training update. Inputs, physical relaxation, the teaching force and test
-% inference remain clean.
-%
-% We choose a separate nudging coefficient $\beta$ for each architecture and
-% amplification scheme by matching the initial relative output displacement,
-% $D_{\mathrm{out}}/F_{\mathrm{out}}$, where
-% $D_{\mathrm{out}}=\operatorname{RMS}[(v_{\mathrm{out}}^+
-% -v_{\mathrm{out}}^-)/2]$ and
-% $F_{\mathrm{out}}=\operatorname{RMS}[v_{\mathrm{out}}^0]$.
-% The RMS values pool the 20 physical output nodes over a fixed 576-example
-% validation cohort. With output target amplitude $1/4$, we calibrate
-% $D_{\mathrm{out}}/F_{\mathrm{out}}$ to 1, 4 and 6 for Conv1, Conv2 and
-% Conv3, respectively, at seed-0 initialization. The resulting $\beta$ is
-% then held fixed across training epochs, noise levels and seeds. The
-% relative displacement is consequently matched at this initial reference
-% point; it can change during training and is not recalibrated for seeds
-% 1 and 2.
-%
-% Table~\ref{tab:eqprop-read-noise-test} reports official MNIST test accuracy,
-% with mean and sample standard deviation over three seeds at final epochs
-% 10, 15 and 30 for Conv1, Conv2 and Conv3. Conv1 shows small, noise-dependent
-% differences, with no scheme having the highest mean at every noise level.
-% For Conv2 and Conv3, balanced amplification has the highest mean at every
-% reported level. At $\eta=10^{-3}$, Conv2 reaches $96.57\pm0.22\%$ with
-% balanced amplification, compared with $95.14\pm0.63\%$ for legacy and
-% $93.86\pm0.49\%$ for baseline. At $\eta=10^{-4}$, Conv3 reaches
-% $97.31\pm0.40\%$, $94.23\pm1.14\%$ and $93.32\pm1.70\%$ for balanced,
-% legacy and baseline, respectively. Balanced exceeds legacy in each of the
-% three Conv3 seeds at both tested noise levels. These are comparisons of
-% the declared training settings: balanced Conv3 uses a tenfold learning-rate
-% reduction, while baseline and legacy retain their original scheme-specific
-% rates. The results therefore do not isolate amplification from the
-% learning-rate policy. The noisy EqProp runs use float64 arithmetic; the
-% BPTT reference in Section~\ref{sec:wide_bptt_eqprop_results} uses float32.
-%
-% Matching output displacement does not enforce equal perturbations in the
-% hidden layers. Figure~\ref{fig:eqprop-layer-displacement} illustrates this
-% in the earlier seed-0, unit-target initialization diagnostic, using the
-% same output $D/F$ targets of 1, 4 and 6. Balanced amplification produces a
-% larger fractional hidden-layer displacement $D/P$, where
-% $P=\sqrt{\bigl(\operatorname{RMS}[v^+]^2+
-% \operatorname{RMS}[v^-]^2\bigr)/2}$ is the pooled RMS of the clean nudged
-% endpoints. This denominator differs from the free-state RMS used to
-% calibrate $\beta$. Since read-noise amplitude scales with endpoint voltage,
-% $D/P$ characterizes the perturbation relative to the voltage scale that
-% sets the measurement noise. It provides a diagnostic of signal visibility,
-% without by itself specifying the accuracy of a local gradient estimate.
-%
-% Figures~\ref{fig:eqprop-conv123-cosine-to-bptt} and
-% \ref{fig:eqprop-conv123-trained-cosine-to-bptt} examine this sensitivity
-% more directly for target amplitude $1/4$, by comparing noisy centered
-% EqProp weight gradients with clean finite-$K$ BPTT gradients. These are
-% seed-0 replays on 192 fixed validation examples at initialization and at
-% clean-trained checkpoints. Each noise level is applied to the same frozen
-% checkpoint; the curves do not follow a noisy-training trajectory. Shaded
-% bands show the range across three noise-draw means, not variation across
-% training seeds. Balanced amplification preserves higher alignment in the
-% last convolutional layer of Conv3 over intermediate noise levels. This
-% benefit varies across layers: the first two convolutional layers lose
-% alignment at much smaller noise levels. The diagnostics are consistent
-% with the observed sensitivity of local credit assignment to read noise,
-% but they do not establish that improved gradient alignment causes the
-% higher test accuracy in Table~\ref{tab:eqprop-read-noise-test}.
-% END PROPOSED SECTION 4.2 REWRITE
-%Maybe this is particularly relevent for EqProp
 In the previous section, we assumed idealized, noiseless conditions. Neuromorphic systems, however, are physical systems and are inherently subject to noise. This is particularly relevant for EqProp as it estimates gradients from the difference between steady states induced by nudging. A small nudging amplitude is required to accurately approximate the loss gradient, but it also reduces the magnitude of this difference. As a result, the resulting teaching signal can be drowned out by measurement noise.
 % Here, we study how the noise impacts different amplification schemes.
 
@@ -902,7 +789,7 @@ $F_{\mathrm{out}}=\operatorname{RMS}[v_{\mathrm{out}}^0]$ is the
 free-state output RMS voltage.
 %this is not ok
 
-Table~\ref{tab:eqprop-read-noise-test} reports official MNIST test accuracy with output target amplitude $1/4$ for three seeds at the fixed final epochs. Conv1 shows small, noise-dependent differences between schemes. Balanced amplification has the highest mean for every reported Conv2 and Conv3 noise level. For Conv3 at $\eta=10^{-4}$, it reaches $97.31\pm0.40\%$, compared with $94.23\pm1.14\%$ for legacy and $93.32\pm1.70\%$ for baseline. These comparisons use the declared learning-rate policies, including the tenfold rate reduction for balanced Conv3, and do not isolate an amplification-only effect. Noise affects training only; test inference is clean. BPTT uses float32 arithmetic, while the noisy EqProp runs use float64.
+Table~\ref{tab:eqprop-read-noise-test} reports official MNIST test accuracy with output target amplitude $1/4$ for three seeds at the fixed final epochs. Conv1 shows small, noise-dependent differences between schemes. Balanced amplification has the highest mean for every reported Conv2 and Conv3 noise level.  
 \input{tables/tab_paper_read_noise_test}
 
 To interpret these results, we examine how the output perturbation
@@ -916,11 +803,14 @@ In the Figure~\ref{fig:eqprop-layer-displacement} it can be seen that balanced a
 \centering
 \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{figures/conv123_absolute_and_fractional_displacement.jpg}
 \caption{Absolute and relative nudged-state displacement across layers at
-initialization for Conv1, Conv2, and Conv3. The left column shows
+initialization for the network architectures Conv1, Conv2, and Conv3.
+Layer numbers denote convolutional layers within each network; Readout
+denotes the final fully connected layer. The left column shows
 $D=\operatorname{RMS}[(v^+-v^-)/2]$; the right column shows $D/P$ as a percentage,
 where $P$ is the RMS of the two clean nudged endpoints. The output
 $D/F$ targets are matched across schemes at 1, 4, and 6 for Conv1, Conv2,
-and Conv3, respectively, where $F$ is the free-output RMS voltage.}
+and Conv3, respectively, where $F$ is the free-output RMS voltage.
+Measurements use seed 0 and 576 validation examples.}
 \label{fig:eqprop-layer-displacement}
 \end{figure}
 % The larger relative displacement results in the higher cosinus similarity -- or something similar
@@ -940,8 +830,9 @@ amplification-only effect.
 \includegraphics[width=\linewidth]{figures/conv123_target4_initialization_layerwise_noise_vs_bptt.jpg}
 \caption{Layerwise cosine similarity between noisy centered EqProp weight
  gradients and clean finite-$K$ BPTT gradients at initialization, with output
- target amplitude $1/4$. Rows show Conv1, Conv2, and Conv3; columns show
- convolutional layers and the readout.}
+ target amplitude $1/4$. Rows show the network architectures Conv1, Conv2,
+ and Conv3; columns show successive convolutional layers (Layer 1, Layer 2
+ and Layer 3) and the final fully connected layer (Readout).}
 \label{fig:eqprop-conv123-cosine-to-bptt}
 \end{figure}
 
@@ -950,12 +841,13 @@ amplification-only effect.
 \includegraphics[width=\linewidth]{figures/conv123_target4_final_layerwise_noise_vs_bptt.jpg}
 \caption{Layerwise cosine similarity between noisy centered EqProp weight
  gradients and clean finite-$K$ BPTT gradients at the trained checkpoint, with output
- target amplitude $1/4$. Rows show Conv1, Conv2, and Conv3; columns show
- convolutional layers and the readout.}
+ target amplitude $1/4$. Rows show the network architectures Conv1, Conv2,
+ and Conv3; columns show successive convolutional layers (Layer 1, Layer 2
+ and Layer 3) and the final fully connected layer (Readout).}
 \label{fig:eqprop-conv123-trained-cosine-to-bptt}
 \end{figure}
 
-\subsubsection{BPTT with bounded conductances}
+\subsubsection{Limited conductance range}
 \label{sec:bounded_bptt_results}
 % i should probably say that this limits signal or something similar
 % Perhaps I should do something better than memristive? More general?
@@ -965,9 +857,9 @@ compensate for voltage attenuation caused by the resistive loading by reducing s
 conductances. We now examine how
 a finite conductance range restricts this compensation. Such bounds arise,
 for example, from the finite ON/OFF ratio of memristive devices. A lower bound prevents conductances from being reduced to zero,
-while an upper bound limits the maximum conductance value. Thus the available conductance
+while an upper bound limits the maximum conductance value. Thus the limited conductance
 ratio restricts the adjustments that training can make to the
-network's electrical loading and voltage profile.
+network's resistive loading and voltage profile.
 
 All networks are trained with BPTT, with conductances constrained to
 $[G_{\min},G_{\max}]$. We fix $G_{\min}=10^{-5}$ and initialize
@@ -979,13 +871,13 @@ Table~\ref{tab:bounded-weights-test} shows that both amplified schemes achieve h
 
 \input{tables/tab_paper_bounded_bptt_test}
 
-To interpret these differences, we examine the fraction of learned
-conductances at each bound as shown in the Figure~\ref{fig:bounded-conductance-occupancy}. Across all experiments the share of the conductances stuck $G_{\min}$ is largest for
+To interpret these differences, we examine the distribution of learned
+conductances as shown in the Figure~\ref{fig:bounded-conductance-occupancy}. Across all experiments the share of the conductances stuck $G_{\min}$ is largest for
 baseline, intermediate for balanced amplification, and smallest for
 legacy. The fraction at $G_{\max}$ is
 substantially smaller and decreases as the upper bound is increased.
-This is consistent with the conductance changes observed in
-the noiseless experiments. There, the trained baseline retains a
+This is consistent with the conductance distributions after training observed in
+the noiseless experiments. There, the baseline scheme retains a
 larger fraction of zero conductances than either amplified scheme, while here conductances can only
 be reduced to $G_{\min}$ and therefore retain a nonzero contribution
 to the interlayer coupling. The larger lower-bound occupancy in the
@@ -1000,44 +892,69 @@ less weights stuck at $G_{\min}$.
 
 \subsection{CIFAR-10 experiments}
 \label{sec:cifar10_results}
+%This is also tricky because it seems that I will spend a significant portion of the section actually describing the network and how do the forward/backward pass work
+%This stays in the main for sure
+To evaluate amplification in a deeper network, we extend our experiments
+to CIFAR-10 a hybrid analog--digital convolutional architecture.
+Following the approach introduced by Nest and Ernoult~\cite{nest2024hybrid},
+we combine analog resistive networks with the digital stages.
+All convolutional layers and a fully connected layer are implemented as the DRNs,
+while max pooling and batch normalization are performed in digital.
+The network is trained end-to-end by chaining EqProp for the analog blocks with backpropagation through the
+digital blocks.
+% This can perhaps also stay here
+The network consists of eight convolutional layers arranged into three analog
+blocks, containing three, three and two layers, with 128, 256 and 512 feature channels, respectively. All convolutions use
+$3\times3$ kernels with unit stride and padding. Within each block,
+the internal layers use ideal-diode nonlinearities, while the final
+layer is linear. Each analog block is followed by digital $2\times2$ max
+pooling and batch normalization. The resulting
+features are passed to a fully connected resistive readout with ten
+linear output nodes, whose voltages serve as the classification logits.
 
-We also evaluate amplification on CIFAR-10 using L8, a network with eight
-convolutional layers arranged into three resistive blocks. The blocks contain
-three, three and two layers, with 128, 256 and 512 feature channels,
-respectively. All convolutions use $3\times3$ kernels, unit stride and unit
-padding. Within each block, the internal layers have perfect-diode
-nonlinearities, while the final layer is linear. The listed widths count
-differential features: each block output is decoded as the difference of a
-pair of physical channels. Each block is followed by digital $2\times2$ max
-pooling and batch normalization, reducing the spatial resolution from
-$32\times32$ to $4\times4$. The resulting features feed a fully connected
-resistive readout with ten linear output nodes, one per class. The inputs to
-each resistive block and to the readout are voltage-clamped.
-
-Training uses a hybrid scheme. Centered EqProp updates the convolutional
-conductances, while backpropagation through the free forward pass supplies
-the block nudging signals and trains the readout, batch normalization and
-input gains. The ten readout voltages are used directly as logits for
-softmax cross-entropy, as described in Section~\ref{sec:supp_output_encoding}.
-
-Table~\ref{tab:cifar10_clean_read_noise} compares clean training with relative
-endpoint read noise $\eta=10^{-4}$. 
+To investigate the effect of voltage read noise in the hybrid architecture,
+we compare the amplification schemes under clean and noisy training
+conditions. In the noisy setting, convolutional endpoint voltages used
+for EqProp updates are perturbed according to
+\begin{equation}
+    v_{\mathrm{read}} = v + \eta |v| \epsilon,
+    \qquad \epsilon \sim \mathcal{N}(0,1),
+\end{equation}
+with $\eta=10^{-4}$ and independent noise sampled for the positive and
+negative nudged phases. 
+Table ~\ref{tab:cifar10_clean_read_noise}reports the test accuracy
+of the final epoch-50 checkpoints across three training seeds.
 
 \begin{table}[htbp]
     \centering
-    \caption{CIFAR-10 validation accuracy (\%) at epoch 50 using hybrid EqProp
-    training, seed 0.}
+    \caption{CIFAR-10 test accuracy (\%) at epoch 50 using hybrid EqProp
+    training for both convolutional and readout conductances. Values are
+    mean $\pm$ sample standard deviation over seeds 0, 1 and 2 on the same
+    10,000-image official test set. Read noise is applied only to convolutional
+    endpoint acquisitions during training; test inference is clean.}
     \label{tab:cifar10_clean_read_noise}
     \begin{tabular}{lcc}
         \toprule
         Amplification scheme & Clean ($\eta=0$) & $\eta=10^{-4}$ \\
         \midrule
-        Baseline & 91.46 & 86.86 \\
-        Balanced (ours) & 91.64 & 88.00 \\
-        Legacy & 91.04 & 86.28 \\
+        Baseline & $90.42\pm0.40$ & $86.55\pm0.80$ \\
+        Balanced (ours) & $91.22\pm0.09$ & $87.24\pm0.34$ \\
+        Legacy & $90.81\pm0.45$ & $86.34\pm0.55$ \\
         \bottomrule
     \end{tabular}
 \end{table}
+
+Balanced amplification achieves the highest mean test accuracy in both
+conditions. Under read noise, its mean advantage is 0.68 percentage points
+over baseline and 0.90 points over legacy. The mean clean-to-noisy accuracy
+losses are 3.99, 3.87 and 4.47 points for balanced amplification, baseline
+and legacy, respectively. The advantage over baseline is 0.80 points
+in clean training, so noise reduces this mean gap by 0.12 points.
+Moreover, balanced amplification trails baseline in noisy seed 0
+(86.85\% versus 87.46\%). These results describe the complete training
+recipes, including their scheme-specific learning rates; they do not isolate
+amplification from optimizer choices or establish a noise-robustness
+advantage across all seeds.
 
 \clearpage
 
